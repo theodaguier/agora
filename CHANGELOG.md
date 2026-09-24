@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.6.0 — 2026-09-24
+
+### Features
+- **web**: name the browser tab after the current page
+
+## v0.5.2 — 2026-09-24
+
+### Fixes
+- **web,mobile**: keep the live stream alive and messages in order
+
+## v0.5.1 — 2026-09-24
+
+### Fixes
+- **api**: keep bot question forms instead of showing raw JSON
+
+## v0.5.0 — 2026-09-24
+
+### Features
+- admins can delete a user
+
+### Fixes
+- **web**: align status badges on rows without a menu
+
 ## v0.4.0 — 2026-09-24
 
 ### Features
