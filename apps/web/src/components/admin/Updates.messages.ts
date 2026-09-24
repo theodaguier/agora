@@ -7,7 +7,7 @@ export type Check = { name: string; detail?: string };
 export type StepParams = { id: string; version: string; image: string; passed: number; total: number; failing: string[]; error: string };
 
 /** Parameters of a coded updater error (apps/updater/src/coded.ts). */
-export type ErrorParams = { image: string; command: string; exitCode: number; output: string; container: string; seconds: number; detail: string; checks: Check[] };
+export type ErrorParams = { image: string; tag: string; command: string; exitCode: number; output: string; container: string; seconds: number; detail: string; checks: Check[] };
 
 const checksEn = (checks: Check[]) => checks.map((c) => `${c.name}: ${c.detail ?? "failed"}`).join("; ");
 const checksFr = (checks: Check[]) => checks.map((c) => `${c.name} : ${c.detail ?? "échec"}`).join(" ; ");
@@ -73,6 +73,7 @@ export const messages = defineMessages({
     },
     errors: {
       image_missing: (p: ErrorParams) => `image ${p.image} not found`,
+      repo_tag_missing: (p: ErrorParams) => `tag ${p.tag} not found in the server's repository`,
       command_failed: (p: ErrorParams) => `${p.command} failed (${p.exitCode}): ${p.output}`,
       hermes_timeout: (p: ErrorParams) => `${p.container}: Hermes not responding after ${p.seconds} s`,
       api_unavailable: (p: ErrorParams) => `Agora API unavailable or wrong version (${p.detail})`,
@@ -140,6 +141,7 @@ export const messages = defineMessages({
     },
     errors: {
       image_missing: (p: ErrorParams) => `image ${p.image} introuvable`,
+      repo_tag_missing: (p: ErrorParams) => `tag ${p.tag} introuvable dans le dépôt du serveur`,
       command_failed: (p: ErrorParams) => `${p.command} a échoué (${p.exitCode}) : ${p.output}`,
       hermes_timeout: (p: ErrorParams) => `${p.container} : Hermes ne répond pas après ${p.seconds} s`,
       api_unavailable: (p: ErrorParams) => `API Agora indisponible ou mauvaise version (${p.detail})`,

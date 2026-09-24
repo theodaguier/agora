@@ -70,6 +70,12 @@ line, `docker compose -p agora exec -it --user hermes hermes hermes model`.
     checks, otherwise rollback with database restore.
   - A rejected version is no longer retried automatically ("Allow a new
     attempt" button in the admin).
+- **The server's checkout follows**: on each app update (and rollback), the
+  updater moves the git checkout to the version's tag (`vX.Y.Z`), since
+  `docker-compose.yml`, the api image's Dockerfile, the Hermes plugins and the
+  `agora` script are read from it. Keep it a clean clone (no local edits to
+  tracked files, or the update stops before switching). Installs from before
+  this: `git fetch --tags && git checkout v<running version>` once, then `./agora up`.
 - **Without a registry** (before GitHub): `git pull && ./agora build` on the server,
   then apply the version from Settings › Updates.
 - **Status and versions**: `./agora status`; Hermes contract: `./agora contract`.

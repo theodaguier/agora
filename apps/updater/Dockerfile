@@ -2,7 +2,8 @@
 # Build context: repo root.
 FROM oven/bun:1.3.9-alpine
 ARG APP_VERSION=0.0.0
-RUN apk add --no-cache docker-cli docker-cli-compose
+# git + su-exec: keeps the server's checkout on the running version's tag (src/repo.ts).
+RUN apk add --no-cache docker-cli docker-cli-compose git su-exec
 WORKDIR /app
 COPY apps/updater/package.json apps/updater/tsconfig.json ./
 COPY apps/updater/src src

@@ -5,6 +5,7 @@ import { checkContract, regressionError, regressions } from "./contract";
 import { compose, containerName, must, run, volumeName } from "./exec";
 import { setEnv } from "./envfile";
 import { contractEnv, waitApi } from "./prod";
+import { checkoutVersion } from "./repo";
 import { startRun } from "./run-log";
 import { loadState, saveState, type UpdateRun } from "./state";
 
@@ -66,7 +67,7 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
       await step("app_rollback", `Retour arrière vers ${from} avec restauration de la base`, undefined, { version: from });
       await compose(["stop", "api"]);
       await restoreDatabase(entry.backup);
-      await switchTo(from);
+      await switchTo(from, { rollback: true });
       await waitApi(from);
       await step("rollback_done", "Retour arrière terminé, production rétablie", true);
       await finish("rolled_back");
@@ -79,7 +80,11 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
   return entry;
 }
 
-async function switchTo(version: string) {
+async function switchTo(version: string, { rollback = false } = {}) {
+  // On rollback, a checkout failure must not keep production down: the
+  // previous images are still there and the checkout can be fixed by hand.
+  if (rollback) await checkoutVersion(version).catch((err) => console.error("checkout:", err));
+  else await checkoutVersion(version);
   await setEnv("APP_VERSION", version);
   await compose(["build", "api"], { timeoutMs: 20 * 60_000 });
   await compose(["up", "-d", "--no-deps", "api", "web"], { timeoutMs: 10 * 60_000 });

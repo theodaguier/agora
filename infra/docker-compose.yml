@@ -118,7 +118,9 @@ services:
       TZ: ${TZ:-Europe/Paris}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${PWD}:${PWD}
+      # The whole checkout (not only infra/): the updater moves it to the tag
+      # of each version it installs (apps/updater/src/repo.ts).
+      - ${PWD}/..:${PWD}/..
       - backups:/backups
       - updater-state:/state
 
