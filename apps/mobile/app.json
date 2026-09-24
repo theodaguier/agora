@@ -10,7 +10,10 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.theodaguier.agora",
-      "appleTeamId": "3HAQT9C68X"
+      "appleTeamId": "3HAQT9C68X",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
