@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.2 — 2026-09-24
+
+### Fixes
+- **web,mobile**: keep the live stream alive and messages in order
+
 ## v0.5.1 — 2026-09-24
 
 ### Fixes
