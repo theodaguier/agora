@@ -1,0 +1,131 @@
+# Agora production: Caddy (HTTPS) → web + API; API ↔ Hermes ↔ Postgres.
+# Usage: cd infra && cp .env.example .env && (fill in) && ./agora build && ./agora up
+# See infra/DEPLOY.md.
+name: agora
+
+x-hermes-uid: &hermes-uid
+  HERMES_UID: ${HERMES_UID:-10000}
+  HERMES_GID: ${HERMES_GID:-10000}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agora
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is missing}
+      POSTGRES_DB: agora
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agora -d agora"]
+      interval: 5s
+      retries: 10
+
+  # Hermes instance: gateway (multi-profile API server) + internal dashboard,
+  # both on 127.0.0.1: only the api container (same network) can reach them.
+  hermes:
+    image: nousresearch/hermes-agent:${HERMES_VERSION:-v2026.9.21}
+    restart: unless-stopped
+    environment:
+      <<: *hermes-uid
+      GATEWAY_MULTIPLEX_PROFILES: "true"
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 127.0.0.1
+      API_SERVER_PORT: "8650"
+      API_SERVER_KEY: ${HERMES_API_KEY:?HERMES_API_KEY is missing}
+      HERMES_DASHBOARD: "1"
+      HERMES_DASHBOARD_HOST: 127.0.0.1
+      HERMES_DASHBOARD_PORT: "9129"
+      HERMES_DASHBOARD_SESSION_TOKEN: ${HERMES_DASHBOARD_TOKEN:?HERMES_DASHBOARD_TOKEN is missing}
+    volumes:
+      - hermes-data:/opt/data
+      # Same path as in the api image: the wiki plugin's links resolve there.
+      - ./hermes-plugins:/app/infra/hermes-plugins:ro
+    # Gateway supervised by s6 in the image (8.x and 9.x): a restart requested
+    # from the admin (SIGUSR1) relaunches it without stopping the container.
+    command: ["gateway", "run"]
+
+  # Agora API: app image layered on the Hermes image (hermes CLI), rebuilt here.
+  api:
+    image: agora-api:${APP_VERSION:?APP_VERSION is missing}-${HERMES_VERSION:-v2026.9.21}
+    build:
+      context: .
+      dockerfile: api-runtime.Dockerfile
+      args:
+        APP_IMAGE: ${AGORA_IMAGE_PREFIX:-agora}-app:${APP_VERSION}
+        HERMES_IMAGE: nousresearch/hermes-agent:${HERMES_VERSION:-v2026.9.21}
+        HERMES_VERSION: ${HERMES_VERSION:-v2026.9.21}
+    restart: unless-stopped
+    network_mode: "service:hermes"
+    pid: "service:hermes"
+    # Same user as Hermes: shared profile files, restart signal.
+    user: "${HERMES_UID:-10000}:${HERMES_GID:-10000}"
+    environment:
+      DATABASE_URL: postgres://agora:${POSTGRES_PASSWORD}@postgres:5432/agora
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is missing}
+      BETTER_AUTH_URL: https://${DOMAIN}
+      WEB_ORIGIN: https://${DOMAIN}
+      HERMES_API_URL: http://127.0.0.1:8650
+      HERMES_API_KEY: ${HERMES_API_KEY}
+      HERMES_DASHBOARD_URL: http://127.0.0.1:9129
+      HERMES_DASHBOARD_TOKEN: ${HERMES_DASHBOARD_TOKEN}
+      HERMES_KEY_SECRET: ${HERMES_KEY_SECRET:?HERMES_KEY_SECRET is missing}
+      UPDATER_URL: http://updater:8787
+      UPDATER_TOKEN: ${UPDATER_TOKEN:?UPDATER_TOKEN is missing}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      AGORA_SETUP_TOKEN: ${AGORA_SETUP_TOKEN:-}
+      MAIL_FROM: ${MAIL_FROM:-Agora <no-reply@example.com>}
+    volumes:
+      - hermes-data:/opt/data
+    depends_on:
+      hermes:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
+  web:
+    image: ${AGORA_IMAGE_PREFIX:-agora}-web:${APP_VERSION}
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is missing}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+  # Automatic updates (app and Hermes) with canary, backups and rollback.
+  # Drives Docker: never exposed, only the Agora API talks to it (token).
+  # The infra directory is mounted at the same path as on the host so that
+  # this file's relative paths stay valid when it re-runs compose.
+  updater:
+    image: ${AGORA_IMAGE_PREFIX:-agora}-updater:${APP_VERSION}
+    restart: unless-stopped
+    working_dir: ${PWD}
+    environment:
+      UPDATER_TOKEN: ${UPDATER_TOKEN}
+      PROJECT_DIR: ${PWD}
+      COMPOSE_PROJECT_NAME: agora
+      AGORA_IMAGE_PREFIX: ${AGORA_IMAGE_PREFIX:-agora}
+      REGISTRY_USER: ${REGISTRY_USER:-}
+      REGISTRY_TOKEN: ${REGISTRY_TOKEN:-}
+      BACKUPS_VOLUME: agora_backups
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}:${PWD}
+      - backups:/backups
+      - updater-state:/state
+
+volumes:
+  pgdata:
+  hermes-data:
+  caddy-data:
+  caddy-config:
+  backups:
+  updater-state:

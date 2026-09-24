@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Agora operations tool (can be run from anywhere).
+#   agora build            builds the app/web/updater images at the repo version
+#   agora up               starts (or updates) the whole stack
+#   agora status           service status and versions
+#   agora logs [service]   logs
+#   agora contract         checks the production Hermes contract
+#   agora setup-code       installation code asked by the setup wizard (blank instance)
+#   agora backup-offsite   encrypted copy (restic) of the database, Hermes data and .env
+#   agora restore-check    checks the off-site repository and test-restores the database
+set -euo pipefail
+INFRA="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$INFRA/.." && pwd)"
+cd "$INFRA"
+# .env holds every secret of the instance: readable by its owner only.
+chmod 600 .env 2>/dev/null || true
+set -a; source .env; set +a
+PREFIX="${AGORA_IMAGE_PREFIX:-agora}"
+compose() { docker compose -p agora "$@"; }
+
+RESTIC_IMAGE="restic/restic:0.18.0"
+# Variables restic reads (repository, password, cloud credentials), passed only if set.
+restic_run() {
+  : "${RESTIC_REPOSITORY:?RESTIC_REPOSITORY is missing in infra/.env}"
+  : "${RESTIC_PASSWORD:?RESTIC_PASSWORD is missing in infra/.env}"
+  local envs=() name
+  for name in RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION \
+    B2_ACCOUNT_ID B2_ACCOUNT_KEY AZURE_ACCOUNT_NAME AZURE_ACCOUNT_KEY GOOGLE_PROJECT_ID; do
+    [ -n "${!name:-}" ] && envs+=(-e "$name")
+  done
+  local ssh=()
+  # SFTP repository: the server's SSH keys and known_hosts.
+  [[ "$RESTIC_REPOSITORY" == sftp:* ]] && ssh=(-v "$HOME/.ssh:/root/.ssh:ro")
+  # Fixed --host: snapshots group by host, and a container's hostname is random.
+  docker run --rm -i ${envs[@]+"${envs[@]}"} ${ssh[@]+"${ssh[@]}"} -v agora_restic-cache:/root/.cache/restic --hostname agora "$@"
+}
+
+case "${1:-}" in
+  build)
+    VERSION="$(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$ROOT/package.json" | head -1)"
+    COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo "")"
+    NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    args=(--build-arg "APP_VERSION=$VERSION" --build-arg "GIT_COMMIT=$COMMIT" --build-arg "BUILT_AT=$NOW")
+    docker build "${args[@]}" -f "$ROOT/apps/api/Dockerfile" -t "$PREFIX-app:$VERSION" "$ROOT"
+    docker build "${args[@]}" -f "$INFRA/web.Dockerfile" -t "$PREFIX-web:$VERSION" "$ROOT"
+    docker build "${args[@]}" -f "$ROOT/apps/updater/Dockerfile" -t "$PREFIX-updater:$VERSION" "$ROOT"
+    echo "Images $PREFIX-{app,web,updater}:$VERSION built."
+    echo "To deploy them: APP_VERSION=$VERSION in infra/.env then 'agora up' (or via Admin › Updates)."
+    ;;
+  up) compose up -d --build --remove-orphans ;;
+  status)
+    compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}\t{{.Image}}'
+    echo "app ${APP_VERSION} · hermes ${HERMES_VERSION}"
+    ;;
+  logs) shift; compose logs -f --tail 100 "$@" ;;
+  contract)
+    compose exec -T api bun src/hermes-contract.ts --chat
+    ;;
+  setup-code)
+    code="$(compose logs --no-log-prefix api 2>/dev/null | sed -n 's/.*Agora installation code: *\([^ ]*\).*/\1/p' | tail -1)"
+    if [ -z "$code" ]; then
+      echo "No installation code in the API logs: the instance is already set up, or the API hasn't started yet ('./agora logs api')." >&2
+      exit 1
+    fi
+    echo "$code"
+    ;;
+  backup-offsite)
+    # Repository created on first use.
+    restic_run "$RESTIC_IMAGE" cat config >/dev/null 2>&1 || restic_run "$RESTIC_IMAGE" init
+    echo "Database…"
+    compose exec -T postgres pg_dump -U agora --clean --if-exists agora \
+      | restic_run "$RESTIC_IMAGE" backup --host agora --tag db --stdin --stdin-filename agora-db.sql
+    # Hermes data read live: the database dump is the consistent part; for a
+    # frozen copy, the updater's pre-update archives (agora_backups) go along too.
+    echo "Hermes data, update backups and .env…"
+    restic_run -v agora_hermes-data:/data/hermes-data:ro -v agora_backups:/data/backups:ro -v "$INFRA/.env:/data/env/.env:ro" \
+      "$RESTIC_IMAGE" backup --host agora --tag files /data
+    restic_run "$RESTIC_IMAGE" forget --host agora --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
+    echo "Off-site backup done."
+    ;;
+  restore-check)
+    restic_run "$RESTIC_IMAGE" snapshots --host agora
+    restic_run "$RESTIC_IMAGE" check --read-data-subset=5%
+    # Real test: the latest dump restored into a throwaway Postgres.
+    name="agora-restore-check-$$"
+    docker run -d --rm --name "$name" -e POSTGRES_USER=agora -e POSTGRES_PASSWORD=check -e POSTGRES_DB=agora postgres:17-alpine >/dev/null
+    trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
+    until docker exec "$name" pg_isready -U agora -d agora >/dev/null 2>&1; do sleep 1; done
+    sleep 2
+    restic_run "$RESTIC_IMAGE" dump --host agora --tag db latest /agora-db.sql \
+      | docker exec -i "$name" psql -U agora -d agora -v ON_ERROR_STOP=1 -q >/dev/null
+    users="$(docker exec "$name" psql -U agora -d agora -tAc 'select count(*) from "user"')"
+    echo "Database restored from the latest off-site snapshot: $users account(s)."
+    ;;
+  *) sed -n '2,10p' "$0"; exit 1 ;;
+esac

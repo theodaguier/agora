@@ -1,0 +1,5 @@
+name: agora_files
+version: 0.1.0
+description: "Attachments (Agora) — read-only access to the files attached to the current conversation, in place of Hermes's file toolset."
+provides_tools:
+  - read_attachment

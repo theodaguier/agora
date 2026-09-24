@@ -1,0 +1,175 @@
+import { locale, defineMessages } from "@/lib/i18n";
+import { dateFormat } from "@/lib/intl";
+
+/* apps/web/src/components/admin/Updates.messages.ts, plus the progress wording of the phone. */
+
+/** Failed contract check, as sent by the update service (the name is a technical identifier, shown as-is). */
+export type Check = { name: string; detail?: string };
+
+/** Parameters of a coded run step (apps/updater/src/app-update.ts, hermes-update.ts). `error` is already formatted. */
+export type StepParams = { id: string; version: string; image: string; passed: number; total: number; failing: string[]; error: string };
+
+/** Parameters of a coded updater error (apps/updater/src/coded.ts). */
+export type ErrorParams = { image: string; command: string; exitCode: number; output: string; container: string; seconds: number; detail: string; checks: Check[] };
+
+const checksEn = (checks: Check[]) => checks.map((c) => `${c.name}: ${c.detail ?? "failed"}`).join("; ");
+const checksFr = (checks: Check[]) => checks.map((c) => `${c.name} : ${c.detail ?? "échec"}`).join(" ; ");
+
+export const updatesMessages = defineMessages({
+  en: {
+    title: "Updates",
+    intro: "Running versions, available updates and history. Every update is backed up, tested, and rolled back automatically if it breaks anything.",
+    hermesCore: "Hermes core",
+    commit: (sha: string) => `commit ${sha}`,
+    confirmApp: (v: string) => `Update Agora to ${v} now?`,
+    updateAction: "Update",
+    majorNote: "Major version: never applied automatically.",
+    confirmHermes: (v: string) => `Update Hermes to ${v}? A canary will be tested before production is touched.`,
+    versions: "Versions",
+    window: "Update window",
+    autoUpdates: "Automatic updates",
+    checkNow: "Check now",
+    autoHermes: "Hermes core (after the canary passes)",
+    autoApp: "Agora, patches and minor versions",
+    windowStart: "Window start",
+    windowEnd: "Window end",
+    parisTime: "Applied during the window below, Paris time.",
+    lastCheck: (date: string) => ` Last checked ${date}.`,
+    history: "History",
+    noHistory: "No updates yet.",
+    available: "Available: ",
+    others: (n: number) => ` (+${n} more)`,
+    rejected: "Rejected during a previous attempt.",
+    allowRetry: "Allow another attempt",
+    update: "Update",
+    upToDate: "Up to date.",
+    hour: (h: number) => `${h}:00`,
+    status: { running: "In progress", succeeded: "Succeeded", rolled_back: "Canceled (rolled back)", failed: "Failed" },
+    trigger: { auto: "auto", manual: "manual" },
+    failedChecks: "Failed checks",
+    checkLine: (name: string, detail: string) => `${name}: ${detail}`,
+    checkFailed: "failed",
+    backup: (id: string) => `Backup: ${id}`,
+    updatingTo: (name: string, v: string) => `Updating ${name} to ${v}…`,
+    steps_: "Steps",
+    steps: {
+      app_pull_images: () => "Downloading images",
+      backup_start: () => "Backing up the database and Hermes data",
+      backup_done: (p: StepParams) => `Backup ${p.id}`,
+      app_switch: (p: StepParams) => `Switching to Agora ${p.version}`,
+      app_verified: () => "New version verified",
+      updater_swap: () => "Replacing the update service",
+      failed: (p: StepParams) => `Failed: ${p.error}`,
+      app_rollback: (p: StepParams) => `Rolling back to ${p.version} and restoring the database`,
+      rollback_done: () => "Rollback complete, production restored",
+      rollback_failed: (p: StepParams) => `Rollback failed: ${p.error}`,
+      hermes_pull_image: (p: StepParams) => `Downloading image ${p.image}`,
+      baseline_start: () => "Baseline: contract of the current production",
+      baseline_result: (p: StepParams) =>
+        `Baseline: ${p.passed}/${p.total} checks pass${p.failing.length ? ` (already failing: ${p.failing.join(", ")})` : ""}`,
+      canary_start: () => "Starting the canary on a copy of the data",
+      canary_started: () => "Canary started",
+      canary_contract: () => "Checking the contract on the canary (HTTP, SSE, CLI, wiki plugin, agent reply)",
+      canary_ok: (p: StepParams) => `Contract validated on the canary: no regressions (${p.passed}/${p.total} pass)`,
+      hermes_switch: (p: StepParams) => `Switching production to Hermes ${p.version}`,
+      prod_verified: () => "Production verified",
+      canary_rejected: (p: StepParams) => `Canary rejected, production was not touched: ${p.error}`,
+      hermes_rollback: (p: StepParams) => `Rolling back to Hermes ${p.version} and restoring the data`,
+    },
+    errors: {
+      image_missing: (p: ErrorParams) => `image ${p.image} not found`,
+      command_failed: (p: ErrorParams) => `${p.command} failed (${p.exitCode}): ${p.output}`,
+      hermes_timeout: (p: ErrorParams) => `${p.container}: Hermes not responding after ${p.seconds} s`,
+      api_unavailable: (p: ErrorParams) => `Agora API unavailable or wrong version (${p.detail})`,
+      regressions: (p: ErrorParams) => `regressions: ${checksEn(p.checks)}`,
+      prod_regressions: (p: ErrorParams) => `production regressions: ${checksEn(p.checks)}`,
+    },
+  },
+  fr: {
+    title: "Mises à jour",
+    intro: "Versions en service, mises à jour disponibles et historique. Chaque mise à jour est sauvegardée, testée, et annulée automatiquement si elle casse quelque chose.",
+    hermesCore: "Noyau Hermes",
+    commit: (sha: string) => `commit ${sha}`,
+    confirmApp: (v: string) => `Mettre à jour Agora vers ${v} maintenant ?`,
+    updateAction: "Mettre à jour",
+    majorNote: "Version majeure : jamais appliquée automatiquement.",
+    confirmHermes: (v: string) => `Mettre Hermes à jour vers ${v} ? Un canari sera testé avant de toucher à la production.`,
+    versions: "Versions",
+    window: "Plage de mise à jour",
+    autoUpdates: "Mises à jour automatiques",
+    checkNow: "Vérifier maintenant",
+    autoHermes: "Noyau Hermes (après validation du canari)",
+    autoApp: "Agora, correctifs et versions mineures",
+    windowStart: "Début de la fenêtre",
+    windowEnd: "Fin de la fenêtre",
+    parisTime: "Appliquées pendant la plage ci-dessous, heure de Paris.",
+    lastCheck: (date: string) => ` Dernière vérification le ${date}.`,
+    history: "Historique",
+    noHistory: "Aucune mise à jour pour l'instant.",
+    available: "Disponible : ",
+    others: (n: number) => ` (+${n} autres)`,
+    rejected: "Refusée lors d'un essai précédent.",
+    allowRetry: "Autoriser un nouvel essai",
+    update: "Mettre à jour",
+    upToDate: "À jour.",
+    hour: (h: number) => `${h} h`,
+    status: { running: "En cours", succeeded: "Réussie", rolled_back: "Annulée (retour arrière)", failed: "Échec" },
+    trigger: { auto: "auto", manual: "manuelle" },
+    failedChecks: "Vérifications en échec",
+    checkLine: (name: string, detail: string) => `${name} : ${detail}`,
+    checkFailed: "échec",
+    backup: (id: string) => `Sauvegarde : ${id}`,
+    updatingTo: (name: string, v: string) => `Mise à jour de ${name} vers ${v}…`,
+    steps_: "Étapes",
+    steps: {
+      app_pull_images: () => "Téléchargement des images",
+      backup_start: () => "Sauvegarde de la base et des données Hermes",
+      backup_done: (p: StepParams) => `Sauvegarde ${p.id}`,
+      app_switch: (p: StepParams) => `Bascule sur Agora ${p.version}`,
+      app_verified: () => "Nouvelle version vérifiée",
+      updater_swap: () => "Remplacement du service de mise à jour",
+      failed: (p: StepParams) => `Échec : ${p.error}`,
+      app_rollback: (p: StepParams) => `Retour arrière vers ${p.version} avec restauration de la base`,
+      rollback_done: () => "Retour arrière terminé, production rétablie",
+      rollback_failed: (p: StepParams) => `Retour arrière impossible : ${p.error}`,
+      hermes_pull_image: (p: StepParams) => `Téléchargement de l'image ${p.image}`,
+      baseline_start: () => "Référence : contrat de la production actuelle",
+      baseline_result: (p: StepParams) =>
+        `Référence : ${p.passed}/${p.total} vérifications passent${p.failing.length ? ` (déjà en échec : ${p.failing.join(", ")})` : ""}`,
+      canary_start: () => "Démarrage du canari sur une copie des données",
+      canary_started: () => "Canari démarré",
+      canary_contract: () => "Vérification du contrat sur le canari (HTTP, SSE, CLI, plugin wiki, réponse d'agent)",
+      canary_ok: (p: StepParams) => `Contrat validé sur le canari : aucune régression (${p.passed}/${p.total} passent)`,
+      hermes_switch: (p: StepParams) => `Bascule de la production sur Hermes ${p.version}`,
+      prod_verified: () => "Production vérifiée",
+      canary_rejected: (p: StepParams) => `Canari refusé, la production n'a pas été touchée : ${p.error}`,
+      hermes_rollback: (p: StepParams) => `Retour arrière vers Hermes ${p.version} avec restauration des données`,
+    },
+    errors: {
+      image_missing: (p: ErrorParams) => `image ${p.image} introuvable`,
+      command_failed: (p: ErrorParams) => `${p.command} a échoué (${p.exitCode}) : ${p.output}`,
+      hermes_timeout: (p: ErrorParams) => `${p.container} : Hermes ne répond pas après ${p.seconds} s`,
+      api_unavailable: (p: ErrorParams) => `API Agora indisponible ou mauvaise version (${p.detail})`,
+      regressions: (p: ErrorParams) => `régressions : ${checksFr(p.checks)}`,
+      prod_regressions: (p: ErrorParams) => `régressions en production : ${checksFr(p.checks)}`,
+    },
+  },
+});
+
+type T = typeof updatesMessages;
+
+/** Error of the update service: translated from its code, otherwise its own message. */
+export function errorText(e: { message: string; code?: string; params?: Record<string, unknown> }) {
+  const format = e.code ? updatesMessages.errors[e.code as keyof T["errors"]] : undefined;
+  return format ? format(e.params as ErrorParams) : e.message;
+}
+
+/** A run step: translated from its code, otherwise its own message. */
+export function stepText(s: { message: string; code?: string; params?: Record<string, unknown> & { error?: { message: string; code?: string; params?: Record<string, unknown> } } }) {
+  const format = s.code ? updatesMessages.steps[s.code as keyof T["steps"]] : undefined;
+  if (!format) return s.message;
+  const { error, ...rest } = s.params ?? {};
+  return format({ ...rest, error: error ? errorText(error) : "" } as StepParams);
+}
+
+export const dateTime = () => dateFormat(locale, { dateStyle: "short", timeStyle: "short" });

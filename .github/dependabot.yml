@@ -1,0 +1,31 @@
+# Dependency updates: weekly, grouped so they don't flood the PR list.
+# Security updates (Dependabot alerts) are opened as soon as they're published.
+version: 2
+updates:
+  - package-ecosystem: npm # pnpm workspace (pnpm-lock.yaml)
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/updater
+      - /infra
+    schedule:
+      interval: weekly
+    ignore:
+      # Hermes is updated by the updater service (canary + contract check), not by PRs.
+      - dependency-name: nousresearch/hermes-agent
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

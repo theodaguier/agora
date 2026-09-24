@@ -1,0 +1,1 @@
+ALTER TABLE "user" ADD COLUMN "release_notes_seen" text;

@@ -1,0 +1,5 @@
+name: agora_screen
+version: 0.1.0
+description: "Agent screen (Agora) — tells the Agora API which browser (CDP endpoint) each session drives, so members can watch it live."
+provides_hooks:
+  - post_tool_call

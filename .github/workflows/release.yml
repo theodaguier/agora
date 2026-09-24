@@ -1,0 +1,62 @@
+# On each vX.Y.Z tag (created by `bun scripts/release.ts`): publishes the
+# app / web / updater images to ghcr.io and the GitHub release with its changelog.
+# The servers' update service detects these tags and applies them.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - image: app
+            dockerfile: apps/api/Dockerfile
+          - image: web
+            dockerfile: infra/web.Dockerfile
+          - image: updater
+            dockerfile: apps/updater/Dockerfile
+    steps:
+      - uses: actions/checkout@v5
+      - id: meta
+        run: |
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "repo=$(echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "now=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.repo }}-${{ matrix.image }}:${{ steps.meta.outputs.version }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            GIT_COMMIT=${{ github.sha }}
+            BUILT_AT=${{ steps.meta.outputs.now }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  release:
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Release notes
+        run: awk -v tag="## ${GITHUB_REF_NAME}" 'index($0, tag)==1{p=1;next} /^## v/{p=0} p' CHANGELOG.md > notes.md
+      - run: gh release create "$GITHUB_REF_NAME" --notes-file notes.md --title "$GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,6 @@
+name: agora_wiki
+version: 0.1.0
+description: "Organization memory (Agora) — markdown wiki shared across profiles (Karpathy's LLM Wiki pattern), Obsidian-compatible."
+hooks:
+  - sync_turn
+  - on_memory_write

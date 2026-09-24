@@ -1,0 +1,1 @@
+ALTER TABLE "mobile_link" ADD COLUMN "push_token" text;

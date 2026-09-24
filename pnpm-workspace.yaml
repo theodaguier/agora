@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  esbuild: true
+  "@prisma/client": false
+  better-sqlite3: false
+  unrs-resolver: set this to true or false

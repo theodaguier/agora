@@ -1,0 +1,21 @@
+{
+  "name": "agora",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "infra/dev.sh",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "db:up": "docker compose -f infra/docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f infra/docker-compose.dev.yml down",
+    "hermes": "infra/hermes-dev.sh",
+    "release": "bun scripts/release.ts",
+    "dev:apps": "turbo run dev --filter=!@agora/updater"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.2",
+    "typescript": "^7.0.2"
+  },
+  "license": "AGPL-3.0-only"
+}

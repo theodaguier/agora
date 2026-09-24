@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@import "uniwind";
+@import "heroui-native/styles";
+@import "tw-animate-css";
+
+/* HeroUI Native's classes (pnpm links node_modules: the path is spelled out). */
+@source "../node_modules/heroui-native/lib";
+
+/*
+ * HeroUI Native's default theme, untouched: components look as in its documentation.
+ * Text uses the iOS type scale (Dynamic Type sizes at the default setting): `text-body` is 17 pt.
+ */
+@theme {
+  --text-large-title: 34px;
+  --text-large-title--line-height: 41px;
+  --text-title1: 28px;
+  --text-title1--line-height: 34px;
+  --text-title2: 22px;
+  --text-title2--line-height: 28px;
+  --text-title3: 20px;
+  --text-title3--line-height: 25px;
+  --text-headline: 17px;
+  --text-headline--line-height: 22px;
+  --text-body: 17px;
+  --text-body--line-height: 22px;
+  --text-callout: 16px;
+  --text-callout--line-height: 21px;
+  --text-subheadline: 15px;
+  --text-subheadline--line-height: 20px;
+  --text-footnote: 13px;
+  --text-footnote--line-height: 18px;
+  --text-caption1: 12px;
+  --text-caption1--line-height: 16px;
+  --text-caption2: 11px;
+  --text-caption2--line-height: 13px;
+
+  /* The system monospace (Menlo on iOS). */
+  --font-mono: Menlo;
+
+  --spacing-hairline: hairlineWidth();
+
+}

@@ -1,0 +1,1 @@
+ALTER TABLE "digest_personal" ADD COLUMN "stats" jsonb;

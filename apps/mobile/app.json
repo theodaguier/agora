@@ -1,0 +1,104 @@
+{
+  "expo": {
+    "name": "Agora",
+    "slug": "agora",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "agora",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/images/icon.png",
+      "bundleIdentifier": "com.theodaguier.agora",
+      "appleTeamId": "3HAQT9C68X"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0C0C0C",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "app.agora.mobile",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0C0C0C",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 160
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Agora uses the camera to scan the QR code that connects the app to your organization.",
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-secure-store",
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Agora uses your photos so you can send them in a conversation.",
+          "cameraPermission": "Agora uses the camera to take a photo to send, or to scan the QR code that connects the app."
+        }
+      ],
+      [
+        "expo-localization",
+        {
+          "supportedLocales": ["en", "fr"]
+        }
+      ],
+      "expo-web-browser",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Agora uses the microphone to record voice messages and to dictate your messages."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#DADADA"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Agora uses Face ID to lock the app."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Agora uses the microphone to record voice messages and to dictate your messages.",
+          "speechRecognitionPermission": "Agora uses speech recognition to write what you dictate in a message."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "af911d17-629d-4b50-84ef-e12a090712a4"
+      }
+    },
+    "owner": "theodaguier"
+  }
+}

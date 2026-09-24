@@ -1,0 +1,254 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "streamdown/styles.css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:is(.dark *));
+@source "../node_modules/streamdown/dist/*.js";
+
+/*
+ * Two palettes: light on :root, dark on <html class="dark"> (set by src/lib/theme.ts,
+ * or before the first paint by index.html). shadcn tokens + four app-specific
+ * tokens (subtle, brand, success, warning).
+ */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.17 0 0);
+  --card: oklch(0.985 0 0);
+  --card-foreground: oklch(0.17 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.17 0 0);
+  --primary: oklch(0.17 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.955 0 0);
+  --secondary-foreground: oklch(0.17 0 0);
+  --muted: oklch(0.955 0 0);
+  --muted-foreground: oklch(0.48 0 0);
+  --accent: oklch(0.93 0 0);
+  --accent-foreground: oklch(0.17 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.905 0 0);
+  --input: oklch(0.905 0 0);
+  --ring: oklch(0.6 0 0);
+  --chart-1: oklch(0.3 0 0);
+  --chart-2: oklch(0.5 0 0);
+  --chart-3: oklch(0.62 0 0);
+  --chart-4: oklch(0.74 0 0);
+  --chart-5: oklch(0.85 0 0);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.97 0 0);
+  --sidebar-foreground: oklch(0.17 0 0);
+  --sidebar-primary: oklch(0.17 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.925 0 0);
+  --sidebar-accent-foreground: oklch(0.17 0 0);
+  --sidebar-border: oklch(0.905 0 0);
+  --sidebar-ring: oklch(0.6 0 0);
+
+  /* Strong ease-out: things entering the chat (messages, streamed words). */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* Tertiary text (dates, hints, placeholders). */
+  --subtle: oklch(0.6 0 0);
+  /* Blue accent: unread, file drop, restart banner. */
+  --brand: oklch(0.56 0.2 255);
+  --success: oklch(0.58 0.15 150);
+  --warning: oklch(0.7 0.15 75);
+}
+
+.dark {
+  --background: oklch(0.13 0 0);
+  --foreground: oklch(0.96 0 0);
+  --card: oklch(0.155 0 0);
+  --card-foreground: oklch(0.96 0 0);
+  --popover: oklch(0.235 0 0);
+  --popover-foreground: oklch(0.96 0 0);
+  --primary: oklch(0.96 0 0);
+  --primary-foreground: oklch(0.13 0 0);
+  --secondary: oklch(0.235 0 0);
+  --secondary-foreground: oklch(0.96 0 0);
+  --muted: oklch(0.235 0 0);
+  --muted-foreground: oklch(0.68 0 0);
+  --accent: oklch(0.29 0 0);
+  --accent-foreground: oklch(0.96 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(0.26 0 0);
+  --input: oklch(0.26 0 0);
+  --ring: oklch(0.68 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.155 0 0);
+  --sidebar-foreground: oklch(0.96 0 0);
+  --sidebar-primary: oklch(0.96 0 0);
+  --sidebar-primary-foreground: oklch(0.13 0 0);
+  --sidebar-accent: oklch(0.235 0 0);
+  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --sidebar-border: oklch(0.26 0 0);
+  --sidebar-ring: oklch(0.68 0 0);
+
+  /* Tertiary text (dates, hints, placeholders). */
+  --subtle: oklch(0.52 0 0);
+  /* Blue accent: unread, file drop, restart banner. */
+  --brand: oklch(0.64 0.19 255);
+  --success: oklch(0.72 0.17 150);
+  --warning: oklch(0.879 0.169 91.605);
+}
+
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-subtle: var(--subtle);
+  --color-brand: var(--brand);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+
+  /* Same scale as Tailwind's default radii, derived from --radius. */
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 2);
+  --radius-3xl: calc(var(--radius) * 3);
+  --radius-4xl: calc(var(--radius) * 4);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+  }
+  html {
+    @apply font-sans antialiased;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  /* Tailwind v4 no longer sets a pointer cursor on buttons: restore it for everything clickable. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]),
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="radio"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]),
+  [role="menuitemradio"]:not([aria-disabled="true"]),
+  [role="menuitemcheckbox"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"]),
+  label:has(input:not(:disabled)),
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+  ::selection {
+    background: oklch(from var(--brand) l c h / 0.4);
+  }
+}
+
+/* A message arriving while the conversation is open: rises into place. */
+@layer components {
+  .chat-arrive {
+    transition:
+      opacity 200ms var(--ease-out),
+      transform 200ms var(--ease-out);
+    @starting-style {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+
+  /* Typing dots: a wave, softer than a bounce. */
+  .typing-dot {
+    animation: typing-dot 1.2s ease-in-out infinite both;
+  }
+
+  /* A message being sent dims only if sending is slow: a quick send swaps without any change. */
+  .chat-pending {
+    animation: chat-pending 200ms var(--ease-out) 600ms both;
+  }
+
+  /* Loading a conversation: only shown when it's slow, so a fast load doesn't flash. */
+  .chat-loading {
+    animation: chat-loading 200ms var(--ease-out) 400ms both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-arrive {
+      @starting-style {
+        transform: none;
+      }
+    }
+    .typing-dot {
+      animation-name: typing-dot-fade;
+    }
+  }
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes typing-dot-fade {
+  0%, 60%, 100% {
+    opacity: 0.4;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+@keyframes chat-pending {
+  to {
+    opacity: 0.7;
+  }
+}
+
+@keyframes chat-loading {
+  from {
+    opacity: 0;
+  }
+}
