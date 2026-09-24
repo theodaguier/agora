@@ -1,14 +1,21 @@
-import { Children, isValidElement, useMemo, type ComponentProps, type ReactNode } from "react";
+import { Children, isValidElement, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { defaultRehypePlugins, Streamdown, type CustomRendererProps } from "streamdown";
 import { CHAT_LINE, prepareMarkdown, rehypeQuotes, remarkChat } from "@/lib/chat-markdown";
 import { asFile, asPath, fileOfUrl, linkClass, linkLabel, parseRepo, rehypeLinks, splitEntities } from "@/lib/links";
 import { rehypeTaskRefs } from "@/lib/task-refs";
 import { TaskRef } from "@/components/TaskRef";
+import { Button } from "@/components/ui/button";
+import { defineMessages, useT } from "@/i18n";
 import { MentionText, mentionComponents, rehypeMentions, type Mentionable } from "@/lib/mentions";
 import { cn, contentKeys } from "@/lib/utils";
 import { ColorValue, FileChip, PathChip, PortChip, RepoChip, Swatch } from "./TextEntities";
 
 const NONE: Mentionable[] = [];
+
+const messages = defineMessages({
+  en: { showImage: (host: string) => `Show image from ${host}` },
+  fr: { showImage: (host: string) => `Afficher l'image de ${host}` },
+});
 
 /** Words of a reply being written fade in as they arrive instead of popping in by chunks. */
 const streamedWords = { animation: "fadeIn", duration: 180, easing: "var(--ease-out)" };
@@ -43,6 +50,7 @@ export function MessageText({
     const mention = mentionables.length ? mentionComponents(mentionables).span : undefined;
     return {
       a: MessageLink,
+      img: MessageImage,
       inlineCode: InlineCode,
       span: ({ node, ...props }: ComponentProps<"span"> & { node?: unknown }) => {
         const data = props as { "data-path"?: string; "data-color"?: string; "data-port"?: string; "data-file"?: string; "data-url"?: string };
@@ -109,6 +117,36 @@ function MessageLink({ node: _node, className: _className, href, ...props }: Com
   }
   const web = !!href && /^https?:/i.test(href);
   return <a {...props} href={href} {...(web && { target: "_blank", rel: "noreferrer noopener" })} className={linkClass} />;
+}
+
+/**
+ * An image in a message. One from another site loads only on a click: loading it sends its
+ * address to that site, and a reply steered by a trapped page could hide the conversation
+ * in it ("![](https://…/?d=…)"). The full address shows on hover, before the click.
+ */
+function MessageImage({ node: _node, src, alt, ...props }: ComponentProps<"img"> & { node?: unknown }) {
+  const t = useT(messages);
+  const external = typeof src === "string" && isExternal(src);
+  const [shown, setShown] = useState(!external);
+  if (!src || typeof src !== "string") return null;
+  if (!shown) {
+    return (
+      <Button type="button" variant="outline" size="sm" title={src} onClick={() => setShown(true)}>
+        {t.showImage(new URL(src).host)}
+      </Button>
+    );
+  }
+  return <img {...props} src={src} alt={alt ?? ""} loading="lazy" referrerPolicy="no-referrer" className="max-w-full rounded-lg" />;
+}
+
+/** An absolute http(s) address on another origin than the app's. */
+function isExternal(src: string) {
+  try {
+    const url = new URL(src, window.location.href);
+    return /^https?:$/.test(url.protocol) && url.origin !== window.location.origin;
+  } catch {
+    return false;
+  }
 }
 
 /** A link whose text is its own address: markdown wrote it, not the author ("[the app](…)"). */
