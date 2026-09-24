@@ -2,7 +2,7 @@
 # It is layered on the Hermes image at deploy time (infra/api-runtime.Dockerfile),
 # which lets the app and Hermes be updated independently.
 # Build context: repo root.
-FROM node:24-slim AS deps
+FROM node:25-slim AS deps
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
