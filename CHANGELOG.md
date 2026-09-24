@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.3 — 2026-09-24
+
+### Fixes
+- **api**: MCP connectors actually reach the bots
+
 ## v0.6.2 — 2026-09-24
 
 ### Fixes
