@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.0 — 2026-09-24
+
+### Features
+- **admin**: manage AI providers and the default model in Admin › Models
+
+### Fixes
+- **api**: wait for the Hermes gateway before restarting it
+
 ## v0.2.0 — 2026-09-24
 
 - Shared skills: ask any bot to "make it a skill" and it writes a SKILL.md (```skill-create``` block) that every bot, present and future, can use. Stored in `shared-skills/` at the Hermes root, listed in every profile's `skills.external_dirs` (set at startup and on bot creation). Asked by an admin, it is shared right away; otherwise an admin reads it and approves it from the card in the conversation or from Marketplace › Installed. A shared skill is never overwritten by a different one with the same name.
