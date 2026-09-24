@@ -6,7 +6,7 @@ import { env } from "./env";
 import type { HermesEvent, ModelInfo } from "./hermes";
 import { anthropicModels, newestFirst, type CatalogModel } from "./model-catalog";
 import type { EngineUsage } from "./usage";
-import { childEnv } from "./harden";
+import { claudeEnv } from "./harden";
 
 /**
  * Claude Code engine: the official `claude -p` binary, signed in on this
@@ -99,7 +99,7 @@ async function menuModels(): Promise<MenuModel[]> {
   const cwd = await workspace();
   const proc = Bun.spawn(
     [env.CLAUDE_CODE_BIN, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config"],
-    { cwd, env: childEnv(), stdin: "pipe", stdout: "pipe", stderr: "ignore" },
+    { cwd, env: claudeEnv(), stdin: "pipe", stdout: "pipe", stderr: "ignore" },
   );
   const timer = setTimeout(() => proc.kill(), 30_000);
   try {
@@ -194,7 +194,7 @@ export async function* claudeCodeChat(opts: {
     ...[...new Set(opts.readDirs ?? [])].flatMap((d) => ["--add-dir", d]),
   ];
 
-  const proc = Bun.spawn(args, { cwd, env: childEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn(args, { cwd, env: claudeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   const abort = () => proc.kill();
   opts.signal?.addEventListener("abort", abort, { once: true });
 

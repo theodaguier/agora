@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.1 — 2026-09-24
+
+### Fixes
+- **api**: hand the Claude Code token to Claude Code only
+- **web,mobile**: show installed skills and keep them in the "/" menu
+
 ## v0.6.0 — 2026-09-24
 
 ### Features

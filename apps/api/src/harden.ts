@@ -44,6 +44,8 @@ const PRIVATE = new Set([
   "UPDATER_TOKEN",
   "RESEND_API_KEY",
   "AGORA_SETUP_TOKEN",
+  // Handed to Claude Code only (claudeEnv).
+  "CLAUDE_CODE_OAUTH_TOKEN",
 ]);
 
 /** The environment for a child process: this one's, minus the API's secrets, plus `extra`. */
@@ -55,6 +57,12 @@ export function childEnv(extra: Record<string, string> = {}) {
   }
   return { ...out, ...extra };
 }
+
+/** Environment of Claude Code: the owner's subscription token (`claude setup-token`), when set. */
+export const claudeEnv = () => {
+  const token = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  return childEnv(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {});
+};
 
 /** Environment of the `hermes` CLI: the instance root, no colors. */
 export const hermesEnv = (extra: Record<string, string> = {}) => childEnv({ HERMES_HOME: env.HERMES_HOME, NO_COLOR: "1", ...extra });
