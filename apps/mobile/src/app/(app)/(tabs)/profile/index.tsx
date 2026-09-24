@@ -16,6 +16,7 @@ import {
   PackageIcon,
   PaletteIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   SparklesIcon,
 } from "@/components/icons";
 import { useDnd } from "@/components/profile/dnd";
@@ -32,6 +33,7 @@ import { defineMessages, tr } from "@/lib/i18n";
 import { latestRelease } from "@/lib/whats-new";
 import { notificationStatus, syncPushToken } from "@/lib/notifications";
 import { TapMenu } from "@/components/menus";
+import { twoFactorMessages } from "@/components/two-factor";
 
 const messages = defineMessages({
   en: {
@@ -43,6 +45,7 @@ const messages = defineMessages({
     availability: "Availability",
     availabilityHelp: "Working hours and absences",
     appearance: "Appearance",
+    security: "Security",
     themes: { system: "System", light: "Light", dark: "Dark" },
     usage: "Usage",
     digest: "Morning recap",
@@ -67,6 +70,7 @@ const messages = defineMessages({
     availability: "Disponibilité",
     availabilityHelp: "Horaires de travail et absences",
     appearance: "Apparence",
+    security: "Sécurité",
     themes: { system: "Système", light: "Clair", dark: "Sombre" },
     usage: "Consommation",
     digest: "Récap du matin",
@@ -129,6 +133,13 @@ export default function Profile() {
 
         <Section inset="icon">
           <LinkRow icon={PaletteIcon} title={t.appearance} value={t.themes[theme]} onPress={() => router.push("/profile/appearance")} />
+          <LinkRow
+            icon={ShieldCheckIcon}
+            tone="success"
+            title={t.security}
+            value={me.twoFactorEnabled ? twoFactorMessages.on : twoFactorMessages.off}
+            onPress={() => router.push("/profile/security" as Href)}
+          />
           <LinkRow icon={ChartIcon} tone="warning" title={t.usage} onPress={() => router.push("/profile/usage")} />
           {digest ? (
             <LinkRow icon={FileTextIcon} tone="default" title={t.digest} badge={digest.seen ? null : t.unread} onPress={() => router.push("/digest")} />

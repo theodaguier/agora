@@ -41,6 +41,12 @@ export function ServerScope({ server, children }: { server: Server; children: Re
       client.getQueryCache().subscribe((event) => {
         const err = event.query.state.error;
         if (err instanceof ApiError && err.status === 401) remove(server.url);
+        // The organization now requires two-step verification: the session and the org's policy,
+        // fetched again, switch the app to the screen that turns it on (components/two-factor.tsx).
+        if (err instanceof ApiError && err.status === 403 && err.message === "two_factor_required") {
+          void client.invalidateQueries({ queryKey: ["org"] });
+          void client.invalidateQueries({ queryKey: ["session"] });
+        }
       }),
     [client, remove, server.url],
   );

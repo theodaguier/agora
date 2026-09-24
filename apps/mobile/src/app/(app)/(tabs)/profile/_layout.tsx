@@ -8,6 +8,7 @@ export default function Layout() {
     <Stack screenOptions={tabStackOptions} initialRouteName="index">
       <Stack.Screen name="index" />
       <Stack.Screen name="usage-price" options={sheetOptions([0.75, 1])} />
+      <Stack.Screen name="two-factor" options={sheetOptions()} />
       <Stack.Screen name="marketplace/add" options={sheetOptions([0.75, 1])} />
       <Stack.Screen name="marketplace/custom" options={sheetOptions()} />
       <Stack.Screen name="admin/agents/new" options={sheetOptions()} />

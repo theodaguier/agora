@@ -47,7 +47,7 @@ export type Task = {
 };
 
 /** The signed-in account, from Better Auth's session. */
-export type SessionUser = { id: string; name: string; email: string; image: string | null; role: string | null };
+export type SessionUser = { id: string; name: string; email: string; image: string | null; role: string | null; twoFactorEnabled?: boolean | null };
 
 /* ---------- Conversation ---------- */
 

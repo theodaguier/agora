@@ -490,6 +490,13 @@ export const InfoIcon = createIcon("info", {
   ),
 });
 
+export const ShieldCheckIcon = createIcon("shield-check", {
+  fill: (
+    <Path d="M12 22c-5.3-1.9-8.5-5.6-8.5-11V5.7c0-.7.5-1.3 1.1-1.5l6.7-2a2.2 2.2 0 0 1 1.4 0l6.7 2c.6.2 1.1.8 1.1 1.5V11c0 5.4-3.2 9.1-8.5 11z" />
+  ),
+  cut: <Path d="M8.5 12.2l2.3 2.3 4.7-4.7" />,
+});
+
 export const ShieldAlertIcon = createIcon("shield-alert", {
   fill: (
     <Path d="M12 22c-5.3-1.9-8.5-5.6-8.5-11V5.7c0-.7.5-1.3 1.1-1.5l6.7-2a2.2 2.2 0 0 1 1.4 0l6.7 2c.6.2 1.1.8 1.1 1.5V11c0 5.4-3.2 9.1-8.5 11z" />

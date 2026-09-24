@@ -72,7 +72,8 @@ export const adminUsersQuery = queryOptions({
 
 export const orgQuery = queryOptions({
   queryKey: ["org"],
-  queryFn: () => api<{ name: string; locale: "fr" | "en"; image: string | null }>("/org"),
+  // requireTwoFactor: every account must turn on two-step verification (components/two-factor.tsx).
+  queryFn: () => api<{ name: string; locale: "fr" | "en"; image: string | null; requireTwoFactor?: boolean }>("/org"),
   staleTime: 5 * 60_000,
 });
 

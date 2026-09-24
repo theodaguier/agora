@@ -2,6 +2,7 @@ import { Redirect, Stack } from "expo-router";
 import { Announcements } from "@/components/announcements";
 import { ConfirmHost } from "@/components/confirm-dialog";
 import { useMe } from "@/components/server-scope";
+import { TwoFactorRequired, useTwoFactorRequired } from "@/components/two-factor";
 import { usePushNotifications } from "@/lib/notifications";
 import { useEvents } from "@/lib/realtime";
 import { sheetOptions } from "@/lib/navigation";
@@ -14,6 +15,19 @@ import { useServers } from "@/lib/servers";
 export default function AppLayout() {
   const { current } = useServers();
   if (!current) return <Redirect href="/server" />;
+  return <SignedIn />;
+}
+
+/** Inside the organization's ServerScope (its QueryClient). */
+function SignedIn() {
+  // Required by the organization and not on yet: nothing else until it is (the API refuses the rest).
+  if (useTwoFactorRequired())
+    return (
+      <>
+        <TwoFactorRequired />
+        <ConfirmHost />
+      </>
+    );
   return (
     <>
       <Realtime />
