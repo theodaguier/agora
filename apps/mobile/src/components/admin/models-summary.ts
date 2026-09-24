@@ -4,7 +4,7 @@ import { defineMessages } from "@/lib/i18n";
 export const modelsMessages = defineMessages({
   en: {
     title: "Models",
-    text: "Which models each employee can pick. New models are allowed by default.",
+    text: "Your agents' AI providers, and which models each employee can pick. New models are allowed by default.",
     listFailed: "Hermes couldn't list the models.",
     unreachable: (n: number) => (n === 1 ? "1 agent didn't respond: its models are missing." : `${n} agents didn't respond: their models are missing.`),
     all: "All models",
@@ -39,7 +39,7 @@ export const modelsMessages = defineMessages({
   },
   fr: {
     title: "Modèles",
-    text: "Quels modèles chaque salarié peut choisir. Les nouveaux modèles sont autorisés d'office.",
+    text: "Les fournisseurs d'IA de tes agents, et les modèles que chaque salarié peut choisir. Les nouveaux modèles sont autorisés d'office.",
     listFailed: "Hermes n'a pas pu donner la liste des modèles.",
     unreachable: (n: number) => `${n === 1 ? "Un agent n'a pas répondu" : `${n} agents n'ont pas répondu`} : ses modèles manquent.`,
     all: "Tous les modèles",

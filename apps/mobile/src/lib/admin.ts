@@ -109,6 +109,10 @@ export const adminUsersQuery = queryOptions({ queryKey: ["admin", "users"], quer
 export const adminInvitationsQuery = queryOptions({ queryKey: ["admin", "invitations"], queryFn: () => api<AdminInvitation[]>("/admin/invitations") });
 export const adminAgentsQuery = queryOptions({ queryKey: ["admin", "agents"], queryFn: () => api<AdminAgent[]>("/admin/agents") });
 export const adminModelsQuery = queryOptions({ queryKey: ["admin", "models"], queryFn: () => api<AdminModels>("/admin/models") });
+/** apps/web/src/lib/queries.ts: AI providers known to Hermes (API key or signed in on the server) and the default model. */
+export type AiProvider = { slug: string; name: string; keyEnv: string | null; configured: boolean; models: string[] };
+export type AiProviders = { current: { provider: string; model: string }; providers: AiProvider[] };
+export const providersQuery = queryOptions({ queryKey: ["admin", "providers"], queryFn: () => api<AiProviders>("/admin/hermes/providers") });
 export const adminOrgQuery = queryOptions({ queryKey: ["admin", "org"], queryFn: () => api<Org>("/admin/org") });
 export const digestConfigQuery = queryOptions({ queryKey: ["digest", "config"], queryFn: () => api<DigestAdmin>("/digest/config") });
 export const statusQuery = queryOptions({ queryKey: ["admin", "status"], queryFn: () => api<StatusReport>("/admin/status") });

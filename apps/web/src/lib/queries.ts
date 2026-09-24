@@ -149,6 +149,14 @@ export const adminModelsQuery = queryOptions({
   queryFn: () => api<AdminModels>("/admin/models"),
 });
 
+/** AI provider known to Hermes: configurable by API key (keyEnv) or already signed in on the server. */
+export type AiProvider = { slug: string; name: string; keyEnv: string | null; configured: boolean; models: string[] };
+
+export const providersQuery = queryOptions({
+  queryKey: ["admin", "providers"],
+  queryFn: () => api<{ current: { provider: string; model: string }; providers: AiProvider[] }>("/admin/hermes/providers"),
+});
+
 export const modelsQuery = (conversationId: string) =>
   queryOptions({
     queryKey: ["models", conversationId],

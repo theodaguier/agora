@@ -13,6 +13,7 @@ import { isRisky, setRiskyToolset } from "../sandbox";
 import { registryInstallBody, searchRegistry } from "../mcp-registry";
 import { skillsSh } from "../skills-sh";
 import { deleteSecret, KEY, listVault, rawVault, saveRaw, saveSecret } from "../vault";
+import { providerList, removeProviderKey, saveProviderKey, setDefaultModel, testDefaultModel } from "../providers";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
 import { errors } from "../errors.messages";
 import { defineMessages, tr } from "../i18n";
@@ -37,6 +38,7 @@ const { agent } = schema;
 /** Identifiers passed to the CLI / dashboard: never an option or a path. */
 const ident = z.string().regex(/^[\w@./:-]{1,200}$/).refine((s) => !s.startsWith("-"));
 const name = z.string().regex(/^[\w.-]{1,80}$/);
+const providerSlug = z.string().regex(/^[\w.-]{1,60}$/);
 
 async function profileOf(agentId: string) {
   const [row] = await db.select({ profile: agent.hermesProfile }).from(agent).where(eq(agent.id, agentId));
@@ -322,6 +324,28 @@ export const hermesAdmin = new Hono<AppEnv>()
     await deleteSecret(z.string().regex(KEY).parse(c.req.param("key")));
     return c.body(null, 204);
   })
+
+  /* ---------- AI providers: keys given to every agent, default model ---------- */
+
+  .get("/providers", async (c) => c.json(await providerList()))
+
+  .put("/providers/:slug/key", async (c) => {
+    const slug = providerSlug.parse(c.req.param("slug"));
+    const { apiKey } = await json(c, z.object({ apiKey: z.string().trim().min(8).max(500) }));
+    return c.json(await saveProviderKey(slug, apiKey, { restart: true }));
+  })
+
+  .delete("/providers/:slug/key", async (c) => {
+    await removeProviderKey(providerSlug.parse(c.req.param("slug")));
+    return c.body(null, 204);
+  })
+
+  .put("/providers/default", async (c) => {
+    const body = await json(c, z.object({ slug: providerSlug, model: z.string().trim().min(1).max(200), baseUrl: z.string().url().optional() }));
+    return c.json({ switched: await setDefaultModel(body.slug, body.model, body.baseUrl) });
+  })
+
+  .post("/providers/test", async (c) => c.json({ reply: await testDefaultModel() }))
 
   .post("/restart", async (c) => {
     await restartGateway();

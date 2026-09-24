@@ -13,6 +13,7 @@ export default function Layout() {
       <Stack.Screen name="admin/agents/new" options={sheetOptions()} />
       <Stack.Screen name="admin/integrations/[integrationId]" options={sheetOptions()} />
       <Stack.Screen name="admin/memory/vault/secret" options={sheetOptions()} />
+      <Stack.Screen name="admin/models/provider" options={sheetOptions()} />
     </Stack>
   );
 }

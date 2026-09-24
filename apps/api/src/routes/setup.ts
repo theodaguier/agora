@@ -8,8 +8,9 @@ import { z } from "zod";
 import { auth } from "../auth";
 import { db, schema } from "../db";
 import { env } from "../env";
-import { hermesApi, profileHome } from "../hermes";
-import { createProfile, dashboard, HermesError } from "../hermes-admin";
+import { profileHome } from "../hermes";
+import { createProfile, HermesError } from "../hermes-admin";
+import { providerList, saveProviderKey, setDefaultModel, testDefaultModel } from "../providers";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
 import { fullName, profileInput } from "../profile";
 import { profileError, usernameTaken } from "./me";
@@ -19,24 +20,16 @@ import { defineMessages, tr } from "../i18n";
 
 const messages = defineMessages({
   en: {
-    hermesUnreachable: (status: number) => `Hermes is unreachable (${status})`,
     alreadyInstalled: "Setup is already done. Sign in.",
     invalidKey: "Invalid key.",
-    noApiKey: "This provider can't be configured with an API key here.",
-    keyRejected: "Key rejected by the provider.",
     invalidModel: "Invalid model.",
-    noReply: (status: number) => `No reply from the model (HTTP ${status}).`,
     invalidFields: "Invalid fields.",
     badSetupCode: "Wrong installation code. It is printed in the server logs (./agora setup-code).",
   },
   fr: {
-    hermesUnreachable: (status: number) => `Hermes injoignable (${status})`,
     alreadyInstalled: "L'installation est déjà faite. Connecte-toi.",
     invalidKey: "Clé invalide.",
-    noApiKey: "Ce fournisseur ne se configure pas par clé API ici.",
-    keyRejected: "Clé refusée par le fournisseur.",
     invalidModel: "Modèle invalide.",
-    noReply: (status: number) => `Pas de réponse du modèle (HTTP ${status}).`,
     invalidFields: "Champs invalides.",
     badSetupCode: "Code d'installation incorrect. Il est affiché dans les logs du serveur (./agora setup-code).",
   },
@@ -87,21 +80,6 @@ const timezone = z.string().refine((tz) => {
     return false;
   }
 });
-
-type RawProvider = { slug: string; name: string; auth_type?: string | null; key_env?: string | null; authenticated?: boolean; models?: string[] };
-
-async function providerList() {
-  const res = await hermesApi("default", "/api/model/options?refresh=true");
-  if (!res.ok) throw new HermesError(tr(messages).hermesUnreachable(res.status));
-  const raw = (await res.json()) as { provider: string; model: string; providers: RawProvider[] };
-  return {
-    current: { provider: raw.provider, model: raw.model },
-    providers: raw.providers
-      .filter((p) => (p.auth_type === "api_key" && p.key_env) || (p.authenticated && p.models?.length && p.auth_type !== "virtual"))
-      .map((p) => ({ slug: p.slug, name: p.name, keyEnv: p.key_env || null, configured: !!p.authenticated, models: p.models ?? [] }))
-      .sort((a, b) => Number(b.configured) - Number(a.configured) || a.name.localeCompare(b.name)),
-  };
-}
 
 export const setup = new Hono<AppEnv>()
   .onError((err, c) => {
@@ -177,19 +155,8 @@ export const setup = new Hono<AppEnv>()
   .post("/provider", async (c) => {
     const body = z.object({ slug: z.string().regex(/^[\w.-]{1,60}$/), apiKey: z.string().trim().min(8).max(500) }).safeParse(await c.req.json());
     if (!body.success) return c.json({ error: tr(messages).invalidKey }, 400);
-    const { providers } = await providerList();
-    const provider = providers.find((p) => p.slug === body.data.slug);
-    if (!provider?.keyEnv) return c.json({ error: tr(messages).noApiKey }, 400);
-
-    const check = await dashboard<{ ok: boolean; reachable: boolean; message?: string }>("/api/providers/validate", {
-      method: "POST",
-      body: JSON.stringify({ key: provider.keyEnv, value: body.data.apiKey }),
-    });
-    if (!check.ok && check.reachable) return c.json({ error: check.message || tr(messages).keyRejected }, 400);
-    await dashboard("/api/env", { method: "PUT", body: JSON.stringify({ key: provider.keyEnv, value: body.data.apiKey }) });
-
-    const refreshed = (await providerList()).providers.find((p) => p.slug === provider.slug);
-    return c.json({ ok: true, unverified: !check.ok, models: refreshed?.models ?? [] });
+    // No agent yet: nothing to restart.
+    return c.json({ ok: true, ...(await saveProviderKey(body.data.slug, body.data.apiKey, { restart: false })) });
   })
 
   .post("/model", async (c) => {
@@ -197,26 +164,12 @@ export const setup = new Hono<AppEnv>()
       .object({ slug: z.string().regex(/^[\w.-]{1,60}$/), model: z.string().trim().min(1).max(200), baseUrl: z.string().url().optional() })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: tr(messages).invalidModel }, 400);
-    await dashboard("/api/model/set", {
-      method: "POST",
-      body: JSON.stringify({ scope: "main", provider: body.data.slug, model: body.data.model, ...(body.data.baseUrl ? { base_url: body.data.baseUrl } : {}) }),
-    });
+    await setDefaultModel(body.data.slug, body.data.model, body.data.baseUrl);
     return c.json({ ok: true });
   })
 
   /** Checks end to end that Hermes responds with the chosen model. */
-  .post("/test", async (c) => {
-    const res = await hermesApi("default", "/v1/chat/completions", {
-      method: "POST",
-      headers: { "X-Hermes-Session-Id": `agora-setup-${Date.now()}` },
-      body: JSON.stringify({ model: "hermes-agent", stream: false, messages: [{ role: "user", content: "Réponds uniquement : OK" }] }),
-      signal: AbortSignal.timeout(120_000),
-    });
-    const data = (await res.json().catch(() => ({}))) as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
-    const text = data.choices?.[0]?.message?.content?.trim();
-    if (!res.ok || !text) return c.json({ error: data.error?.message || tr(messages).noReply(res.status) }, 502);
-    return c.json({ ok: true, reply: text.slice(0, 200) });
-  })
+  .post("/test", async (c) => c.json({ ok: true, reply: await testDefaultModel() }))
 
   /** Step 3: first agent (Hermes profile, personality, admin access). */
   .post("/agent", async (c) => {
