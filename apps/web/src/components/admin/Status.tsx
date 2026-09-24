@@ -192,7 +192,7 @@ export function Status() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     ) : (
-                      <span aria-hidden className="size-8" />
+                      <span aria-hidden className="size-7 shrink-0" />
                     )}
                   </ItemActions>
                 </Item>
