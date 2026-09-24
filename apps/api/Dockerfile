@@ -10,7 +10,7 @@ COPY apps/api/package.json apps/api/
 COPY packages/core/package.json packages/core/
 RUN pnpm install --frozen-lockfile --filter "@agora/api..."
 
-FROM oven/bun:1.3.9-slim
+FROM oven/bun:1.4.2-slim
 ARG APP_VERSION=0.0.0
 ARG GIT_COMMIT=""
 ARG BUILT_AT=""
