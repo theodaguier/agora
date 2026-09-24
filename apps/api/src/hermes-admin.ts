@@ -125,10 +125,29 @@ export async function restartGateway() {
     void restartGatewayProcess().catch((err) => console.error("hermes: restart", err));
     return;
   }
-  const raw = await readFile(join(env.HERMES_HOME, "gateway.pid"), "utf8").catch(() => null);
-  if (!raw) throw new HermesError(tr(messages).gatewayNotRunning, 503);
-  const { pid } = JSON.parse(raw) as { pid: number };
+  const pid = await gatewayPid();
+  if (!pid) throw new HermesError(tr(messages).gatewayNotRunning, 503);
   process.kill(pid, "SIGUSR1");
+}
+
+/** Live gateway pid. When the stack starts, s6 launches the gateway alongside the api: wait for it up to a minute. */
+async function gatewayPid() {
+  for (let i = 0; i < 60; i++) {
+    const raw = await readFile(join(env.HERMES_HOME!, "gateway.pid"), "utf8").catch(() => null);
+    const pid = raw ? (JSON.parse(raw) as { pid: number }).pid : null;
+    if (pid && isAlive(pid)) return pid;
+    await Bun.sleep(1000);
+  }
+  return null;
+}
+
+function isAlive(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
