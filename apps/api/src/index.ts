@@ -30,7 +30,7 @@ import { setupMemory } from "./memory";
 import { setupScreen } from "./screen";
 import { setupSandbox } from "./sandbox";
 import { setupSharedSkills } from "./skill-requests";
-import { ensureHermesInstance } from "./hermes-admin";
+import { ensureHermesInstance, shareMcpTokensWithAll } from "./hermes-admin";
 import { setup } from "./routes/setup";
 import { status } from "./routes/status";
 import { getOrg, ORG_AVATAR_ID } from "./org";
@@ -101,7 +101,9 @@ ensureHermesInstance()
   .then(() => setupSandbox())
   .catch((err) => console.error("sandbox: setup", err))
   .then(() => setupSharedSkills())
-  .catch((err) => console.error("shared skills: setup", err));
+  .catch((err) => console.error("shared skills: setup", err))
+  .then(() => shareMcpTokensWithAll())
+  .catch((err) => console.error("mcp tokens: setup", err));
 
 startUsageCollector();
 startDigest();

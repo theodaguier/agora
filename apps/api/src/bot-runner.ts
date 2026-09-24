@@ -12,7 +12,7 @@ import { answerApproval, chat, profileHome, type HermesApproval } from "./hermes
 import { blockedModels, resolveHermesModel } from "./models";
 import { attributeSession, recordClaudeCodeUsage, syncHermesUsage } from "./usage";
 import { agentAuthor, listMessages, postEvent, postMessage, unseenMessages, type MessageDto } from "./messages";
-import { createRequest, MCP_REQUEST_PROMPT } from "./mcp-requests";
+import { connectorsPrompt, createRequest, MCP_REQUEST_PROMPT } from "./mcp-requests";
 import { onboardingPrompt, parseReply, writeSoul } from "./onboarding";
 import { QUESTIONS_PROMPT } from "./questions";
 import { createSkillCreation, createSkillRequest, SKILL_CREATE_PROMPT, SKILL_REQUEST_PROMPT } from "./skill-requests";
@@ -529,6 +529,13 @@ async function runTurn(turn: Turn) {
     return;
   }
   const useClaude = engine.useClaude;
+  if (!bot.onboarding) {
+    const connectors = await connectorsPrompt(bot.hermesProfile, useClaude ? "claude-code" : "hermes").catch((err) => {
+      console.error("bot-runner: connectors context", err);
+      return "";
+    });
+    if (connectors) system = [system, connectors].filter(Boolean).join("\n\n");
+  }
   const events = openChat(
     bot,
     engine,

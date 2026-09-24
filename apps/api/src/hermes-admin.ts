@@ -4,8 +4,8 @@
  */
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { lstat, mkdir, readdir, readFile, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { env } from "./env";
 import { isDefaultProfile, profileHome, profileKey } from "./hermes";
 import { restartGatewayProcess } from "./hermes-process";
@@ -130,6 +130,21 @@ export async function restartGateway() {
   process.kill(pid, "SIGUSR1");
 }
 
+let pendingRestart: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Restart a few seconds after the last change: an admin turning a connector
+ * on for several agents in a row causes a single restart, and nobody has to
+ * think of the restart banner for the agents to get their tools.
+ */
+export function scheduleGatewayRestart(delayMs = 3000) {
+  clearTimeout(pendingRestart);
+  pendingRestart = setTimeout(() => {
+    pendingRestart = undefined;
+    restartGateway().catch((err) => console.error("hermes: scheduled restart", err));
+  }, delayMs);
+}
+
 /** Live gateway pid. When the stack starts, s6 launches the gateway alongside the api: wait for it up to a minute. */
 async function gatewayPid() {
   for (let i = 0; i < 60; i++) {
@@ -192,16 +207,20 @@ export async function createProfile(profile: string, description: string) {
   await (await import("./screen")).installScreenPlugin(profile).catch((err) => console.error("screen: plugin", err));
   // Without terminal, code, file writes or local browser until an admin decides otherwise (sandbox.ts).
   await (await import("./sandbox")).confineNewProfile(profile);
+  // OAuth connectors authorized for the instance work for the new agent too.
+  await shareMcpTokens(profile).catch((err) => console.error("mcp tokens", err));
   // Skills written by the bots and shared with all of them.
   await (await import("./skill-requests")).shareSkillsWith(profile).catch((err) => console.error("shared skills", err));
 }
 
 /* ---------- per-agent MCP ---------- */
 /*
- * The (multiplex) gateway discovers MCP servers only once, from the default
- * profile. Each profile then only exposes the servers declared in ITS OWN
- * config.yaml: enabling an MCP for an agent = copying the instance's
- * declaration there (plus the env variables it references).
+ * The (multiplex) gateway runs MCP discovery once per profile, inside that
+ * profile's home: a profile only exposes the servers declared in ITS OWN
+ * config.yaml, with the env variables of its own .env and the OAuth tokens of
+ * its own mcp-tokens/. Enabling an MCP for an agent = copying the instance's
+ * declaration there (plus the env variables it references), with the
+ * profile's mcp-tokens/ pointing at the instance's (shareMcpTokens).
  */
 
 type McpConfig = Record<string, unknown> & { enabled?: boolean };
@@ -245,7 +264,54 @@ export async function setAgentMcp(profile: string, server: string, enabled: bool
   else doc.deleteIn(["mcp_servers", server]);
   await writeFile(path, doc.toString());
 
-  if (enabled) await copyReferencedEnv(JSON.stringify(cfg), profile);
+  if (enabled) {
+    await copyReferencedEnv(JSON.stringify(cfg), profile);
+    await shareMcpTokens(profile);
+  }
+}
+
+/**
+ * OAuth is authorized once, from the dashboard, which stores the tokens in the
+ * instance's mcp-tokens/. A profile's discovery only reads its own: without
+ * this link, an OAuth server enabled for an agent stays parked ("hermes mcp
+ * login") and the agent never gets its tools. A directory link rather than
+ * copies: Hermes rewrites a token file atomically on refresh, and a rotated
+ * refresh token would invalidate every other copy. True when the link was just made.
+ */
+export async function shareMcpTokens(profile: string) {
+  if (isDefaultProfile(profile) || !env.HERMES_HOME) return false;
+  const shared = join(env.HERMES_HOME, "mcp-tokens");
+  const link = join(profileHome(profile), "mcp-tokens");
+  const target = relative(dirname(link), shared);
+  const current = await lstat(link).catch(() => null);
+  if (current?.isSymbolicLink() && (await readlink(link)) === target) return false;
+  await mkdir(shared, { recursive: true, mode: 0o700 });
+  if (current?.isDirectory()) {
+    // Tokens from a login run in the profile itself: kept unless the instance already has that server's.
+    for (const file of await readdir(link)) {
+      if (!existsSync(join(shared, file))) await rename(join(link, file), join(shared, file));
+    }
+  }
+  if (current) await rm(link, { recursive: true, force: true });
+  await symlink(target, link);
+  return true;
+}
+
+/** At startup: every agent's profile shares the instance's OAuth tokens. */
+export async function shareMcpTokensWithAll() {
+  if (!env.HERMES_HOME) return;
+  const names = await readdir(join(env.HERMES_HOME, "profiles")).catch(() => [] as string[]);
+  let linked = false;
+  for (const p of names) {
+    if (!existsSync(join(env.HERMES_HOME, "profiles", p, "config.yaml"))) continue;
+    try {
+      linked = (await shareMcpTokens(p)) || linked;
+    } catch (err) {
+      console.error(`mcp tokens: ${p}`, err);
+    }
+  }
+  // Discovery only runs when the gateway starts: parked servers need a restart to connect.
+  if (linked) await restartGateway().catch((err) => console.error("mcp tokens: gateway restart", err));
 }
 
 /**
