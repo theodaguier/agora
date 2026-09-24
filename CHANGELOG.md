@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.0 — 2026-09-24
+
+### Features
+- **web**: name the browser tab after the current page
+
 ## v0.5.2 — 2026-09-24
 
 ### Fixes
