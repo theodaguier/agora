@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.5.1 — 2026-09-24
+
+### Fixes
+- **api**: keep bot question forms instead of showing raw JSON
+
 ## v0.5.0 — 2026-09-24
 
 ### Features
