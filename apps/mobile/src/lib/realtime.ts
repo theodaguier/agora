@@ -4,6 +4,7 @@ import { fetch } from "expo/fetch";
 import { useEffect, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { apiUrl, authHeaders } from "./api";
+import { demoEvents, isDemo } from "./demo";
 import { presenceQuery } from "./presence";
 import type { ActiveTurn, Message, PendingApproval } from "./types";
 
@@ -180,6 +181,7 @@ function resync(qc: QueryClient) {
 
 /** Reads one SSE stream until it ends or is aborted; `onEvent(type, data)` for each event. */
 async function readStream(signal: AbortSignal, onEvent: (type: string, data: string) => void) {
+  if (isDemo(apiUrl(""))) return demoEvents(signal, onEvent);
   const res = await fetch(apiUrl("/events"), { headers: { Accept: "text/event-stream", ...authHeaders() }, signal });
   if (!res.ok || !res.body) throw new Error(`events: ${res.status}`);
   const reader = res.body.getReader();

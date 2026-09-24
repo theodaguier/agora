@@ -4,6 +4,7 @@ import { auth, common } from "@agora/core/i18n";
 import { defineMessages, locale } from "./i18n";
 import { type Server } from "./servers";
 import { serverToken } from "@/lib/server-tokens";
+import { DemoError, demoRequest, isDemo } from "./demo";
 import type { Attachment, Invocation, Message, PinTarget } from "./types";
 
 const messages = defineMessages({
@@ -42,6 +43,10 @@ export class ApiError extends Error {
 
 async function request<T>(url: string, init: RequestInit & { token?: string | null } = {}): Promise<T> {
   const { token, ...rest } = init;
+  if (isDemo(url))
+    return demoRequest<T>(url, rest).catch((err) => {
+      throw err instanceof DemoError ? new ApiError(err.status, err.message) : err;
+    });
   let res: Response;
   try {
     res = await fetch(url, {
