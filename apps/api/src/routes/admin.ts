@@ -14,6 +14,7 @@ import { modelOptions } from "../hermes";
 import { CLAUDE_CODE_PROVIDER, claudeCodeModels } from "../claude-code";
 import { env } from "../env";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
+import { forgetMembers } from "../events";
 import { errors } from "../errors.messages";
 import { defineMessages, tr } from "../i18n";
 
@@ -22,6 +23,7 @@ const messages = defineMessages({
     invalidEmail: "Invalid email address.",
     emptyTitle: "The profile role can't be empty.",
     ownAdminRights: "You can't remove your own admin rights.",
+    ownAccount: "You can't delete your own account.",
     reservedProfile: "This profile name is reserved.",
     profileInUse: "An agent already uses this profile.",
   },
@@ -29,12 +31,13 @@ const messages = defineMessages({
     invalidEmail: "Adresse email invalide.",
     emptyTitle: "Le rôle du profil ne peut pas être vide.",
     ownAdminRights: "Tu ne peux pas retirer tes propres droits d'admin.",
+    ownAccount: "Tu ne peux pas supprimer ton propre compte.",
     reservedProfile: "Ce nom de profil est réservé.",
     profileInUse: "Un agent utilise déjà ce profil.",
   },
 });
 
-const { agent, agentAccess, invitation, modelBlock, setting, user } = schema;
+const { agent, agentAccess, conversationMember, invitation, modelBlock, setting, user } = schema;
 
 const shapes = ["bean", "pill", "triangle", "shield", "circle", "cloud", "drop"] as const;
 
@@ -127,6 +130,22 @@ export const admin = new Hono<AppEnv>()
     }
     const [row] = await db.update(user).set(body.data).where(eq(user.id, id)).returning({ id: user.id });
     return row ? c.body(null, 204) : c.json({ error: "not_found" }, 404);
+  })
+
+  /**
+   * The account and everything personal to it go (sessions, 2FA, access, availability, notifications:
+   * cascades in the schema). Their messages, tasks and conversations stay, without an author.
+   */
+  .delete("/users/:id", async (c) => {
+    const id = c.req.param("id");
+    // Not yourself: the instance must never end up without an admin.
+    if (id === c.get("user").id) return c.json({ error: tr(messages).ownAccount }, 400);
+    const memberships = await db.select({ id: conversationMember.conversationId }).from(conversationMember).where(eq(conversationMember.userId, id));
+    const [row] = await db.delete(user).where(eq(user.id, id)).returning({ id: user.id });
+    if (!row) return c.json({ error: "not_found" }, 404);
+    for (const m of memberships) forgetMembers(m.id);
+    void syncSessionSearch();
+    return c.body(null, 204);
   })
 
   .put("/users/:id/agents", async (c) => {

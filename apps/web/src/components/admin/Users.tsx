@@ -1,8 +1,9 @@
 import { confirmAction } from "@/lib/confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { CalendarClockIcon, MailIcon, CloseIcon } from "@/components/icons";
+import { CalendarClockIcon, MailIcon, CloseIcon, MoreIcon } from "@/components/icons";
 import { AvailabilityEditor } from "@/components/AvailabilityEditor";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useState, type FormEvent } from "react";
 import { PersonAvatar } from "@/components/ConversationAvatar";
@@ -50,6 +51,11 @@ const messages = defineMessages({
     passLink: (email: string) => `Send this link to ${email}:`,
     copied: "Copied",
     copy: "Copy",
+    actions: "Actions",
+    remove: "Delete",
+    removeTitle: (name: string) => `Delete ${name}'s account?`,
+    removeBody:
+      "They are signed out everywhere and lose access to the app. Their messages, tasks and conversations stay, without their name. This can't be undone, but you can invite them again.",
   },
   fr: {
     title: "Utilisateurs",
@@ -83,6 +89,11 @@ const messages = defineMessages({
     passLink: (email: string) => `Transmets ce lien à ${email} :`,
     copied: "Copié",
     copy: "Copier",
+    actions: "Actions",
+    remove: "Supprimer",
+    removeTitle: (name: string) => `Supprimer le compte de ${name} ?`,
+    removeBody:
+      "Ses sessions sont fermées partout et l'app ne lui est plus accessible. Ses messages, tâches et conversations restent, sans son nom. C'est définitif, mais tu pourras l'inviter à nouveau.",
   },
 });
 
@@ -225,6 +236,10 @@ function UserRow({ user: u }: { user: AdminUser }) {
     onSettled: () => qc.invalidateQueries({ queryKey: adminUsersQuery.queryKey }),
     onError: () => setTitle(u.title),
   });
+  const remove = useMutation({
+    mutationFn: () => api(`/admin/users/${encodeURIComponent(u.id)}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: adminUsersQuery.queryKey }),
+  });
   const saveTitle = () => {
     const next = title.trim();
     if (!next) return setTitle(u.title);
@@ -280,10 +295,29 @@ function UserRow({ user: u }: { user: AdminUser }) {
             {scheduling && <AvailabilityEditor userId={u.id} self={u.id === me} />}
           </DialogContent>
         </Dialog>
+        {u.id === me ? (
+          <span aria-hidden className="size-7 shrink-0" />
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.actions} disabled={remove.isPending} />}>
+              <MoreIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={async () =>
+                  (await confirmAction({ title: t.removeTitle(u.name), description: t.removeBody, action: t.remove })) && remove.mutate()
+                }
+              >
+                {t.remove}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </ItemActions>
-      {update.error && (
+      {(update.error || remove.error) && (
         <div className="basis-full">
-          <ErrorText error={update.error} />
+          <ErrorText error={update.error ?? remove.error} />
         </div>
       )}
     </Item>
