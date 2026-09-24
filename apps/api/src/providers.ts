@@ -32,16 +32,20 @@ export type Provider = { slug: string; name: string; keyEnv: string | null; conf
 
 type RawProvider = { slug: string; name: string; auth_type?: string | null; key_env?: string | null; authenticated?: boolean; models?: string[] };
 
+/** API-key providers Hermes lists without their variable (v2026.9.x): the one it reads anyway. */
+const KNOWN_KEY_ENV: Record<string, string> = { openrouter: "OPENROUTER_API_KEY" };
+
 /** Providers configurable by API key, plus the ones already signed in some other way (OAuth from the CLI). */
 export async function providerList() {
   const res = await hermesApi("default", "/api/model/options?refresh=true");
   if (!res.ok) throw new HermesError(tr(messages).hermesUnreachable(res.status));
   const raw = (await res.json()) as { provider: string; model: string; providers: RawProvider[] };
+  const keyEnv = (p: RawProvider) => (p.auth_type === "api_key" && (p.key_env || KNOWN_KEY_ENV[p.slug])) || null;
   return {
     current: { provider: raw.provider, model: raw.model },
     providers: raw.providers
-      .filter((p) => (p.auth_type === "api_key" && p.key_env) || (p.authenticated && p.models?.length && p.auth_type !== "virtual"))
-      .map((p): Provider => ({ slug: p.slug, name: p.name, keyEnv: p.key_env || null, configured: !!p.authenticated, models: p.models ?? [] }))
+      .filter((p) => keyEnv(p) || (p.authenticated && p.models?.length && p.auth_type !== "virtual"))
+      .map((p): Provider => ({ slug: p.slug, name: p.name, keyEnv: keyEnv(p), configured: !!p.authenticated, models: p.models ?? [] }))
       .sort((a, b) => Number(b.configured) - Number(a.configured) || a.name.localeCompare(b.name)),
   };
 }
