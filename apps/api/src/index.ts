@@ -49,7 +49,6 @@ const app = new Hono()
   .use(logger())
   .use(localeMiddleware)
   .get("/health", (c) => c.json({ ok: true, version: version.app }))
-  .get("/version", (c) => c.json(version))
   /** Public identity of the instance (login screen, title). */
   .get("/org", async (c) => {
     const org = await getOrg();
