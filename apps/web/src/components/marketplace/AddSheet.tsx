@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { adminAgentsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import type { Item } from "./data";
+import { useSkillOwners, type Item } from "./data";
 import { defineMessages, tr, useT } from "@/i18n";
 import { common, integrations } from "@agora/core/i18n";
 import { guessIntegrationType, type IntegrationType } from "@agora/core";
@@ -123,6 +123,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
   const { data: agents = [] } = useQuery(adminAgentsQuery);
   const agentNames = new Map(agents.map((a) => [a.id, a.name]));
   const [targets, setTargets] = useState<string[]>([]);
+  const { owners } = useSkillOwners();
   const [progress, setProgress] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<string | null>(null);
   const env = item.kind === "mcp" ? item.entry.required_env.map(envName) : [];
@@ -181,6 +182,8 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
     onSettled: () => {
       setProgress(null);
       qc.invalidateQueries({ queryKey: ["hermes"] });
+      // The "/" menu lists the bots' skills and connectors.
+      qc.invalidateQueries({ queryKey: ["commands"] });
     },
   });
 
@@ -229,7 +232,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
               <p className="whitespace-pre-line text-sm text-muted-foreground">{item.entry.post_install}</p>
             )}
           </CardContent>
-          <CardFooter className="border-t-0 bg-transparent px-5 py-0">
+          <CardFooter className="border-t-0 bg-transparent px-5 pt-0 pb-5">
             <Button onClick={onDone}>{t.done}</Button>
           </CardFooter>
         </Card>
@@ -322,6 +325,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
                 value={targets}
                 onChange={setTargets}
                 withoutDefault={isMcp}
+                installed={item.kind === "skill" ? owners.get(item.name) : undefined}
               />
             )}
 

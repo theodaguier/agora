@@ -18,6 +18,7 @@ import {
   type ModelOptions,
   type Person,
   type Pin,
+  type Skill,
   type Task,
   type UserProfile,
 } from "./api";
@@ -144,6 +145,13 @@ export const adminAgentsQuery = queryOptions({
   queryKey: ["admin", "agents"],
   queryFn: () => api<AdminAgent[]>("/admin/agents"),
 });
+
+/** A bot's Hermes skills (enabled or not), as the agent page and the marketplace show them. */
+export const agentSkillsQuery = (agentId: string) =>
+  queryOptions({
+    queryKey: ["hermes", "skills", agentId],
+    queryFn: () => api<Skill[]>(`/admin/hermes/agents/${agentId}/skills`),
+  });
 
 export const adminModelsQuery = queryOptions({
   queryKey: ["admin", "models"],

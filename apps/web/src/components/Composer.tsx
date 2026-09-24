@@ -339,7 +339,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
         }}
         className="relative rounded-[22px] bg-secondary p-1.5"
       >
-        {token && (token.trigger === "/" || items.length > 0) && <SlashMenu items={items.slice(0, 60)} active={Math.min(active, Math.max(items.length - 1, 0))} onHover={setActive} onPick={pick} />}
+        {token && (token.trigger === "/" || items.length > 0) && <SlashMenu items={items} active={Math.min(active, Math.max(items.length - 1, 0))} onHover={setActive} onPick={pick} />}
 
         {invocations.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-1 pb-1.5 pt-1">

@@ -345,7 +345,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
       {(menu || (models && modelOpen)) && (
         <View pointerEvents="box-none" className="absolute inset-x-0 bottom-full mb-2">
           {menu ? (
-            <SlashMenu items={items.slice(0, 60)} onPick={pick} />
+            <SlashMenu items={items} onPick={pick} />
           ) : (
             <ModelMenu conversationId={conversationId} bots={modelBots} bot={modelBot} onBot={(b) => setModelBotId(b.id)} onClose={() => setModelOpen(false)} />
           )}

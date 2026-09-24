@@ -10,6 +10,7 @@ import { AdminGate, SettingsScroll, LoadingRows, RowMenu, Section } from "@/comp
 import { InitialTile, IntegrationTile } from "@/components/marketplace/integration-type";
 import { integrationTypeSubmenu } from "@/components/marketplace/integration-type-menu";
 import { RestartBanner } from "@/components/marketplace/restart-banner";
+import { useSkillOwners } from "@/components/marketplace/use-market";
 import { SkillCreateSheet } from "@/components/skill-create-sheet";
 import { ToggleRow, useFeedback } from "@/components/profile/settings";
 import { agentsHref } from "@/lib/agents-admin";
@@ -39,7 +40,9 @@ const t = defineMessages({
     menuHint: "Touch and hold a connector to change its type or remove it.",
     plugins: "Active plugins",
     noPlugins: "No plugins enabled.",
-    skillsHint: "Skills are installed per agent: find them in Administration › Agents › Skills.",
+    skills: "Skills",
+    noSkills: "No skills added from the marketplace.",
+    skillsHint: "Skills are installed per agent: enable or remove them in Administration › Agents › Skills.",
     removed: (name: string) => `“${name}” removed`,
     approved: "Request approved",
     declined: "Request declined",
@@ -61,7 +64,9 @@ const t = defineMessages({
     menuHint: "Maintiens le doigt sur un connecteur pour changer son type ou le retirer.",
     plugins: "Plugins actifs",
     noPlugins: "Aucun plugin activé.",
-    skillsHint: "Les skills s'installent par agent : retrouve-les dans Administration › Agents › Skills.",
+    skills: "Skills",
+    noSkills: "Aucun skill ajouté depuis le marketplace.",
+    skillsHint: "Les skills s'installent par agent : active-les ou retire-les dans Administration › Agents › Skills.",
     removed: (name: string) => `« ${name} » retiré`,
     approved: "Demande validée",
     declined: "Demande refusée",
@@ -88,6 +93,7 @@ function Installed() {
   const decided = (_: unknown, { approve }: { approve: boolean }) => feedback.saved(approve ? t.approved : t.declined);
   const servers = useQuery(mcpServersQuery);
   const plugins = useQuery(pluginsQuery);
+  const skills = useSkillOwners();
   const requests = useQuery({ queryKey: ["mcp-requests"], queryFn: () => api<McpRequest[]>("/mcp-requests") });
   const pending = (requests.data ?? []).filter((r) => r.status === "pending");
   const skillRequests = useQuery({ queryKey: ["skill-requests"], queryFn: () => api<SkillRequest[]>("/skill-requests") });
@@ -160,7 +166,7 @@ function Installed() {
 
   return (
     <SettingsScroll
-      onRefresh={() => Promise.all([servers.refetch(), plugins.refetch(), requests.refetch(), skillRequests.refetch()])}
+      onRefresh={() => Promise.all([servers.refetch(), plugins.refetch(), requests.refetch(), skillRequests.refetch(), qc.invalidateQueries({ queryKey: ["hermes", "skills"] })])}
     >
       <RestartBanner />
 
@@ -276,16 +282,7 @@ function Installed() {
       {plugins.isPending ? (
         <LoadingRows rows={2} />
       ) : (
-        <Section
-          title={t.plugins}
-          footer={
-            <Link href={agentsHref} asChild>
-              <LinkButton size="sm" className="self-start px-4">
-                <LinkButton.Label className="text-link">{t.skillsHint}</LinkButton.Label>
-              </LinkButton>
-            </Link>
-          }
-        >
+        <Section title={t.plugins}>
           {plugins.data && enabledPlugins.length === 0 && (
             <ListGroup.Item disabled>
               <ListGroup.ItemContent>
@@ -303,6 +300,43 @@ function Installed() {
               disabled={togglePlugin.isPending}
               onChange={(enable) => togglePlugin.mutate({ name: p.name, enable })}
             />
+          ))}
+        </Section>
+      )}
+
+      {skills.pending ? (
+        <LoadingRows rows={2} />
+      ) : (
+        <Section
+          title={t.skills}
+          footer={
+            <Link href={agentsHref} asChild>
+              <LinkButton size="sm" className="self-start px-4">
+                <LinkButton.Label className="text-link">{t.skillsHint}</LinkButton.Label>
+              </LinkButton>
+            </Link>
+          }
+        >
+          {skills.installed.length === 0 && (
+            <ListGroup.Item disabled>
+              <ListGroup.ItemContent>
+                <ListGroup.ItemDescription>{t.noSkills}</ListGroup.ItemDescription>
+              </ListGroup.ItemContent>
+            </ListGroup.Item>
+          )}
+          {skills.installed.map((s) => (
+            <ListGroup.Item key={s.name} disabled>
+              <ListGroup.ItemPrefix>
+                <InitialTile name={s.name} />
+              </ListGroup.ItemPrefix>
+              <ListGroup.ItemContent>
+                <ListGroup.ItemTitle numberOfLines={1}>{s.name}</ListGroup.ItemTitle>
+                {!!s.description && <ListGroup.ItemDescription numberOfLines={1}>{s.description}</ListGroup.ItemDescription>}
+                <Typography type="body-sm" color="muted" numberOfLines={1}>
+                  {s.agents.map((a) => a.name).join(", ")}
+                </Typography>
+              </ListGroup.ItemContent>
+            </ListGroup.Item>
           ))}
         </Section>
       )}
