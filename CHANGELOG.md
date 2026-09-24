@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.0 — 2026-09-24
+
+### Features
+- two-step verification required for every account, Security tab
+- **mobile**: Security screen and required two-step verification
+- **mobile**: demo space for App Review
+- **infra**: internal network for Postgres, capabilities dropped on web
+- **updater**: move the server's checkout to each installed version
+
+### Fixes
+- **web**: load images from other sites only on a click
+- **api**: drop the public /api/version route
+- **updater**: keep .env private when rewriting it
+- **infra**: consistent Hermes SQLite databases in off-site backups
+
 ## v0.3.1 — 2026-09-24
 
 ### Fixes
