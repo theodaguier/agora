@@ -12,6 +12,7 @@ import { bumpAgentRevision } from "../company";
 import { isRisky, setRiskyToolset } from "../sandbox";
 import { registryInstallBody, searchRegistry } from "../mcp-registry";
 import { skillsSh } from "../skills-sh";
+import { installSkillsSh, isSkillsSh } from "../skills-sh-install";
 import { deleteSecret, KEY, listVault, rawVault, saveRaw, saveSecret } from "../vault";
 import { providerList, removeProviderKey, saveProviderKey, setDefaultModel, testDefaultModel } from "../providers";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
@@ -144,10 +145,14 @@ export const hermesAdmin = new Hono<AppEnv>()
     return c.json(await dashboard(`/api/skills/hub/search?q=${encodeURIComponent(q)}&limit=20`, { profile }));
   })
 
-  /** Installs a skill from the hub; background task, tracked via /actions/:name. */
+  /**
+   * Installs a skill from the hub. skills.sh: done right away by the app (skills-sh-install.ts),
+   * answers {verdict}; otherwise a Hermes background task, tracked via /actions/:name.
+   */
   .post("/agents/:id/skills-hub/install", async (c) => {
     const profile = await profileOf(c.req.param("id"));
     const { identifier } = await json(c, z.object({ identifier: ident }));
+    if (isSkillsSh(identifier)) return c.json({ verdict: (await installSkillsSh(identifier, profile)).verdict });
     return c.json(await dashboard("/api/skills/hub/install", { method: "POST", profile, body: JSON.stringify({ identifier, profile }) }));
   })
 

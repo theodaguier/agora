@@ -148,14 +148,13 @@ function AddItem({ item }: { item: Item }) {
       } else if (item.kind === "skill") {
         for (const id of targets) {
           setProgress(t.installingFor(agentName.get(id)));
-          const r = await api<{ name?: string }>(`/admin/hermes/agents/${id}/skills-hub/install`, {
+          // skills.sh: installed by the app, the verdict comes back at once; otherwise a Hermes task to wait for.
+          const r = await api<{ name?: string; verdict?: string | null }>(`/admin/hermes/agents/${id}/skills-hub/install`, {
             method: "POST",
             body: JSON.stringify({ identifier: item.identifier }),
           });
-          if (r?.name) {
-            const v = await waitAction(r.name);
-            if (v && v !== "SAFE") setVerdict(v);
-          }
+          const v = r?.name ? await waitAction(r.name) : (r?.verdict ?? null);
+          if (v && v !== "SAFE") setVerdict(v);
         }
       } else if (item.plugin) {
         setProgress(t.enablingPlugin);
