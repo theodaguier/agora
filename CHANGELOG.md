@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.2 — 2026-09-24
+
+### Fixes
+- **api**: install skills.sh skills without the GitHub API
+
 ## v0.6.1 — 2026-09-24
 
 ### Fixes
