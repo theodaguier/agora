@@ -7,12 +7,17 @@
     "icon": "./assets/images/icon.png",
     "scheme": "agora",
     "userInterfaceStyle": "automatic",
+    "locales": {
+      "fr": "./locales/fr.json"
+    },
     "ios": {
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.theodaguier.agora",
+      "supportsTablet": false,
       "appleTeamId": "3HAQT9C68X",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription": "Agora connects to your organization's server when it runs on your local network."
       }
     },
     "android": {
@@ -27,8 +32,6 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"
       ]
@@ -69,7 +72,8 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Agora uses the microphone to record voice messages and to dictate your messages."
+          "microphonePermission": "Agora uses the microphone to record voice messages and to dictate your messages.",
+          "enableBackgroundPlayback": false
         }
       ],
       [
@@ -90,7 +94,8 @@
           "microphonePermission": "Agora uses the microphone to record voice messages and to dictate your messages.",
           "speechRecognitionPermission": "Agora uses speech recognition to write what you dictate in a message."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

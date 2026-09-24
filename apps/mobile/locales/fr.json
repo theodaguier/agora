@@ -1,0 +1,11 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Agora",
+    "NSCameraUsageDescription": "Agora utilise l'appareil photo pour prendre une photo à envoyer, ou pour scanner le QR code qui connecte l'app à ton organisation.",
+    "NSPhotoLibraryUsageDescription": "Agora utilise tes photos pour que tu puisses les envoyer dans une conversation.",
+    "NSMicrophoneUsageDescription": "Agora utilise le micro pour enregistrer des messages vocaux et dicter tes messages.",
+    "NSSpeechRecognitionUsageDescription": "Agora utilise la reconnaissance vocale pour écrire ce que tu dictes dans un message.",
+    "NSFaceIDUsageDescription": "Agora utilise Face ID pour verrouiller l'app.",
+    "NSLocalNetworkUsageDescription": "Agora se connecte au serveur de ton organisation lorsqu'il tourne sur ton réseau local."
+  }
+}

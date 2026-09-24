@@ -68,8 +68,11 @@ export const notificationStatus = async () => (await Notifications.getPermission
  */
 export function usePushNotifications() {
   const last = Notifications.useLastNotificationResponse();
-  const pathname = useRef("");
-  pathname.current = usePathname();
+  const path = usePathname();
+  const pathname = useRef(path);
+  useEffect(() => {
+    pathname.current = path;
+  }, [path]);
   useEffect(() => {
     if (last?.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) open(last.notification.request.content.data as PushData, pathname.current);
   }, [last]);
