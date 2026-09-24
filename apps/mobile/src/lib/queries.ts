@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { mergeMessages } from "@agora/core";
 import { api, conversationPath } from "./api";
 import type { AgentSummary, ConversationDetail, ConversationSummary, Message, Person, Pin, SessionUser, Task, UserProfile } from "./types";
 
@@ -36,7 +37,7 @@ export const conversationQuery = (id: string) =>
 export const messagesQuery = (conversationId: string) =>
   queryOptions({
     queryKey: ["messages", conversationId],
-    queryFn: () => api<Message[]>(conversationPath(conversationId, "/messages")),
+    queryFn: async ({ client, queryKey }) => mergeMessages(await api<Message[]>(conversationPath(conversationId, "/messages")), client.getQueryData<Message[]>(queryKey)),
   });
 
 export const pinsQuery = (conversationId: string) =>

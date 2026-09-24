@@ -1,4 +1,4 @@
-import type { Schedule } from "@agora/core";
+import { insertMessage, type Schedule } from "@agora/core";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { fetch } from "expo/fetch";
 import { useEffect, useSyncExternalStore } from "react";
@@ -64,10 +64,16 @@ function updateTyping(conversationId: string, fn: (typing: Typing[]) => Typing[]
   set({ ...state, typing: { ...state.typing, [conversationId]: fn(state.typing[conversationId] ?? EMPTY_TYPING) } });
 }
 
+/**
+ * Replies the stream saw end: a GET /conversations/:id that left before `bot.done` still lists
+ * them, and seeding them back would leave "working…" on screen until a reload.
+ */
+const finished = new Set<string>();
+
 /** Replies already started when the conversation is opened (GET /conversations/:id). */
 export function seedTurns(conversationId: string, turns: ActiveTurn[]) {
   const known = state.turns[conversationId] ?? EMPTY_TURNS;
-  const missing = turns.filter((t) => !known.some((k) => k.turnId === t.turnId));
+  const missing = turns.filter((t) => !finished.has(t.turnId) && !known.some((k) => k.turnId === t.turnId));
   if (missing.length) updateTurns(conversationId, (ts) => [...ts, ...missing]);
 }
 
@@ -86,7 +92,8 @@ type ServerEvent =
   | { type: "bot.delta"; conversationId: string; turnId: string; text: string }
   | { type: "bot.tool"; conversationId: string; turnId: string; name: string; status: string }
   | { type: "bot.approval"; conversationId: string; turnId: string; approval: PendingApproval | null }
-  | { type: "bot.done" | "bot.error"; conversationId: string; turnId: string };
+  | { type: "bot.done"; conversationId: string; turnId: string; messageId: string | null }
+  | { type: "bot.error"; conversationId: string; turnId: string };
 
 /** Events that do not belong to a conversation. */
 type GlobalEvent =
@@ -119,7 +126,7 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
   if (ev.type.startsWith("bot.")) for (const l of turnListeners) l(ev as TurnEvent);
   switch (ev.type) {
     case "message.created": {
-      qc.setQueryData<Message[]>(["messages", cid], (old) => (old && !old.some((m) => m.id === ev.message.id) ? [...old, ev.message] : old));
+      qc.setQueryData<Message[]>(["messages", cid], (old) => old && insertMessage(old, ev.message));
       const author = ev.message.author;
       if (author?.kind === "user") updateTyping(cid, (ts) => ts.filter((t) => t.userId !== author.id));
       qc.invalidateQueries({ queryKey: ["conversations"] });
@@ -161,7 +168,11 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       return;
     case "bot.done":
     case "bot.error":
+      finished.add(ev.turnId);
       updateTurns(cid, (ts) => ts.filter((t) => t.turnId !== ev.turnId));
+      // The reply was lost on the way (a refetch that left before it overwrote it): fetch it.
+      if (ev.type === "bot.done" && ev.messageId && !qc.getQueryData<Message[]>(["messages", cid])?.some((m) => m.id === ev.messageId))
+        qc.invalidateQueries({ queryKey: ["messages", cid] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["routines", cid] });
       return;
@@ -207,6 +218,9 @@ async function readStream(signal: AbortSignal, onEvent: (type: string, data: str
   }
 }
 
+/** The server pings every 25 s: past this silence the stream is dead (network change, a proxy dropping it). */
+const SILENCE_MS = 60_000;
+
 /**
  * A single SSE stream for the instance, while the app is in the foreground. Reconnects with
  * a growing delay; every reconnection resyncs from REST, as on the web.
@@ -219,12 +233,15 @@ export function useEvents(me: string) {
     let attempt = 0;
     let connectedOnce = false;
     let active = AppState.currentState === "active";
+    let lastEvent = Date.now();
 
     const connect = () => {
       if (!active || controller) return;
       const current = new AbortController();
       controller = current;
+      lastEvent = Date.now();
       readStream(current.signal, (type, data) => {
+        lastEvent = Date.now();
         if (type === "ping") return;
         if (type === "ready") {
           if (connectedOnce) resync(qc);
@@ -255,6 +272,12 @@ export function useEvents(me: string) {
       controller = null;
     };
 
+    // A stream that went quiet without ending (the phone changed network) never errors: abort it, `finally` reconnects.
+    // The demo's stream has no ping.
+    const watchdog = setInterval(() => {
+      if (controller && !isDemo(apiUrl("")) && Date.now() - lastEvent > SILENCE_MS) controller.abort();
+    }, 10_000);
+
     const sub = AppState.addEventListener("change", (s) => {
       const next = s === "active";
       if (next === active) return;
@@ -267,6 +290,7 @@ export function useEvents(me: string) {
     });
     connect();
     return () => {
+      clearInterval(watchdog);
       sub.remove();
       active = false;
       stop();

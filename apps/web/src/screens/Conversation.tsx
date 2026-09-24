@@ -12,7 +12,7 @@ import { McpRequestCard } from "@/components/McpRequestCard";
 import { QuestionsCard } from "@/components/QuestionsCard";
 import { SkillRequestCard } from "@/components/SkillRequestCard";
 import { ViewCard } from "@/components/views/ViewCard";
-import type { ViewAction } from "@agora/core";
+import { insertMessage, type ViewAction } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { Composer, type ComposerHandle } from "@/components/Composer";
 import { ConversationAvatar, ParticipantAvatar, PersonAvatar, useStatus } from "@/components/ConversationAvatar";
@@ -420,9 +420,10 @@ export function Conversation() {
     return () => clearTimeout(timer);
   }, [highlight]);
 
+  // On every fetch, not only when `conv` changes: an unchanged refetch keeps its reference, and a resync that dropped the replies needs them back.
   useEffect(() => {
     if (conv) seedTurns(conv.id, conv.turns);
-  }, [conv]);
+  }, [conv, detail.dataUpdatedAt]);
 
   const unread = summaries?.find((s) => s.id === conversationId)?.unread;
   useEffect(() => {
@@ -468,7 +469,7 @@ export function Conversation() {
         replyTo: reply?.id,
         viewAction,
       });
-      qc.setQueryData<Message[]>(messagesQuery(conversationId).queryKey, (old) => (old && !old.some((m) => m.id === message.id) ? [...old, message] : old));
+      qc.setQueryData<Message[]>(messagesQuery(conversationId).queryKey, (old) => old && insertMessage(old, message));
       setSending((xs) => xs.map((x) => (x.key === key ? { ...x, id: message.id } : x)));
     } catch {
       setSending((xs) => xs.map((x) => (x.key === key ? { ...x, failed: true } : x)));

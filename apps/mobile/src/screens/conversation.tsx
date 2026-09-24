@@ -1,4 +1,4 @@
-import { renderEvent, type ViewAction } from "@agora/core";
+import { insertMessage, renderEvent, type ViewAction } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -193,9 +193,10 @@ export function Conversation({ conversationId, focus }: { conversationId: string
     return () => clearTimeout(timer);
   }, [highlight]);
 
+  // On every fetch, not only when `conv` changes: an unchanged refetch keeps its reference, and a resync that dropped the replies needs them back.
   useEffect(() => {
     if (conv) seedTurns(conv.id, conv.turns);
-  }, [conv]);
+  }, [conv, detail.dataUpdatedAt]);
 
   useThreadHaptics(conversationId, messages, turns.length > 0, user.id);
 
@@ -218,7 +219,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
     const body = { text, attachmentIds: attachments.map((a) => a.id), invocations, mentions: mentioned, replyTo: reply?.id, viewAction };
     try {
       const message = await sendMessage(conversationId, body);
-      qc.setQueryData<Message[]>(messagesQuery(conversationId).queryKey, (old) => (old && !old.some((m) => m.id === message.id) ? [...old, message] : old));
+      qc.setQueryData<Message[]>(messagesQuery(conversationId).queryKey, (old) => old && insertMessage(old, message));
       setSending((xs) => xs.filter((x) => x.key !== key));
     } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
