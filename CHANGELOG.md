@@ -4,6 +4,7 @@
 
 ### Features
 - **admin**: manage AI providers and the default model in Admin › Models
+- **infra**: Caddy access logs for CrowdSec, SSH through Tailscale
 
 ### Fixes
 - **api**: wait for the Hermes gateway before restarting it
