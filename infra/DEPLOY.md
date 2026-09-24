@@ -175,9 +175,17 @@ docker run --rm -i -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID 
 ## Security
 
 What the stack does on its own: HTTPS with HSTS, a strict Content-Security-Policy
-on the web app (`Caddyfile`), Hermes and Postgres unreachable from the Internet,
-no open sign-up (invitations only), rate-limited sign-in, installation code for
-the first admin. What's left to you:
+on the web app (`Caddyfile`), Hermes and Postgres unreachable from the Internet
+(Postgres sits on an internal network that only Hermes and the API join), the
+`web` container stripped of every capability but binding 80/443, no open sign-up
+(invitations only), rate-limited sign-in, installation code for the first admin.
+Images from other sites in agents' replies load only on a click: a reply steered
+by a trapped web page could otherwise send the conversation out in an image
+address. What's left to you:
+
+**Admin accounts: turn on two-factor authentication** (Settings › Account › Two-step verification). An
+admin can re-enable an agent's terminal and drive the update service, which
+controls Docker: an admin password is as good as root on the server.
 
 **The server.** `sudo ./harden-host.sh` sets up the firewall (ufw: SSH, 80, 443
 only), fail2ban on SSH and automatic security updates. Once your SSH key works,
@@ -206,7 +214,9 @@ bans wouldn't reach them otherwise. Then
 
 **SSH through Tailscale only.** Once `tailscale up` works and you can
 connect through the tailnet IP: `sudo ufw allow in on tailscale0 to any port 22 proto tcp`,
-then `sudo ufw delete allow 22/tcp`. Disable key expiry for the server in the
+then `sudo ufw delete allow 22/tcp`. Every device of the tailnet can then reach
+port 22: restrict it to your own machines with an ACL in the Tailscale console,
+and remove the devices you no longer use. Disable key expiry for the server in the
 Tailscale admin console, or SSH closes on you after 180 days; the host's web
 console (VPS panel) remains the way back in.
 
