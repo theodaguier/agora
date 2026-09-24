@@ -31,6 +31,12 @@ export type ConversationEvent =
   | { type: "mcp.approved"; title: string }
   | { type: "mcp.refused"; title: string }
   | { type: "mcp.installed"; title: string; tools: number; bot: string | null; restartNeeded: boolean }
+  /** A bot asked for a connector the instance already has: turned on for it (admin requester). */
+  | { type: "mcp.enabled"; title: string; bot: string; restartNeeded: boolean }
+  /** Same, but an admin has to turn it on for the bot. */
+  | { type: "mcp.notEnabled"; title: string; bot: string }
+  /** A request for this connector is already waiting for an admin or for its authorization. */
+  | { type: "mcp.pending"; title: string }
   | { type: "task.assigned"; actor: string; title: string; assignee: string }
   | { type: "task.status"; actor: string; title: string; status: "todo" | "in_progress" | "done" }
   | { type: "task.priority"; actor: string; title: string; priority: "low" | "normal" | "high" | "urgent" }
@@ -93,6 +99,16 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
       return fr ? `Skill ${e.skill} non installé : ${e.error}` : `Skill ${e.skill} not installed: ${e.error}`;
     case "mcp.exists":
       return fr ? `Un connecteur « ${e.name} » existe déjà : demande ignorée.` : `A “${e.name}” connector already exists: request ignored.`;
+    case "mcp.enabled": {
+      const restart = e.restartNeeded ? (fr ? " Un administrateur doit redémarrer Hermes pour l'activer." : " An administrator must restart Hermes to enable it.") : "";
+      return fr ? `Connecteur ${e.title} activé pour ${e.bot}.${restart}` : `Connector ${e.title} enabled for ${e.bot}.${restart}`;
+    }
+    case "mcp.notEnabled":
+      return fr
+        ? `Le connecteur ${e.title} existe déjà. Un administrateur peut l'activer pour ${e.bot} dans Administration › Agents.`
+        : `The ${e.title} connector already exists. An administrator can enable it for ${e.bot} in Administration › Agents.`;
+    case "mcp.pending":
+      return fr ? `Une demande de connecteur ${e.title} est déjà en cours.` : `A request for the ${e.title} connector is already in progress.`;
     case "mcp.approved":
       return fr ? `Connecteur ${e.title} validé par un administrateur.` : `Connector ${e.title} approved by an administrator.`;
     case "mcp.refused":

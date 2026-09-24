@@ -12,7 +12,7 @@ import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "./db";
 import { env } from "./env";
-import { dashboard, HermesError, restartGateway, setAgentMcp, setMcpOAuth } from "./hermes-admin";
+import { agentMcpServers, dashboard, HermesError, restartGateway, setAgentMcp, setMcpOAuth, shareMcpTokens } from "./hermes-admin";
 import { errors } from "./errors.messages";
 import { defineMessages, tr } from "./i18n";
 
@@ -81,8 +81,52 @@ export const MCP_REQUEST_PROMPT = [
   "- Préfère le serveur officiel de l'éditeur, distant de préférence, à un paquet communautaire ; dis dans `description` d'où il vient.",
   `- \`type\` : ce à quoi le connecteur donne accès, parmi ${INTEGRATION_TYPES.map((t) => `\`${t}\``).join(", ")}.`,
   "- `name` : minuscules, chiffres et tirets. Ne demande JAMAIS de clé ou de jeton dans la conversation : l'app affiche un formulaire au salarié.",
-  "Un administrateur valide la demande ; tu auras les outils `mcp__<name>__*` une fois le connecteur installé.",
+  "- Regarde d'abord la section « Tes connecteurs MCP » : un connecteur qui y figure déjà ne se redemande pas sous un autre nom.",
+  "Un administrateur valide la demande ; une fois le connecteur installé, l'app l'active pour toi et recharge tes outils (préfixe `mcp__<name>__`).",
 ].join("\n");
+
+/** Prefix of a server's tools in Hermes (tools/mcp_tool_schema.py). */
+const toolPrefix = (name: string) => `mcp__${name.replace(/[^A-Za-z0-9_]/g, "_")}__`;
+
+/**
+ * The bot's actual connectors, recomputed every turn. Without it the bot can
+ * only guess why a tool is missing, and ends up asking the employee to
+ * restart a session or re-requesting a connector that already exists.
+ */
+export async function connectorsPrompt(profile: string, engine: "hermes" | "claude-code") {
+  const [servers, inProgress] = await Promise.all([
+    agentMcpServers(profile).catch(() => []),
+    db
+      .select({ name: mcpServer.name, status: mcpServer.status })
+      .from(mcpServer)
+      .where(inArray(mcpServer.status, ["pending", "approved", "authorizing"])),
+  ]);
+  const on = servers.filter((s) => s.enabled);
+  const available = servers.filter((s) => !s.enabled && s.instanceEnabled);
+  const where = (s: { url?: string; command?: string }) => (s.url ? `url ${s.url}` : `command ${s.command}`);
+  const waiting = { pending: "attend la validation d'un administrateur", approved: "attend ses secrets ou sa connexion", authorizing: "attend l'autorisation OAuth" };
+  const lines = ["# Tes connecteurs MCP (état réel, recalculé à chaque message)"];
+  if (engine === "claude-code") {
+    lines.push("Tu tournes en ce moment sur le moteur Claude Code : aucun connecteur MCP n'y est branché. Si la demande en a besoin, dis-le et propose de repasser sur un modèle Hermes avec le sélecteur de modèle.");
+  } else if (on.length) {
+    lines.push(`Activés pour toi : ${on.map((s) => `\`${s.name}\` (outils \`${toolPrefix(s.name)}*\`)`).join(", ")}.`);
+  } else {
+    lines.push("Aucun connecteur n'est activé pour toi.");
+  }
+  if (available.length) {
+    lines.push(
+      `Installés sur l'instance mais pas activés pour toi : ${available.map((s) => `\`${s.name}\` (${where(s)})`).join(", ")}. ` +
+        "Pour en obtenir un, émets un bloc `mcp-request` avec exactement ce `name` et la même url ou commande : l'app te l'active sans nouvelle installation (tout de suite si c'est un administrateur qui te parle).",
+    );
+  }
+  if (inProgress.length) lines.push(`En cours d'installation : ${inProgress.map((r) => `\`${r.name}\` (${waiting[r.status as keyof typeof waiting] ?? r.status})`).join(", ")}. Ne les redemande pas.`);
+  lines.push(
+    "- Ne demande JAMAIS de relancer la session, d'ouvrir une nouvelle conversation ou de redémarrer quoi que ce soit : après une installation, l'app recharge tes outils d'elle-même avant ton message suivant.",
+    "- Ne crée pas un deuxième connecteur pour un service déjà listé ci-dessus : utilise ou demande celui qui existe.",
+    "- Si un connecteur est activé pour toi mais que tu n'as aucun outil qui commence par son préfixe, dis-le clairement, une seule fois, et demande à un administrateur de vérifier sa connexion dans Marketplace › Installés.",
+  );
+  return lines.join("\n");
+}
 
 export type McpRequestDto = ReturnType<typeof toDto>;
 
@@ -163,15 +207,58 @@ async function releaseStale(name: string) {
   await db.delete(mcpServer).where(inArray(mcpServer.id, stale.map((r) => r.id)));
 }
 
+type RequestCtx = { conversationId: string; agentId: string; requestedBy: string | null };
+
+async function isAdmin(userId: string | null) {
+  const [requester] = userId ? await db.select({ role: user.role }).from(user).where(eq(user.id, userId)) : [];
+  return requester?.role === "admin";
+}
+
+/**
+ * The bot asked for a connector the instance already has (installed from the
+ * marketplace, or for another bot): rather than ignoring the request, give it
+ * to this bot — right away when an admin asked, otherwise say who can.
+ */
+async function attachExisting(name: string, ctx: RequestCtx) {
+  const [servers, [row], [bot]] = await Promise.all([
+    dashboard<{ servers: { name: string }[] }>("/api/mcp/servers").catch(() => ({ servers: [] })),
+    db.select({ title: mcpServer.title }).from(mcpServer).where(and(eq(mcpServer.name, name), ne(mcpServer.status, "rejected"))),
+    db.select().from(agent).where(eq(agent.id, ctx.agentId)),
+  ]);
+  const title = row?.title ?? name;
+  if (!servers.servers.some((s) => s.name === name)) {
+    await postEvent(ctx.conversationId, { type: "mcp.pending", title });
+    return;
+  }
+  if (!bot) return;
+  const enabled = (await agentMcpServers(bot.hermesProfile)).find((s) => s.name === name)?.enabled;
+  // The default profile sees every server the instance leaves on: an off one is the admin's call.
+  if (!enabled && (isDefaultProfile(bot.hermesProfile) || !(await isAdmin(ctx.requestedBy)))) {
+    await postEvent(ctx.conversationId, { type: "mcp.notEnabled", title, bot: bot.name });
+    return;
+  }
+  // Already enabled, its tools can only be missing because the profile couldn't read the OAuth tokens.
+  let changed = true;
+  if (enabled) changed = await shareMcpTokens(bot.hermesProfile);
+  else await setAgentMcp(bot.hermesProfile, name, true);
+  let restarted = true;
+  if (changed) {
+    await restartGateway().catch((err) => {
+      restarted = false;
+      console.error("mcp: gateway restart", err);
+    });
+  }
+  await postEvent(ctx.conversationId, { type: "mcp.enabled", title, bot: bot.name, restartNeeded: !restarted });
+}
+
 /** Stores the request emitted by a bot; auto-approved if the requester is an admin. */
-export async function createRequest(block: McpRequestBlock, ctx: { conversationId: string; agentId: string; requestedBy: string | null }) {
+export async function createRequest(block: McpRequestBlock, ctx: RequestCtx) {
   await releaseStale(block.name);
   if (await nameTaken(block.name)) {
-    await postEvent(ctx.conversationId, { type: "mcp.exists", name: block.name });
+    await attachExisting(block.name, ctx);
     return null;
   }
-  const [requester] = ctx.requestedBy ? await db.select({ role: user.role }).from(user).where(eq(user.id, ctx.requestedBy)) : [];
-  const admin = requester?.role === "admin";
+  const admin = await isAdmin(ctx.requestedBy);
   const [row] = await db
     .insert(mcpServer)
     .values({

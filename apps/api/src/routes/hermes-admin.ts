@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { modelOptions, profileHome, toolsets } from "../hermes";
 import { guessIntegrationType, INTEGRATION_TYPES } from "@agora/core";
 import { clearType, getTypes, setType } from "../integrations";
-import { agentMcpServers, dashboard, hermesCli, hermesCliJson, HermesError, restartGateway, setAgentMcp } from "../hermes-admin";
+import { agentMcpServers, dashboard, hermesCli, hermesCliJson, HermesError, restartGateway, scheduleGatewayRestart, setAgentMcp } from "../hermes-admin";
 import { bumpAgentRevision } from "../company";
 import { isRisky, setRiskyToolset } from "../sandbox";
 import { registryInstallBody, searchRegistry } from "../mcp-registry";
@@ -127,6 +127,8 @@ export const hermesAdmin = new Hono<AppEnv>()
     const profile = await profileOf(c.req.param("id"));
     const { enabled } = await json(c, z.object({ enabled: z.boolean() }));
     await setAgentMcp(profile, name.parse(c.req.param("server")), enabled);
+    // The gateway only discovers a profile's MCP servers when it starts.
+    scheduleGatewayRestart();
     return c.body(null, 204);
   })
 
