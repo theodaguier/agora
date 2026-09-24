@@ -1,9 +1,15 @@
-# On each vX.Y.Z tag (created by `bun scripts/release.ts`): publishes the
-# app / web / updater images to ghcr.io and the GitHub release with its changelog.
-# The servers' update service detects these tags and applies them.
+# Every push to main whose CI passes becomes a release: `bun scripts/release.ts` picks the next
+# version from the conventional commits (none if they change nothing for users), commits the
+# CHANGELOG, tags vX.Y.Z and pushes. Then the app / web / updater images go to ghcr.io and the
+# GitHub release is published with its changelog. The servers' update service detects these tags.
+# A tag pushed by hand (`bun scripts/release.ts` then `git push --follow-tags`) is published the same way.
 name: Release
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   push:
     tags: ["v*.*.*"]
 
@@ -11,8 +17,45 @@ permissions:
   contents: write
   packages: write
 
+# One release at a time, never cut short: each one pushes to main.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  version:
+    if: github.event_name == 'push' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag || steps.release.outputs.tag }}
+    steps:
+      - id: tag
+        if: github.event_name == 'push'
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+      - if: github.event_name == 'workflow_run'
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+      # main moved on since this CI run: the run for the newer commit releases both.
+      - id: fresh
+        if: github.event_name == 'workflow_run'
+        run: |
+          if [ "$(git rev-parse HEAD)" = "${{ github.event.workflow_run.head_sha }}" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "main moved on, skipping"; fi
+      - if: steps.fresh.outputs.ok == 'true'
+        uses: oven-sh/setup-bun@v2
+      - id: release
+        if: steps.fresh.outputs.ok == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bun scripts/release.ts
+          # Pushed with GITHUB_TOKEN: triggers no other workflow, so neither CI nor this one runs again.
+          if [ -n "$(git tag --points-at HEAD)" ]; then git push --atomic origin HEAD:main "$(git tag --points-at HEAD)"; fi
+
   images:
+    needs: version
+    if: needs.version.outputs.tag != ''
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -23,11 +66,16 @@ jobs:
             dockerfile: infra/web.Dockerfile
           - image: updater
             dockerfile: apps/updater/Dockerfile
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
       - id: meta
         run: |
-          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "repo=$(echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
           echo "now=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
@@ -45,18 +93,22 @@ jobs:
           tags: ${{ steps.meta.outputs.repo }}-${{ matrix.image }}:${{ steps.meta.outputs.version }}
           build-args: |
             APP_VERSION=${{ steps.meta.outputs.version }}
-            GIT_COMMIT=${{ github.sha }}
+            GIT_COMMIT=${{ steps.meta.outputs.sha }}
             BUILT_AT=${{ steps.meta.outputs.now }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
   release:
-    needs: images
+    needs: [version, images]
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
       - name: Release notes
-        run: awk -v tag="## ${GITHUB_REF_NAME}" 'index($0, tag)==1{p=1;next} /^## v/{p=0} p' CHANGELOG.md > notes.md
-      - run: gh release create "$GITHUB_REF_NAME" --notes-file notes.md --title "$GITHUB_REF_NAME"
+        run: awk -v tag="## ${TAG}" 'index($0, tag)==1{p=1;next} /^## v/{p=0} p' CHANGELOG.md > notes.md
+      - run: gh release create "$TAG" --notes-file notes.md --title "$TAG"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
