@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.1 — 2026-09-24
+
+### Fixes
+- **api**: offer OpenRouter as an API-key provider
+
 ## v0.3.0 — 2026-09-24
 
 ### Features
