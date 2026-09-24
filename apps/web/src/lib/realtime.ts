@@ -1,7 +1,7 @@
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import type { ActiveTurn, Message, PendingApproval } from "./api";
-import type { Schedule } from "@agora/core";
+import { insertMessage, type Schedule } from "@agora/core";
 import { applySchedule } from "./availability";
 import { applyAgentStatus, applyPresence, presenceQuery } from "./presence";
 
@@ -51,10 +51,16 @@ export function clearApproval(conversationId: string, turnId: string) {
   updateTurns(conversationId, (ts) => ts.map((t) => (t.turnId === turnId ? { ...t, approval: null } : t)));
 }
 
+/**
+ * Replies the stream saw end: a GET /conversations/:id that left before `bot.done` still lists
+ * them, and seeding them back would leave "working…" on screen until a reload.
+ */
+const finished = new Set<string>();
+
 /** Replies already started when the conversation is opened (GET /conversations/:id). */
 export function seedTurns(conversationId: string, turns: ActiveTurn[]) {
   const known = state.turns[conversationId] ?? EMPTY_TURNS;
-  const missing = turns.filter((t) => !known.some((k) => k.turnId === t.turnId));
+  const missing = turns.filter((t) => !finished.has(t.turnId) && !known.some((k) => k.turnId === t.turnId));
   if (missing.length) updateTurns(conversationId, (ts) => [...ts, ...missing]);
 }
 
@@ -68,7 +74,8 @@ type ServerEvent =
   | { type: "bot.delta"; conversationId: string; turnId: string; text: string }
   | { type: "bot.tool"; conversationId: string; turnId: string; name: string; status: string }
   | { type: "bot.approval"; conversationId: string; turnId: string; approval: PendingApproval | null }
-  | { type: "bot.done" | "bot.error"; conversationId: string; turnId: string };
+  | { type: "bot.done"; conversationId: string; turnId: string; messageId: string | null }
+  | { type: "bot.error"; conversationId: string; turnId: string };
 
 /** Events that do not belong to a conversation. */
 type GlobalEvent =
@@ -99,7 +106,7 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
   const cid = ev.conversationId;
   switch (ev.type) {
     case "message.created": {
-      qc.setQueryData<Message[]>(["messages", cid], (old) => (old && !old.some((m) => m.id === ev.message.id) ? [...old, ev.message] : old));
+      qc.setQueryData<Message[]>(["messages", cid], (old) => old && insertMessage(old, ev.message));
       const author = ev.message.author;
       if (author?.kind === "user") updateTyping(cid, (ts) => ts.filter((t) => t.userId !== author.id));
       qc.invalidateQueries({ queryKey: ["conversations"] });
@@ -141,7 +148,11 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       return;
     case "bot.done":
     case "bot.error":
+      finished.add(ev.turnId);
       updateTurns(cid, (ts) => ts.filter((t) => t.turnId !== ev.turnId));
+      // The reply was lost on the way (a refetch that left before it overwrote it): fetch it.
+      if (ev.type === "bot.done" && ev.messageId && !qc.getQueryData<Message[]>(["messages", cid])?.some((m) => m.id === ev.messageId))
+        qc.invalidateQueries({ queryKey: ["messages", cid] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       // The turn may have created or removed a routine.
       qc.invalidateQueries({ queryKey: ["routines", cid] });
@@ -169,34 +180,85 @@ const EVENT_TYPES = [
   "inbox.changed",
 ] as const;
 
+/** The server pings every 25 s: past this silence the stream is dead (sleep, network change, a proxy dropping it). */
+const SILENCE_MS = 60_000;
+
 /**
  * A single SSE stream per tab. No server-side replay: on each
  * reconnect we start over from REST data and drop in-progress replies.
+ *
+ * EventSource gives up for good when a reconnection gets an HTTP error (a 502 while
+ * the API restarts), and never notices a connection that silently died: both left
+ * the tab deaf until a reload. So the stream is reopened here, with a growing delay.
  */
 export function useEvents(me: string) {
   const qc = useQueryClient();
   useEffect(() => {
-    const source = new EventSource("/api/events", { withCredentials: true });
-    let connected = false;
-    source.addEventListener("ready", () => {
-      if (connected) {
-        set({ turns: {}, typing: {} });
-        qc.invalidateQueries({ queryKey: ["conversations"] });
-        qc.invalidateQueries({ queryKey: ["conversation"] });
-        qc.invalidateQueries({ queryKey: ["messages"] });
-        qc.invalidateQueries({ queryKey: presenceQuery.queryKey });
-      }
-      connected = true;
-    });
-    for (const type of EVENT_TYPES) {
-      source.addEventListener(type, (e) => {
-        try {
-          apply(qc, me, JSON.parse((e as MessageEvent<string>).data) as ServerEvent | GlobalEvent);
-        } catch (err) {
-          console.error("events", err);
+    let source: EventSource | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+    let connectedOnce = false;
+    let lastEvent = Date.now();
+
+    const connect = () => {
+      clearTimeout(retry);
+      source?.close();
+      const current = new EventSource("/api/events", { withCredentials: true });
+      source = current;
+      lastEvent = Date.now();
+      current.addEventListener("ready", () => {
+        lastEvent = Date.now();
+        attempt = 0;
+        if (connectedOnce) {
+          set({ turns: {}, typing: {} });
+          qc.invalidateQueries({ queryKey: ["conversations"] });
+          qc.invalidateQueries({ queryKey: ["conversation"] });
+          qc.invalidateQueries({ queryKey: ["messages"] });
+          qc.invalidateQueries({ queryKey: presenceQuery.queryKey });
         }
+        connectedOnce = true;
       });
-    }
-    return () => source.close();
+      current.addEventListener("ping", () => (lastEvent = Date.now()));
+      for (const type of EVENT_TYPES) {
+        current.addEventListener(type, (e) => {
+          lastEvent = Date.now();
+          try {
+            apply(qc, me, JSON.parse((e as MessageEvent<string>).data) as ServerEvent | GlobalEvent);
+          } catch (err) {
+            console.error("events", err);
+          }
+        });
+      }
+      current.addEventListener("error", () => {
+        if (source !== current) return;
+        drop();
+        retry = setTimeout(connect, Math.min(30_000, 1000 * 2 ** attempt++));
+      });
+    };
+
+    const drop = () => {
+      source?.close();
+      source = null;
+    };
+
+    // Timestamps rather than a timer per event: after a sleep, the check runs as soon as the machine wakes.
+    const watchdog = setInterval(() => {
+      if (source && Date.now() - lastEvent > SILENCE_MS) connect();
+    }, 10_000);
+    /** Back on the network or on the tab: no need to wait for the retry delay. */
+    const wake = () => {
+      if (document.visibilityState !== "visible" || !navigator.onLine) return;
+      if (!source || Date.now() - lastEvent > SILENCE_MS) connect();
+    };
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", wake);
+    connect();
+    return () => {
+      clearInterval(watchdog);
+      clearTimeout(retry);
+      window.removeEventListener("online", wake);
+      document.removeEventListener("visibilitychange", wake);
+      drop();
+    };
   }, [qc, me]);
 }
