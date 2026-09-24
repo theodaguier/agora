@@ -14,6 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 import { api } from "@/lib/api";
+import { useOrgTitle } from "@/lib/org";
 import { agentsQuery, conversationsQuery, usersQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +68,7 @@ export function NewChat() {
   const qc = useQueryClient();
   const t = useT(messages);
   const c = useT(common);
+  useOrgTitle(t.newConversation);
   const { data: agents = [] } = useQuery(agentsQuery);
   const { data: people = [] } = useQuery(usersQuery);
   const [q, setQ] = useState("");

@@ -47,6 +47,7 @@ import { dividerLabel, needsDivider } from "@/lib/dates";
 import { ConversationFilesProvider } from "@/lib/conversation-files";
 import { conversationQuery, conversationsQuery, messagesQuery } from "@/lib/queries";
 import { seedTurns, useTurns, useTyping } from "@/lib/realtime";
+import { useOrgTitle } from "@/lib/org";
 import { openAgentProfile, openProfile } from "@/lib/profile";
 import type { Mentionable } from "@/lib/mentions";
 import { useMentionables } from "@/lib/people";
@@ -454,6 +455,7 @@ export function Conversation() {
   /** Direct conversation with a colleague: the header opens their profile. */
   const directPerson = conv?.kind === "direct" && !conv.agents.length ? (conv.members.find((m) => m.id !== user.id) ?? null) : null;
   const title = conv ? conversationTitle(conv, user.id) : "";
+  useOrgTitle(title || undefined);
 
   const send = async (text: string, attachments: Sending["attachments"], invocations: Invocation[], mentions: string[], reply?: ReplyTo, viewAction?: ViewAction) => {
     const key = crypto.randomUUID();
