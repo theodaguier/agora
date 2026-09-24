@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.0 — 2026-09-24
+
+### Features
+- admins can delete a user
+
+### Fixes
+- **web**: align status badges on rows without a menu
+
 ## v0.4.0 — 2026-09-24
 
 ### Features
