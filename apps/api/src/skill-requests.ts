@@ -14,6 +14,7 @@ import { db, schema } from "./db";
 import { env } from "./env";
 import { findSkill, profileHome, sharedSkillsDir } from "./hermes";
 import { dashboard, HermesError } from "./hermes-admin";
+import { installSkillsSh, isSkillsSh } from "./skills-sh-install";
 import { postEvent } from "./messages";
 import { errors } from "./errors.messages";
 import { defineMessages, tr } from "./i18n";
@@ -222,6 +223,10 @@ async function installSkill(row: Row) {
 async function installFromHub(row: Row) {
   const [bot] = row.agentId ? await db.select().from(agent).where(eq(agent.id, row.agentId)) : [];
   if (!bot) throw new Error(tr(messages).botGone);
+  if (isSkillsSh(row.identifier)) {
+    await installSkillsSh(row.identifier, bot.hermesProfile);
+    return bot.name;
+  }
   const started = await dashboard<{ name?: string }>("/api/skills/hub/install", {
     method: "POST",
     profile: bot.hermesProfile,
