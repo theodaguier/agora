@@ -52,7 +52,7 @@ const app = new Hono()
   /** Public identity of the instance (login screen, title). */
   .get("/org", async (c) => {
     const org = await getOrg();
-    return c.json({ name: org.name, locale: org.locale, image: org.image });
+    return c.json({ name: org.name, locale: org.locale, image: org.image, requireTwoFactor: org.requireTwoFactor });
   })
   .get("/org/avatar", async (c) => {
     const [row] = await db.select().from(schema.orgAvatar).where(eq(schema.orgAvatar.id, ORG_AVATAR_ID));

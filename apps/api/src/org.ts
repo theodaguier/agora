@@ -6,11 +6,25 @@ import { db, schema } from "./db";
  * editable by an admin. Stored in the `setting` table.
  */
 export type Locale = "fr" | "en";
-export type Org = { name: string; locale: Locale; timezone: string; setupCompleted: boolean; image: string | null };
+export type Org = {
+  name: string;
+  locale: Locale;
+  timezone: string;
+  setupCompleted: boolean;
+  /** Every account must turn on two-step verification before using the app (middleware.ts). */
+  requireTwoFactor: boolean;
+  image: string | null;
+};
 
-const KEYS = { name: "org_name", locale: "org_locale", timezone: "org_timezone", setupCompleted: "setup_completed" } as const;
+const KEYS = {
+  name: "org_name",
+  locale: "org_locale",
+  timezone: "org_timezone",
+  setupCompleted: "setup_completed",
+  requireTwoFactor: "require_two_factor",
+} as const;
 
-export const DEFAULT_ORG: Org = { name: "Agora", locale: "fr", timezone: "Europe/Paris", setupCompleted: false, image: null };
+export const DEFAULT_ORG: Org = { name: "Agora", locale: "fr", timezone: "Europe/Paris", setupCompleted: false, requireTwoFactor: false, image: null };
 
 /** Row id of the single organization logo. */
 export const ORG_AVATAR_ID = "org";
@@ -34,6 +48,7 @@ export async function getOrg(): Promise<Org> {
     // Setting missing on an instance that already has accounts: installed before
     // the wizard existed (it writes "false" as soon as the admin account is created).
     setupCompleted: get(KEYS.setupCompleted) === undefined ? (await userCount()) > 0 : get(KEYS.setupCompleted) === "true",
+    requireTwoFactor: get(KEYS.requireTwoFactor) === "true",
     image: logo ? orgAvatarUrl(logo.updatedAt) : null,
   };
   cache = { at: Date.now(), org };

@@ -4,13 +4,15 @@ import { useState } from "react";
 import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldError, FieldGroup } from "@/components/ui/field";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { TotpInput } from "@/components/TotpInput";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { authClient } from "@/lib/auth";
-import { useOrgTitle } from "@/lib/org";
+import { orgQuery, useOrgTitle } from "@/lib/org";
+import { useQuery } from "@tanstack/react-query";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 
@@ -19,6 +21,7 @@ const messages = defineMessages({
     title: "Two-step verification",
     offHelp: "Ask for a code from an authenticator app (1Password, Google Authenticator…) after your password.",
     onHelp: "On: a code from your authenticator app is asked after your password.",
+    requiredHelp: "On, and required by your organization: a code from your authenticator app is asked after your password.",
     turnOn: "Turn on",
     turnOff: "Turn off",
     newCodes: "New backup codes",
@@ -26,10 +29,10 @@ const messages = defineMessages({
     passwordHelp: "Confirm it's you.",
     wrongPassword: "Incorrect password.",
     continue: "Continue",
-    scanTitle: "Scan with your authenticator app",
-    scanHelp: "Then enter the 6-digit code it shows to finish.",
-    manual: "Or enter this key by hand:",
-    code: "Code",
+    scanHelp: "Scan this QR code with your authenticator app, then enter the 6-digit code it shows.",
+    setupKey: "Setup key",
+    setupKeyHelp: "To enter in the app if you can't scan the QR code.",
+    code: "Verification code",
     invalidCode: "Incorrect code. Check your phone's time and try again.",
     activate: "Turn on",
     codesTitle: "Save your backup codes",
@@ -47,6 +50,7 @@ const messages = defineMessages({
     title: "Validation en deux étapes",
     offHelp: "Demande un code d'une application d'authentification (1Password, Google Authenticator…) après ton mot de passe.",
     onHelp: "Activée : un code de ton application d'authentification est demandé après ton mot de passe.",
+    requiredHelp: "Activée et exigée par ton organisation : un code de ton application d'authentification est demandé après ton mot de passe.",
     turnOn: "Activer",
     turnOff: "Désactiver",
     newCodes: "Nouveaux codes de secours",
@@ -54,10 +58,10 @@ const messages = defineMessages({
     passwordHelp: "Confirme que c'est bien toi.",
     wrongPassword: "Mot de passe incorrect.",
     continue: "Continuer",
-    scanTitle: "Scanne avec ton application d'authentification",
-    scanHelp: "Puis saisis le code à 6 chiffres qu'elle affiche pour terminer.",
-    manual: "Ou saisis cette clé à la main :",
-    code: "Code",
+    scanHelp: "Scanne ce QR code avec ton application d'authentification, puis saisis le code à 6 chiffres qu'elle affiche.",
+    setupKey: "Clé de configuration",
+    setupKeyHelp: "À saisir dans l'application si tu ne peux pas scanner le QR code.",
+    code: "Code de vérification",
     invalidCode: "Code incorrect. Vérifie l'heure de ton téléphone et réessaie.",
     activate: "Activer",
     codesTitle: "Enregistre tes codes de secours",
@@ -76,18 +80,20 @@ const messages = defineMessages({
 /** What the password dialog is for. */
 type Intent = "enable" | "disable" | "codes";
 
-type Step =
+export type TwoFactorStep =
   | { kind: "password"; intent: Intent }
   | { kind: "scan"; totpURI: string; backupCodes: string[] }
   | { kind: "codes"; backupCodes: string[] };
 
-/** Settings › General: TOTP two-step sign-in for one's own account (Better Auth twoFactor plugin). */
+/** Settings › Security: TOTP two-step sign-in for one's own account (Better Auth twoFactor plugin). */
 export function TwoFactor() {
   const { user } = useRouteContext({ from: "/app" });
   const router = useRouter();
   const t = useT(messages);
-  const [step, setStep] = useState<Step | null>(null);
+  const [step, setStep] = useState<TwoFactorStep | null>(null);
   const enabled = !!(user as { twoFactorEnabled?: boolean | null }).twoFactorEnabled;
+  // Required by the organization: it can't be turned off.
+  const required = !!useQuery(orgQuery).data?.requireTwoFactor;
 
   const close = () => {
     setStep(null);
@@ -100,7 +106,7 @@ export function TwoFactor() {
       <Item variant="outline">
         <ItemContent>
           <ItemTitle>{t.title}</ItemTitle>
-          <ItemDescription>{enabled ? t.onHelp : t.offHelp}</ItemDescription>
+          <ItemDescription>{enabled ? (required ? t.requiredHelp : t.onHelp) : t.offHelp}</ItemDescription>
         </ItemContent>
         <ItemActions>
           {enabled ? (
@@ -115,16 +121,18 @@ export function TwoFactor() {
               >
                 {t.newCodes}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  if (await confirmAction({ title: t.offTitle, description: t.offDescription, action: t.turnOff }))
-                    setStep({ kind: "password", intent: "disable" });
-                }}
-              >
-                {t.turnOff}
-              </Button>
+              {!required && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    if (await confirmAction({ title: t.offTitle, description: t.offDescription, action: t.turnOff }))
+                      setStep({ kind: "password", intent: "disable" });
+                  }}
+                >
+                  {t.turnOff}
+                </Button>
+              )}
             </>
           ) : (
             <Button variant="outline" size="sm" onClick={() => setStep({ kind: "password", intent: "enable" })}>
@@ -133,18 +141,25 @@ export function TwoFactor() {
           )}
         </ItemActions>
       </Item>
-      <Dialog open={!!step} onOpenChange={(o) => !o && close()}>
-        <DialogContent className="sm:max-w-sm">
-          {step?.kind === "password" && <PasswordStep intent={step.intent} onNext={setStep} onDone={close} />}
-          {step?.kind === "scan" && <ScanStep totpURI={step.totpURI} onVerified={() => setStep({ kind: "codes", backupCodes: step.backupCodes })} />}
-          {step?.kind === "codes" && <CodesStep codes={step.backupCodes} onDone={close} />}
-        </DialogContent>
-      </Dialog>
+      <TwoFactorDialog step={step} onStep={setStep} onClose={close} />
     </>
   );
 }
 
-function PasswordStep({ intent, onNext, onDone }: { intent: Intent; onNext: (s: Step) => void; onDone: () => void }) {
+/** Password, then QR code and first code, then backup codes (turning on); password only (off, new codes). */
+export function TwoFactorDialog({ step, onStep, onClose }: { step: TwoFactorStep | null; onStep: (s: TwoFactorStep) => void; onClose: () => void }) {
+  return (
+    <Dialog open={!!step} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        {step?.kind === "password" && <PasswordStep intent={step.intent} onNext={onStep} onDone={onClose} />}
+        {step?.kind === "scan" && <ScanStep totpURI={step.totpURI} onVerified={() => onStep({ kind: "codes", backupCodes: step.backupCodes })} />}
+        {step?.kind === "codes" && <CodesStep codes={step.backupCodes} onDone={onClose} />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PasswordStep({ intent, onNext, onDone }: { intent: Intent; onNext: (s: TwoFactorStep) => void; onDone: () => void }) {
   const t = useT(messages);
   const c = useT(common);
   const orgName = useOrgTitle();
@@ -199,6 +214,7 @@ function ScanStep({ totpURI, onVerified }: { totpURI: string; onVerified: () => 
   const c = useT(common);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [copied, setCopied] = useState(false);
   const secret = new URL(totpURI).searchParams.get("secret") ?? "";
 
   return (
@@ -215,27 +231,41 @@ function ScanStep({ totpURI, onVerified }: { totpURI: string; onVerified: () => 
       }}
     >
       <DialogHeader>
-        <DialogTitle className="pr-6">{t.scanTitle}</DialogTitle>
+        <DialogTitle className="pr-6">{t.title}</DialogTitle>
         <DialogDescription>{t.scanHelp}</DialogDescription>
       </DialogHeader>
-      <div className="flex justify-center py-4">
-        {/* Dark on white in both themes: scanners read that best. */}
-        <div className="grid size-52 place-items-center rounded-xl bg-white p-4">
-          <QRCodeSVG value={totpURI} size={176} level="M" marginSize={0} />
-        </div>
-      </div>
-      <FieldDescription className="text-center">{t.manual}</FieldDescription>
-      <p className="mt-1 break-all text-center font-mono text-sm tracking-wider select-all">{secret.replace(/(.{4})/g, "$1 ").trim()}</p>
       <FieldGroup className="my-5">
+        {/* Dark on white in both themes: scanners read that best. */}
+        <div className="w-fit rounded-lg bg-white p-3">
+          <QRCodeSVG value={totpURI} size={144} level="M" marginSize={0} />
+        </div>
+        <Field>
+          <FieldLabel htmlFor="tf-secret">{t.setupKey}</FieldLabel>
+          <InputGroup>
+            <InputGroupInput id="tf-secret" readOnly value={secret.replace(/(.{4})(?=.)/g, "$1 ")} className="font-mono" />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                onClick={async () => {
+                  await navigator.clipboard.writeText(secret);
+                  setCopied(true);
+                }}
+              >
+                {copied ? t.copied : t.copy}
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+          <FieldDescription>{t.setupKeyHelp}</FieldDescription>
+        </Field>
         <Field>
           <FormLabel htmlFor="tf-code" required>
             {t.code}
           </FormLabel>
-          <TotpInput id="tf-code" invalid={!!error} className="size-10 text-base" />
+          <TotpInput id="tf-code" invalid={!!error} />
           {error && <FieldError>{error}</FieldError>}
         </Field>
       </FieldGroup>
       <DialogFooter>
+        <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
         <Button type="submit" disabled={pending}>
           {pending ? c.inProgress : t.activate}
         </Button>

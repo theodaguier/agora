@@ -447,6 +447,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     try {
       message = JSON.parse(body).error ?? body;
     } catch {}
+    // The organization started requiring two-step verification during this session.
+    if (res.status === 403 && message === "two_factor_required") window.location.assign("/two-factor");
     throw new ApiError(res.status, message);
   }
   const text = await res.text();

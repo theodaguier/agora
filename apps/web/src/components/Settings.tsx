@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext, useRouter } from "@tanstack/react-router";
-import { BotIcon, BuildingIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, SlidersIcon, SmartphoneIcon, UsersIcon, CloseIcon, type IconComponent } from "@/components/icons";
+import { BotIcon, BuildingIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, SlidersIcon, ShieldCheckIcon, SmartphoneIcon, UsersIcon, CloseIcon, type IconComponent } from "@/components/icons";
 import { lazy, Suspense, useState } from "react";
 import { Access } from "@/components/admin/Access";
 import { AppIntegrations } from "@/components/admin/AppIntegrations";
@@ -8,6 +8,7 @@ import { Agents } from "@/components/admin/Agents";
 import { Models } from "@/components/admin/Models";
 import { OrgSettings } from "@/components/admin/OrgSettings";
 import { ErrorText, Loading, RestartProvider } from "@/components/admin/ui";
+import { RequireTwoFactor } from "@/components/admin/Security";
 import { Status } from "@/components/admin/Status";
 import { Updates } from "@/components/admin/Updates";
 import { Users } from "@/components/admin/Users";
@@ -36,6 +37,7 @@ const Usage = lazy(() => import("@/components/Usage").then((m) => ({ default: m.
 
 const tabs: { id: SettingsTab; icon: IconComponent; admin?: true }[] = [
   { id: "general", icon: SlidersIcon },
+  { id: "security", icon: ShieldCheckIcon },
   { id: "availability", icon: CalendarClockIcon },
   { id: "appearance", icon: PaletteIcon },
   { id: "mobile", icon: SmartphoneIcon },
@@ -58,6 +60,7 @@ const messages = defineMessages({
     settings: "Settings",
     tabs: {
       general: "General",
+      security: "Security",
       availability: "Availability",
       appearance: "Appearance",
       mobile: "Mobile app",
@@ -76,6 +79,8 @@ const messages = defineMessages({
     } as Record<SettingsTab, string>,
     profile: "Profile",
     account: "Account",
+    yourAccount: "Your account",
+    organization: "Organization",
     admin: "Admin",
     member: "Member",
     signOut: "Sign out",
@@ -86,6 +91,7 @@ const messages = defineMessages({
     settings: "Paramètres",
     tabs: {
       general: "Général",
+      security: "Sécurité",
       availability: "Disponibilité",
       appearance: "Apparence",
       mobile: "App mobile",
@@ -104,6 +110,8 @@ const messages = defineMessages({
     },
     profile: "Profil",
     account: "Compte",
+    yourAccount: "Ton compte",
+    organization: "Organisation",
     admin: "Admin",
     member: "Membre",
     signOut: "Se déconnecter",
@@ -173,6 +181,7 @@ function SettingsBody({ initial }: { initial: SettingsTab }) {
         <div className="mx-auto max-w-3xl px-5 pb-16 pt-6 sm:px-10 sm:pt-12">
           <RestartProvider>
             {tab === "general" && <General />}
+            {tab === "security" && <Security />}
             {tab === "availability" && <Availability />}
             {tab === "appearance" && <Appearance />}
             {tab === "mobile" && <Mobile />}
@@ -234,8 +243,32 @@ function General() {
               </Button>
             </ItemActions>
           </Item>
+        </FieldSet>
+      </FieldGroup>
+    </>
+  );
+}
+
+function Security() {
+  const { user } = useRouteContext({ from: "/app" });
+  const t = useT(messages);
+  return (
+    <>
+      <h2 className="mb-7 text-lg font-semibold tracking-tight">{t.tabs.security}</h2>
+      <FieldGroup>
+        <FieldSet>
+          <FieldLegend>{t.yourAccount}</FieldLegend>
           <TwoFactor />
         </FieldSet>
+        {user.role === "admin" && (
+          <>
+            <FieldSeparator />
+            <FieldSet>
+              <FieldLegend>{t.organization}</FieldLegend>
+              <RequireTwoFactor />
+            </FieldSet>
+          </>
+        )}
       </FieldGroup>
     </>
   );

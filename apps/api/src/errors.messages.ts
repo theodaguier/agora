@@ -15,6 +15,7 @@ export const errors = defineMessages({
     hermesHomeNotConfigured: "HERMES_HOME is not configured",
     notAllowed: "Action not allowed",
     botNotFound: "Bot not found",
+    twoFactorFirst: "Turn on two-step verification for your own account first.",
   },
   fr: {
     hermesUnreachable: "Hermes est injoignable.",
@@ -29,5 +30,6 @@ export const errors = defineMessages({
     hermesHomeNotConfigured: "HERMES_HOME n'est pas configuré",
     notAllowed: "Action non autorisée",
     botNotFound: "Bot introuvable",
+    twoFactorFirst: "Active d'abord la validation en deux étapes sur ton propre compte.",
   },
 });

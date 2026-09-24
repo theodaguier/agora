@@ -13,7 +13,8 @@ import { Welcome } from "./screens/Welcome";
 import { Setup } from "./screens/Setup";
 import { Tasks } from "./screens/Tasks";
 import { Inbox } from "./screens/Inbox";
-import { setupQuery, useOrgLocale } from "./lib/org";
+import { TwoFactorRequired } from "./screens/TwoFactorRequired";
+import { orgQuery, setupQuery, useOrgLocale } from "./lib/org";
 
 export const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: true } },
@@ -60,6 +61,18 @@ const inviteRoute = createRoute({ getParentRoute: () => rootRoute, path: "/invit
 const forgotPasswordRoute = createRoute({ getParentRoute: () => rootRoute, path: "/forgot-password", component: ForgotPassword });
 const resetPasswordRoute = createRoute({ getParentRoute: () => rootRoute, path: "/reset-password/$token", component: ResetPassword });
 
+/** Two-step verification required by the organization and not yet on for this account. */
+const twoFactorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/two-factor",
+  beforeLoad: async () => {
+    const { data } = await authClient.getSession();
+    if (!data) throw redirect({ to: "/login" });
+    if (data.user.twoFactorEnabled || !(await queryClient.fetchQuery({ ...orgQuery, staleTime: 0 })).requireTwoFactor) throw redirect({ to: "/" });
+  },
+  component: TwoFactorRequired,
+});
+
 const appRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "app",
@@ -69,6 +82,7 @@ const appRoute = createRoute({
     if (!data) throw redirect({ to: status.needed ? "/setup" : "/login" });
     // Setup started but not finished: the admin resumes the wizard.
     if (!status.completed && data.user.role === "admin") throw redirect({ to: "/setup" });
+    if (!data.user.twoFactorEnabled && (await queryClient.fetchQuery(orgQuery)).requireTwoFactor) throw redirect({ to: "/two-factor" });
     return { user: data.user };
   },
   component: AppShell,
@@ -93,7 +107,7 @@ const agentRoute = createRoute({
     throw redirect({ to: "/c/$conversationId", params: { conversationId: id }, replace: true });
   },
 });
-const routeTree = rootRoute.addChildren([loginRoute, setupRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, inboxRoute, conversationRoute, agentRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, inboxRoute, conversationRoute, agentRoute])]);
 
 export const router = createRouter({ routeTree });
 

@@ -232,9 +232,12 @@ export const admin = new Hono<AppEnv>()
             }
           })
           .optional(),
+        requireTwoFactor: z.boolean().optional(),
       })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    // The admin who requires it has it first: otherwise the next request would lock them out.
+    if (body.data.requireTwoFactor && !c.get("user").twoFactorEnabled) return c.json({ error: tr(errors).twoFactorFirst }, 409);
     await saveOrg(body.data, c.get("user").id);
     return c.json(await getOrg());
   })

@@ -13,7 +13,7 @@ export const setupQuery = queryOptions({
 
 export const orgQuery = queryOptions({
   queryKey: ["org"],
-  queryFn: () => api<{ name: string; locale: "fr" | "en"; image: string | null }>("/org"),
+  queryFn: () => api<{ name: string; locale: "fr" | "en"; image: string | null; requireTwoFactor?: boolean }>("/org"),
   staleTime: 5 * 60_000,
 });
 

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-export type SettingsTab = "general" | "availability" | "appearance" | "mobile" | "organization" | "users" | "agents" | "access" | "vault" | "integrations" | "models" | "memory" | "digest" | "usage" | "status" | "updates";
+export type SettingsTab = "general" | "security" | "availability" | "appearance" | "mobile" | "organization" | "users" | "agents" | "access" | "vault" | "integrations" | "models" | "memory" | "digest" | "usage" | "status" | "updates";
 
 /** Open tab of the Paramètres dialog, or null when closed. Shared between the user menu and the composer. */
 let current: SettingsTab | null = null;
