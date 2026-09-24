@@ -60,13 +60,18 @@ export default function AgentSkillsScreen() {
       api(`/admin/hermes/agents/${agentId}/skills/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify({ enabled }) }),
     onMutate: ({ name, enabled }) => qc.setQueryData<Skill[]>(query.queryKey, (xs) => xs?.map((s) => (s.name === name ? { ...s, enabled } : s))),
     onError: (e) => toast.failed(e),
-    onSettled: () => qc.invalidateQueries({ queryKey: query.queryKey }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: query.queryKey });
+      // The "/" menu lists the bots' skills.
+      qc.invalidateQueries({ queryKey: ["commands"] });
+    },
   });
   const remove = useMutation({
     mutationFn: (name: string) => api<{ name?: string }>(`/admin/hermes/agents/${agentId}/skills/${encodeURIComponent(name)}`, { method: "DELETE" }),
     onSuccess: (r) => {
       if (r?.name) return setAction(r.name);
       toast.deleted(t.uninstalled);
+      qc.invalidateQueries({ queryKey: ["commands"] });
       return qc.invalidateQueries({ queryKey: query.queryKey });
     },
     onError: (e) => toast.failed(e),
@@ -76,6 +81,7 @@ export default function AgentSkillsScreen() {
     if (ok) toast.deleted(t.uninstalled);
     else toast.failed(null, t.uninstallFailed);
     qc.invalidateQueries({ queryKey: query.queryKey });
+    qc.invalidateQueries({ queryKey: ["commands"] });
   });
 
   const uninstall = async (s: Skill) => {

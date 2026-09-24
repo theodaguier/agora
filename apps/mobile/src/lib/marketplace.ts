@@ -158,12 +158,13 @@ export const fromRegistry = (server: RegistryMcp, installed: Set<string>, type?:
   url: server.url,
 });
 
-export const fromSkill = (s: HubSkill): Item => ({
+/** `owners`: ids of the bots that already have a skill of that name. */
+export const fromSkill = (s: HubSkill, owners?: Map<string, string[]>): Item => ({
   kind: "skill",
   key: `skill:${s.identifier}`,
   name: s.name,
   description: s.description,
-  installed: false,
+  installed: !!owners?.has(s.name),
   identifier: s.identifier,
   source: s.source,
   url: s.identifier.startsWith("skills-sh/") ? `https://skills.sh/${s.identifier.slice("skills-sh/".length)}` : undefined,

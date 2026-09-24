@@ -1,6 +1,8 @@
 import type { IntegrationType } from "@agora/core";
-import { queryOptions } from "@tanstack/react-query";
-import { api, type HubSkill, type McpCatalogEntry, type McpServer, type Plugin, type PluginIndexEntry, type RegistryMcp } from "@/lib/api";
+import { queryOptions, useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { adminAgentsQuery, agentSkillsQuery } from "@/lib/queries";
+import { api, type AdminAgent, type HubSkill, type Skill, type McpCatalogEntry, type McpServer, type Plugin, type PluginIndexEntry, type RegistryMcp } from "@/lib/api";
 
 export type OfficialSkill = HubSkill & { category?: string; tags?: string[]; installed?: boolean };
 
@@ -26,6 +28,37 @@ export const officialSkillsQuery = queryOptions({
   queryFn: () => api<{ skills: OfficialSkill[] }>("/admin/hermes/skills/official"),
   staleTime: 10 * 60_000,
 });
+
+/** A skill installed from a hub (skills.sh, official…), with the bots that have it. */
+export type InstalledSkill = { name: string; description: string; agents: AdminAgent[] };
+
+/**
+ * Who has which skill: skills are installed per bot, so we read each bot's list.
+ * `owners` covers every skill (bundled ones too), to mark catalog entries already there;
+ * `installed` keeps only the ones added from a hub.
+ */
+export function useSkillOwners() {
+  const { data: agents = [] } = useQuery(adminAgentsQuery);
+  // Stable per agent list, so React Query reruns it only when a list changes.
+  const combine = useCallback(
+    (lists: UseQueryResult<Skill[]>[]) => {
+      const owners = new Map<string, string[]>();
+      const hub = new Map<string, InstalledSkill>();
+      agents.forEach((agent, i) => {
+        for (const s of lists[i]?.data ?? []) {
+          owners.set(s.name, [...(owners.get(s.name) ?? []), agent.id]);
+          if (s.provenance !== "hub") continue;
+          const entry = hub.get(s.name) ?? { name: s.name, description: s.description, agents: [] };
+          entry.agents.push(agent);
+          hub.set(s.name, entry);
+        }
+      });
+      return { owners, installed: [...hub.values()], pending: lists.some((l) => l.isPending) };
+    },
+    [agents],
+  );
+  return useQueries({ queries: agents.map((a) => agentSkillsQuery(a.id)), combine });
+}
 
 export const pluginIndexQuery = (q: string) =>
   queryOptions({
@@ -85,12 +118,13 @@ export const fromRegistry = (server: RegistryMcp, installed: Set<string>, type?:
   url: server.url,
 });
 
-export const fromSkill = (s: HubSkill): Item => ({
+/** `owners`: ids of the bots that already have a skill of that name. */
+export const fromSkill = (s: HubSkill, owners?: Map<string, string[]>): Item => ({
   kind: "skill",
   key: `skill:${s.identifier}`,
   name: s.name,
   description: s.description,
-  installed: false,
+  installed: !!owners?.has(s.name),
   identifier: s.identifier,
   source: s.source,
   url: s.identifier.startsWith("skills-sh/") ? `https://skills.sh/${s.identifier.slice("skills-sh/".length)}` : undefined,

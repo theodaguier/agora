@@ -28,16 +28,18 @@ export function ItemTile({ item, size = "md" }: { item: Item; size?: "md" | "lg"
 /** An App Store–like row: tile, name, description, then "Add" (or what's already done). */
 export function ItemRow({ item }: { item: Item }) {
   const router = useRouter();
-  // An installed skill or registry server can't be added again: its row opens its page instead.
-  const url = (item.kind === "skill" || item.kind === "registry") && item.url;
+  // Skills are per bot: an installed one still opens its sheet, which shows the bots that have it.
+  // An installed registry server can't be added again: its row opens its page instead.
+  const addable = !item.installed || item.kind === "skill";
+  const url = item.kind === "registry" && item.url;
   const open = () => {
-    if (!item.installed) router.push(addHref(item));
+    if (addable) router.push(addHref(item));
     else if (url) void Linking.openURL(url);
   };
   // What's already done, as a HeroUI Chip.
   const installed = item.installed ? (item.kind === "plugin" ? t.enabled : t.added) : null;
   return (
-    <PressableRow onPress={open} disabled={item.installed && !url} accessibilityRole={item.installed && url ? "link" : "button"} accessibilityLabel={[item.name, KIND_LABEL[item.kind], item.description, installed].filter(Boolean).join(", ")}>
+    <PressableRow onPress={open} disabled={!addable && !url} accessibilityRole={!addable && url ? "link" : "button"} accessibilityLabel={[item.name, KIND_LABEL[item.kind], item.description, installed].filter(Boolean).join(", ")}>
       <ListGroup.Item>
         <ListGroup.ItemPrefix>
           <ItemTile item={item} />

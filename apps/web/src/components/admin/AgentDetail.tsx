@@ -17,6 +17,7 @@ import { api, type AdminAgent, type ModelOptions, type Skill, type Toolset } fro
 import { AgentProfile } from "./AgentProfile";
 import { AgentMemory, AgentSoul } from "./AgentSoul";
 import { defineMessages, useT } from "@/i18n";
+import { agentSkillsQuery } from "@/lib/queries";
 import { ErrorText, Loading, useAction } from "./ui";
 
 // Tab ids (not displayed: labels come from `messages.tabs`).
@@ -327,15 +328,19 @@ function McpSection({ agentId, isDefault }: { agentId: string; isDefault: boolea
 function SkillsSection({ agentId }: { agentId: string }) {
   const t = useT(messages);
   const qc = useQueryClient();
-  const key = ["hermes", "skills", agentId];
+  const query = agentSkillsQuery(agentId);
+  const key = query.queryKey;
   const [filter, setFilter] = useState("");
   const [action, setAction] = useState<string | null>(null);
-  const { data: skills, isPending, error } = useQuery({ queryKey: key, queryFn: () => api<Skill[]>(`/admin/hermes/agents/${agentId}/skills`) });
+  const { data: skills, isPending, error } = useQuery(query);
   const toggle = useMutation({
     mutationFn: ({ name, enabled }: { name: string; enabled: boolean }) =>
       api(`/admin/hermes/agents/${agentId}/skills/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify({ enabled }) }),
     onMutate: ({ name, enabled }) => qc.setQueryData<Skill[]>(key, (xs) => xs?.map((s) => (s.name === name ? { ...s, enabled } : s))),
-    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: key });
+      qc.invalidateQueries({ queryKey: ["commands"] });
+    },
   });
   const remove = useMutation({
     mutationFn: (name: string) => api<{ name?: string }>(`/admin/hermes/agents/${agentId}/skills/${encodeURIComponent(name)}`, { method: "DELETE" }),
@@ -344,6 +349,7 @@ function SkillsSection({ agentId }: { agentId: string }) {
   useAction(action, () => {
     setAction(null);
     qc.invalidateQueries({ queryKey: key });
+    qc.invalidateQueries({ queryKey: ["commands"] });
   });
 
   const list = (skills ?? []).filter((s) => `${s.name} ${s.description} ${s.category ?? ""}`.toLowerCase().includes(filter.toLowerCase()));

@@ -34,6 +34,7 @@ import {
   pluginIndexQuery,
   pluginsQuery,
   skillsShQuery,
+  useSkillOwners,
   type Item,
 } from "./data";
 import { Installed } from "./Installed";
@@ -159,15 +160,16 @@ function useMarket(query: string) {
   const registry = useQuery({ ...mcpRegistryQuery(q), enabled: q.length > 1 });
   const skillsSh = useQuery({ ...skillsShQuery(q.length > 1 ? q : ""), placeholderData: (prev) => prev });
   const index = useQuery({ ...pluginIndexQuery(q), enabled: q.length > 1 });
+  const { owners, installed: installedSkills } = useSkillOwners();
 
   return useMemo(() => {
     const types = new Map((servers.data?.servers ?? []).map((s) => [s.name, s.type]));
     const mcp = (catalog.data?.entries ?? []).map((e) => fromMcp(e, types.get(e.name)));
-    const skills = (official.data?.skills ?? []).map(fromSkill);
-    const sh = (skillsSh.data?.skills ?? []).map(fromSkill);
+    const skills = (official.data?.skills ?? []).map((s) => fromSkill(s, owners));
+    const sh = (skillsSh.data?.skills ?? []).map((s) => fromSkill(s, owners));
     const installedMcp = new Set((servers.data?.servers ?? []).map((s) => s.name));
     const reg = q ? (registry.data?.servers ?? []).filter((r) => !mcp.some((m) => m.name === r.hermesName)).map((r) => fromRegistry(r, installedMcp, types.get(r.hermesName))) : [];
-    const hubSkills = (hub.data?.results ?? []).map(fromSkill).filter((s) => !skills.some((o) => o.key === s.key) && !sh.some((o) => o.key === s.key));
+    const hubSkills = (hub.data?.results ?? []).map((s) => fromSkill(s, owners)).filter((s) => !skills.some((o) => o.key === s.key) && !sh.some((o) => o.key === s.key));
     const plugin = (plugins.data ?? []).map(fromPlugin);
     const indexPlugins = (index.data?.results ?? []).map(fromPluginIndex).filter((p) => !plugin.some((x) => x.name === p.name));
     const filter = <T extends { name: string; description: string }>(xs: T[]) => (q ? xs.filter((x) => matches(x, q)) : xs);
@@ -178,13 +180,13 @@ function useMarket(query: string) {
       skill: q ? [...filter(skills), ...hubSkills] : skills,
       skillsSh: sh,
       plugin: q ? [...filter(plugin), ...indexPlugins] : plugin,
-      installedCount: mcp.filter((m) => m.installed).length + plugin.filter((p) => p.installed).length,
+      installedCount: mcp.filter((m) => m.installed).length + plugin.filter((p) => p.installed).length + installedSkills.length,
       // Sections still waiting for their first load: shown as skeletons.
       pending: { mcp: catalog.isPending, skill: official.isPending, skillsSh: skillsSh.isPending, plugin: plugins.isPending } as Partial<Record<Section, boolean>>,
       searching: hub.isFetching || skillsSh.isFetching || registry.isFetching || index.isFetching,
       error: catalog.error ?? plugins.error ?? official.error ?? skillsSh.error,
     };
-  }, [agents.data, catalog.data, plugins.data, official.data, hub.data, skillsSh.data, servers.data, registry.data, index.data, q, catalog.isPending, plugins.isPending, official.isPending, skillsSh.isPending, hub.isFetching, skillsSh.isFetching, registry.isFetching, index.isFetching, catalog.error, plugins.error, official.error, skillsSh.error]);
+  }, [owners, installedSkills, agents.data, catalog.data, plugins.data, official.data, hub.data, skillsSh.data, servers.data, registry.data, index.data, q, catalog.isPending, plugins.isPending, official.isPending, skillsSh.isPending, hub.isFetching, skillsSh.isFetching, registry.isFetching, index.isFetching, catalog.error, plugins.error, official.error, skillsSh.error]);
 }
 
 function useDebounced<T>(value: T, ms: number) {
@@ -375,7 +377,12 @@ function Row({ item, onAdd, wide }: { item: Item; onAdd: () => void; wide?: bool
         </div>
         <p className="truncate text-sm text-muted-foreground">{item.description}</p>
       </div>
-      {item.installed ? (
+      {item.installed && item.kind === "skill" ? (
+        // Skills are per bot: the sheet shows which ones have it and adds it to others.
+        <Button variant="ghost" size="sm" className="px-3.5 text-sm text-muted-foreground" onClick={onAdd}>
+          {t.added}
+        </Button>
+      ) : item.installed ? (
         <span className="inline-flex h-8 shrink-0 items-center gap-1 px-3 text-sm text-muted-foreground">
           <CheckIcon className="size-4" /> {item.kind === "plugin" ? t.enabled : t.added}
         </span>

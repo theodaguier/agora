@@ -142,7 +142,7 @@ function InstalledCard({ tools, onDone }: { tools: number; onDone: () => void })
       <CardContent className="px-5">
         <p className="text-[15px]">{t.installed(tools)}</p>
       </CardContent>
-      <CardFooter className="border-t-0 bg-transparent px-5 py-0">
+      <CardFooter className="border-t-0 bg-transparent px-5 pt-0 pb-5">
         <Button onClick={onDone}>{t.done}</Button>
       </CardFooter>
     </Card>

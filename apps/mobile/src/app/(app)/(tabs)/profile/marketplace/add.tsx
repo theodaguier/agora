@@ -12,6 +12,7 @@ import { AgentTargets } from "@/components/marketplace/agent-targets";
 import { IntegrationTypeSection } from "@/components/marketplace/integration-type";
 import { ItemTile } from "@/components/marketplace/item-row";
 import { RestartBanner } from "@/components/marketplace/restart-banner";
+import { useSkillOwners } from "@/components/marketplace/use-market";
 import { ToggleRow } from "@/components/profile/settings";
 import { adminAgentsQuery } from "@/lib/agents-admin";
 import { api } from "@/lib/api";
@@ -107,6 +108,7 @@ function AddItem({ item }: { item: Item }) {
   const { data: agents = [] } = useQuery(adminAgentsQuery);
   const agentName = new Map(agents.map((a) => [a.id, a.name]));
   const [targets, setTargets] = useState<string[]>([]);
+  const { owners } = useSkillOwners();
   const [progress, setProgress] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<string | null>(null);
   const env = item.kind === "mcp" ? item.entry.required_env.map(envName) : [];
@@ -169,6 +171,8 @@ function AddItem({ item }: { item: Item }) {
     onSettled: () => {
       setProgress(null);
       qc.invalidateQueries({ queryKey: ["hermes"] });
+      // The "/" menu lists the bots' skills and connectors.
+      qc.invalidateQueries({ queryKey: ["commands"] });
     },
   });
 
@@ -320,6 +324,7 @@ function AddItem({ item }: { item: Item }) {
               value={targets}
               onChange={setTargets}
               withoutDefault={isMcp}
+              installed={item.kind === "skill" ? owners.get(item.name) : undefined}
             />
           )}
 

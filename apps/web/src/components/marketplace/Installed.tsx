@@ -9,7 +9,7 @@ import { SkillCreateDialog } from "@/components/SkillCreateDialog";
 import { api, type McpRequest, type SkillRequest } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
-import { mcpServersQuery, pluginsQuery } from "./data";
+import { mcpServersQuery, pluginsQuery, useSkillOwners } from "./data";
 import { IntegrationTile, IntegrationTypeMenu } from "./IntegrationType";
 import type { IntegrationType } from "@agora/core";
 
@@ -30,7 +30,9 @@ const messages = defineMessages({
     removeAction: "Remove",
     plugins: "Active plugins",
     noPlugins: "No plugins enabled.",
-    skillsHint: "Skills are installed per agent: find them in Administration › Agents › Skills.",
+    skills: "Skills",
+    noSkills: "No skills added from the marketplace.",
+    skillsHint: "Skills are installed per agent: enable or remove them in Administration › Agents › Skills.",
   },
   fr: {
     title: "Installés",
@@ -48,7 +50,9 @@ const messages = defineMessages({
     removeAction: "Retirer",
     plugins: "Plugins actifs",
     noPlugins: "Aucun plugin activé.",
-    skillsHint: "Les skills s'installent par agent : retrouve-les dans Administration › Agents › Skills.",
+    skills: "Skills",
+    noSkills: "Aucun skill ajouté depuis le marketplace.",
+    skillsHint: "Les skills s'installent par agent : active-les ou retire-les dans Administration › Agents › Skills.",
   },
 });
 
@@ -59,6 +63,7 @@ export function Installed() {
   const flagRestart = useRestartNeeded();
   const servers = useQuery(mcpServersQuery);
   const plugins = useQuery(pluginsQuery);
+  const skills = useSkillOwners();
   const requests = useQuery({ queryKey: ["mcp-requests"], queryFn: () => api<McpRequest[]>("/mcp-requests") });
   const pending = (requests.data ?? []).filter((r) => r.status === "pending");
   const skillRequests = useQuery({ queryKey: ["skill-requests"], queryFn: () => api<SkillRequest[]>("/skill-requests") });
@@ -215,6 +220,21 @@ export function Installed() {
         ))}
       </div>
 
+      <h2 className="mb-2 text-[15px] font-medium">{t.skills}</h2>
+      {skills.pending && <Loading />}
+      {!skills.pending && skills.installed.length === 0 && <p className="mb-2 text-sm text-muted-foreground">{t.noSkills}</p>}
+      <div className="mb-2 flex flex-col">
+        {skills.installed.map((s) => (
+          <div key={s.name} className="flex items-center gap-3.5 border-b border-border/50 py-3 last:border-0">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent font-semibold">{s.name.charAt(0).toUpperCase()}</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[15px]">{s.name}</div>
+              <div className="truncate text-sm text-muted-foreground">{s.description}</div>
+            </div>
+            <span className="max-w-[40%] shrink-0 truncate text-sm text-muted-foreground">{s.agents.map((a) => a.name).join(", ")}</span>
+          </div>
+        ))}
+      </div>
       <p className="text-sm text-muted-foreground">{t.skillsHint}</p>
     </>
   );
