@@ -11,7 +11,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import { TotpInput } from "@/components/TotpInput";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { authClient } from "@/lib/auth";
-import { orgQuery, useOrgTitle } from "@/lib/org";
+import { orgQuery, useOrgName } from "@/lib/org";
 import { useQuery } from "@tanstack/react-query";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -162,7 +162,8 @@ export function TwoFactorDialog({ step, onStep, onClose }: { step: TwoFactorStep
 function PasswordStep({ intent, onNext, onDone }: { intent: Intent; onNext: (s: TwoFactorStep) => void; onDone: () => void }) {
   const t = useT(messages);
   const c = useT(common);
-  const orgName = useOrgTitle();
+  // Inside the settings dialog: the tab keeps the title of the page underneath.
+  const orgName = useOrgName();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 

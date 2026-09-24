@@ -5,6 +5,7 @@ import { TaskList } from "@/components/TaskList";
 import { WorkingOn } from "@/components/WorkingOn";
 import { Button } from "@/components/ui/button";
 import { defineMessages, useT } from "@/i18n";
+import { useOrgTitle } from "@/lib/org";
 
 const messages = defineMessages({
   en: {
@@ -23,6 +24,7 @@ const messages = defineMessages({
 export function Tasks() {
   const { user } = useRouteContext({ from: "/app" });
   const t = useT(messages);
+  useOrgTitle(t.title);
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <header className="flex h-12 shrink-0 items-center gap-1.5 border-b border-border/60 px-3">

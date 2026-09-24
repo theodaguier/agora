@@ -1,4 +1,4 @@
-import { useAccountLocale, useOrgTitle } from "@/lib/org";
+import { useAccountLocale } from "@/lib/org";
 import type { CSSProperties } from "react";
 import { Outlet, useLocation, useRouteContext } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,6 @@ import { MorningDigest } from "@/components/MorningDigest";
 
 /** Desktop: list + thread side by side. Mobile: the list is the home screen, the thread opens full screen. */
 export function AppShell() {
-  useOrgTitle();
   const atRoot = useLocation({ select: (l) => l.pathname === "/" });
   const { user } = useRouteContext({ from: "/app" });
   useEvents(user.id);

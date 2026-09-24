@@ -17,13 +17,19 @@ export const orgQuery = queryOptions({
   staleTime: 5 * 60_000,
 });
 
-/** Organization name in the browser tab. */
-export function useOrgTitle() {
+/** Organization name, without touching the browser tab. */
+export function useOrgName() {
   const { data } = useQuery(orgQuery);
-  useEffect(() => {
-    if (data?.name) document.title = data.name;
-  }, [data?.name]);
   return data?.name ?? "Agora";
+}
+
+/** Browser tab: the page's name then the organization's ("Design · Acme"), or the organization alone. */
+export function useOrgTitle(page?: string) {
+  const org = useOrgName();
+  useEffect(() => {
+    document.title = page ? `${page} · ${org}` : org;
+  }, [page, org]);
+  return org;
 }
 
 /** First visit in this browser: start in the organization's language. */

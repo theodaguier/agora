@@ -12,6 +12,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { defineMessages, useT } from "@/i18n";
+import { useOrgTitle } from "@/lib/org";
 import { relativeTimeFormat } from "@/lib/intl";
 import { api, type InboxItem, type InboxKind } from "@/lib/api";
 import { dividerLabel } from "@/lib/dates";
@@ -68,6 +69,7 @@ type Filter = "all" | "unread";
 /** Mentions, replies and tasks that concern you, newest first. */
 export function Inbox() {
   const t = useT(messages);
+  useOrgTitle(t.title);
   const qc = useQueryClient();
   const [filter, setFilter] = useState<Filter>("all");
   const { data, isPending } = useQuery(inboxQuery(filter === "unread"));
