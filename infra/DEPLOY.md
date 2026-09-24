@@ -181,6 +181,29 @@ bypasses ufw** for the ports it publishes; only the `web` container publishes
 any (80/443). Never add `ports:` to another service (Postgres, Hermes, updater):
 it would be open to the Internet whatever ufw says.
 
+**Without Cloudflare: CrowdSec.** It bans IPs that scan or brute-force, and
+applies a community blocklist. Caddy writes its access logs as JSON to stdout
+(`Caddyfile`); CrowdSec reads them through the Docker API:
+
+```sh
+curl -fsSL https://install.crowdsec.net | sudo sh
+sudo apt-get install -y crowdsec crowdsec-firewall-bouncer-iptables
+sudo cscli collections install crowdsecurity/caddy crowdsecurity/base-http-scenarios crowdsecurity/http-cve
+printf 'source: docker\ncontainer_name:\n  - agora-web-1\nlabels:\n  type: caddy\n' \
+  | sudo tee /etc/crowdsec/acquis.d/agora-caddy.yaml
+```
+
+In `/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml`, add `DOCKER-USER`
+to `iptables_chains` (next to `INPUT`): Docker's published ports skip `INPUT`,
+bans wouldn't reach them otherwise. Then
+`sudo systemctl restart crowdsec crowdsec-firewall-bouncer`.
+
+**SSH through Tailscale only.** Once `tailscale up` works and you can
+connect through the tailnet IP: `sudo ufw allow in on tailscale0 to any port 22 proto tcp`,
+then `sudo ufw delete allow 22/tcp`. Disable key expiry for the server in the
+Tailscale admin console, or SSH closes on you after 180 days; the host's web
+console (VPS panel) remains the way back in.
+
 **Secrets.** Generate each one with `openssl rand -hex 32`; `infra/.env` is
 kept in mode 600 by `./agora`. Never commit it. If one leaks, change it and
 restart (`./agora up`); `BETTER_AUTH_SECRET` also signs sessions: changing it

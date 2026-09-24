@@ -11,6 +11,13 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# Access logs (JSON on stdout): read by CrowdSec on the host, when installed,
+	# to ban scanners and brute-force attempts (DEPLOY.md, Security).
+	log {
+		output stdout
+		format json
+	}
+
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options nosniff
