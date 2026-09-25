@@ -6,11 +6,13 @@ import { env } from "./env";
 import type { HermesEvent, ModelInfo } from "./hermes";
 import { anthropicModels, newestFirst, type CatalogModel } from "./model-catalog";
 import type { EngineUsage } from "./usage";
-import { claudeEnv } from "./harden";
+import { activeClaudeAccountId, claudeCodeEnv } from "./claude-accounts";
+import { readLines } from "./lines";
 
 /**
- * Claude Code engine: the official `claude -p` binary, signed in on this
- * machine with its owner's Claude (Max) subscription.
+ * Claude Code engine: the official `claude -p` binary, on its owner's Claude
+ * subscription: the machine's login or one of the accounts added in
+ * Settings › Models (claude-accounts.ts).
  *
  * A subscription is personal: the engine is only offered to its owner
  * (CLAUDE_CODE_OWNER_EMAIL), in their private conversations. Other
@@ -20,9 +22,10 @@ export const CLAUDE_CODE_PROVIDER = "claude-code";
 export const CLAUDE_CODE_LABEL = "Claude Code (abonnement personnel)";
 
 const MODELS_TTL = 10 * 60_000;
-let modelsCache: { at: number; models: Promise<ModelInfo[]> } | null = null;
-/** Last list built: served when a refresh fails, so one bad spawn doesn't hide the section. */
-let lastModels: ModelInfo[] | null = null;
+/** Per account (the plan decides the models), "" for the machine's login. */
+const modelsCache = new Map<string, { at: number; models: Promise<ModelInfo[]> }>();
+/** Last list built per account: served when a refresh fails, so one bad spawn doesn't hide the section. */
+const lastModels = new Map<string, ModelInfo[]>();
 /** Claude Code aliases ("opus[1m]", "sonnet"…) and the model each one points to today. */
 let aliases = new Map<string, string>();
 
@@ -31,25 +34,27 @@ let aliases = new Map<string, string>();
  * offers in its `/model` menu (the `initialize` control request, the one the Agent
  * SDK uses), completed with the Anthropic models of the public models.dev registry,
  * which `--model` accepts too. Both lists are fetched, not written here. Cached for
- * a few minutes.
+ * a few minutes, for the active account.
  */
-export function claudeCodeModels(): Promise<ModelInfo[]> {
-  if (!modelsCache || Date.now() - modelsCache.at > MODELS_TTL) {
-    const models = fetchModels().then(
-      (list) => (lastModels = list),
-      (err) => {
-        // Failure: no cache, retry on the next call; meanwhile the last known list, if any.
-        modelsCache = null;
-        if (lastModels) {
-          console.error("claude code: models refresh failed, serving the last list", err);
-          return lastModels;
-        }
-        throw err;
-      },
-    );
-    modelsCache = { at: Date.now(), models };
-  }
-  return modelsCache.models;
+export async function claudeCodeModels(): Promise<ModelInfo[]> {
+  const account = (await activeClaudeAccountId()) ?? "";
+  const cached = modelsCache.get(account);
+  if (cached && Date.now() - cached.at <= MODELS_TTL) return cached.models;
+  const models = fetchModels().then(
+    (list) => (lastModels.set(account, list), list),
+    (err) => {
+      // Failure: no cache, retry on the next call; meanwhile the last known list, if any.
+      modelsCache.delete(account);
+      const last = lastModels.get(account);
+      if (last) {
+        console.error("claude code: models refresh failed, serving the last list", err);
+        return last;
+      }
+      throw err;
+    },
+  );
+  modelsCache.set(account, { at: Date.now(), models });
+  return models;
 }
 
 /** Exact model behind a Claude Code alias stored by an older thread ("opus[1m]" → "claude-opus-5-5[1m]"). */
@@ -99,7 +104,7 @@ async function menuModels(): Promise<MenuModel[]> {
   const cwd = await workspace();
   const proc = Bun.spawn(
     [env.CLAUDE_CODE_BIN, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config"],
-    { cwd, env: claudeEnv(), stdin: "pipe", stdout: "pipe", stderr: "ignore" },
+    { cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "ignore" },
   );
   const timer = setTimeout(() => proc.kill(), 30_000);
   try {
@@ -194,7 +199,7 @@ export async function* claudeCodeChat(opts: {
     ...[...new Set(opts.readDirs ?? [])].flatMap((d) => ["--add-dir", d]),
   ];
 
-  const proc = Bun.spawn(args, { cwd, env: claudeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn(args, { cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   const abort = () => proc.kill();
   opts.signal?.addEventListener("abort", abort, { once: true });
 
@@ -269,19 +274,4 @@ function resultUsage(result: ClaudeResult, model: string): EngineUsage[] {
       costUsd: result.total_cost_usd ?? 0,
     },
   ];
-}
-
-async function* readLines(stream: ReadableStream<Uint8Array>) {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  for await (const chunk of stream) {
-    buffer += decoder.decode(chunk, { stream: true });
-    let end: number;
-    while ((end = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, end).trim();
-      buffer = buffer.slice(end + 1);
-      if (line) yield line;
-    }
-  }
-  if (buffer.trim()) yield buffer.trim();
 }

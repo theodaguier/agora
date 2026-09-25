@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { CLAUDE_CODE_PROVIDER, claudeCodeModels } from "./claude-code";
+import { CODEX_PROVIDER, codexModels } from "./codex";
 import { db, schema } from "./db";
 import { modelOptions, type ModelOptions } from "./hermes";
 
 const { modelBlock } = schema;
 
-/** Models blocked for this employee (`provider::model`, Claude Code's included). */
+/** Models blocked for this employee (`provider::model`, Claude Code's and Codex's included). */
 export async function blockedModels(userId: string) {
   const rows = await db.select({ model: modelBlock.model }).from(modelBlock).where(eq(modelBlock.userId, userId));
   return new Set(rows.map((r) => r.model));
@@ -29,6 +30,12 @@ export async function allowedModelOptions(profile: string, userId: string) {
 export async function allowedClaudeCodeModels(userId: string) {
   const [models, blocked] = await Promise.all([claudeCodeModels(), blockedModels(userId)]);
   return models.filter((m) => !blocked.has(`${CLAUDE_CODE_PROVIDER}::${m.id}`));
+}
+
+/** Codex models this employee is allowed to use (the caller checks they own the subscription). */
+export async function allowedCodexModels(userId: string) {
+  const [models, blocked] = await Promise.all([codexModels(), blockedModels(userId)]);
+  return models.filter((m) => !blocked.has(`${CODEX_PROVIDER}::${m.id}`));
 }
 
 /**

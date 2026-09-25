@@ -38,5 +38,6 @@ const names: Record<string, string> = {
   xai: "xAI",
   nous: "Nous Research",
   "claude-code": "Claude Code",
+  codex: "Codex",
 };
 export const providerName = (provider: string) => names[provider.toLowerCase()] ?? provider;

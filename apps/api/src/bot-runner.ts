@@ -8,9 +8,10 @@ import { publishToAll, publishToConversation } from "./events";
 import { excerpt, findHandoffs, formatGroupContext, isNoReply, MAX_RELAYS, newChain, NO_REPLY, withQuote, type Chain, type ImplicitCall, type Quoting } from "./group";
 import { dirname, join } from "node:path";
 import { CLAUDE_CODE_PROVIDER, claudeCodeChat, canUseClaudeCode, isClaudeCodeModel, resolveClaudeCodeModel } from "./claude-code";
+import { CODEX_PROVIDER, canUseCodex, codexChat, isCodexModel } from "./codex";
 import { answerApproval, chat, profileHome, type HermesApproval } from "./hermes";
 import { blockedModels, resolveHermesModel } from "./models";
-import { attributeSession, recordClaudeCodeUsage, syncHermesUsage } from "./usage";
+import { attributeSession, recordEngineUsage, syncHermesUsage } from "./usage";
 import { agentAuthor, listMessages, postEvent, postMessage, unseenMessages, type MessageDto } from "./messages";
 import { connectorsPrompt, createRequest, MCP_REQUEST_PROMPT } from "./mcp-requests";
 import { onboardingPrompt, parseReply, writeSoul } from "./onboarding";
@@ -209,7 +210,7 @@ async function runCompaction(turn: Turn, actor: { id: string; name: string }) {
     failed = !turn.controller.signal.aborted;
     if (failed) console.error("bot-runner: compaction", err);
   }
-  if (!engine.useClaude) await syncHermesUsage(bot.hermesProfile).catch((err) => console.error("bot-runner: usage sync", err));
+  if (engine.kind === "hermes") await syncHermesUsage(bot.hermesProfile).catch((err) => console.error("bot-runner: usage sync", err));
   await publishToConversation(conversationId, { type: "bot.done", conversationId, turnId: turn.turnId, messageId: null });
   if (turn.controller.signal.aborted) return;
   summary = summary.trim();
@@ -224,11 +225,14 @@ async function runCompaction(turn: Turn, actor: { id: string; name: string }) {
   await postEvent(conversationId, { type: "session.compacted", actor: actor.name });
 }
 
-type Engine = { useClaude: boolean; model: string | null };
+/** Hermes, or one of the owner's subscription CLIs (Claude Code, Codex). */
+type Engine = { kind: "hermes" | "claude-code" | "codex"; model: string | null };
+
+const isSubscriptionModel = (model: string | null) => isClaudeCodeModel(model) || isCodexModel(model);
 
 /**
- * Claude Code if the subscription owner chose it for their private conversation,
- * Hermes otherwise. Null when none of the Hermes models is allowed for the employee.
+ * Claude Code or Codex if their subscription owner chose it and started the turn, Hermes otherwise.
+ * Null when none of the Hermes models is allowed for the employee.
  */
 async function pickEngine(
   bot: typeof agent.$inferSelect,
@@ -236,22 +240,19 @@ async function pickEngine(
   requester: typeof user.$inferSelect | null,
   requestedBy: string | null,
 ): Promise<Engine | null> {
-  const useClaude =
-    isClaudeCodeModel(model) &&
-    !bot.onboarding &&
-    canUseClaudeCode(requester ?? undefined) &&
-    // A Claude Code model the admin blocked for the owner: back to Hermes, like a blocked Hermes model.
-    !(
-      requester &&
-      (await blockedModels(requester.id).catch(() => new Set<string>())).has(`${CLAUDE_CODE_PROVIDER}::${resolveClaudeCodeModel(model!.split("::")[1]!)}`)
-    );
-  if (useClaude) return { useClaude, model };
+  const kind = isClaudeCodeModel(model) ? "claude-code" : isCodexModel(model) ? "codex" : null;
+  if (kind && !bot.onboarding && requester && (kind === "claude-code" ? canUseClaudeCode(requester) : canUseCodex(requester))) {
+    const id = model!.split("::")[1]!;
+    const key = kind === "claude-code" ? `${CLAUDE_CODE_PROVIDER}::${resolveClaudeCodeModel(id)}` : `${CODEX_PROVIDER}::${id}`;
+    // A subscription model the admin blocked for the owner: back to Hermes, like a blocked Hermes model.
+    if (!(await blockedModels(requester.id).catch(() => new Set<string>())).has(key)) return { kind, model };
+  }
   // Models the admin forbids for the employee who started the turn: fall back to an allowed model.
-  const hermesModel = await resolveHermesModel(bot.hermesProfile, requestedBy, isClaudeCodeModel(model) ? null : model).catch((err) => {
+  const hermesModel = await resolveHermesModel(bot.hermesProfile, requestedBy, isSubscriptionModel(model) ? null : model).catch((err) => {
     console.error("bot-runner: allowed models", err);
-    return isClaudeCodeModel(model) ? null : model;
+    return isSubscriptionModel(model) ? null : model;
   });
-  return hermesModel === undefined ? null : { useClaude, model: hermesModel };
+  return hermesModel === undefined ? null : { kind: "hermes", model: hermesModel };
 }
 
 function openChat(
@@ -260,27 +261,29 @@ function openChat(
   opts: { sessionId: string; text: string; images?: string[]; system?: string; readDirs?: string[]; requestedBy: string | null; conversationId: string; signal: AbortSignal },
   turn?: Turn,
 ) {
-  return engine.useClaude
-    ? (async function* () {
-        yield* claudeCodeChat({
-          sessionKey: opts.sessionId,
-          text: opts.text,
-          images: opts.images,
-          model: engine.model!.split("::")[1]!,
-          // Outside Hermes, the bot's personality is not injected automatically.
-          system: [await readSoul(bot.hermesProfile), opts.system].filter(Boolean).join("\n\n"),
-          readDirs: opts.readDirs ?? [],
-          signal: opts.signal,
-        });
-      })()
-    : (async function* () {
-        // Tokens Hermes counts from now on in this session belong to this employee.
-        await attributeSession(bot.hermesProfile, opts.sessionId, { userId: opts.requestedBy, agentId: bot.id, conversationId: opts.conversationId }).catch((err) =>
-          console.error("bot-runner: usage attribution", err),
-        );
-        if (turn) turn.profile = bot.hermesProfile;
-        yield* chat({ profile: bot.hermesProfile, sessionId: opts.sessionId, text: opts.text, images: opts.images, model: engine.model, system: opts.system, signal: opts.signal });
-      })();
+  if (engine.kind !== "hermes") {
+    return (async function* () {
+      const common = {
+        sessionKey: opts.sessionId,
+        text: opts.text,
+        images: opts.images,
+        model: engine.model!.split("::")[1]!,
+        // Outside Hermes, the bot's personality is not injected automatically.
+        system: [await readSoul(bot.hermesProfile), opts.system].filter(Boolean).join("\n\n"),
+        signal: opts.signal,
+      };
+      if (engine.kind === "codex") yield* codexChat(common);
+      else yield* claudeCodeChat({ ...common, readDirs: opts.readDirs ?? [] });
+    })();
+  }
+  return (async function* () {
+    // Tokens Hermes counts from now on in this session belong to this employee.
+    await attributeSession(bot.hermesProfile, opts.sessionId, { userId: opts.requestedBy, agentId: bot.id, conversationId: opts.conversationId }).catch((err) =>
+      console.error("bot-runner: usage attribution", err),
+    );
+    if (turn) turn.profile = bot.hermesProfile;
+    yield* chat({ profile: bot.hermesProfile, sessionId: opts.sessionId, text: opts.text, images: opts.images, model: engine.model, system: opts.system, signal: opts.signal });
+  })();
 }
 
 /** Stops a turn, and the exchange between bots it belongs to; only the employee who triggered it may do so. */
@@ -528,9 +531,8 @@ async function runTurn(turn: Turn) {
     await postEvent(conversationId, event);
     return;
   }
-  const useClaude = engine.useClaude;
   if (!bot.onboarding) {
-    const connectors = await connectorsPrompt(bot.hermesProfile, useClaude ? "claude-code" : "hermes").catch((err) => {
+    const connectors = await connectorsPrompt(bot.hermesProfile, engine.kind).catch((err) => {
       console.error("bot-runner: connectors context", err);
       return "";
     });
@@ -556,9 +558,12 @@ async function runTurn(turn: Turn) {
         turn.approval = { id: crypto.randomUUID(), command: ev.approval.command, description: ev.approval.description, choices: ev.approval.choices, hermes: ev.approval };
         await publishToConversation(conversationId, { type: "bot.approval", conversationId, turnId: turn.turnId, approval: publicApproval(turn.approval) });
       } else if (ev.type === "usage") {
-        await recordClaudeCodeUsage(ev.usage, { userId: turn.requestedBy, agentId, conversationId, sessionId }).catch((err) =>
-          console.error("bot-runner: usage", err),
-        );
+        // Only the subscription engines report usage per reply (Hermes' is read from its state.db).
+        if (engine.kind !== "hermes") {
+          await recordEngineUsage(engine.kind, ev.usage, { userId: turn.requestedBy, agentId, conversationId, sessionId }).catch((err) =>
+            console.error("bot-runner: usage", err),
+          );
+        }
       } else if (ev.type === "approval.resolved") {
         if (turn.approval) {
           // Answer came from elsewhere (timeout, another client): record it anyway.
@@ -573,11 +578,11 @@ async function runTurn(turn: Turn) {
     }
   } catch (err) {
     failed = !turn.controller.signal.aborted;
-    if (failed) console.error(useClaude ? "claude code chat failed" : "hermes chat failed", err);
+    if (failed) console.error(`${engine.kind} chat failed`, err);
   }
 
   // Before the next turn in this session, which may be another employee's (group).
-  if (!useClaude) await syncHermesUsage(bot.hermesProfile).catch((err) => console.error("bot-runner: usage sync", err));
+  if (engine.kind === "hermes") await syncHermesUsage(bot.hermesProfile).catch((err) => console.error("bot-runner: usage sync", err));
 
   // Bot removed during the turn: save nothing.
   const [still] = await db

@@ -291,14 +291,19 @@ export type ModelOptions = {
   defaultAllowed: boolean;
   /** Model chosen for this conversation (null = the agent's). */
   selected?: string | null;
-  /** Provider of the chosen model ("claude-code" = Claude Code engine). */
+  /** Provider of the chosen model ("claude-code", "codex": the subscription engines). */
   selectedProvider?: string | null;
-  /** Claude Code engine, offered only to the subscription holder, in private conversations. */
-  claudeCode?: {
-    provider: string;
-    label: string;
-    models: { id: string; reasoning: boolean; label?: string; description?: string }[];
-  } | null;
+  /** Claude Code engine, offered only to the subscription holder. */
+  claudeCode?: SubscriptionModels | null;
+  /** Codex engine, offered only to the subscription holder. */
+  codex?: SubscriptionModels | null;
+};
+
+/** Models of a subscription engine (Claude Code, Codex), under its own heading in the picker. */
+export type SubscriptionModels = {
+  provider: string;
+  label: string;
+  models: { id: string; reasoning: boolean; label?: string; description?: string }[];
 };
 
 export type Toolset = {
