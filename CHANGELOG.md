@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.10.0 — 2026-09-25
+
+### Features
+- connector forms adapt to each field
+
 ## v0.9.0 — 2026-09-25
 
 ### Features
