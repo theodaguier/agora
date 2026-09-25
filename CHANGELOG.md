@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.1 — 2026-09-25
+
+### Fixes
+- coalesce streamed tokens so chats stop hitting React error #185 (#23)
+
 ## v0.8.0 — 2026-09-25
 
 ### Features
