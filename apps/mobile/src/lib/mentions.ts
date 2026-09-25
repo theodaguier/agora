@@ -1,4 +1,5 @@
 import type { AgentSummary, Person } from "./types";
+import { matchAll } from "./utils";
 
 /* apps/web/src/lib/mentions.tsx, the data part (the components are in components/mention*.tsx). */
 
@@ -24,7 +25,7 @@ export function splitMentions(text: string, list: Mentionable[]): MentionSegment
   if (!re) return [text];
   const out: MentionSegment[] = [];
   let last = 0;
-  for (const m of text.matchAll(re)) {
+  for (const m of matchAll(text, re)) {
     const who = list.find((x) => x.name.toLowerCase() === m[1]!.toLowerCase())!;
     if (m.index > last) out.push(text.slice(last, m.index));
     out.push({ name: who.name, color: who.avatar.color, text: m[0], target: who.target });

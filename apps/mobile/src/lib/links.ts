@@ -95,7 +95,7 @@ export function splitEntities(text: string): TextPart[] {
       // Each number is a port; the words around stay text.
       let at = 0;
       const parts: TextPart[] = [];
-      for (const n of found.matchAll(/:?(\d+)/g)) {
+      for (const n of matchAll(found, /:?(\d+)/g)) {
         const port = Number(n[1]);
         if (port > 65535) continue;
         if (n.index > at) parts.push(found.slice(at, n.index));

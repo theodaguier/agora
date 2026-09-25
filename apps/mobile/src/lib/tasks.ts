@@ -3,6 +3,7 @@ import type { Href } from "expo-router";
 import { api } from "./api";
 import { locale } from "./i18n";
 import type { AgentAvatarSpec } from "./types";
+import { matchAll } from "./utils";
 
 /* The tasks API, as apps/web/src/lib/api.ts types it and apps/web/src/lib/queries.ts reads it. */
 
@@ -163,7 +164,7 @@ export function parseTags(text: string, people: Candidate[]) {
 export function splitTags(text: string, people: Candidate[]) {
   const parts: { text: string; tag: boolean }[] = [];
   let last = 0;
-  for (const m of text.matchAll(TAG)) {
+  for (const m of matchAll(text, TAG)) {
     const handle = handleOf(m[2]!);
     if (!people.some((p) => p.username === handle)) continue;
     const start = m.index + m[1]!.length;
