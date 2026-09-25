@@ -20,6 +20,14 @@ const messages = defineMessages({
 /** Words of a reply being written fade in as they arrive instead of popping in by chunks. */
 const streamedWords = { animation: "fadeIn", duration: 180, easing: "var(--ease-out)" };
 
+/**
+ * Stable across renders. Streamdown memoizes on these by reference: a fresh array or object on
+ * every token re-renders every message in the thread, and its code highlighter setStates from an
+ * effect — the path that throws React's minified error #185 on a fast reply.
+ */
+const SHIKI_THEME = ["github-dark", "github-dark"] as ["github-dark", "github-dark"];
+const LINK_SAFETY = { enabled: false };
+
 /** Lists, paragraphs and blocks of a message's markdown, spaced for a bubble. */
 const proseClass = "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_p]:my-0 [&>div>*+*]:mt-2.5";
 
@@ -82,8 +90,8 @@ export function MessageText({
         parseIncompleteMarkdown
         isAnimating={streaming}
         animated={streaming ? streamedWords : undefined}
-        shikiTheme={["github-dark", "github-dark"]}
-        linkSafety={{ enabled: false }}
+        shikiTheme={SHIKI_THEME}
+        linkSafety={LINK_SAFETY}
         remarkPlugins={plain ? [remarkChat] : undefined}
         rehypePlugins={rehypePlugins}
         components={components}
