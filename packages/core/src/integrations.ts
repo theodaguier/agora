@@ -77,8 +77,65 @@ export type MailMessageView = {
 export type TableView = { type: IntegrationType; kind: "table"; title?: string; columns: string[]; rows: (string | number | boolean | null)[][] };
 export type DraftView = { [T in DraftType]: { type: T; kind: "draft"; title?: string; draft: Drafts[T]; confirm?: string } }[DraftType];
 
+export const CHART_TYPES = ["bar", "line", "area", "pie"] as const;
+export type ChartType = (typeof CHART_TYPES)[number];
+/** At most this many series: past it, colors can't be told apart (categorical palette). */
+export const MAX_CHART_SERIES = 5;
+/**
+ * A chart of the data a bot read: one value per label (a day, a page, a source) and per series.
+ * `pie`: the first series only, one slice per label. `stacked`: bars or areas on top of each other.
+ * `unit`: what the values count ("%", "€", "visiteurs"), shown next to them.
+ */
+export type ChartView = {
+  type: IntegrationType;
+  kind: "chart";
+  title?: string;
+  chart: ChartType;
+  labels: string[];
+  series: { name: string; values: (number | null)[] }[];
+  stacked?: boolean;
+  unit?: string;
+};
+
+/**
+ * Colors of a chart's series, in this fixed order (never cycled): the categorical slots of the
+ * data-viz palette, the usage screens' first three included. Dark: the same hues stepped for a dark surface.
+ */
+export const CHART_COLORS = [
+  { light: "#2a78d6", dark: "#3987e5" },
+  { light: "#eb6834", dark: "#d95926" },
+  { light: "#1baf7a", dark: "#199e70" },
+  { light: "#eda100", dark: "#c98500" },
+  { light: "#e87ba4", dark: "#d55181" },
+] as const satisfies { light: string; dark: string }[];
+/** The slice that gathers a pie's smallest ones: a neutral, not a series color. */
+export const CHART_REST_COLOR = { light: "#a3a29d", dark: "#6b6a66" };
+
+/** A pie's slices, largest first; past MAX_CHART_SERIES, the smallest are gathered into one (`rest`). */
+export function pieSlices(view: ChartView, restLabel: string) {
+  const values = view.series[0]?.values ?? [];
+  const slices = view.labels
+    .map((label, i) => ({ label, value: values[i] ?? 0 }))
+    .filter((s) => s.value > 0)
+    .sort((a, b) => b.value - a.value);
+  if (slices.length <= MAX_CHART_SERIES) return slices.map((s, i) => ({ ...s, color: CHART_COLORS[i]!, rest: false }));
+  const kept = slices.slice(0, MAX_CHART_SERIES - 1).map((s, i) => ({ ...s, color: CHART_COLORS[i]!, rest: false }));
+  const rest = slices.slice(MAX_CHART_SERIES - 1).reduce((sum, s) => sum + s.value, 0);
+  return [...kept, { label: restLabel, value: rest, color: CHART_REST_COLOR, rest: true }];
+}
+
+/** A label written as an ISO date ("2026-09-24", "2026-09-24T14:00:00Z") shown as a short date, with its hour if it has one. */
+export function chartLabel(label: string, locale: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(label);
+  if (!m) return label;
+  const at = m[4] && /[zZ]|[+-]\d{2}:?\d{2}$/.test(label) ? new Date(label) : new Date(+m[1]!, +m[2]! - 1, +m[3]!, +(m[4] ?? 0), +(m[5] ?? 0));
+  if (Number.isNaN(at.getTime())) return label;
+  const day = at.toLocaleDateString(locale, { day: "numeric", month: "short" });
+  return m[4] && (at.getHours() || at.getMinutes()) ? `${day} ${at.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}` : day;
+}
+
 /** `source`: the MCP server the data comes from, for its logo. */
-export type ViewBlock = (ListView | MailMessageView | TableView | DraftView) & { source?: string };
+export type ViewBlock = (ListView | MailMessageView | TableView | DraftView | ChartView) & { source?: string };
 
 /**
  * The employee's answer to a draft, sent back to the bot with their (possibly edited) values:

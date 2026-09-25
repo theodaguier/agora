@@ -6,6 +6,7 @@ import { useT } from "@/i18n";
 import { DraftCard } from "./DraftCard";
 import { draftLabel } from "./format";
 import { displayName } from "./format";
+import { ViewChart } from "./ViewChart";
 import { ChatList, CodeList, ContactList, DataTable, EventList, FileList, FinanceList, GenericList, MailList, MailMessage, TaskItems } from "./lists";
 
 /**
@@ -42,6 +43,8 @@ export function ViewCard(props: {
         return <MailMessage view={view} />;
       case "table":
         return <DataTable view={view} />;
+      case "chart":
+        return <ViewChart view={view} />;
       case "list":
         switch (view.type) {
           case "mail":

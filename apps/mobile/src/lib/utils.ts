@@ -19,8 +19,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * `text.matchAll(re)` with its named groups: Hermes returns `groups: null` on matchAll results
- * (not on `exec`), so code reading `m.groups` loops with `exec` instead.
+ * `text.matchAll(re)`, looped with `exec`: Hermes' native matchAll can't be trusted (`groups: null`
+ * on its results, and only the first of several mentions came out as a chip), so every split of a
+ * text in the app goes through this.
  */
 export function* matchAll(text: string, re: RegExp): Generator<RegExpExecArray> {
   const r = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);

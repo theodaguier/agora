@@ -1,4 +1,4 @@
-import { guessIntegrationType, isPastDue, statusTone } from "@agora/core";
+import { guessIntegrationType, isPastDue, pieSlices, statusTone } from "@agora/core";
 import { describe, expect, test } from "bun:test";
 import { mcpRequestSchema } from "./mcp-requests";
 import { parseReply } from "./onboarding";
@@ -43,11 +43,46 @@ describe("view blocks", () => {
     const parsed = parseReply(block({ type: "database", kind: "table", columns: ["id", "name"], rows: [[1, "a"], [2, null]] }));
     expect(parsed.views?.[0]).toMatchObject({ kind: "table", rows: [[1, "a"], [2, null]] });
   });
+  test("a table over the limits is cut, not left as raw JSON", () => {
+    const rows = Array.from({ length: 80 }, (_, i) => [`/page-${i}`, i, { pct: 0.5 }]);
+    const parsed = parseReply(block({ type: "other", kind: "table", source: "posthog-edo", title: "x".repeat(200), columns: ["Page", "Visiteurs", "Détail"], rows }));
+    expect(parsed.text).toBe("");
+    const view = parsed.views?.[0] as { title: string; rows: unknown[][] };
+    expect(view.title).toHaveLength(120);
+    expect(view.rows).toHaveLength(50);
+    expect(view.rows[0]).toEqual(["/page-0", 0, '{"pct":0.5}']);
+  });
+  test("a chart: values aligned on the labels, numbers written as text read, gaps kept", () => {
+    const parsed = parseReply(
+      block({ type: "other", kind: "chart", chart: "line", unit: "%", labels: ["2026-09-01", "2026-09-02", "2026-09-03"], series: [{ name: "Mobile", values: [82, "17,5 %", "?"] }] }),
+    );
+    expect(parsed.text).toBe("");
+    expect(parsed.views?.[0]).toMatchObject({ kind: "chart", chart: "line", unit: "%", series: [{ name: "Mobile", values: [82, 17.5, null] }] });
+  });
+  test("a chart is cut to its limits; a pie keeps one series; an empty or unknown chart stays raw", () => {
+    const series = Array.from({ length: 8 }, (_, i) => ({ name: `S${i}`, values: [i + 1] }));
+    expect((parseReply(block({ type: "other", kind: "chart", chart: "bar", labels: ["a"], series })).views?.[0] as { series: unknown[] }).series).toHaveLength(5);
+    expect((parseReply(block({ type: "other", kind: "chart", chart: "pie", labels: ["a"], series })).views?.[0] as { series: unknown[] }).series).toHaveLength(1);
+    expect(parseReply(block({ type: "other", kind: "chart", chart: "bar", labels: ["a"], series: [{ name: "x", values: [null] }] })).views).toBeUndefined();
+    expect(parseReply(block({ type: "other", kind: "chart", chart: "radar", labels: ["a"], series: [{ name: "x", values: [1] }] })).views).toBeUndefined();
+  });
+  test("pie slices: largest first, the smallest gathered", () => {
+    const view = { type: "other", kind: "chart", chart: "pie", labels: ["a", "b", "c", "d", "e", "f", "g"], series: [{ name: "n", values: [1, 7, 3, 0, 5, 2, 4] }] } as const;
+    const slices = pieSlices(view as never, "Autres");
+    expect(slices.map((s) => [s.label, s.value])).toEqual([["b", 7], ["e", 5], ["g", 4], ["c", 3], ["Autres", 3]]);
+  });
+  test("table rows written as objects are read by column", () => {
+    const parsed = parseReply(block({ type: "other", kind: "table", columns: ["Source", "Sessions"], rows: [{ Source: "Google", Sessions: 14 }] }));
+    expect(parsed.views?.[0]).toMatchObject({ columns: ["Source", "Sessions"], rows: [["Google", 14]] });
+  });
 });
 
 describe("view prompt", () => {
   test("empty without typed connectors", () => {
     expect(viewPrompt([])).toBe("");
+  });
+  test("charts are offered whatever the connectors", () => {
+    expect(viewPrompt(["mail"])).toContain('"kind": "chart"');
   });
   test("only the formats of the connected types", () => {
     const prompt = viewPrompt(["mail"]);

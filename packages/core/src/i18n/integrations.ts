@@ -36,6 +36,8 @@ export const integrations = defineMessages<{
   more: (n: number) => string;
   open: string;
   allDay: string;
+  /** A pie's slice gathering the smallest ones. */
+  chartRest: string;
 }>({
   en: {
     types: {
@@ -82,6 +84,7 @@ export const integrations = defineMessages<{
     more: (n) => `${n} more`,
     open: "Open",
     allDay: "All day",
+    chartRest: "Other",
   },
   fr: {
     types: {
@@ -128,5 +131,6 @@ export const integrations = defineMessages<{
     more: (n) => `${n} de plus`,
     open: "Ouvrir",
     allDay: "Toute la journée",
+    chartRest: "Autres",
   },
 });
