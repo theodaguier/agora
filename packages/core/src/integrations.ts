@@ -77,13 +77,14 @@ export type MailMessageView = {
 export type TableView = { type: IntegrationType; kind: "table"; title?: string; columns: string[]; rows: (string | number | boolean | null)[][] };
 export type DraftView = { [T in DraftType]: { type: T; kind: "draft"; title?: string; draft: Drafts[T]; confirm?: string } }[DraftType];
 
-export const CHART_TYPES = ["bar", "line", "area", "pie"] as const;
+export const CHART_TYPES = ["bar", "line", "area", "pie", "funnel"] as const;
 export type ChartType = (typeof CHART_TYPES)[number];
 /** At most this many series: past it, colors can't be told apart (categorical palette). */
 export const MAX_CHART_SERIES = 5;
 /**
  * A chart of the data a bot read: one value per label (a day, a page, a source) and per series.
- * `pie`: the first series only, one slice per label. `stacked`: bars or areas on top of each other.
+ * `pie`: the first series only, one slice per label. `funnel`: one step per label in order, a series
+ * per segment compared. `stacked`: bars or areas on top of each other.
  * `unit`: what the values count ("%", "€", "visiteurs"), shown next to them.
  */
 export type ChartView = {
@@ -124,6 +125,51 @@ export function pieSlices(view: ChartView, restLabel: string) {
   return [...kept, { label: restLabel, value: rest, color: CHART_REST_COLOR, rest: true }];
 }
 
+/**
+ * A funnel's steps for one of its series (a segment, a period), in order: each one's share of the
+ * first step and of the step before it. `worst`: the step losing the most people on the way from
+ * the one before, the funnel's leak.
+ */
+export function funnelSteps(view: ChartView, series = 0) {
+  const values = view.series[series]?.values ?? [];
+  const first = values[0] ?? 0;
+  const steps = view.labels.map((label, i) => {
+    const value = values[i] ?? 0;
+    const before = i ? (values[i - 1] ?? 0) : null;
+    return { label, value, ofFirst: first ? value / first : 0, kept: before ? value / before : null, worst: false };
+  });
+  const worst = steps.reduce<number | null>((w, s, i) => (s.kept !== null && s.kept < 1 && (w === null || s.kept < steps[w]!.kept!) ? i : w), null);
+  if (worst !== null) steps[worst]!.worst = true;
+  return steps;
+}
+
+/**
+ * Bars read better lying down, one row per label with its name and values written out: a funnel,
+ * or bars whose names are too long to fit under the axis (pages, campaigns, steps).
+ */
+export const barRows = (view: ChartView) =>
+  view.chart === "funnel" || (view.chart === "bar" && !view.stacked && view.labels.length <= 20 && view.labels.some((l) => l.length > 14));
+
+/**
+ * A formatted value with its unit: "82 %" in French, "82%" in English. A unit a bot writes in the
+ * plural drops its s for a single one ("1 personne", "0 erreur" in French, "1 visitor" in English).
+ */
+export function withUnit(formatted: string, unit: string | undefined, locale: string, n?: number) {
+  if (!unit) return formatted;
+  const fr = locale.startsWith("fr");
+  if (unit === "%") return fr ? `${formatted} %` : `${formatted}%`;
+  const one = n !== undefined && (fr ? Math.abs(n) < 2 : Math.abs(n) === 1);
+  return `${formatted} ${one && /^\p{L}{3,}s$/u.test(unit) ? unit.slice(0, -1) : unit}`;
+}
+
+/** A unit short enough to repeat on each tick ("%", "€", "k€"); a longer one ("personnes") is written once, above the scale. */
+export const unitOnTicks = (unit?: string) => !!unit && unit.length <= 2;
+
+/** A key figure (```view``` block, `"kind": "stats"`): a value, its unit, a line saying what it's compared to. */
+export type Stat = { label: string; value: number | string; unit?: string; note?: string };
+export const MAX_STATS = 6;
+export type StatsView = { type: IntegrationType; kind: "stats"; title?: string; stats: Stat[] };
+
 /** A label written as an ISO date ("2026-09-24", "2026-09-24T14:00:00Z") shown as a short date, with its hour if it has one. */
 export function chartLabel(label: string, locale: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(label);
@@ -134,8 +180,11 @@ export function chartLabel(label: string, locale: string) {
   return m[4] && (at.getHours() || at.getMinutes()) ? `${day} ${at.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}` : day;
 }
 
-/** `source`: the MCP server the data comes from, for its logo. */
-export type ViewBlock = (ListView | MailMessageView | TableView | DraftView | ChartView) & { source?: string };
+/**
+ * `source`: the MCP server the data comes from, for its logo. `subtitle`: what the view counts and
+ * over which period ("Personnes ayant atteint chaque étape, du 22 au 25/09"), under its title.
+ */
+export type ViewBlock = (ListView | MailMessageView | TableView | DraftView | ChartView | StatsView) & { source?: string; subtitle?: string };
 
 /**
  * The employee's answer to a draft, sent back to the bot with their (possibly edited) values:

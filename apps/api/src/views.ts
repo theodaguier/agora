@@ -7,7 +7,7 @@
  * A draft is never executed by the app: the employee confirms it (possibly
  * edited) and the bot receives their answer (withViewAction), then acts itself.
  */
-import { CHART_TYPES, DRAFT_TYPES, INTEGRATION_TYPES, MAX_CHART_SERIES, type DraftType, type IntegrationType, type ViewAction, type ViewBlock } from "@agora/core";
+import { CHART_TYPES, DRAFT_TYPES, INTEGRATION_TYPES, MAX_CHART_SERIES, MAX_STATS, type DraftType, type IntegrationType, type ViewAction, type ViewBlock } from "@agora/core";
 import { z } from "zod";
 
 const str = (max = 300) => z.string().trim().max(max);
@@ -62,12 +62,14 @@ const tryJson = (s: string): unknown => {
 function parseView(raw: unknown): ViewBlock | null {
   const view = parseBody(raw);
   if (!view) return null;
-  const source = z.string().trim().regex(/^[\w.-]{1,80}$/).safeParse((raw as Record<string, unknown>).source);
-  return source.success ? { ...view, source: source.data } : view;
+  const r = raw as Record<string, unknown>;
+  const source = z.string().trim().regex(/^[\w.-]{1,80}$/).safeParse(r.source);
+  const subtitle = z.string().trim().min(1).transform((s) => s.slice(0, 160)).safeParse(r.subtitle);
+  return { ...view, ...(source.success && { source: source.data }), ...(subtitle.success && { subtitle: subtitle.data }) };
 }
 
 function parseBody(raw: unknown): ViewBlock | null {
-  const head = z.object({ type: z.enum(INTEGRATION_TYPES), kind: z.enum(["list", "message", "table", "chart", "draft"]) }).safeParse(raw);
+  const head = z.object({ type: z.enum(INTEGRATION_TYPES), kind: z.enum(["list", "message", "table", "chart", "stats", "draft"]) }).safeParse(raw);
   if (!head.success) return null;
   const { type, kind } = head.data;
   const r = raw as Record<string, unknown>;
@@ -101,6 +103,7 @@ function parseBody(raw: unknown): ViewBlock | null {
     return { type, kind, title: parsed.data.title, columns: names, rows };
   }
   if (kind === "chart") return parseChart(type, r);
+  if (kind === "stats") return parseStats(type, r);
   if (!DRAFT_TYPES.includes(type as DraftType)) return null;
   // Some models send the draft as a JSON string rather than an object.
   const draft = typeof r.draft === "string" ? tryJson(r.draft) : r.draft;
@@ -139,9 +142,29 @@ function parseChart(type: IntegrationType, r: Record<string, unknown>): ViewBloc
   return { type, kind: "chart", title: parsed.data.title, chart, labels, series, ...(stacked && { stacked }), ...(unit && { unit }) };
 }
 
+/** Key figures: a number, or a text for what isn't one ("4 min 52"); invalid figures are skipped. */
+function parseStats(type: IntegrationType, r: Record<string, unknown>): ViewBlock | null {
+  const parsed = z.object({ title, stats: z.array(z.unknown()).min(1) }).safeParse(r);
+  if (!parsed.success) return null;
+  const stat = z.object({
+    label: str(80).min(1),
+    value: z.union([z.number().finite(), str(40).min(1)]),
+    unit: z.string().trim().max(20).optional().catch(undefined),
+    note: z.string().trim().max(120).optional().catch(undefined),
+  });
+  const stats = parsed.data.stats.slice(0, MAX_STATS).flatMap((s) => {
+    const one = stat.safeParse(s);
+    if (!one.success) return [];
+    // "82" written as text is a number; "4 min 52" stays text.
+    const value = typeof one.data.value === "string" && /^[\d\s\u202f.,-]+$/.test(one.data.value) ? (valueOf(one.data.value) ?? one.data.value) : one.data.value;
+    return [{ label: one.data.label, value, ...(one.data.unit && { unit: one.data.unit }), ...(one.data.note && { note: one.data.note }) }];
+  });
+  return stats.length ? { type, kind: "stats", title: parsed.data.title, stats } : null;
+}
+
 /** A ```view``` block holds one view or an array of them. */
 export function parseViews(json: unknown): ViewBlock[] {
-  const list = Array.isArray(json) ? json.slice(0, 5) : [json];
+  const list = Array.isArray(json) ? json.slice(0, 6) : [json];
   return list.map(parseView).filter((v): v is ViewBlock => v !== null);
 }
 
@@ -164,12 +187,24 @@ const SHAPES: Record<IntegrationType, string> = {
   other: '`list` : items `{"title", "subtitle", "meta", "url"}` ; `table` : `{"columns": [], "rows": [[]]}`',
 };
 
-/** Any type can be drawn: chart formats are given once, whatever the connectors. */
-const CHART_SHAPE =
-  '- Graphique (tout type, `"kind": "chart"`) : `{"chart": "bar" | "line" | "area" | "pie", "labels": ["…"], "series": [{"name": "…", "values": [12, 8]}], "unit": "…", "stacked": false}`. ' +
-  `Une valeur numérique par label et par série, ${MAX_CHART_SERIES} séries au plus. ` +
-  "`line` ou `area` pour une évolution dans le temps (labels en dates ISO), `bar` pour comparer des éléments (pages, sources), `pie` pour les parts d'un total (une seule série, 6 parts au plus). " +
-  "Un graphique quand la forme des données compte plus que leurs valeurs exactes ; sinon un tableau. Plusieurs vues possibles, dans un tableau JSON.";
+/** Any type can be drawn: chart and figure formats are given once, whatever the connectors. */
+const CHART_SHAPE = [
+  '- Chiffres clés (tout type, `"kind": "stats"`) : `{"title": "…", "subtitle": "…", "stats": [{"label": "Réservations envoyées", "value": 2, "unit": "…", "note": "sur 17 visiteurs"}]}`. ' +
+    `2 à ${MAX_STATS} chiffres, ceux qui répondent à la question ; \`value\` est un nombre, ou un texte court pour une durée ("4 min 52"). \`note\` dit à quoi le chiffre se compare.`,
+  '- Graphique (tout type, `"kind": "chart"`) : `{"title": "…", "subtitle": "…", "chart": "bar" | "line" | "area" | "pie" | "funnel", "labels": ["…"], "series": [{"name": "…", "values": [12, 8]}], "unit": "…", "stacked": false}`. ' +
+    `Une valeur numérique par label et par série, ${MAX_CHART_SERIES} séries au plus. ` +
+    "`line` ou `area` pour une évolution dans le temps (labels en dates ISO), `bar` pour comparer des éléments (pages, sources), `pie` pour les parts d'un total (une seule série, 6 parts au plus), " +
+    "`funnel` pour un tunnel de conversion (les étapes dans l'ordre, des libellés lisibles plutôt que les noms d'événements) : l'app affiche la part restante à chaque étape et la plus grosse perte. " +
+    "Pour comparer des segments (mobile et desktop, parcours manuel et configurateur) ou deux périodes (cette semaine et la précédente), mets-les dans le même graphique, une série chacun sur les mêmes labels, plutôt qu'un graphique par segment ; ça vaut aussi pour `funnel` et `bar`. " +
+    "`unit` : ce que comptent les valeurs, court (\"%\", \"€\", \"personnes\").",
+  "- Pour une analyse, montre plusieurs vues complémentaires, dans un tableau JSON (6 au plus) et dans cet ordre : les chiffres clés, puis un graphique par question (le tunnel, la répartition, l'évolution), puis un tableau pour le détail s'il le faut. " +
+    "Un graphique quand la forme des données compte plus que leurs valeurs exactes ; sinon un tableau.",
+  "- Chaque graphique et chaque bloc de chiffres doit se comprendre seul, sans lire ton texte, par quelqu'un qui ne connaît pas l'outil d'où viennent les données : " +
+    "`title` dit en une phrase courte ce qu'il faut retenir (« 3 personnes sur 4 abandonnent après le choix du parcours »), pas le nom de la mesure ; " +
+    "`subtitle` dit ce qui est compté et sur quelle période (« Personnes ayant atteint chaque étape, du 22 au 25 septembre ») ; " +
+    "les labels et les noms de séries sont en mots de tous les jours (« Réservation envoyée », « Parcours manuel »), jamais des noms d'événements, de colonnes ou de variables (`booking_submitted`, `s1`) ; " +
+    "`unit` est toujours renseignée. Si les données sont trop faibles ou incomplètes pour conclure, dis-le dans le `subtitle`.",
+].join("\n");
 
 /** Instruction added to a bot's context: only the formats of the types it's connected to. */
 export function viewPrompt(types: IntegrationType[]) {

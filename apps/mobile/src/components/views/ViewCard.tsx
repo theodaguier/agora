@@ -1,12 +1,13 @@
 import type { Drafts, DraftType, MailItem, ViewAction, ViewActionKind, ViewBlock } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { Avatar, Card, Chip, useThemeColor } from "heroui-native";
+import { View } from "react-native";
 import { IntegrationIcon } from "@/components/icons";
 import { tr } from "@/lib/i18n";
 import { DraftCard } from "./DraftCard";
 import { draftLabel } from "@/components/views/draft-label";
 import { displayName } from "./format";
-import { ViewChart } from "./ViewChart";
+import { ViewChart, ViewStats } from "./ViewChart";
 import { ChatList, CodeList, ContactList, DataTable, EventList, FileList, FinanceList, GenericList, MailList, MailMessage, TaskItems } from "./lists";
 import { TYPE_COLOR } from "./tone";
 
@@ -14,7 +15,7 @@ import { TYPE_COLOR } from "./tone";
 
 /**
  * A view of connector data shown by a bot (```view``` block): a list, a message,
- * a table or a draft to confirm, rendered by integration type, whatever the provider.
+ * a table, a chart, key figures or a draft to confirm, rendered by integration type, whatever the provider.
  */
 export function ViewCard(props: {
   view: ViewBlock;
@@ -43,6 +44,8 @@ export function ViewCard(props: {
         return <DataTable view={view} />;
       case "chart":
         return <ViewChart view={view} />;
+      case "stats":
+        return <ViewStats view={view} />;
       case "list":
         switch (view.type) {
           case "mail":
@@ -75,9 +78,11 @@ export function ViewCard(props: {
             <IntegrationIcon type={view.type} size={20} color={ink} />
           </Avatar.Fallback>
         </Avatar>
-        <Card.Title numberOfLines={1} className="min-w-0 flex-1">
-          {view.title || t.types[view.type]}
-        </Card.Title>
+        {/* A chart's title is its conclusion, a sentence: it wraps rather than being cut. */}
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Card.Title numberOfLines={view.kind === "chart" || view.kind === "stats" ? 3 : 1}>{view.title || t.types[view.type]}</Card.Title>
+          {!!view.subtitle && <Card.Description>{view.subtitle}</Card.Description>}
+        </View>
         {count != null && count > 0 && (
           <Chip size="sm" variant="soft" color="default">
             <Chip.Label>{count}</Chip.Label>

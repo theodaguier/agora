@@ -247,7 +247,14 @@ export function updateCli(id: string) {
   const job: Job = { startedAt: new Date().toISOString() };
   jobs.set(id, job);
   run(cmd, 10 * 60_000)
-    .then(({ code, out }) => Object.assign(job, { ok: code === 0, output: out.slice(-4000) }))
+    .then(async ({ code, out }) => {
+      // `claude update` installs into $HOME and exits 0 even when the binary Agora runs is elsewhere (read-only mount).
+      const version = code === 0 ? await installedVersion(spec, found) : undefined;
+      const latest = code === 0 ? await latestVersion(spec) : null;
+      const stale = !!version && !!latest && newer(latest, version);
+      const output = stale ? `${out}\n${found} is still ${version}: the update went to another install.` : out;
+      Object.assign(job, { ok: code === 0 && !stale, output: output.slice(-4000) });
+    })
     .catch((err) => Object.assign(job, { ok: false, output: String(err) }))
     .finally(() => {
       job.endedAt = new Date().toISOString();
