@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.7.1 — 2026-09-25
+
+### Fixes
+- **web**: center the 2FA code boxes
+
 ## v0.7.0 — 2026-09-25
 
 ### Features
