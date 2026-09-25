@@ -20,4 +20,5 @@ export * from "./events";
 export * from "./handles";
 export * from "./availability";
 export * from "./integrations";
+export * from "./mcp-env";
 export * from "./messages";

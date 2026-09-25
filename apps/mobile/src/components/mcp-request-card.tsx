@@ -4,6 +4,7 @@ import { useState } from "react";
 import * as Haptics from "expo-haptics";
 import { Accordion, Alert, Button, Card, Chip, Description, Input, Label, LinkButton, Popover, SkeletonGroup, Spinner, TextField, Typography, useThemeColor, useToast } from "heroui-native";
 import { Linking, View } from "react-native";
+import { ConnectorField } from "@/components/connector-field";
 import { CheckIcon } from "@/components/icons";
 import { IntegrationTile } from "@/components/marketplace/integration-type";
 import { OAuthClientFields } from "@/components/marketplace/oauth-client-fields";
@@ -157,6 +158,7 @@ export function McpRequestCard({ id }: { id: string }) {
 
   // The form's fields: the web reads them from FormData, here they're controlled.
   const [values, setValues] = useState<Record<string, string>>({});
+  const [fileNames, setFileNames] = useState<Record<string, string>>({});
   const [tried, setTried] = useState(false);
   const success = useThemeColor("success-soft-foreground");
 
@@ -310,11 +312,17 @@ export function McpRequestCard({ id }: { id: string }) {
                 </TextField>
               )}
               {req.env.map((v) => (
-                <TextField key={v.name} isRequired={v.required} isInvalid={missing(v.name, v.required)}>
-                  <Label>{v.name}</Label>
-                  <Input value={values[v.name] ?? ""} onChangeText={setValue(v.name)} secureTextEntry={v.secret} {...secretInput} />
-                  {!!v.description && <Description>{v.description}</Description>}
-                </TextField>
+                <ConnectorField
+                  key={v.name}
+                  field={v}
+                  value={values[v.name] ?? ""}
+                  fileName={fileNames[v.name]}
+                  invalid={missing(v.name, v.required)}
+                  onChange={(value, fileName) => {
+                    setValue(v.name)(value);
+                    if (fileName !== undefined) setFileNames((ns) => ({ ...ns, [v.name]: fileName }));
+                  }}
+                />
               ))}
               <Description>{t.secretsNote}</Description>
               <Button isDisabled={busy} onPress={withTap(submit)}>

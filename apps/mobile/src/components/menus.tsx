@@ -272,7 +272,21 @@ type Option<T extends string> = { value: T; label: string };
 const LONG_LIST = 8;
 
 /** A value among several: a HeroUI Select showing the chosen value. */
-export function OptionPicker<T extends string>({ value, options, onChange, label }: { value: T; options: Option<T>[]; onChange: (value: T) => void; label: string }) {
+export function OptionPicker<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  placeholder,
+  className,
+}: {
+  value: T;
+  options: Option<T>[];
+  onChange: (value: T) => void;
+  label: string;
+  placeholder?: string;
+  className?: string;
+}) {
   const selected = options.find((o) => o.value === value);
   const long = options.length > LONG_LIST;
   const insets = usePopoverInsets();
@@ -293,8 +307,8 @@ export function OptionPicker<T extends string>({ value, options, onChange, label
         }
       }}
     >
-      <Select.Trigger accessibilityLabel={label}>
-        <Select.Value placeholder={label} numberOfLines={1} />
+      <Select.Trigger accessibilityLabel={label} className={className}>
+        <Select.Value placeholder={placeholder ?? label} numberOfLines={1} />
         <Select.TriggerIndicator />
       </Select.Trigger>
       <Select.Portal>

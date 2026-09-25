@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, IntegrationType, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
@@ -409,7 +409,7 @@ export const setting = pgTable("setting", {
 
 /** pending → approved → (authorizing →) installed; or rejected. `error` keeps the last failure. */
 export type McpRequestStatus = "pending" | "approved" | "authorizing" | "installed" | "rejected";
-export type McpEnvVar = { name: string; description?: string; required: boolean; secret: boolean };
+export type McpEnvVar = McpEnvField;
 
 /**
  * MCP servers added from the app (requested by a bot, approved by an admin).

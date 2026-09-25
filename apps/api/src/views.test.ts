@@ -1,4 +1,4 @@
-import { guessIntegrationType, isPastDue, pieSlices, statusTone } from "@agora/core";
+import { envFileValue, fileMatchesAccept, guessIntegrationType, isPastDue, mcpEnvAccept, mcpEnvInput, pieSlices, statusTone } from "@agora/core";
 import { describe, expect, test } from "bun:test";
 import { mcpRequestSchema } from "./mcp-requests";
 import { parseReply } from "./onboarding";
@@ -128,6 +128,59 @@ describe("integration types", () => {
     const base = { name: "pennylane", url: "https://mcp.pennylane.com/mcp", auth: "oauth" };
     expect(mcpRequestSchema.safeParse({ ...base, type: "finance" }).data?.type).toBe("finance");
     expect(mcpRequestSchema.safeParse({ ...base, type: "weather" }).success).toBe(false);
+  });
+});
+
+describe("connector fields", () => {
+  const key = {
+    name: "GSC_SERVICE_ACCOUNT_KEY",
+    description: "Contenu complet du fichier JSON de clé du compte de service Google",
+    required: true,
+    secret: true,
+  };
+  const site = {
+    name: "GSC_SITE_URL",
+    description: "Propriété GSC, ex. sc-domain:e-do.studio",
+    required: true,
+    secret: true,
+  };
+
+  test("a JSON key is a file and a site property stays visible", () => {
+    expect(mcpEnvInput(key)).toBe("file");
+    expect(mcpEnvAccept(key)).toBe(".json,application/json");
+    expect(mcpEnvInput(site)).toBe("text");
+  });
+
+  test("a token is masked, a list is a select, an explicit input wins", () => {
+    expect(mcpEnvInput({ name: "API_TOKEN", secret: false })).toBe("secret");
+    expect(mcpEnvInput({ name: "DATABASE_URL", description: "Postgres connection string", secret: true })).toBe("secret");
+    expect(mcpEnvInput({ name: "REGION", secret: false, options: ["eu", "us"] })).toBe("select");
+    expect(mcpEnvInput({ name: "NOTE", secret: true, input: "textarea" })).toBe("textarea");
+  });
+
+  test("the bot declares how each value is entered", () => {
+    const parsed = mcpRequestSchema.safeParse({
+      name: "gsc",
+      command: "npx",
+      env: [
+        { name: "GSC_SERVICE_ACCOUNT_KEY", input: "file", accept: ".json,application/json", secret: true },
+        { name: "GSC_SITE_URL", secret: false },
+        { name: "REGION", input: "select", options: ["eu", "us"], secret: false },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.env[1]?.secret).toBe(false);
+    expect(parsed.data.env[0]?.input).toBe("file");
+    expect(mcpRequestSchema.safeParse({ name: "gsc", command: "npx", env: [{ name: "REGION", input: "select" }] }).success).toBe(false);
+  });
+
+  test("a file matches the declared extensions and types", () => {
+    expect(fileMatchesAccept("key.json", "application/json", ".json,application/json")).toBe(true);
+    expect(fileMatchesAccept("notes.txt", "text/plain", ".json,application/json")).toBe(false);
+    expect(fileMatchesAccept("key.json", "", ".json,application/json")).toBe(true);
+    expect(envFileValue('{\n  "client_email": "a@b.co"\n}\n')).toBe('{"client_email":"a@b.co"}');
+    expect(envFileValue("-----BEGIN KEY-----\nabc\n")).toBe("-----BEGIN KEY-----\nabc");
   });
 });
 

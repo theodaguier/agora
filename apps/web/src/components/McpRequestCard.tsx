@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { ConnectorField } from "@/components/ConnectorField";
 import { Spinner } from "@/components/ui/spinner";
 import { api, type McpRequest } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
@@ -12,7 +13,7 @@ import { IntegrationTile } from "@/components/marketplace/IntegrationType";
 import { useMcpOAuth } from "@/components/marketplace/use-mcp-oauth";
 import { OAuthClientFields } from "@/components/marketplace/OAuthClientFields";
 import { needsOwnClient, oauthClientOf } from "@/lib/oauth-client";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { integrations } from "@agora/core/i18n";
 import type { StatusTone } from "@agora/core";
 import { toneBadge } from "@/components/views/tone";
@@ -113,6 +114,9 @@ export function McpRequestCard({ id }: { id: string }) {
   });
   const oauth = useMcpOAuth();
   const [client, setClient] = useState({ client_id: "", client_secret: "", scope: "" });
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [fileNames, setFileNames] = useState<Record<string, string>>({});
+  const [invalid, setInvalid] = useState<ReadonlySet<string>>(new Set());
   const authorize = useMutation({
     mutationFn: () => {
       const oauth_client = oauthClientOf(client);
@@ -214,37 +218,55 @@ export function McpRequestCard({ id }: { id: string }) {
             </form>
           ) : needsForm ? (
             <form
-              onSubmit={(e) => {
+              onSubmit={(e: FormEvent) => {
                 e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                const env = Object.fromEntries(req.env.map((v) => [v.name, String(f.get(v.name) ?? "")]).filter(([, v]) => v));
-                const bearer = String(f.get("bearer_token") ?? "");
+                const missing = new Set(req.env.filter((v) => v.required && !values[v.name]?.trim()).map((v) => v.name));
+                if (req.auth === "header" && !values.bearer_token?.trim()) missing.add("bearer_token");
+                setInvalid(missing);
+                if (missing.size) return;
+                const env = Object.fromEntries(req.env.map((v) => [v.name, values[v.name] ?? ""]).filter(([, v]) => v));
+                const bearer = values.bearer_token ?? "";
                 install.mutate({ env, ...(bearer && { bearer_token: bearer }) });
               }}
             >
               <FieldGroup className="gap-3">
                 {req.auth === "header" && (
-                  <Field className="gap-1.5">
-                    <FieldLabel htmlFor={`${id}-bearer`}>{t.accessToken}</FieldLabel>
-                    <Input id={`${id}-bearer`} name="bearer_token" type="password" required autoComplete="off" className="bg-background font-mono" />
+                  <Field className="gap-1.5" data-invalid={invalid.has("bearer_token") || undefined}>
+                    <FieldLabel htmlFor={`${id}-bearer`}>
+                      {t.accessToken}
+                      <RequiredMark />
+                    </FieldLabel>
+                    <Input
+                      id={`${id}-bearer`}
+                      type="password"
+                      required
+                      value={values.bearer_token ?? ""}
+                      aria-invalid={invalid.has("bearer_token") || undefined}
+                      autoComplete="off"
+                      onChange={(e) => setValues((vs) => ({ ...vs, bearer_token: e.target.value }))}
+                      className="bg-background font-mono"
+                    />
                   </Field>
                 )}
                 {req.env.map((v) => (
-                  <Field key={v.name} className="gap-1.5">
-                    <FieldLabel htmlFor={`${id}-${v.name}`} className="font-mono text-xs">
-                      {v.name}
-                      {v.required && <RequiredMark />}
-                    </FieldLabel>
-                    <Input
-                      id={`${id}-${v.name}`}
-                      name={v.name}
-                      required={v.required}
-                      type={v.secret ? "password" : "text"}
-                      autoComplete="off"
-                      className="bg-background font-mono"
-                    />
-                    {v.description && <FieldDescription className="text-xs">{v.description}</FieldDescription>}
-                  </Field>
+                  <ConnectorField
+                    key={v.name}
+                    id={`${id}-${v.name}`}
+                    field={v}
+                    value={values[v.name] ?? ""}
+                    fileName={fileNames[v.name]}
+                    invalid={invalid.has(v.name)}
+                    onChange={(value, fileName) => {
+                      setValues((vs) => ({ ...vs, [v.name]: value }));
+                      if (fileName !== undefined) setFileNames((ns) => ({ ...ns, [v.name]: fileName }));
+                      setInvalid((current) => {
+                        if (!current.has(v.name)) return current;
+                        const next = new Set(current);
+                        next.delete(v.name);
+                        return next;
+                      });
+                    }}
+                  />
                 ))}
                 <FieldDescription className="text-xs">{t.secretsNote}</FieldDescription>
                 <div>
