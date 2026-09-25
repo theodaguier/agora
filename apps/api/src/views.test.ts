@@ -1,4 +1,4 @@
-import { guessIntegrationType, isPastDue, pieSlices, statusTone } from "@agora/core";
+import { barRows, funnelSteps, guessIntegrationType, isPastDue, pieSlices, statusTone, withUnit } from "@agora/core";
 import { describe, expect, test } from "bun:test";
 import { mcpRequestSchema } from "./mcp-requests";
 import { parseReply } from "./onboarding";
@@ -11,6 +11,13 @@ describe("view blocks", () => {
     const view = { type: "finance", kind: "list", items: [{ label: "Facture", amount: 12 }] };
     expect(parseReply(block({ ...view, source: "pennylane" })).views![0]?.source).toBe("pennylane");
     expect(parseReply(block({ ...view, source: "<script>" })).views![0]).toEqual({ ...view, title: undefined } as never);
+  });
+
+  test("a subtitle is kept, cut at 160 characters; anything else than text is dropped", () => {
+    const view = { type: "other", kind: "stats", stats: [{ label: "Résas", value: 2 }] };
+    expect(parseReply(block({ ...view, subtitle: "Du 22 au 25 septembre" })).views![0]?.subtitle).toBe("Du 22 au 25 septembre");
+    expect(parseReply(block({ ...view, subtitle: "x".repeat(300) })).views![0]?.subtitle).toHaveLength(160);
+    expect(parseReply(block({ ...view, subtitle: 3 })).views![0]).not.toHaveProperty("subtitle");
   });
 
   test("an inbox is parsed and removed from the text", () => {
@@ -71,6 +78,46 @@ describe("view blocks", () => {
     const slices = pieSlices(view as never, "Autres");
     expect(slices.map((s) => [s.label, s.value])).toEqual([["b", 7], ["e", 5], ["g", 4], ["c", 3], ["Autres", 3]]);
   });
+  test("a funnel: each step's share of the first and of the one before, the biggest loss marked, per series", () => {
+    const series = [{ name: "Manuel", values: [17, 8, 2, 2, 0] }, { name: "Configurateur", values: [10, 9, 6] }];
+    const view = parseReply(block({ type: "other", kind: "chart", chart: "funnel", labels: ["Vue", "Choisi", "Créée", "Envoyée", "Confirmée"], series })).views?.[0];
+    expect(view).toMatchObject({ chart: "funnel", series: [{ values: [17, 8, 2, 2, 0] }, { values: [10, 9, 6, null, null] }] });
+    const steps = funnelSteps(view as never);
+    expect(steps.map((s) => s.kept)).toEqual([null, 8 / 17, 0.25, 1, 0]);
+    expect(steps[1]!.ofFirst).toBeCloseTo(0.47, 2);
+    expect(steps.findIndex((s) => s.worst)).toBe(4);
+    const second = funnelSteps(view as never, 1);
+    expect(second.map((s) => s.value)).toEqual([10, 9, 6, 0, 0]);
+    expect(second.findIndex((s) => s.worst)).toBe(3);
+    expect(barRows(view as never)).toBe(true);
+  });
+  test("a value with its unit: a plural unit agrees with a single one", () => {
+    expect(withUnit("1", "personnes", "fr-FR", 1)).toBe("1 personne");
+    expect(withUnit("0", "personnes", "fr-FR", 0)).toBe("0 personne");
+    expect(withUnit("2", "personnes", "fr-FR", 2)).toBe("2 personnes");
+    expect(withUnit("1", "choix", "fr-FR", 1)).toBe("1 choix");
+    expect(withUnit("0", "visitors", "en-US", 0)).toBe("0 visitors");
+    expect(withUnit("1", "visitors", "en-US", 1)).toBe("1 visitor");
+    expect(withUnit("82", "%", "en-US", 82)).toBe("82%");
+    expect(withUnit("82", "%", "fr-FR", 82)).toBe("82 %");
+  });
+  test("bars lie down when their names are long, unless stacked", () => {
+    const bar = (labels: string[], n = 1) => ({ type: "other", kind: "chart", chart: "bar", labels, series: Array.from({ length: n }, () => ({ name: "n", values: labels.map(() => 1) })) }) as never;
+    expect(barRows(bar(["/fr/reserver/confirmation", "/fr"]))).toBe(true);
+    expect(barRows(bar(["Lun", "Mar"]))).toBe(false);
+    expect(barRows(bar(["/fr/reserver/confirmation", "/fr"], 2))).toBe(true);
+    expect(barRows({ ...(bar(["/fr/reserver/confirmation", "/fr"], 2) as object), stacked: true } as never)).toBe(false);
+  });
+  test("key figures: numbers read, durations kept as text, invalid figures skipped", () => {
+    const stats = [{ label: "Résas", value: "2", note: "sur 17" }, { label: "Temps médian", value: "4 min 52" }, { label: "", value: 3 }, { label: "Taux", value: 12, unit: "%" }];
+    expect(parseReply(block({ type: "other", kind: "stats", stats })).views?.[0]).toEqual({
+      type: "other",
+      kind: "stats",
+      title: undefined,
+      stats: [{ label: "Résas", value: 2, note: "sur 17" }, { label: "Temps médian", value: "4 min 52" }, { label: "Taux", value: 12, unit: "%" }],
+    });
+    expect(parseReply(block({ type: "other", kind: "stats", stats: [{ label: "x" }] })).views).toBeUndefined();
+  });
   test("table rows written as objects are read by column", () => {
     const parsed = parseReply(block({ type: "other", kind: "table", columns: ["Source", "Sessions"], rows: [{ Source: "Google", Sessions: 14 }] }));
     expect(parsed.views?.[0]).toMatchObject({ columns: ["Source", "Sessions"], rows: [["Google", 14]] });
@@ -83,6 +130,7 @@ describe("view prompt", () => {
   });
   test("charts are offered whatever the connectors", () => {
     expect(viewPrompt(["mail"])).toContain('"kind": "chart"');
+    expect(viewPrompt(["mail"])).toContain('"kind": "stats"');
   });
   test("only the formats of the connected types", () => {
     const prompt = viewPrompt(["mail"]);
@@ -130,6 +178,7 @@ describe("integration types", () => {
     expect(mcpRequestSchema.safeParse({ ...base, type: "weather" }).success).toBe(false);
   });
 });
+
 
 describe("status tones", () => {
   test("free-text statuses, French or English", () => {

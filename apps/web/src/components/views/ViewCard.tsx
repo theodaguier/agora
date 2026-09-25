@@ -3,15 +3,16 @@ import { integrations } from "@agora/core/i18n";
 import { IntegrationTile } from "@/components/marketplace/IntegrationType";
 import { Badge } from "@/components/ui/badge";
 import { useT } from "@/i18n";
+import { cn } from "@/lib/utils";
 import { DraftCard } from "./DraftCard";
 import { draftLabel } from "./format";
 import { displayName } from "./format";
-import { ViewChart } from "./ViewChart";
+import { ViewChart, ViewStats } from "./ViewChart";
 import { ChatList, CodeList, ContactList, DataTable, EventList, FileList, FinanceList, GenericList, MailList, MailMessage, TaskItems } from "./lists";
 
 /**
  * A view of connector data shown by a bot (```view``` block): a list, a message,
- * a table or a draft to confirm, rendered by integration type, whatever the provider.
+ * a table, a chart, key figures or a draft to confirm, rendered by integration type, whatever the provider.
  */
 export function ViewCard(props: {
   view: ViewBlock;
@@ -45,6 +46,8 @@ export function ViewCard(props: {
         return <DataTable view={view} />;
       case "chart":
         return <ViewChart view={view} />;
+      case "stats":
+        return <ViewStats view={view} />;
       case "list":
         switch (view.type) {
           case "mail":
@@ -72,8 +75,14 @@ export function ViewCard(props: {
   return (
     <section className="w-full max-w-[min(680px,88%)] rounded-2xl bg-secondary p-2.5">
       <header className="mb-1.5 flex items-center gap-2.5 px-1">
-        <IntegrationTile type={view.type} server={view.source} className="size-8 rounded-lg [&_svg]:size-4" />
-        <h3 className="min-w-0 flex-1 truncate text-[15px] font-medium">{view.title || t.types[view.type]}</h3>
+        <IntegrationTile type={view.type} server={view.source} className="size-8 shrink-0 rounded-lg [&_svg]:size-4" />
+        {/* A chart's title is its conclusion, a sentence: it wraps rather than being cut. */}
+        <div className="min-w-0 flex-1">
+          <h3 className={cn("text-[15px] font-medium text-pretty", view.kind === "chart" || view.kind === "stats" ? "line-clamp-2" : "truncate")}>
+            {view.title || t.types[view.type]}
+          </h3>
+          {view.subtitle && <p className="text-xs text-pretty text-muted-foreground">{view.subtitle}</p>}
+        </div>
         {count != null && count > 0 && (
           <Badge variant="secondary" className="bg-accent font-normal tabular-nums text-muted-foreground">
             {count}
