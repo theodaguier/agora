@@ -22,7 +22,7 @@ export function TotpInput({ id, invalid, className }: { id: string; invalid: boo
       autoComplete="one-time-code"
       autoFocus
       required
-      containerClassName="gap-2"
+      containerClassName="justify-center gap-2"
       onComplete={() => input.current?.form?.requestSubmit()}
     >
       <InputOTPGroup>{[0, 1, 2].map(slot)}</InputOTPGroup>
