@@ -38,6 +38,12 @@ export const integrations = defineMessages<{
   allDay: string;
   /** A pie's slice gathering the smallest ones. */
   chartRest: string;
+  /** Between two steps of a funnel: how many stopped there ("6 personnes"), and their share of the step before. */
+  funnelLost: (count: string, share: string) => string;
+  /** Between two steps of a funnel, when nobody stopped. */
+  funnelNone: string;
+  /** A funnel step's share of the first one. */
+  ofStart: (share: string) => string;
 }>({
   en: {
     types: {
@@ -85,6 +91,9 @@ export const integrations = defineMessages<{
     open: "Open",
     allDay: "All day",
     chartRest: "Other",
+    funnelLost: (count, share) => `Drop-off: ${count} (${share})`,
+    funnelNone: "No drop-off",
+    ofStart: (share) => `${share} of start`,
   },
   fr: {
     types: {
@@ -132,5 +141,8 @@ export const integrations = defineMessages<{
     open: "Ouvrir",
     allDay: "Toute la journée",
     chartRest: "Autres",
+    funnelLost: (count, share) => `Abandons : ${count} (${share})`,
+    funnelNone: "Aucun abandon",
+    ofStart: (share) => `${share} du départ`,
   },
 });

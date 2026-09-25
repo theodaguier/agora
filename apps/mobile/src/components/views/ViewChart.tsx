@@ -1,10 +1,10 @@
-import { CHART_COLORS, chartLabel, pieSlices, type ChartView } from "@agora/core";
+import { barRows, CHART_COLORS, chartLabel, funnelSteps, pieSlices, unitOnTicks, withUnit as unitValue, type ChartView, type StatsView } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import * as Haptics from "expo-haptics";
-import { PressableFeedback, Typography, useThemeColor } from "heroui-native";
+import { PressableFeedback, Surface, Typography, useThemeColor } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
-import Svg, { Circle, G, Line, Path } from "react-native-svg";
+import Svg, { Circle, G, Line, Path, Text as SvgText } from "react-native-svg";
 import { useUniwind } from "uniwind";
 import { locale, tr } from "@/lib/i18n";
 import { numberFormat } from "@/lib/intl";
@@ -25,9 +25,10 @@ const SCALE = "w-12";
 const compact = numberFormat(locale, { notation: "compact", maximumFractionDigits: 1 });
 const exact = numberFormat(locale, { maximumFractionDigits: 2 });
 const percent = numberFormat(locale, { style: "percent", maximumFractionDigits: 1 });
+const whole = numberFormat(locale, { style: "percent", maximumFractionDigits: 0 });
 
-/** "82 %" in French, "82%" in English. */
-const withUnit = (s: string, unit?: string) => (!unit ? s : unit === "%" && locale !== "fr" ? `${s}%` : `${s} ${unit}`);
+/** "82 %" in French, "82%" in English, "1 personne" (core's withUnit). */
+const withUnit = (s: string, unit?: string, n?: number) => unitValue(s, unit, locale, n);
 const label = (l: string) => chartLabel(l, locale);
 
 /** A bar with its top corners rounded (4px, the data end), anchored on the baseline. */
@@ -47,17 +48,21 @@ function Swatch({ color }: { color: string }) {
 export function ViewChart({ view }: { view: ChartView }) {
   const dark = useUniwind().theme === "dark";
   if (view.chart === "pie") return <PieView view={view} dark={dark} />;
+  if (barRows(view)) return <BarRows view={view} dark={dark} />;
   return <CartesianView view={view} dark={dark} />;
 }
 
 function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
-  const [grid, surface] = useThemeColor(["separator", "surface"]);
+  const [grid, surface, ink] = useThemeColor(["separator", "surface", "foreground"]);
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const colors = view.series.map((_, i) => CHART_COLORS[i]![dark ? "dark" : "light"]);
   const n = view.labels.length;
   const stacked = !!view.stacked && view.chart !== "line";
-  const bottom = HEIGHT + PAD;
+  // With a few bars of a single series, each one's value is written above it, a 0 included (the web's).
+  const values = view.chart === "bar" && view.series.length === 1 && n <= 12;
+  const top = values ? 18 : PAD;
+  const bottom = HEIGHT + top;
 
   // Stacked: each series sits on the ones before it.
   const tops = view.labels.map((_, j) => {
@@ -65,7 +70,7 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
     return view.series.map((s) => (stacked ? (sum += s.values[j] ?? 0) : (s.values[j] ?? 0)));
   });
   const max = Math.max(0, ...tops.flat()) || 1;
-  const y = (v: number) => PAD + (1 - v / max) * HEIGHT;
+  const y = (v: number) => top + (1 - v / max) * HEIGHT;
   const step = width / Math.max(n, 1);
   const x = (j: number) => step * j + step / 2;
   const dim = (j: number) => (selected === null || selected === j ? 1 : 0.4);
@@ -94,6 +99,15 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
       }),
     );
   };
+
+  const labels = () =>
+    view.series[0]!.values.map((v, j) =>
+      v == null ? null : (
+        <SvgText key={j} x={x(j)} y={y(Math.max(v, 0)) - 6} fontSize={11} fill={ink} textAnchor="middle" opacity={dim(j)}>
+          {compact.format(v)}
+        </SvgText>
+      ),
+    );
 
   // Lines and areas: a gap in the data breaks the line.
   const lines = () =>
@@ -131,7 +145,7 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
           label(view.labels[shown]!),
           ...view.series.flatMap((s) => {
             const v = s.values[shown];
-            return v == null ? [] : [`${view.series.length > 1 ? `${s.name} ` : ""}${withUnit(exact.format(v), view.unit)}`];
+            return v == null ? [] : [`${view.series.length > 1 ? `${s.name} ` : ""}${withUnit(exact.format(v), view.unit, v)}`];
           }),
         ].join(" · ");
   const ticks = new Set([0, Math.floor((n - 1) / 2), n - 1]);
@@ -153,11 +167,17 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
       <Typography.Paragraph type="body-sm" color="muted" className="tabular-nums" numberOfLines={2}>
         {detail}
       </Typography.Paragraph>
+      {/* A long unit is written once, above the scale, rather than cut on its tick. */}
+      {!!view.unit && !unitOnTicks(view.unit) && (
+        <Typography.Paragraph type="body-xs" color="muted" numberOfLines={1}>
+          {view.unit}
+        </Typography.Paragraph>
+      )}
       <View className="flex-row gap-2">
         {/* The scale: its top and its baseline. */}
-        <View className={cn(SCALE, "justify-between")} style={{ height: bottom }}>
+        <View className={cn(SCALE, "justify-between")} style={{ height: bottom, paddingTop: top - PAD }}>
           <Typography.Paragraph type="body-xs" color="muted" className="tabular-nums" numberOfLines={1}>
-            {withUnit(compact.format(max), view.unit)}
+            {unitOnTicks(view.unit) ? withUnit(compact.format(max), view.unit, max) : compact.format(max)}
           </Typography.Paragraph>
           <Typography.Paragraph type="body-xs" color="muted" className="tabular-nums" numberOfLines={1}>
             0
@@ -178,11 +198,12 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
         >
           {width > 0 && (
             <Svg width={width} height={bottom} pointerEvents="none">
-              {[PAD, PAD + HEIGHT / 2, bottom].map((gy) => (
+              {[top, top + HEIGHT / 2, bottom].map((gy) => (
                 <Line key={gy} x1={0} x2={width} y1={gy} y2={gy} stroke={grid} strokeWidth={1} />
               ))}
-              {shown !== null && view.chart !== "bar" && <Line x1={x(shown)} x2={x(shown)} y1={PAD} y2={bottom} stroke={grid} strokeWidth={1} />}
+              {shown !== null && view.chart !== "bar" && <Line x1={x(shown)} x2={x(shown)} y1={top} y2={bottom} stroke={grid} strokeWidth={1} />}
               {view.chart === "bar" ? bars() : lines()}
+              {values && labels()}
             </Svg>
           )}
         </PressableFeedback>
@@ -245,11 +266,122 @@ function PieView({ view, dark }: { view: ChartView; dark: boolean }) {
               {s.label}
             </Typography.Paragraph>
             <Typography.Paragraph type="body-sm" color="muted" className="tabular-nums">
-              {percent.format(total ? s.value / total : 0)}
+              {`${withUnit(exact.format(s.value), view.unit, s.value)} · ${percent.format(total ? s.value / total : 0)}`}
             </Typography.Paragraph>
           </View>
         ))}
       </View>
+    </View>
+  );
+}
+
+/**
+ * Bars lying down, one row per label with its name and values written out (barRows): a funnel, where
+ * each step also says its share of the first one and how many went on from the one before (the
+ * biggest loss in red), or bars with long names. Several series: a bar each, under the name. The web's BarRows.
+ */
+function BarRows({ view, dark }: { view: ChartView; dark: boolean }) {
+  const t = tr(integrations);
+  const funnel = view.chart === "funnel";
+  const several = view.series.length > 1;
+  const series = view.series.map((s, i) => ({
+    name: s.name,
+    color: CHART_COLORS[i]![dark ? "dark" : "light"],
+    steps: funnel ? funnelSteps(view, i) : view.labels.map((l, j) => ({ label: l, value: s.values[j] ?? 0, ofFirst: 0, kept: null as number | null, worst: false })),
+  }));
+  const max = Math.max(0, ...series.flatMap((s) => s.steps.map((st) => st.value))) || 1;
+  const figure = (st: (typeof series)[number]["steps"][number], j: number, type: "body-sm" | "body-xs") => (
+    <Typography.Paragraph type={type} className="tabular-nums">
+      {withUnit(exact.format(st.value), view.unit, st.value)}
+      {funnel && j > 0 && (
+        <Typography.Paragraph type={type} color="muted">
+          {` · ${t.ofStart(whole.format(st.ofFirst))}`}
+        </Typography.Paragraph>
+      )}
+    </Typography.Paragraph>
+  );
+  const bar = (s: (typeof series)[number], j: number) => (
+    <Surface variant="tertiary" className="h-2 flex-1 overflow-hidden rounded-full p-0">
+      <View className="h-full rounded-full" style={{ width: `${(s.steps[j]!.value / max) * 100}%`, backgroundColor: s.color }} />
+    </Surface>
+  );
+  return (
+    <View className="gap-3">
+      {several && (
+        <View className="flex-row flex-wrap gap-x-3 gap-y-1">
+          {series.map((s, i) => (
+            <View key={i} className="flex-row items-center gap-1.5">
+              <Swatch color={s.color} />
+              <Typography.Paragraph type="body-xs" color="muted" numberOfLines={1}>
+                {s.name}
+              </Typography.Paragraph>
+            </View>
+          ))}
+        </View>
+      )}
+      <View className="gap-4">
+        {view.labels.map((l, j) => (
+          <View key={j} className="gap-1">
+            {funnel && j > 0 && (
+              <View className="flex-row flex-wrap gap-x-3">
+                {series.map((s, i) => {
+                  const st = s.steps[j]!;
+                  const before = s.steps[j - 1]!.value;
+                  const lost = Math.max(0, before - st.value);
+                  return st.kept === null ? null : (
+                    <View key={i} className="flex-row items-center gap-1.5">
+                      {several && <Swatch color={s.color} />}
+                      <Typography.Paragraph type="body-xs" color="muted" className={cn(st.worst && "font-medium text-danger")}>
+                        {lost ? t.funnelLost(withUnit(exact.format(lost), view.unit, lost), whole.format(lost / before)) : t.funnelNone}
+                      </Typography.Paragraph>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+            <View className="flex-row items-baseline gap-3">
+              <Typography.Paragraph type="body-sm" numberOfLines={1} className="min-w-0 flex-1">
+                {label(l)}
+              </Typography.Paragraph>
+              {!several && figure(series[0]!.steps[j]!, j, "body-sm")}
+            </View>
+            {several ? (
+              series.map((s, i) => (
+                // The figures above the bar, not beside it: the bars keep the full width, so they compare.
+                <View key={i} className="gap-1">
+                  {figure(s.steps[j]!, j, "body-xs")}
+                  <View className="flex-row">{bar(s, j)}</View>
+                </View>
+              ))
+            ) : (
+              <View className="flex-row">{bar(series[0]!, j)}</View>
+            )}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** Key figures shown by a bot (```view``` block, `"kind": "stats"`): two a row. The web's ViewStats. */
+export function ViewStats({ view }: { view: StatsView }) {
+  return (
+    <View className="flex-row flex-wrap gap-2">
+      {view.stats.map((s, i) => (
+        <Surface key={i} variant="secondary" className="min-w-[45%] flex-1 gap-1 p-3">
+          <Typography.Paragraph type="body-xs" color="muted" numberOfLines={2}>
+            {s.label}
+          </Typography.Paragraph>
+          <Typography.Heading type="h3" className="tabular-nums" numberOfLines={1} adjustsFontSizeToFit>
+            {typeof s.value === "number" ? withUnit(exact.format(s.value), s.unit, s.value) : withUnit(s.value, s.unit)}
+          </Typography.Heading>
+          {!!s.note && (
+            <Typography.Paragraph type="body-xs" color="muted">
+              {s.note}
+            </Typography.Paragraph>
+          )}
+        </Surface>
+      ))}
     </View>
   );
 }
