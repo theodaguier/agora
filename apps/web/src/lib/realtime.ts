@@ -42,6 +42,50 @@ function updateTurns(conversationId: string, fn: (turns: ActiveTurn[]) => Active
   set({ ...state, turns: { ...state.turns, [conversationId]: fn(state.turns[conversationId] ?? EMPTY_TURNS) } });
 }
 
+/**
+ * Token bursts are coalesced. Each one is a synchronous store update, and Streamdown's code
+ * highlighter calls setState from an effect inside that same commit. React counts those as nested
+ * updates and throws minified error #185 once fifty of them pile up before the next macrotask.
+ */
+const DELTA_MS = 50;
+type PendingDelta = { conversationId: string; turnId: string; text: string; timer: ReturnType<typeof setTimeout> };
+const pendingDeltas = new Map<string, PendingDelta>();
+const deltaKey = (conversationId: string, turnId: string) => `${conversationId}\0${turnId}`;
+
+function appendTurnText(conversationId: string, turnId: string, text: string) {
+  if (!text) return;
+  updateTurns(conversationId, (ts) => ts.map((t) => (t.turnId === turnId ? { ...t, text: t.text + text } : t)));
+}
+
+function flushDelta(key: string) {
+  const pending = pendingDeltas.get(key);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingDeltas.delete(key);
+  appendTurnText(pending.conversationId, pending.turnId, pending.text);
+}
+
+/** Paints the first token immediately, then at most one update per DELTA_MS for the burst that follows. */
+function queueDelta(conversationId: string, turnId: string, text: string) {
+  const key = deltaKey(conversationId, turnId);
+  const pending = pendingDeltas.get(key);
+  if (pending) {
+    pending.text += text;
+    return;
+  }
+  appendTurnText(conversationId, turnId, text);
+  pendingDeltas.set(key, { conversationId, turnId, text: "", timer: setTimeout(() => flushDelta(key), DELTA_MS) });
+}
+
+function flushTurn(conversationId: string, turnId: string) {
+  flushDelta(deltaKey(conversationId, turnId));
+}
+
+function dropDeltas() {
+  for (const pending of pendingDeltas.values()) clearTimeout(pending.timer);
+  pendingDeltas.clear();
+}
+
 function updateTyping(conversationId: string, fn: (typing: Typing[]) => Typing[]) {
   set({ ...state, typing: { ...state.typing, [conversationId]: fn(state.typing[conversationId] ?? EMPTY_TYPING) } });
 }
@@ -138,16 +182,19 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       );
       return;
     case "bot.delta":
-      updateTurns(cid, (ts) => ts.map((t) => (t.turnId === ev.turnId ? { ...t, text: t.text + ev.text } : t)));
+      queueDelta(cid, ev.turnId, ev.text);
       return;
     case "bot.tool":
+      flushTurn(cid, ev.turnId);
       updateTurns(cid, (ts) => ts.map((t) => (t.turnId === ev.turnId ? { ...t, tools: [...t.tools, { name: ev.name, status: ev.status }] } : t)));
       return;
     case "bot.approval":
+      flushTurn(cid, ev.turnId);
       updateTurns(cid, (ts) => ts.map((t) => (t.turnId === ev.turnId ? { ...t, approval: ev.approval } : t)));
       return;
     case "bot.done":
     case "bot.error":
+      flushTurn(cid, ev.turnId);
       finished.add(ev.turnId);
       updateTurns(cid, (ts) => ts.filter((t) => t.turnId !== ev.turnId));
       // The reply was lost on the way (a refetch that left before it overwrote it): fetch it.
@@ -210,6 +257,7 @@ export function useEvents(me: string) {
         lastEvent = Date.now();
         attempt = 0;
         if (connectedOnce) {
+          dropDeltas();
           set({ turns: {}, typing: {} });
           qc.invalidateQueries({ queryKey: ["conversations"] });
           qc.invalidateQueries({ queryKey: ["conversation"] });
@@ -259,6 +307,7 @@ export function useEvents(me: string) {
       window.removeEventListener("online", wake);
       document.removeEventListener("visibilitychange", wake);
       drop();
+      dropDeltas();
     };
   }, [qc, me]);
 }
