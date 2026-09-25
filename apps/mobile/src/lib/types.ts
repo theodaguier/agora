@@ -107,7 +107,7 @@ export type McpRequest = {
   transport: "remote" | "stdio";
   url: string | null;
   command: string | null;
-  env: { name: string; description?: string; required: boolean; secret: boolean }[];
+  env: import("@agora/core").McpEnvField[];
   auth: "none" | "header" | "oauth";
   docsUrl: string | null;
   status: "pending" | "approved" | "authorizing" | "installed" | "rejected";

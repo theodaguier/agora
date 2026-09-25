@@ -7,7 +7,7 @@
  * OAuth from the conversation. Hermes only receives a copy of the declaration,
  * and secrets go straight into its .env without touching the database.
  */
-import { guessIntegrationType, INTEGRATION_TYPES, type IntegrationType } from "@agora/core";
+import { guessIntegrationType, INTEGRATION_TYPES, MCP_ENV_INPUTS, type IntegrationType } from "@agora/core";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "./db";
@@ -55,7 +55,22 @@ export const mcpRequestSchema = z
     command: z.string().regex(/^[\w.-]{1,40}$/).optional(),
     args: z.array(z.string().max(500)).max(30).default([]),
     env: z
-      .array(z.object({ name: envName, description: z.string().max(300).optional(), required: z.boolean().default(true), secret: z.boolean().default(true) }))
+      .array(
+        z
+          .object({
+            name: envName,
+            description: z.string().max(300).optional(),
+            required: z.boolean().default(true),
+            secret: z.boolean().default(false),
+            input: z.enum(MCP_ENV_INPUTS).optional(),
+            options: z.array(z.string().trim().min(1).max(200)).max(40).optional(),
+            accept: z.string().max(120).optional(),
+            placeholder: z.string().max(120).optional(),
+          })
+          .superRefine((row, ctx) => {
+            if (row.input === "select" && !row.options?.length) ctx.addIssue({ code: "custom", message: "select needs options", path: ["options"] });
+          }),
+      )
       .max(20)
       .default([]),
     auth: z.enum(["none", "header", "oauth"]).default("none"),
@@ -77,7 +92,12 @@ export const MCP_REQUEST_PROMPT = [
   "```",
   "- Serveur distant : `url` (https) et `auth` = `oauth` (connexion via le navigateur), `header` (jeton Bearer) ou `none`.",
   "- OAuth : la plupart des serveurs MCP enregistrent l'app d'eux-mêmes. Si la documentation exige de créer soi-même une application OAuth (Client ID / secret), dis-le dans `description` avec le lien vers la page où la créer : la fiche propose de saisir ce client.",
-  '- Serveur local : `command` (ex. `npx`), `args` (ex. `["-y", "paquet@version"]`) et `env` : `[{"name": "API_KEY", "description": "…", "required": true, "secret": true}]`.',
+  "- Serveur local : `command` (ex. `npx`), `args` (ex. `[\"-y\", \"paquet@version\"]`) et `env`. Chaque entrée dit comment la saisir :",
+  '  `{"name":"API_TOKEN","description":"…","required":true,"secret":true}` masque la saisie ;',
+  '  `{"name":"SERVICE_ACCOUNT_KEY","description":"Fichier JSON du compte de service","required":true,"secret":true,"input":"file","accept":".json,application/json"}` propose un fichier, dont le contenu devient la valeur ;',
+  '  `{"name":"SITE_URL","description":"Propriété, ex. sc-domain:exemple.com","required":true,"secret":false}` reste un texte visible ;',
+  '  `{"name":"REGION","input":"select","options":["eu","us"],"required":true,"secret":false}` est une liste ; `textarea` sert au texte long.',
+  "  `input` vaut `text` (défaut), `secret`, `textarea`, `file` ou `select`. `secret: true` seulement pour un jeton, un mot de passe ou une clé : une URL, un e-mail ou un identifiant public reste visible.",
   "- Préfère le serveur officiel de l'éditeur, distant de préférence, à un paquet communautaire ; dis dans `description` d'où il vient.",
   `- \`type\` : ce à quoi le connecteur donne accès, parmi ${INTEGRATION_TYPES.map((t) => `\`${t}\``).join(", ")}.`,
   "- `name` : minuscules, chiffres et tirets. Ne demande JAMAIS de clé ou de jeton dans la conversation : l'app affiche un formulaire au salarié.",

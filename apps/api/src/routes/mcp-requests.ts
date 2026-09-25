@@ -1,3 +1,4 @@
+import { MCP_ENV_VALUE_MAX } from "@agora/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { HermesError } from "../hermes-admin";
@@ -58,7 +59,7 @@ export const mcpRequests = new Hono<AppEnv>()
     if (!(await getRequest(id, c.get("user"))).canConnect) throw new HermesError(tr(errors).notAllowed, 403);
     const body = z
       .object({
-        env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(4000)).default({}),
+        env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(MCP_ENV_VALUE_MAX)).default({}),
         bearer_token: z.string().min(1).max(4000).optional(),
         /** Client registered by hand with the provider (no dynamic registration). */
         oauth_client: z
