@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.0 — 2026-09-25
+
+### Features
+- toasts for loading and for the outcome of actions
+- bots can answer with charts; oversized tables no longer show as raw JSON
+
+### Fixes
+- **mobile**: every mention of a message shows as a chip
+
 ## v0.6.3 — 2026-09-24
 
 ### Fixes
