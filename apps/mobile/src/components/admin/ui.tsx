@@ -30,8 +30,8 @@ import { rowKey } from "@/lib/utils";
 /* apps/web/src/components/admin/ui.tsx, as iOS grouped settings built from the HeroUI Native parts. */
 
 const messages = defineMessages({
-  en: { show: "Show", hide: "Hide", help: "More information", deleted: "Deleted." },
-  fr: { show: "Afficher", hide: "Masquer", help: "En savoir plus", deleted: "Supprimé." },
+  en: { show: "Show", hide: "Hide", help: "More information" },
+  fr: { show: "Afficher", hide: "Masquer", help: "En savoir plus" },
 });
 
 /** "i" in a circle, in the house icon style: the trigger of a help popover. */
@@ -291,7 +291,7 @@ export function useAdminToast() {
   return useMemo(
     () => ({
       success: (label?: string, description?: string) => (haptic.success(), toast.show({ variant: "success", label: label ?? tr(common).saved, description })),
-      deleted: (label?: string) => (haptic.success(), toast.show({ variant: "success", label: label ?? messages.deleted })),
+      deleted: (label?: string) => (haptic.success(), toast.show({ variant: "success", label: label ?? tr(common).deleted })),
       info: (label: string, description?: string) => toast.show({ variant: "default", label, description }),
       failed: (error: unknown, label?: string) =>
         toast.show({ variant: "danger", label: label ?? errorMessage(error), description: label ? errorMessage(error) : undefined }),

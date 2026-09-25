@@ -88,6 +88,7 @@ export function NewChat() {
       await qc.invalidateQueries({ queryKey: agentsQuery.queryKey });
       await goTo(conversationId);
     },
+    meta: { loading: c.creating },
   });
 
   const openDirect = useMutation({
@@ -107,6 +108,7 @@ export function NewChat() {
         }),
       }),
     onSuccess: ({ id }) => goTo(id),
+    meta: { loading: c.creating },
   });
 
   const query = q.trim().toLowerCase();
@@ -167,7 +169,6 @@ export function NewChat() {
       ];
   const current = rows.some((r) => r.key === selected) ? selected : (rows[0]?.key ?? "");
   const canCreate = picked.length >= 2 && !createGroup.isPending;
-  const error = createBot.error ?? openDirect.error ?? createGroup.error;
 
   return (
     <Command
@@ -276,11 +277,6 @@ export function NewChat() {
             ))}
           </CommandGroup>
         </CommandList>
-        {error && (
-          <p role="alert" className="mt-2 text-[13px] text-destructive">
-            {error.message}
-          </p>
-        )}
       </div>
     </Command>
   );

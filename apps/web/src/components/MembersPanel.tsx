@@ -32,6 +32,7 @@ const messages = defineMessages({
     creator: "Created the group",
     leave: "Leave group",
     actionFailed: "Couldn't do that.",
+    left: (title: string) => `You left “${title}”.`,
     remove: (name: string) => `Remove ${name}`,
     openProfile: (name: string) => `See ${name}'s profile and tasks`,
     addToGroup: "Add to group…",
@@ -60,6 +61,7 @@ const messages = defineMessages({
     creator: "A créé le groupe",
     leave: "Quitter le groupe",
     actionFailed: "Action impossible.",
+    left: (title: string) => `Tu as quitté « ${title} ».`,
     remove: (name: string) => `Retirer ${name}`,
     openProfile: (name: string) => `Voir le profil et les tâches de ${name}`,
     addToGroup: "Ajouter au groupe…",
@@ -85,6 +87,7 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
   const qc = useQueryClient();
   const navigate = useNavigate();
   const t = useT(messages);
+  const c = useT(common);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(conv.title ?? "");
   const canRemove = conv.createdBy === user.id || user.role === "admin";
@@ -101,6 +104,7 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
       setEditing(false);
       return refresh();
     },
+    meta: { success: c.saved, error: t.actionFailed },
   });
 
   // Escape unmounts the input, which can still fire blur: don't save then.
@@ -126,6 +130,10 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
         return;
       }
       await refresh();
+    },
+    meta: {
+      success: (_: unknown, m: { kind: "user" | "agent"; id: string }) => (m.kind === "user" && m.id === user.id ? t.left(conv.title || t.untitled) : c.removed),
+      error: t.actionFailed,
     },
   });
 
@@ -172,7 +180,6 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
             <span className="min-w-0 flex-1 truncate text-[15px] font-medium leading-normal">{conv.title || t.untitled}</span>
           </Button>
         )}
-        {rename.error && <p role="alert" className="mt-1 px-1 text-[13px] text-destructive">{t.actionFailed}</p>}
 
         <div className="mb-2 mt-5 flex items-center justify-between">
           <h2 className="text-[13px] font-medium text-muted-foreground">{t.members(conv.members.length + conv.agents.length)}</h2>
@@ -227,7 +234,6 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
         >
           {t.leave}
         </Button>
-        {remove.error && <p role="alert" className="mt-1 text-[13px] text-destructive">{t.actionFailed}</p>}
       </div>
     </aside>
   );
@@ -306,6 +312,7 @@ function AddMembers({ conversation: conv }: { conversation: ConversationDetail }
         qc.invalidateQueries({ queryKey: conversationQuery(conv.id).queryKey }),
         qc.invalidateQueries({ queryKey: conversationsQuery.queryKey }),
       ]),
+    meta: { success: c.added, error: t.addFailed },
   });
   const pending = add.isPending ? (add.variables.agentIds[0] ?? add.variables.userIds[0]) : null;
 
@@ -355,11 +362,6 @@ function AddMembers({ conversation: conv }: { conversation: ConversationDetail }
               </CommandGroup>
             )}
           </CommandList>
-          {add.error && (
-            <p role="alert" className="px-2.5 pb-1 pt-2 text-[13px] text-destructive">
-              {t.addFailed}
-            </p>
-          )}
         </Command>
       </PopoverContent>
     </Popover>

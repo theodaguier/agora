@@ -118,7 +118,6 @@ function RoutineItem({ conversationId, routine, onMention }: { conversationId: s
             {routine.enabled ? t.next(dividerLabel(new Date(routine.nextRunAt!))) : t.paused}
           </ItemDescription>
         )}
-        {toggle.error && <p className="text-[13px] text-destructive">{toggle.error.message || t.failed}</p>}
       </ItemContent>
       <ItemActions>
         <RoutineActions conversationId={conversationId} routine={routine} toggle={toggle} onMention={onMention} />

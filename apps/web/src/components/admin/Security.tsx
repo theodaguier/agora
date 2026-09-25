@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useId } from "react";
-import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
+import { common } from "@agora/core/i18n";
 import { defineMessages, useT } from "@/i18n";
 
 const messages = defineMessages({
@@ -29,6 +30,7 @@ const messages = defineMessages({
 /** Settings › Security (admin): two-step verification required for every account (middleware.ts of the API). */
 export function RequireTwoFactor() {
   const t = useT(messages);
+  const c = useT(common);
   const id = useId();
   const qc = useQueryClient();
   const { user } = useRouteContext({ from: "/app" });
@@ -40,6 +42,7 @@ export function RequireTwoFactor() {
       qc.invalidateQueries({ queryKey: ["admin", "org"] });
       qc.invalidateQueries({ queryKey: ["org"] });
     },
+    meta: { success: c.saved },
   });
   if (!data) return null;
 
@@ -48,7 +51,6 @@ export function RequireTwoFactor() {
       <FieldContent>
         <FieldLabel htmlFor={id}>{t.require}</FieldLabel>
         <FieldDescription>{ownEnabled ? t.requireHelp : t.ownFirst}</FieldDescription>
-        {save.error && <FieldError>{save.error.message}</FieldError>}
       </FieldContent>
       <Switch
         id={id}

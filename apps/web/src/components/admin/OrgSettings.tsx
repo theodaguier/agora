@@ -3,7 +3,7 @@ import { languageOptions } from "@/lib/languages";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FormLabel } from "@/components/FormLabel";
-import { Field, FieldDescription, FieldError } from "@/components/ui/field";
+import { Field, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { OptionSelect, SearchSelect } from "@/components/Pickers";
 import { AvatarField, type AvatarChange } from "@/components/ProfileFields";
@@ -68,6 +68,7 @@ export function OrgSettings() {
       qc.invalidateQueries({ queryKey: ["org"] });
       qc.invalidateQueries({ queryKey: ["setup"] });
     },
+    meta: { success: c.saved, error: t.saveFailed },
   });
   if (!form) return null;
   const dirty = JSON.stringify(form) !== JSON.stringify(data) || logo !== undefined;
@@ -120,8 +121,6 @@ export function OrgSettings() {
         <Button type="submit" disabled={!dirty || !form.name.trim() || save.isPending}>
           {save.isPending ? c.saving : c.save}
         </Button>
-        {save.isSuccess && !dirty && <FieldDescription>{c.saved}</FieldDescription>}
-        {save.error && <FieldError>{save.error instanceof Error ? save.error.message : t.saveFailed}</FieldError>}
       </Field>
     </form>
   );

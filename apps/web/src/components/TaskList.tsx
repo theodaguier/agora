@@ -183,12 +183,14 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
   const setStatus = useMutation({
     mutationFn: (status: TaskStatus) => api<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
     onSettled: refresh,
+    meta: { error: t.failed },
   });
   const setPriority = useMutation({
     mutationFn: (priority: TaskPriority) => api<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ priority }) }),
     onSettled: refresh,
+    meta: { error: t.failed },
   });
-  const remove = useMutation({ mutationFn: () => api(`/tasks/${task.id}`, { method: "DELETE" }), onSettled: refresh });
+  const remove = useMutation({ mutationFn: () => api(`/tasks/${task.id}`, { method: "DELETE" }), onSettled: refresh, meta: { success: c.deleted } });
 
   const done = task.status === "done";
   const from = task.assignedBy
@@ -237,7 +239,6 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
             <span className="truncate">{meta}</span>
           </p>
         )}
-        {(setStatus.error || setPriority.error || remove.error) && <p className="text-[13px] text-destructive">{t.failed}</p>}
       </ItemContent>
       <ItemActions className="gap-1">
         <Participants task={task} />
@@ -311,6 +312,7 @@ function Participants({ task }: { task: Task }) {
   const save = useMutation({
     mutationFn: (assigneeIds: string[]) => api<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ assigneeIds }) }),
     onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    meta: { error: t.failed },
   });
   const toggle = (id: string) => {
     const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];

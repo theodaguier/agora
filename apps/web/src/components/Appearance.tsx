@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext, useRouter } from "@tanstack/react-router";
-import { ErrorText } from "@/components/admin/ui";
 import { OptionSelect } from "@/components/Pickers";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -82,7 +81,6 @@ function AccountLanguage() {
       <FieldContent>
         <FieldLabel htmlFor="user-locale">{t.label}</FieldLabel>
         <FieldDescription>{t.help}</FieldDescription>
-        <ErrorText error={save.error} />
       </FieldContent>
       <OptionSelect
         id="user-locale"

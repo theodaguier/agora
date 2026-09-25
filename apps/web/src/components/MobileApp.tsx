@@ -23,6 +23,7 @@ const messages = defineMessages({
     disconnect: "Sign out",
     disconnectTitle: (name: string) => `Sign out ${name}?`,
     disconnectHelp: "The app on this phone will have to be connected again with a new QR code.",
+    disconnected: "Phone signed out.",
   },
   fr: {
     connect: "Connecter l'app mobile",
@@ -36,6 +37,7 @@ const messages = defineMessages({
     disconnect: "Déconnecter",
     disconnectTitle: (name: string) => `Déconnecter ${name} ?`,
     disconnectHelp: "L'app de ce téléphone devra être reconnectée avec un nouveau QR code.",
+    disconnected: "Téléphone déconnecté.",
   },
 });
 
@@ -68,6 +70,7 @@ export function MobileApp() {
   const disconnect = useMutation({
     mutationFn: (id: string) => api(`/mobile/devices/${encodeURIComponent(id)}`, { method: "DELETE" }),
     onSettled: () => qc.invalidateQueries({ queryKey: devicesKey }),
+    meta: { success: t.disconnected },
   });
 
   return (

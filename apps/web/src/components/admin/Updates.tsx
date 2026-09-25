@@ -82,18 +82,21 @@ export function Updates() {
     refetchInterval: (q) => ((q.state.data?.history?.[0] as Run | undefined)?.status === "running" ? 2000 : 30_000),
   });
   const refresh = () => qc.invalidateQueries({ queryKey: key });
-  const check = useMutation({ mutationFn: () => api("/admin/updates/check", { method: "POST" }), onSettled: refresh });
+  const check = useMutation({ mutationFn: () => api("/admin/updates/check", { method: "POST" }), onSettled: refresh, meta: { loading: t.checking, success: t.checked } });
   const apply = useMutation({
     mutationFn: (b: { target: "hermes" | "app"; version: string }) => api("/admin/updates/apply", { method: "POST", body: JSON.stringify(b) }),
     onSettled: refresh,
+    meta: { success: t.started },
   });
   const settings = useMutation({
     mutationFn: (b: Partial<NonNullable<Status["settings"]>>) => api("/admin/updates/settings", { method: "PUT", body: JSON.stringify(b) }),
     onSettled: refresh,
+    meta: { success: c.saved },
   });
   const unreject = useMutation({
     mutationFn: (b: { target: string; version: string }) => api(`/admin/updates/rejected/${b.target}/${b.version}`, { method: "DELETE" }),
     onSettled: refresh,
+    meta: { success: t.retryAllowed },
   });
 
   if (isPending) return <Loading />;
@@ -169,7 +172,6 @@ export function Updates() {
                   <Button variant="outline" disabled={check.isPending || busy} onClick={() => check.mutate()}>
                     {check.isPending ? c.inProgress : t.checkNow}
                   </Button>
-                  <ErrorText error={apply.error ?? settings.error ?? check.error} />
                 </Field>
               </FieldGroup>
             </FieldSet>

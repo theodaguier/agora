@@ -17,6 +17,7 @@ const MAX_TARGETS = 10;
 const messages = defineMessages({
   en: {
     title: "Forward message",
+    forwarded: "Message forwarded.",
     files: (n: number) => (n > 1 ? `${n} files` : "1 file"),
     search: "Search conversations",
     empty: "No conversation matches.",
@@ -26,6 +27,7 @@ const messages = defineMessages({
   },
   fr: {
     title: "Transférer le message",
+    forwarded: "Message transféré.",
     files: (n: number) => (n > 1 ? `${n} fichiers` : "1 fichier"),
     search: "Rechercher une conversation",
     empty: "Aucune conversation ne correspond.",
@@ -59,6 +61,7 @@ export function ForwardDialog({ conversationId, message, onClose }: { conversati
       close();
       if (only && only !== conversationId) navigate({ to: "/c/$conversationId", params: { conversationId: only } });
     },
+    meta: { success: t.forwarded, error: false },
   });
   const toggle = (id: string) =>
     setPicked((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : xs.length < MAX_TARGETS ? [...xs, id] : xs));

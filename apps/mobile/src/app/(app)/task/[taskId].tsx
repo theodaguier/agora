@@ -18,6 +18,7 @@ import { MentionFieldText } from "@/components/mention";
 import { CheckIcon, CloseIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
+import { useAdminToast } from "@/components/admin/ui";
 
 /* apps/web/src/components/TaskDialog.tsx, and the actions of the web's task row, as one sheet of the (app) stack. */
 
@@ -76,6 +77,8 @@ function TaskForm({ task }: { task: Task }) {
   const patch = useTaskPatch(task.id);
   const remove = useDeleteTask(task.id);
   const work = useWorkingOn();
+  // The screen closes once saved or deleted: a toast says it worked; a failure stays inline, below.
+  const toast = useAdminToast();
   const [draft, setDraft] = useState<Draft>(() => draftOf(task));
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
 
@@ -118,7 +121,7 @@ function TaskForm({ task }: { task: Task }) {
       </Stack.Toolbar>
       {(task.canEdit || reword) && (
         <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={c.save} disabled={!dirty || !title || patch.isPending} variant="prominent" onPress={withTap(() => patch.mutate(changes, { onSuccess: () => router.back() }))} />
+          <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={c.save} disabled={!dirty || !title || patch.isPending} variant="prominent" onPress={withTap(() => patch.mutate(changes, { onSuccess: () => (toast.success(), router.back()) }))} />
         </Stack.Toolbar>
       )}
       <KeyboardAwareScrollView bottomOffset={24} contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="gap-6 px-4 pb-10 pt-4" keyboardDismissMode="interactive">
@@ -202,7 +205,7 @@ function TaskForm({ task }: { task: Task }) {
               isDisabled={remove.isPending}
               onPress={withTap(async () => {
                 if (await confirmAction({ title: rowMessages.deleteTitle(task.title), description: rowMessages.deleteBody, action: c.delete }))
-                  remove.mutate(undefined, { onSuccess: () => router.back() });
+                  remove.mutate(undefined, { onSuccess: () => (toast.deleted(), router.back()) });
               })}
             >
               {c.delete}

@@ -129,6 +129,7 @@ export function Vault() {
     mutationFn: (key: string) => api(`/admin/hermes/vault/${encodeURIComponent(key)}`, { method: "DELETE" }),
     onSuccess: flagRestart,
     onSettled: () => qc.invalidateQueries({ queryKey: vaultQuery.queryKey }),
+    meta: { success: c.deleted },
   });
 
   const summary = (s: Secret) => {
@@ -149,7 +150,7 @@ export function Vault() {
           <DeveloperView />
         </TabsContent>
         <TabsContent value="list" className="flex flex-col gap-2">
-          <ErrorText error={error ?? remove.error} />
+          <ErrorText error={error} />
           {isPending ? (
             <Loading />
           ) : secrets?.length ? (
@@ -247,6 +248,7 @@ function SecretDialog({
       await qc.invalidateQueries({ queryKey: vaultQuery.queryKey });
       onSaved();
     },
+    meta: { success: c.saved, error: false },
   });
 
   const others = agents.filter((a) => !isMain(a));
@@ -396,17 +398,18 @@ function DeveloperView() {
     staleTime: 0,
   });
   const [draft, setDraft] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
   const original = raw.data?.text ?? "";
   const text = draft ?? original;
   const save = useMutation({
     mutationFn: () => api<RawResult>("/admin/hermes/vault/raw", { method: "PUT", body: JSON.stringify({ text }) }),
     onSuccess: async (r) => {
-      const n = r.added.length + r.updated.length + r.removed.length;
-      setResult(n ? t.applied(r.added.length, r.updated.length, r.removed.length) : t.unchanged);
-      if (n) flagRestart();
+      if (r.added.length + r.updated.length + r.removed.length) flagRestart();
       await qc.invalidateQueries({ queryKey: vaultQuery.queryKey });
       setDraft(null);
+    },
+    meta: {
+      success: (r: RawResult) =>
+        r.added.length + r.updated.length + r.removed.length ? t.applied(r.added.length, r.updated.length, r.removed.length) : t.unchanged,
     },
   });
 
@@ -440,10 +443,7 @@ function DeveloperView() {
             wrap="off"
             placeholder="OPENAI_API_KEY=sk-…"
             value={text}
-            onChange={(e) => {
-              setResult(null);
-              setDraft(e.target.value);
-            }}
+            onChange={(e) => setDraft(e.target.value)}
           />
         </Field>
         <Field orientation="horizontal">
@@ -453,8 +453,6 @@ function DeveloperView() {
           <Button type="button" variant="outline" disabled={draft === null || save.isPending} onClick={() => setDraft(null)}>
             {t.reset}
           </Button>
-          {result && <FieldDescription>{result}</FieldDescription>}
-          <ErrorText error={save.error} />
         </Field>
       </FieldGroup>
     </form>

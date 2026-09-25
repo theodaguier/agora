@@ -280,7 +280,6 @@ function RoutineItem({ routine }: { routine: AgentActivity["routines"][number] }
           <ItemTitle className="w-full truncate font-normal">{routine.name}</ItemTitle>
           <ItemDescription className="text-[13px]">{[scheduleLabel(routine), when].filter(Boolean).join(" · ")}</ItemDescription>
           {title && <ItemDescription className="truncate text-[13px]">{title}</ItemDescription>}
-          {toggle.error && <p className="text-[13px] text-destructive">{toggle.error.message}</p>}
         </ItemContent>
       </Item>
       <div className="pt-1">
@@ -304,6 +303,7 @@ function BotHeader({ agent }: { agent: AgentProfile }) {
       closeProfile();
       navigate({ to: "/c/$conversationId", params: { conversationId: id } });
     },
+    meta: { error: t.openFailed },
   });
   const since = dateFormat({ month: "long", year: "numeric" }).format(new Date(agent.createdAt));
 
@@ -328,11 +328,6 @@ function BotHeader({ agent }: { agent: AgentProfile }) {
         </SheetTitle>
         <SheetDescription className="truncate">{t.botSince(since)}</SheetDescription>
         {status && <p className="truncate text-xs text-muted-foreground">{status}</p>}
-        {open.isError && (
-          <p role="alert" className="text-xs text-destructive">
-            {t.openFailed}
-          </p>
-        )}
       </div>
     </div>
   );
@@ -351,6 +346,7 @@ function PersonHeader({ person, self }: { person: UserProfile; self: boolean }) 
       closeProfile();
       navigate({ to: "/c/$conversationId", params: { conversationId: id } });
     },
+    meta: { error: t.openFailed },
   });
   const subtitle = [person.title, person.username && `@${person.username}`].filter(Boolean).join(" · ");
 
@@ -375,11 +371,6 @@ function PersonHeader({ person, self }: { person: UserProfile; self: boolean }) 
         </SheetTitle>
         <SheetDescription className="truncate">{subtitle}</SheetDescription>
         {status && <p className="truncate text-xs text-muted-foreground">{status}</p>}
-        {open.isError && (
-          <p role="alert" className="text-xs text-destructive">
-            {t.openFailed}
-          </p>
-        )}
       </div>
     </div>
   );

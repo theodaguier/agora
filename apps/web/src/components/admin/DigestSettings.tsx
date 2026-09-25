@@ -4,7 +4,7 @@ import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
 import { OptionSelect } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { Switch } from "@/components/ui/switch";
@@ -103,10 +103,12 @@ export function DigestSettings() {
       qc.setQueryData(configQuery.queryKey, state);
       qc.invalidateQueries({ queryKey: digestQuery.queryKey, exact: true });
     },
+    meta: { success: c.saved },
   });
   const generate = useMutation({
     mutationFn: () => api<DigestAdmin>("/digest/generate", { method: "POST" }),
     onSuccess: (state) => qc.setQueryData(configQuery.queryKey, state),
+    meta: { success: t.running },
   });
 
   if (!form || !data) return null;
@@ -207,8 +209,6 @@ export function DigestSettings() {
           <Button type="submit" disabled={!dirty || save.isPending}>
             {save.isPending ? c.saving : c.save}
           </Button>
-          {save.isSuccess && !dirty && <FieldDescription>{c.saved}</FieldDescription>}
-          {save.error && <FieldError>{save.error.message}</FieldError>}
         </Field>
       </form>
 
@@ -220,7 +220,6 @@ export function DigestSettings() {
           if (!today || (await confirmAction({ title: t.replaceTitle, description: t.replaceBody, action: t.replaceAction }))) generate.mutate();
         }}
       />
-      {generate.error && <FieldError className="mt-2">{generate.error.message}</FieldError>}
     </>
   );
 }

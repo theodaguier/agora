@@ -15,8 +15,10 @@ import { Tasks } from "./screens/Tasks";
 import { Inbox } from "./screens/Inbox";
 import { TwoFactorRequired } from "./screens/TwoFactorRequired";
 import { orgQuery, setupQuery, useOrgLocale } from "./lib/org";
+import { mutationCache } from "./lib/feedback";
 
 export const queryClient = new QueryClient({
+  mutationCache,
   defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: true } },
 });
 

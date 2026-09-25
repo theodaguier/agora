@@ -305,6 +305,7 @@ function Account(props: { prefs: { locale: "fr" | "en"; timezone: string }; onBa
       await qc.invalidateQueries();
       props.onNext();
     },
+    meta: { error: false },
   });
 
   return (
@@ -385,6 +386,7 @@ function ProviderStep({ onNext }: { onNext: () => void }) {
       // The provider now shows as configured.
       qc.invalidateQueries({ queryKey: ["setup", "providers"] });
     },
+    meta: { error: false },
   });
   const apply = useMutation({
     mutationFn: async () => {
@@ -395,6 +397,7 @@ function ProviderStep({ onNext }: { onNext: () => void }) {
       setTested(r.reply);
       qc.invalidateQueries({ queryKey: ["setup", "providers"] });
     },
+    meta: { error: false },
   });
 
   const list = (providers.data?.providers ?? []).filter((p) => p.name.toLowerCase().includes(q.toLowerCase()));
@@ -511,6 +514,7 @@ function AgentStep(props: { orgName: string; locale: "fr" | "en"; onNext: (id: s
       qc.invalidateQueries({ queryKey: adminAgentsQuery.queryKey });
       props.onNext(r.id);
     },
+    meta: { error: false },
   });
 
   return (
@@ -570,6 +574,7 @@ function Done({ agentId }: { agentId: string | null }) {
       await qc.invalidateQueries({ queryKey: ["setup"] });
       navigate(agentId ? { to: "/a/$agentId", params: { agentId } } : { to: "/" });
     },
+    meta: { error: false },
   });
   return (
     <div className="text-center">

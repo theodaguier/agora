@@ -40,6 +40,8 @@ const messages = defineMessages({
     mention: "Mention in the conversation",
     pause: "Pause",
     resume: "Resume",
+    paused: "Routine paused.",
+    resumed: "Routine resumed.",
   },
   fr: {
     editRoutine: "Modifier la routine",
@@ -58,6 +60,8 @@ const messages = defineMessages({
     mention: "Mentionner dans la conversation",
     pause: "Mettre en pause",
     resume: "Reprendre",
+    paused: "Routine en pause.",
+    resumed: "Routine reprise.",
   },
 });
 
@@ -112,6 +116,7 @@ function RoutineForm({ conversationId, routine, onDone }: { conversationId: stri
       await refreshRoutines(qc, conversationId);
       onDone();
     },
+    meta: { success: c.saved, error: false },
   });
 
   return (
@@ -219,6 +224,7 @@ export function DeleteRoutineDialog({
       await refreshRoutines(qc, conversationId);
       onOpenChange(false);
     },
+    meta: { success: c.deleted, error: false },
   });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -245,11 +251,13 @@ export function DeleteRoutineDialog({
 
 /** Pause or resume. */
 export function useToggleRoutine(conversationId: string, routine: Routine) {
+  const t = useT(messages);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () =>
       api<Routine>(routinePath(conversationId, routine.id), { method: "PATCH", body: JSON.stringify({ enabled: !routine.enabled }) }),
     onSettled: () => refreshRoutines(qc, conversationId),
+    meta: { success: (r: Routine) => (r.enabled ? t.resumed : t.paused) },
   });
 }
 

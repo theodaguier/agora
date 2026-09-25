@@ -32,6 +32,8 @@ const messages = defineMessages({
     restart: "Restart",
     actions: "Actions",
     restarting: "Restarting…",
+    restartingName: (name: string) => `Restarting ${name}…`,
+    restarted: (name: string) => `${name} restarted.`,
     confirm: {
       process: {
         title: (name: string) => `Restart ${name}?`,
@@ -65,6 +67,8 @@ const messages = defineMessages({
     restart: "Relancer",
     actions: "Actions",
     restarting: "Relance…",
+    restartingName: (name: string) => `Relance de ${name}…`,
+    restarted: (name: string) => `${name} relancé.`,
     confirm: {
       process: {
         title: (name: string) => `Relancer ${name} ?`,
@@ -120,6 +124,7 @@ export function Status() {
       await qc.invalidateQueries({ queryKey: ["admin", "status"] });
     },
     onSettled: () => setRestarting(null),
+    meta: { loading: (check: Check) => t.restartingName(t.names[check.id] ?? check.id), success: (_: unknown, check: Check) => t.restarted(t.names[check.id] ?? check.id) },
   });
 
   const onRestart = async (check: Check) => {
@@ -170,13 +175,12 @@ export function Status() {
                   <ItemContent>
                     <ItemTitle>{t.names[check.id] ?? check.id}</ItemTitle>
                     {check.detail && <ItemDescription>{check.detail}</ItemDescription>}
-                    {restart.isError && restart.variables?.id === check.id && <ErrorText error={restart.error} />}
                   </ItemContent>
                   <ItemActions>
                     {check.state !== "off" && check.latencyMs !== undefined && (
                       <span className="text-sm tabular-nums text-muted-foreground">{check.latencyMs} ms</span>
                     )}
-                    <Badge variant="outline" className="w-28 justify-start">
+                    <Badge variant="outline">
                       <Dot state={check.state} />
                       {restarting === check.id ? t.restarting : t.states[check.state]}
                     </Badge>

@@ -60,6 +60,7 @@ export function AgentSoul({ agentId, agentName }: { agentId: string; agentName: 
   const save = useMutation({
     mutationFn: () => api(`/admin/hermes/agents/${agentId}/soul`, { method: "PUT", body: JSON.stringify({ value }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    meta: { success: c.saved },
   });
   if (isPending) return <Loading />;
   if (!data) return <ErrorText error={error} />;
@@ -86,8 +87,6 @@ export function AgentSoul({ agentId, agentName }: { agentId: string; agentName: 
         <Button disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
           {c.save}
         </Button>
-        {save.isSuccess && !dirty && <FieldDescription>{c.saved}</FieldDescription>}
-        <ErrorText error={save.error} />
       </Field>
     </FieldGroup>
   );
@@ -114,6 +113,7 @@ export function AgentMemory({ agentId }: { agentId: string }) {
   const save = useMutation({
     mutationFn: () => api(`/admin/hermes/agents/${agentId}/memory`, { method: "PUT", body: JSON.stringify({ notes, users }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    meta: { success: c.saved },
   });
   if (isPending) return <Loading />;
   if (!data) return <ErrorText error={error} />;
@@ -139,8 +139,6 @@ export function AgentMemory({ agentId }: { agentId: string }) {
         <Button disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
           {c.save}
         </Button>
-        {save.isSuccess && !dirty && <FieldDescription>{c.saved}</FieldDescription>}
-        <ErrorText error={save.error} />
       </Field>
     </FieldGroup>
   );

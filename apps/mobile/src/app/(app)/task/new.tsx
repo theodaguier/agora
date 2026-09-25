@@ -1,5 +1,4 @@
 import { common } from "@agora/core/i18n";
-import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
 import { FieldError, Input, ListGroup, Separator, TextField, Typography } from "heroui-native";
 import { Fragment, useMemo, useState } from "react";
@@ -15,6 +14,7 @@ import { MentionFieldText } from "@/components/mention";
 import { CheckIcon, CloseIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
+import { useAdminToast } from "@/components/admin/ui";
 
 /*
  * apps/web/src/components/QuickAddTask.tsx as a sheet: type the title, "@username" assigns it
@@ -28,6 +28,7 @@ const messages = defineMessages({
     forYou: "For you",
     forPeople: (names: string) => `For ${names}`,
     failed: "Couldn't add the task.",
+    created: (n: number) => (n > 1 ? `${n} tasks created.` : "Task created."),
   },
   fr: {
     title: "Nouvelle tâche",
@@ -35,6 +36,7 @@ const messages = defineMessages({
     forYou: "Pour toi",
     forPeople: (names: string) => `Pour ${names}`,
     failed: "Ajout impossible.",
+    created: (n: number) => (n > 1 ? `${n} tâches créées.` : "Tâche créée."),
   },
 });
 
@@ -43,6 +45,7 @@ export default function NewTaskSheet() {
   const router = useRouter();
   const c = tr(common);
   const add = useCreateTasks();
+  const toast = useAdminToast();
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [selection, setSelection] = useState<{ start: number; end: number } | undefined>();
@@ -72,8 +75,8 @@ export default function NewTaskSheet() {
     add.mutate(
       { title, assigneeIds: targets.map((p) => p.id), dueOn: due, priority },
       {
-        onSuccess: () => {
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        onSuccess: (tasks) => {
+          toast.success(messages.created(tasks.length));
           router.back();
         },
       },

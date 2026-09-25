@@ -47,6 +47,9 @@ const messages = defineMessages({
     updating: "Updating…",
     update: "Update",
     failed: "Update failed",
+    checking: "Checking versions…",
+    checked: "Versions checked.",
+    updateStarted: (name: string) => `Updating ${name}…`,
     confirm: (name: string, v: string) => `Update ${name} to ${v}?`,
   },
   fr: {
@@ -68,6 +71,9 @@ const messages = defineMessages({
     updating: "Mise à jour…",
     update: "Mettre à jour",
     failed: "Échec de la mise à jour",
+    checking: "Vérification des versions…",
+    checked: "Versions vérifiées.",
+    updateStarted: (name: string) => `Mise à jour de ${name}…`,
     confirm: (name: string, v: string) => `Mettre à jour ${name} vers ${v} ?`,
   },
 });
@@ -147,10 +153,12 @@ export function HostClis() {
   const check = useMutation({
     mutationFn: () => api<{ clis: HostCli[] }>("/admin/host/clis/check", { method: "POST" }),
     onSuccess: (d) => qc.setQueryData(clisKey, d),
+    meta: { loading: t.checking, success: t.checked },
   });
   const update = useMutation({
     mutationFn: (id: string) => api(`/admin/host/clis/${id}/update`, { method: "POST" }),
     onSettled: () => qc.invalidateQueries({ queryKey: clisKey }),
+    meta: { success: (_: unknown, id: string) => t.updateStarted(data?.clis.find((cli) => cli.id === id)?.name ?? id) },
   });
 
   return (
@@ -181,7 +189,6 @@ export function HostClis() {
               />
             ))}
           </ItemGroup>
-          <ErrorText error={update.error ?? check.error} />
         </>
       )}
     </FieldSet>

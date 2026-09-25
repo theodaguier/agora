@@ -39,6 +39,7 @@ export function ApprovalCard(props: { conversationId: string; turnId: string; bo
         body: JSON.stringify({ approvalId: approval.id, choice }),
       }),
     onSuccess: () => clearApproval(conversationId, turnId),
+    meta: { error: false },
   });
   const allow = approval.choices.filter((c) => c !== "deny");
 

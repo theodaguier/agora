@@ -73,6 +73,7 @@ function TaskForm({ task, onDone }: { task: Task; onDone: () => void }) {
       await qc.invalidateQueries({ queryKey: ["tasks"] });
       onDone();
     },
+    meta: { success: c.saved, error: false },
   });
 
   return (

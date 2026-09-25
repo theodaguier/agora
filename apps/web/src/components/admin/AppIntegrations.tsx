@@ -127,6 +127,7 @@ const integrationsQuery = { queryKey: ["admin", "integrations"], queryFn: () => 
 /** Settings › Integrations (admin): the third-party services the app itself uses. */
 export function AppIntegrations() {
   const t = useT(messages);
+  const c = useT(common);
   const qc = useQueryClient();
   const { data, error, isPending } = useQuery(integrationsQuery);
   const [editing, setEditing] = useState<Id | null>(null);
@@ -137,12 +138,13 @@ export function AppIntegrations() {
   const remove = useMutation({
     mutationFn: (id: Id) => api<AppIntegration[]>(`/admin/integrations/${id}`, { method: "DELETE" }),
     onSuccess: onChange,
+    meta: { success: c.removed },
   });
 
   return (
     <>
       <SectionHeader title={t.title} text={t.intro} />
-      <ErrorText error={error ?? remove.error} />
+      <ErrorText error={error} />
       {isPending ? (
         <Loading />
       ) : (
@@ -226,6 +228,7 @@ function IntegrationDialog({ integration, onSaved }: { integration: AppIntegrati
   const save = useMutation({
     mutationFn: () => api<AppIntegration[]>(`/admin/integrations/${integration.id}`, { method: "PUT", body: JSON.stringify(values) }),
     onSuccess: onSaved,
+    meta: { success: c.saved, error: false },
   });
   // A secret already set can stay empty: the server keeps it.
   const required = (f: FieldSpec) => !(f.secret && integration.values[f.name]);

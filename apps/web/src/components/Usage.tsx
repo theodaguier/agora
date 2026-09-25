@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { common } from "@agora/core/i18n";
 import { defineMessages, useT } from "@/i18n";
 import { useFormat } from "@/lib/usage-format";
 import { api } from "@/lib/api";
@@ -92,6 +93,7 @@ const messages = defineMessages({
     reset: "Reset",
     resetTitle: (model: string) => `Reset the price of ${model}?`,
     resetBody: "Your price will be deleted; costs will use the models.dev price again.",
+    priceReset: "Price reset.",
     noModels: "No model used yet.",
     loadError: "Usage could not be loaded.",
   },
@@ -139,6 +141,7 @@ const messages = defineMessages({
     reset: "Rétablir",
     resetTitle: (model: string) => `Rétablir le prix de ${model} ?`,
     resetBody: "Ton prix sera supprimé ; les coûts reprendront le prix de models.dev.",
+    priceReset: "Prix rétabli.",
     noModels: "Aucun modèle utilisé pour l'instant.",
     loadError: "Impossible de charger la consommation.",
   },
@@ -521,6 +524,7 @@ const FIELDS = ["input", "output", "cacheRead", "cacheWrite"] as const;
 
 function PriceRow({ row }: { row: ModelPriceRow }) {
   const t = useT(messages);
+  const c = useT(common);
   const qc = useQueryClient();
   const initial = Object.fromEntries(FIELDS.map((k) => [k, row.price ? String(row.price[k]) : ""])) as Record<(typeof FIELDS)[number], string>;
   const [draft, setDraft] = useState(initial);
@@ -532,10 +536,12 @@ function PriceRow({ row }: { row: ModelPriceRow }) {
   const save = useMutation({
     mutationFn: () => api("/usage/prices", { method: "PUT", body: JSON.stringify({ provider: row.provider, model: row.model, ...parsed }) }),
     onSuccess: done,
+    meta: { success: c.saved },
   });
   const reset = useMutation({
     mutationFn: () => api(`/usage/prices?${new URLSearchParams({ provider: row.provider, model: row.model })}`, { method: "DELETE" }),
     onSuccess: done,
+    meta: { success: t.priceReset },
   });
 
   return (
@@ -553,7 +559,6 @@ function PriceRow({ row }: { row: ModelPriceRow }) {
             </span>
           </span>
         </span>
-        <ErrorText error={save.error ?? reset.error} />
       </TableCell>
       {FIELDS.map((k) => (
         <TableCell key={k}>

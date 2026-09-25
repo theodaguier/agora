@@ -112,6 +112,7 @@ export function Providers() {
   const remove = useMutation({
     mutationFn: (slug: string) => api(`/admin/hermes/providers/${slug}/key`, { method: "DELETE" }),
     onSettled: () => refresh(qc),
+    meta: { success: c.removed },
   });
 
   const connected = data?.providers.filter((p) => p.configured) ?? [];
@@ -181,7 +182,6 @@ export function Providers() {
               </Item>
             ))}
           </ItemGroup>
-          <ErrorText error={remove.error} />
           <div>
             <Button variant="outline" onClick={() => setDialog({ kind: "pick" })}>
               {t.add}
@@ -259,6 +259,7 @@ function KeyDialog({ provider, onSaved }: { provider: AiProvider; onSaved: () =>
       await refresh(qc);
       onSaved();
     },
+    meta: { success: c.saved, error: false },
   });
 
   return (
@@ -328,6 +329,7 @@ function ModelDialog({ providers, initial, currentModel, onClose }: { providers:
       return { switched, reply };
     },
     onSettled: () => refresh(qc),
+    meta: { error: false },
   });
 
   const pickProvider = (next: string) => {

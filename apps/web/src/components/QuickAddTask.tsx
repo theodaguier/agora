@@ -27,6 +27,7 @@ const messages = defineMessages({
     placeholder: "Add a task, @someone to assign it, then Enter",
     placeholderFor: (name: string) => `Assign a task to ${name}, then Enter`,
     label: "New task",
+    created: (n: number) => (n > 1 ? `${n} tasks created.` : "Task created."),
     forYou: "For you",
     forPeople: (names: string) => `For ${names}`,
     noDue: "No due date",
@@ -40,6 +41,7 @@ const messages = defineMessages({
     placeholder: "Ajouter une tâche, @quelqu'un pour l'assigner, puis Entrée",
     placeholderFor: (name: string) => `Assigner une tâche à ${name}, puis Entrée`,
     label: "Nouvelle tâche",
+    created: (n: number) => (n > 1 ? `${n} tâches créées.` : "Tâche créée."),
     forYou: "Pour toi",
     forPeople: (names: string) => `Pour ${names}`,
     noDue: "Sans échéance",
@@ -159,6 +161,7 @@ export function QuickAddTask({ assignee }: { assignee?: { id: string; name: stri
       setPriority("normal");
       await qc.invalidateQueries({ queryKey: ["tasks"] });
     },
+    meta: { success: (tasks: Task[]) => t.created(tasks.length), error: false },
   });
 
   const placeholder = assignee && assignee.id !== user.id ? t.placeholderFor(assignee.name.split(" ")[0]!) : t.placeholder;

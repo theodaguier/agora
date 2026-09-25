@@ -7,6 +7,7 @@ import { withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
 import { userProfileQuery } from "@/lib/queries";
 import { taskHref, useWorkingOn } from "@/lib/tasks";
+import { useAdminToast } from "@/components/admin/ui";
 
 /* apps/web/src/components/WorkingOn.tsx: one HeroUI Alert for the profiles and your own tasks screen. */
 
@@ -46,6 +47,7 @@ export function WorkingOn({ userId, openable, quiet }: { userId: string; openabl
   const router = useRouter();
   const { data } = useQuery(userProfileQuery(userId));
   const set = useWorkingOn();
+  const toast = useAdminToast();
   const self = userId === me.id;
   const current = data?.currentTask;
   if (!data || (!current && (!self || quiet))) return null;
@@ -66,7 +68,7 @@ export function WorkingOn({ userId, openable, quiet }: { userId: string; openabl
         <Alert.Title numberOfLines={2}>{self ? messages.you(current.title) : messages.them(current.title)}</Alert.Title>
       </Alert.Content>
       {self && (
-        <Button size="sm" variant="ghost" isDisabled={set.isPending} onPress={withTap(() => set.mutate(null))}>
+        <Button size="sm" variant="ghost" isDisabled={set.isPending} onPress={withTap(() => set.mutate(null, { onError: (e) => toast.failed(e) }))}>
           {messages.stop}
         </Button>
       )}

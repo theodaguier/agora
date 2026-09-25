@@ -44,6 +44,7 @@ export function SkillRequestCard({ id }: { id: string }) {
   const decide = useMutation({
     mutationFn: (approve: boolean) => api<SkillRequest>(`/skill-requests/${id}/${approve ? "approve" : "reject"}`, { method: "POST" }),
     onSuccess: (next) => qc.setQueryData(["skill-request", id], next),
+    meta: { error: false },
   });
 
   if (error || !req) return null;

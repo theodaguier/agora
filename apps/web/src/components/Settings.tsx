@@ -7,7 +7,7 @@ import { AppIntegrations } from "@/components/admin/AppIntegrations";
 import { Agents } from "@/components/admin/Agents";
 import { Models } from "@/components/admin/Models";
 import { OrgSettings } from "@/components/admin/OrgSettings";
-import { ErrorText, Loading, RestartProvider } from "@/components/admin/ui";
+import { Loading, RestartProvider } from "@/components/admin/ui";
 import { RequireTwoFactor } from "@/components/admin/Security";
 import { Status } from "@/components/admin/Status";
 import { Updates } from "@/components/admin/Updates";
@@ -23,7 +23,7 @@ import { AvatarField, ProfileFields, type AvatarChange } from "@/components/Prof
 import { readProfile } from "@/lib/profile";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLegend, FieldSeparator, FieldSet } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLegend, FieldSeparator, FieldSet } from "@/components/ui/field";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { api, uploadAvatar, type ProfileInput } from "@/lib/api";
 import { authClient } from "@/lib/auth";
@@ -311,7 +311,6 @@ function ProfileEditor() {
   const router = useRouter();
   const qc = useQueryClient();
   const [photo, setPhoto] = useState<AvatarChange>(undefined);
-  const [saved, setSaved] = useState(false);
   const t = useT(messages);
   const c = useT(common);
   const save = useMutation({
@@ -322,18 +321,17 @@ function ProfileEditor() {
     },
     onSuccess: async () => {
       setPhoto(undefined);
-      setSaved(true);
       // The session (route context) carries the profile: refetch it.
       await router.invalidate();
       qc.invalidateQueries({ queryKey: ["users"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
     },
+    meta: { success: t.profileSaved },
   });
 
   return (
     <form
       className="flex flex-col gap-6"
-      onInput={() => setSaved(false)}
       onSubmit={(e) => {
         e.preventDefault();
         save.mutate(readProfile(new FormData(e.currentTarget)));
@@ -344,10 +342,7 @@ function ProfileEditor() {
         name={user.name}
         current={user.image ?? null}
         value={photo}
-        onChange={(next) => {
-          setSaved(false);
-          setPhoto(next);
-        }}
+        onChange={setPhoto}
       />
       <ProfileFields
         idPrefix="profile"
@@ -357,8 +352,6 @@ function ProfileEditor() {
         <Button type="submit" disabled={save.isPending}>
           {save.isPending ? c.saving : c.save}
         </Button>
-        {saved && <FieldDescription>{t.profileSaved}</FieldDescription>}
-        <ErrorText error={save.error} />
       </Field>
     </form>
   );
