@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.0 — 2026-09-25
+
+### Features
+- several subscription accounts for Claude Code, and a Codex engine
+
 ## v0.7.1 — 2026-09-25
 
 ### Fixes
