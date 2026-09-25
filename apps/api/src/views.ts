@@ -7,7 +7,7 @@
  * A draft is never executed by the app: the employee confirms it (possibly
  * edited) and the bot receives their answer (withViewAction), then acts itself.
  */
-import { DRAFT_TYPES, INTEGRATION_TYPES, type DraftType, type IntegrationType, type ViewAction, type ViewBlock } from "@agora/core";
+import { CHART_TYPES, DRAFT_TYPES, INTEGRATION_TYPES, MAX_CHART_SERIES, type DraftType, type IntegrationType, type ViewAction, type ViewBlock } from "@agora/core";
 import { z } from "zod";
 
 const str = (max = 300) => z.string().trim().max(max);
@@ -36,8 +36,19 @@ const drafts = {
   tasks: z.object({ title: str(300), description: opt(5000), assignee: opt(200), due: opt(40), project: opt(200) }),
 } satisfies Record<DraftType, z.ZodType>;
 
-const title = opt(120);
+/** Too long, it's cut rather than losing the view; anything else than text is dropped. */
+const title = z.string().trim().transform((s) => s.slice(0, 120)).optional().catch(undefined);
 const MAX_ITEMS = 50;
+const MAX_COLUMNS = 20;
+/** A day per point over three months. */
+const MAX_POINTS = 100;
+
+/** A table cell: text is cut at 500 characters, anything that isn't text, a number or a boolean is written out. */
+const cellOf = (v: unknown): string | number | boolean | null => {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number" || typeof v === "boolean") return v;
+  return (typeof v === "string" ? v.trim() : JSON.stringify(v)).slice(0, 500);
+};
 
 const tryJson = (s: string): unknown => {
   try {
@@ -56,15 +67,15 @@ function parseView(raw: unknown): ViewBlock | null {
 }
 
 function parseBody(raw: unknown): ViewBlock | null {
-  const head = z.object({ type: z.enum(INTEGRATION_TYPES), kind: z.enum(["list", "message", "table", "draft"]) }).safeParse(raw);
+  const head = z.object({ type: z.enum(INTEGRATION_TYPES), kind: z.enum(["list", "message", "table", "chart", "draft"]) }).safeParse(raw);
   if (!head.success) return null;
   const { type, kind } = head.data;
   const r = raw as Record<string, unknown>;
   if (kind === "list") {
-    const parsed = z.object({ title, items: z.array(z.unknown()).max(MAX_ITEMS) }).safeParse(r);
+    const parsed = z.object({ title, items: z.array(z.unknown()) }).safeParse(r);
     if (!parsed.success) return null;
     // Invalid items are skipped rather than losing the whole list.
-    const list = parsed.data.items.flatMap((i) => {
+    const list = parsed.data.items.slice(0, MAX_ITEMS).flatMap((i) => {
       const item = items[type].safeParse(i);
       return item.success ? [item.data] : [];
     });
@@ -78,15 +89,54 @@ function parseBody(raw: unknown): ViewBlock | null {
     return parsed.success ? { type, kind, ...parsed.data } : null;
   }
   if (kind === "table") {
-    const cell = z.union([str(500), z.number(), z.boolean(), z.null()]);
-    const parsed = z.object({ title, columns: z.array(str(100)).min(1).max(20), rows: z.array(z.array(cell).max(20)).max(MAX_ITEMS) }).safeParse(r);
-    return parsed.success ? { type, kind, ...parsed.data } : null;
+    // Bots paste whole query results (PostHog, SQL): beyond the limits, the table is cut rather than lost.
+    const parsed = z.object({ title, columns: z.array(z.unknown()).min(1), rows: z.array(z.unknown()) }).safeParse(r);
+    if (!parsed.success) return null;
+    const names = parsed.data.columns.slice(0, MAX_COLUMNS).map((c) => String(cellOf(c) ?? "").slice(0, 100));
+    const rows = parsed.data.rows.slice(0, MAX_ITEMS).flatMap((row) => {
+      // A row as an object keyed by column, as some models write it.
+      const cells = Array.isArray(row) ? row : row && typeof row === "object" ? names.map((n) => (row as Record<string, unknown>)[n]) : null;
+      return cells ? [cells.slice(0, MAX_COLUMNS).map(cellOf)] : [];
+    });
+    return { type, kind, title: parsed.data.title, columns: names, rows };
   }
+  if (kind === "chart") return parseChart(type, r);
   if (!DRAFT_TYPES.includes(type as DraftType)) return null;
   // Some models send the draft as a JSON string rather than an object.
   const draft = typeof r.draft === "string" ? tryJson(r.draft) : r.draft;
   const parsed = z.object({ title, draft: drafts[type as DraftType], confirm: opt(40) }).safeParse({ ...r, draft });
   return parsed.success ? ({ type, kind, ...parsed.data } as ViewBlock) : null;
+}
+
+/** Numbers only; a number written as text ("1 234,5", "82 %") is read, anything else is a gap. */
+const valueOf = (v: unknown): number | null => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v !== "string") return null;
+  const n = Number(v.replace(/[\s\u202f%€$£]/g, "").replace(",", "."));
+  return v.trim() && Number.isFinite(n) ? n : null;
+};
+
+/** A chart: cut to its limits rather than lost, like a table. */
+function parseChart(type: IntegrationType, r: Record<string, unknown>): ViewBlock | null {
+  const parsed = z
+    .object({
+      title,
+      chart: z.enum(CHART_TYPES),
+      labels: z.array(z.unknown()).min(1),
+      series: z.array(z.object({ name: z.unknown().optional(), values: z.array(z.unknown()) })).min(1),
+      stacked: z.boolean().optional().catch(undefined),
+      unit: z.string().trim().max(20).optional().catch(undefined),
+    })
+    .safeParse(r);
+  if (!parsed.success) return null;
+  const { chart, stacked, unit } = parsed.data;
+  const labels = parsed.data.labels.slice(0, MAX_POINTS).map((l) => String(cellOf(l) ?? "").slice(0, 100));
+  const series = parsed.data.series
+    .slice(0, chart === "pie" ? 1 : MAX_CHART_SERIES)
+    .map((s, i) => ({ name: String(cellOf(s.name) ?? `${i + 1}`).slice(0, 100), values: labels.map((_, j) => valueOf(s.values[j])) }))
+    .filter((s) => s.values.some((v) => v !== null));
+  if (!series.length) return null;
+  return { type, kind: "chart", title: parsed.data.title, chart, labels, series, ...(stacked && { stacked }), ...(unit && { unit }) };
 }
 
 /** A ```view``` block holds one view or an array of them. */
@@ -114,6 +164,13 @@ const SHAPES: Record<IntegrationType, string> = {
   other: '`list` : items `{"title", "subtitle", "meta", "url"}` ; `table` : `{"columns": [], "rows": [[]]}`',
 };
 
+/** Any type can be drawn: chart formats are given once, whatever the connectors. */
+const CHART_SHAPE =
+  '- Graphique (tout type, `"kind": "chart"`) : `{"chart": "bar" | "line" | "area" | "pie", "labels": ["…"], "series": [{"name": "…", "values": [12, 8]}], "unit": "…", "stacked": false}`. ' +
+  `Une valeur numérique par label et par série, ${MAX_CHART_SERIES} séries au plus. ` +
+  "`line` ou `area` pour une évolution dans le temps (labels en dates ISO), `bar` pour comparer des éléments (pages, sources), `pie` pour les parts d'un total (une seule série, 6 parts au plus). " +
+  "Un graphique quand la forme des données compte plus que leurs valeurs exactes ; sinon un tableau. Plusieurs vues possibles, dans un tableau JSON.";
+
 /** Instruction added to a bot's context: only the formats of the types it's connected to. */
 export function viewPrompt(types: IntegrationType[]) {
   if (!types.length) return "";
@@ -126,6 +183,7 @@ export function viewPrompt(types: IntegrationType[]) {
     "```",
     "Formats par type (dates en ISO 8601, 50 éléments au plus, un tableau pour plusieurs vues) :",
     ...shown.map((t) => `- \`${t}\` : ${SHAPES[t]}`),
+    CHART_SHAPE,
     `- Avant d'envoyer, de créer ou de publier quoi que ce soit (${DRAFT_TYPES.map((t) => `\`${t}\``).join(", ")}), montre TOUJOURS un brouillon (\`"kind": "draft"\`) et attends la réponse : n'agis qu'après confirmation, et seulement avec les outils du connecteur concerné (jamais le terminal ni un autre contournement). Ne propose pas de brouillon pour une action qu'aucun de tes connecteurs ne sait faire. La personne peut modifier le brouillon ; tu recevras alors les valeurs à utiliser. Si elle demande une correction, renvoie un nouveau brouillon corrigé, sans agir.`,
     "- `source` : le nom du connecteur d'où viennent les données (celui de ses outils `mcp__<connecteur>__*`) ; l'app en affiche le logo.",
     "- Ne mentionne jamais ce bloc.",
