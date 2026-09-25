@@ -571,7 +571,7 @@ export type UsageSource = "chat" | "cron" | "system";
 
 /**
  * Tokens consumed by one slice of activity, attributed to who and what caused it.
- * Hermes rows are deltas of its per-session counters (state.db); Claude Code rows come from each reply's result.
+ * Hermes rows are deltas of its per-session counters (state.db); Claude Code and Codex rows come from each reply's result.
  * Cost is estimated when read, from the current prices; `reportedCostUsd` is the engine's own estimate, if any.
  */
 export const usageEvent = pgTable(
@@ -579,7 +579,7 @@ export const usageEvent = pgTable(
   {
     id: text("id").primaryKey(),
     occurredAt: timestamp("occurred_at").notNull(),
-    engine: text("engine").$type<"hermes" | "claude-code">().notNull(),
+    engine: text("engine").$type<"hermes" | "claude-code" | "codex">().notNull(),
     profile: text("profile"),
     sessionId: text("session_id"),
     source: text("source").$type<UsageSource>().notNull(),

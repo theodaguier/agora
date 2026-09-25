@@ -46,6 +46,7 @@ const messages = defineMessages({
 /** apps/web/src/components/ProviderLogo.tsx `providerName`: display name of known Hermes providers; the raw slug otherwise. */
 const names: Record<string, string> = {
   "claude-code": "Claude Code",
+  codex: "Codex",
   anthropic: "Anthropic",
   openai: "OpenAI",
   "openai-codex": "OpenAI Codex",
@@ -84,19 +85,19 @@ const matches = (value: string, query: string) => {
 
 export type Bot = { id: string; name: string };
 
-/** What is chosen for this conversation: the Claude Code engine, a model of another provider, the fallback. */
+/** What is chosen for this conversation: a subscription engine (Claude Code, Codex), a model of another provider, the fallback. */
 function current(data: ModelOptions) {
-  const claude = data.claudeCode;
-  const onClaude = !!claude && data.selectedProvider === claude.provider;
-  const claudeModel = onClaude ? claude.models.find((m) => m.id === data.selected) : undefined;
+  const engines = [data.claudeCode, data.codex].filter((e) => !!e);
+  const engine = engines.find((e) => data.selectedProvider === e.provider);
+  const engineModel = engine?.models.find((m) => m.id === data.selected);
   // Default model forbidden for this employee: their messages go to the first allowed model.
   const fallback = data.defaultAllowed ? data.defaultModel : (data.models[0]?.id ?? data.defaultModel);
-  const label = onClaude ? `Claude Code · ${claudeModel?.label ?? data.selected}` : (data.selected ?? fallback);
+  const label = engine ? `${providerName(engine.provider)} · ${engineModel?.label ?? data.selected}` : (data.selected ?? fallback);
   /** On the composer bar: the model alone, without its vendor ("anthropic/claude-sonnet-4" → "claude-sonnet-4"). */
-  const short = onClaude ? (claudeModel?.label ?? data.selected ?? "") : label.split("/").at(-1)!;
+  const short = engine ? (engineModel?.label ?? data.selected ?? "") : label.split("/").at(-1)!;
   // Chosen model from another Hermes provider signed in on this profile.
-  const other = !onClaude && data.selected && data.selectedProvider && data.selectedProvider !== data.provider ? data.selectedProvider : null;
-  return { onClaude, fallback, label, short, other };
+  const other = !engine && data.selected && data.selectedProvider && data.selectedProvider !== data.provider ? data.selectedProvider : null;
+  return { engines, engine, fallback, label, short, other };
 }
 
 type ButtonProps = { conversationId: string; bot?: Bot; several: boolean; open: boolean; onOpenChange: (open: boolean) => void };
@@ -138,7 +139,7 @@ type MenuProps = { conversationId: string; bots: Bot[]; bot?: Bot; onBot: (bot: 
 
 /**
  * Model choice for this conversation, among those Hermes advertises for the agent's provider and the
- * other providers signed in on Hermes (and Claude Code's, for the subscription holder). In a group,
+ * other providers signed in on Hermes (and Claude Code's and Codex's, for the subscription holder). In a group,
  * tabs pick the bot being set. Picking a model closes the palette.
  */
 export function ModelMenu({ conversationId, bots, bot, onBot, onClose }: MenuProps) {
@@ -173,8 +174,7 @@ export function ModelMenu({ conversationId, bots, bot, onBot, onClose }: MenuPro
   });
 
   if (!data) return null;
-  const claude = data.claudeCode;
-  const { onClaude, fallback, other } = current(data);
+  const { engines, engine, fallback, other } = current(data);
   // Search values, as the web's cmdk values.
   const value = (provider: string, id: string, label = "") => `${provider} ${providerName(provider)} ${id} ${label}`;
 
@@ -199,7 +199,7 @@ export function ModelMenu({ conversationId, bots, bot, onBot, onClose }: MenuPro
       provider: data.provider,
       source: providerName(data.provider),
       reasoning: m.reasoning,
-      active: !onClaude && !other && (data.selected ?? (data.defaultAllowed ? null : fallback)) === m.id,
+      active: !engine && !other && (data.selected ?? (data.defaultAllowed ? null : fallback)) === m.id,
       select: () => select.mutate({ model: m.id }),
     })),
     ...data.others.flatMap((p) =>
@@ -214,16 +214,18 @@ export function ModelMenu({ conversationId, bots, bot, onBot, onClose }: MenuPro
         select: () => select.mutate({ model: m.id, provider: p.provider }),
       })),
     ),
-    ...(claude?.models ?? []).map((m) => ({
-      key: value(claude!.provider, m.id, m.label),
-      label: m.label ?? m.id,
-      model: m.id,
-      provider: claude!.provider,
-      source: claude!.label,
-      reasoning: m.reasoning,
-      active: onClaude && data.selected === m.id,
-      select: () => select.mutate({ model: m.id, provider: claude!.provider }),
-    })),
+    ...engines.flatMap((e) =>
+      e.models.map((m) => ({
+        key: value(e.provider, m.id, m.label),
+        label: m.label ?? m.id,
+        model: m.id,
+        provider: e.provider,
+        source: e.label,
+        reasoning: m.reasoning,
+        active: engine === e && data.selected === m.id,
+        select: () => select.mutate({ model: m.id, provider: e.provider }),
+      })),
+    ),
   ].filter((o) => matches(o.key, search));
 
   const header = (

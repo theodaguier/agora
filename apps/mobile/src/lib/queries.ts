@@ -89,9 +89,9 @@ export const routinesQuery = (conversationId: string) =>
     queryFn: () => api<Routine[]>(conversationPath(conversationId, "/routines")),
   });
 
-/** /context: how full the bot's current session is (session null: nothing sent yet, or Claude Code). */
+/** /context: how full the bot's current session is (session null: nothing sent yet, or Claude Code / Codex). */
 export type SessionContext = {
-  engine: "hermes" | "claude-code";
+  engine: "hermes" | "claude-code" | "codex";
   model: string | null;
   generation: number;
   /** /compact summary still waiting for the next message. */

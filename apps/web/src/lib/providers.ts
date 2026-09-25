@@ -1,6 +1,7 @@
 /** Display name of known Hermes providers; the raw slug otherwise. */
 const names: Record<string, string> = {
   "claude-code": "Claude Code",
+  codex: "Codex",
   anthropic: "Anthropic",
   openai: "OpenAI",
   "openai-codex": "OpenAI Codex",

@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Stack } from "expo-router";
 import { ListGroup } from "heroui-native";
-import { HostClis, LocalModels } from "@/components/admin/models";
+import { HostClis, LocalModels, SubscriptionAccountsSection } from "@/components/admin/models";
 import { modelsMessages, modelsSummary, providersFor } from "@/components/admin/models-summary";
 import { Providers } from "@/components/admin/providers";
 import { AdminGate, ErrorAlert, Intro, LoadingRows, PressableRow, Section, SettingsScroll } from "@/components/admin/ui";
 import { PersonAvatar } from "@/components/conversation-avatar";
-import { adminModelsQuery, adminUsersQuery, hostClisQuery, hostModelsQuery, providersQuery } from "@/lib/admin";
+import { adminModelsQuery, adminUsersQuery, hostClisQuery, hostModelsQuery, providersQuery, subscriptionAccountsQuery } from "@/lib/admin";
 
 /* apps/web/src/components/admin/Models.tsx */
 
@@ -36,6 +36,8 @@ function ModelsLists() {
           qc.invalidateQueries({ queryKey: providersQuery.queryKey }),
           qc.invalidateQueries({ queryKey: hostModelsQuery.queryKey }),
           qc.invalidateQueries({ queryKey: hostClisQuery.queryKey }),
+          qc.invalidateQueries({ queryKey: subscriptionAccountsQuery("claude").queryKey }),
+          qc.invalidateQueries({ queryKey: subscriptionAccountsQuery("codex").queryKey }),
         ])
       }
  >
@@ -68,6 +70,8 @@ function ModelsLists() {
       {users.error && <ErrorAlert error={users.error} />}
       <LocalModels />
       <HostClis />
+      <SubscriptionAccountsSection engine="claude" />
+      <SubscriptionAccountsSection engine="codex" />
     </SettingsScroll>
   );
 }

@@ -93,7 +93,7 @@ const toolPrefix = (name: string) => `mcp__${name.replace(/[^A-Za-z0-9_]/g, "_")
  * only guess why a tool is missing, and ends up asking the employee to
  * restart a session or re-requesting a connector that already exists.
  */
-export async function connectorsPrompt(profile: string, engine: "hermes" | "claude-code") {
+export async function connectorsPrompt(profile: string, engine: "hermes" | "claude-code" | "codex") {
   const [servers, inProgress] = await Promise.all([
     agentMcpServers(profile).catch(() => []),
     db
@@ -106,8 +106,9 @@ export async function connectorsPrompt(profile: string, engine: "hermes" | "clau
   const where = (s: { url?: string; command?: string }) => (s.url ? `url ${s.url}` : `command ${s.command}`);
   const waiting = { pending: "attend la validation d'un administrateur", approved: "attend ses secrets ou sa connexion", authorizing: "attend l'autorisation OAuth" };
   const lines = ["# Tes connecteurs MCP (état réel, recalculé à chaque message)"];
-  if (engine === "claude-code") {
-    lines.push("Tu tournes en ce moment sur le moteur Claude Code : aucun connecteur MCP n'y est branché. Si la demande en a besoin, dis-le et propose de repasser sur un modèle Hermes avec le sélecteur de modèle.");
+  if (engine !== "hermes") {
+    const name = engine === "codex" ? "Codex" : "Claude Code";
+    lines.push(`Tu tournes en ce moment sur le moteur ${name} : aucun connecteur MCP n'y est branché. Si la demande en a besoin, dis-le et propose de repasser sur un modèle Hermes avec le sélecteur de modèle.`);
   } else if (on.length) {
     lines.push(`Activés pour toi : ${on.map((s) => `\`${s.name}\` (outils \`${toolPrefix(s.name)}*\`)`).join(", ")}.`);
   } else {

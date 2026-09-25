@@ -36,6 +36,11 @@ export const env = z
     RESEND_API_KEY: z.string().default(""),
     MAIL_FROM: z.string().default("Agora <no-reply@localhost>"),
     CLAUDE_CODE_ALLOWED_TOOLS: z.string().default("WebSearch WebFetch"),
+    /** Codex engine (ChatGPT subscription): its owner, empty = CLAUDE_CODE_OWNER_EMAIL's. */
+    CODEX_OWNER_EMAIL: z.string().default(""),
+    CODEX_BIN: z.string().default("codex"),
+    /** Working directory for Codex sessions; default: ~/.agora/codex. */
+    CODEX_CWD: z.string().default(""),
     /** Local model runtimes on the host (Settings › Models). */
     OLLAMA_URL: z.string().url().default("http://127.0.0.1:11434"),
     LMSTUDIO_URL: z.string().url().default("http://127.0.0.1:1234"),

@@ -12,6 +12,7 @@ import { clearBrandLogos } from "../brand-logos";
 import { createInvitation, InvitationError, resendInvitation } from "../invitations";
 import { modelOptions } from "../hermes";
 import { CLAUDE_CODE_PROVIDER, claudeCodeModels } from "../claude-code";
+import { CODEX_PROVIDER, codexModels } from "../codex";
 import { env } from "../env";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
 import { forgetMembers } from "../events";
@@ -164,18 +165,21 @@ export const admin = new Hono<AppEnv>()
 
   /**
    * Models the agents can use (every provider signed in on their Hermes profiles, deduplicated),
-   * Claude Code's for the subscription owner, and the ones blocked for each employee.
+   * Claude Code's and Codex's for their subscription owner, and the ones blocked for each employee.
    */
   .get("/models", async (c) => {
-    const owner = env.CLAUDE_CODE_OWNER_EMAIL.trim().toLowerCase();
-    const [agents, blocks, [ownerRow]] = await Promise.all([
+    const ownerId = async (email: string) =>
+      email.trim() ? (await db.select({ id: user.id }).from(user).where(sql`lower(${user.email}) = ${email.trim().toLowerCase()}`))[0] : undefined;
+    const [agents, blocks, ownerRow, codexOwner] = await Promise.all([
       db.select({ hermesProfile: agent.hermesProfile }).from(agent).where(eq(agent.onboarding, false)),
       db.select().from(modelBlock),
-      owner ? db.select({ id: user.id }).from(user).where(sql`lower(${user.email}) = ${owner}`) : [],
+      ownerId(env.CLAUDE_CODE_OWNER_EMAIL),
+      ownerId(env.CODEX_OWNER_EMAIL || env.CLAUDE_CODE_OWNER_EMAIL),
     ]);
-    const [results, ccModels] = await Promise.all([
+    const [results, ccModels, cxModels] = await Promise.all([
       Promise.allSettled(agents.map((a) => modelOptions(a.hermesProfile))),
       ownerRow ? claudeCodeModels().catch((err) => (console.error("claude code: models", err), [])) : [],
+      codexOwner ? codexModels().catch((err) => (console.error("codex: models", err), [])) : [],
     ]);
     const providers = new Map<string, Map<string, { id: string; reasoning: boolean; label?: string }>>();
     for (const r of results) {
@@ -194,6 +198,9 @@ export const admin = new Hono<AppEnv>()
         // Personal subscription: only its owner can be allowed or forbidden these models.
         ...(ownerRow && ccModels.length
           ? [{ provider: CLAUDE_CODE_PROVIDER, models: ccModels.map(({ id, reasoning, label }) => ({ id, reasoning, label })), onlyFor: ownerRow.id }]
+          : []),
+        ...(codexOwner && cxModels.length
+          ? [{ provider: CODEX_PROVIDER, models: cxModels.map(({ id, reasoning, label }) => ({ id, reasoning, label })), onlyFor: codexOwner.id }]
           : []),
       ],
       blocked,

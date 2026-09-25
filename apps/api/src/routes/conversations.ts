@@ -20,10 +20,11 @@ import { db, schema } from "../db";
 import { env } from "../env";
 import { forgetMembers, publishToConversation, publishToUser } from "../events";
 import { CLAUDE_CODE_LABEL, CLAUDE_CODE_PROVIDER, canUseClaudeCode, isClaudeCodeModel, resolveClaudeCodeModel } from "../claude-code";
+import { CODEX_LABEL, CODEX_PROVIDER, canUseCodex, isCodexModel } from "../codex";
 import { profileHome, skills } from "../hermes";
 import { HermesError, agentMcpServers, forgetSessions } from "../hermes-admin";
 import { syncSessionSearch } from "../session-search";
-import { allowedClaudeCodeModels, allowedModelOptions } from "../models";
+import { allowedClaudeCodeModels, allowedCodexModels, allowedModelOptions } from "../models";
 import { deleteRoutine, findRoutine, listRoutines, updateRoutine } from "../routines";
 import { watchScreen } from "../screen";
 import { excerpt, groupCalls, newChain, type Forwarded, type ReplyTo } from "../group";
@@ -717,8 +718,9 @@ export const conversations = new Hono<AppEnv>()
     if (!conv?.directBot) return c.json({ error: "not_found" }, 404);
     const { agent: bot, link } = conv.directBot;
     const base = { generation: link.sessionGeneration, compacted: !!link.carryOver };
-    // Claude Code keeps its sessions outside Hermes.
+    // Claude Code and Codex keep their sessions outside Hermes.
     if (isClaudeCodeModel(link.model)) return c.json({ ...base, engine: "claude-code" as const, model: link.model!.split("::")[1]!, session: null });
+    if (isCodexModel(link.model)) return c.json({ ...base, engine: "codex" as const, model: link.model!.split("::")[1]!, session: null });
     const session = env.HERMES_HOME
       ? await sessionContext(bot.hermesProfile, hermesSessionId(conv.conversation.id, bot.revision, undefined, link.sessionGeneration)).catch((err) => {
           console.error("context: state.db", err);
@@ -728,7 +730,7 @@ export const conversations = new Hono<AppEnv>()
     return c.json({ ...base, engine: "hermes" as const, model: session?.model ?? link.model?.split("::")[1] ?? null, session });
   })
 
-  /** Models offered by Hermes for the bot's provider and the other signed-in ones, and Claude Code's (minus those blocked for the employee), and the one chosen here. */
+  /** Models offered by Hermes for the bot's provider and the other signed-in ones, Claude Code's and Codex's (minus those blocked for the employee), and the one chosen here. */
   .get("/:id/models", async (c) => {
     const conv = await loadConversation(c.get("user").id, c.req.param("id"));
     const bot = conv && modelTarget(conv, c.req.query("agent"));
@@ -745,15 +747,18 @@ export const conversations = new Hono<AppEnv>()
       ? await allowedClaudeCodeModels(c.get("user").id).catch((err) => (console.error("claude code: models", err), []))
       : [];
     const claudeCode = ccModels.length ? { provider: CLAUDE_CODE_PROVIDER, label: CLAUDE_CODE_LABEL, models: ccModels } : null;
+    const cxModels = canUseCodex(c.get("user")) ? await allowedCodexModels(c.get("user").id).catch((err) => (console.error("codex: models", err), [])) : [];
+    const codex = cxModels.length ? { provider: CODEX_PROVIDER, label: CODEX_LABEL, models: cxModels } : null;
     // Older threads stored a Claude Code alias ("opus[1m]"): shown as the exact model it points to.
     if (selectedProvider === CLAUDE_CODE_PROVIDER && selected) selected = resolveClaudeCodeModel(selected);
     // Choice has since been blocked or withdrawn: the thread falls back to an allowed model on the next message.
-    const groups = [{ provider: options.provider, models: options.models }, ...options.others, ...(claudeCode ? [claudeCode] : [])];
-    // (Claude Code list unavailable: its choice is kept, the bot-runner decides at the next turn.)
-    if (selected && (selectedProvider !== CLAUDE_CODE_PROVIDER || claudeCode) && !groups.some((g) => g.provider === selectedProvider && g.models.some((m) => m.id === selected))) {
+    const groups = [{ provider: options.provider, models: options.models }, ...options.others, ...(claudeCode ? [claudeCode] : []), ...(codex ? [codex] : [])];
+    // (Claude Code or Codex list unavailable: its choice is kept, the bot-runner decides at the next turn.)
+    const listed = (selectedProvider !== CLAUDE_CODE_PROVIDER || claudeCode) && (selectedProvider !== CODEX_PROVIDER || codex);
+    if (selected && listed && !groups.some((g) => g.provider === selectedProvider && g.models.some((m) => m.id === selected))) {
       [selectedProvider, selected] = [null, null];
     }
-    return c.json({ ...options, selected, selectedProvider, claudeCode });
+    return c.json({ ...options, selected, selectedProvider, claudeCode, codex });
   })
 
   .put("/:id/model", async (c) => {
@@ -770,6 +775,11 @@ export const conversations = new Hono<AppEnv>()
       const models = await allowedClaudeCodeModels(c.get("user").id).catch(() => []);
       if (!models.some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
       value = `${CLAUDE_CODE_PROVIDER}::${body.data.model}`;
+    } else if (body.data.model && body.data.provider === CODEX_PROVIDER) {
+      if (!canUseCodex(c.get("user"))) return c.json({ error: "forbidden" }, 403);
+      const models = await allowedCodexModels(c.get("user").id).catch(() => []);
+      if (!models.some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
+      value = `${CODEX_PROVIDER}::${body.data.model}`;
     } else if (body.data.model) {
       const options = await allowedModelOptions(bot.agent.hermesProfile, c.get("user").id);
       const provider = body.data.provider ?? options.provider;

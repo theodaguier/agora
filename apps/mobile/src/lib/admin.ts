@@ -70,6 +70,15 @@ export type HostCli = {
   update: "self" | "managed" | "manual";
   job: { startedAt: string; endedAt?: string; ok?: boolean; output?: string } | null;
 };
+/** The CLIs whose subscription accounts are managed in Admin › Models (host CLI id = API path). */
+export type SubscriptionEngine = "claude" | "codex";
+/** Subscriptions of a CLI engine (Claude Code, Codex); `active` null: the machine's own login. */
+export type SubscriptionAccounts = {
+  machine: { loggedIn: boolean; email: string | null; plan: string | null };
+  active: string | null;
+  /** `loggedIn` false: its login expired or was revoked. */
+  accounts: { id: string; email: string; plan: string | null; addedAt: string; loggedIn: boolean }[];
+};
 
 /** Error surfaced by the update service; `code` + `params` are translated, `message` is the fallback. */
 export type UpdateError = { message: string; code?: string; params?: Record<string, unknown> };
@@ -119,6 +128,13 @@ export const statusQuery = queryOptions({ queryKey: ["admin", "status"], queryFn
 export const updatesQuery = queryOptions({ queryKey: ["admin", "updates"], queryFn: () => api<UpdatesStatus>("/admin/updates") });
 export const hostModelsQuery = queryOptions({ queryKey: ["admin", "host", "models"], queryFn: () => api<{ runtimes: LocalRuntime[] }>("/admin/host/models") });
 export const hostClisQuery = queryOptions({ queryKey: ["admin", "host", "clis"], queryFn: () => api<{ clis: HostCli[] }>("/admin/host/clis") });
+/** Only the engine's owner gets them (403 otherwise). */
+export const subscriptionAccountsQuery = (engine: SubscriptionEngine) =>
+  queryOptions({
+    queryKey: ["admin", "host", engine],
+    queryFn: () => api<SubscriptionAccounts>(`/admin/host/${engine}/accounts`),
+    retry: false,
+  });
 export const devicesQuery = queryOptions({ queryKey: ["mobile", "devices"], queryFn: () => api<Device[]>("/mobile/devices") });
 
 /* ---------- Helpers ---------- */
@@ -142,6 +158,7 @@ export async function uploadImage(path: string, file: { uri: string; mime: strin
 /** apps/web/src/components/ProviderLogo.tsx `providerName`: display name of known Hermes providers; the raw slug otherwise. */
 const providerNames: Record<string, string> = {
   "claude-code": "Claude Code",
+  codex: "Codex",
   anthropic: "Anthropic",
   openai: "OpenAI",
   "openai-codex": "OpenAI Codex",

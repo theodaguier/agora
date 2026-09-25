@@ -23,6 +23,15 @@ Let the holder of a Claude (Max) subscription have their bots answered by Claude
 - `GET/PUT /conversations/:id/models` routes: return and accept the `claude-code` provider for the owner only.
 - `ModelPicker`: "Claude Code (personal subscription)" section below the Hermes models.
 
+## Several accounts
+
+Settings › Models, under the Claude Code row of the CLIs: the machine's own login, plus accounts the owner signs in from Agora, and which one the engine runs on (`apps/api/src/claude-accounts.ts`, storage shared with Codex in `subscription-accounts.ts`).
+
+- **A real login per account, not a token.** Each account gets its own `CLAUDE_CONFIG_DIR` (`~/.agora/claude-accounts/<id>`) where the API runs `claude auth login`; the owner signs in on Claude's page and pastes the code back. `claude auth status` then gives its email and plan. A `claude setup-token` token was ruled out: a token-authenticated CLI can't tell which account it is.
+- **Sessions follow.** Every account directory links `projects/` to the machine's: a conversation resumes its session whichever account is active.
+- **No token in the database.** The CLI keeps and refreshes the credentials (Keychain on macOS); the `setting` row `claude_code_accounts` only holds the active account and each one's email and plan. Removing an account runs `claude auth logout`, then deletes its directory.
+- **No automatic rotation** when an account hits its usage limit: switching is the owner's choice.
+
 ## Configuration
 
 Variables in `apps/api/.env` (see `.env.example`):

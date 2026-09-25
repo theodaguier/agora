@@ -30,7 +30,7 @@ const messages = defineMessages({
 
 /**
  * Model choice for this conversation, among those Hermes advertises for the agent's provider and the
- * other providers signed in on Hermes (and Claude Code's, for the subscription holder). Searchable palette.
+ * other providers signed in on Hermes (and Claude Code's and Codex's, for the subscription holder). Searchable palette.
  */
 export function ModelPicker({
   conversationId,
@@ -72,25 +72,26 @@ export function ModelPicker({
   });
 
   if (isError || !data) return null;
-  const claude = data.claudeCode;
-  const onClaude = !!claude && data.selectedProvider === claude.provider;
-  const claudeModel = onClaude ? claude.models.find((m) => m.id === data.selected) : undefined;
+  // Subscription engines (Claude Code, Codex): the chosen one, if the thread is on it.
+  const engines = [data.claudeCode, data.codex].filter((e) => !!e);
+  const engine = engines.find((e) => data.selectedProvider === e.provider);
+  const engineModel = engine?.models.find((m) => m.id === data.selected);
   // Default model forbidden for this employee: their messages go to the first allowed model.
   const fallback = data.defaultAllowed ? data.defaultModel : (data.models[0]?.id ?? data.defaultModel);
-  const current = onClaude ? `Claude Code · ${claudeModel?.label ?? data.selected}` : (data.selected ?? fallback);
+  const current = engine ? `${providerName(engine.provider)} · ${engineModel?.label ?? data.selected}` : (data.selected ?? fallback);
   // cmdk values (also used for search); the current model is preselected on open.
   const defaultValue = `default ${data.defaultModel}`;
   const hermesValue = (id: string) => `${data.provider} ${providerName(data.provider)} ${id}`;
-  const claudeValue = (m: { id: string; label?: string }) => `${claude?.provider} ${m.id} ${m.label ?? ""}`;
+  const engineValue = (provider: string, m: { id: string; label?: string }) => `${provider} ${m.id} ${m.label ?? ""}`;
   const otherValue = (provider: string, id: string) => `${provider} ${providerName(provider)} ${id}`;
   // Chosen model from another Hermes provider signed in on this profile.
-  const other = !onClaude && data.selected && data.selectedProvider && data.selectedProvider !== data.provider ? data.selectedProvider : null;
+  const other = !engine && data.selected && data.selectedProvider && data.selectedProvider !== data.provider ? data.selectedProvider : null;
   const activeValue = !data.selected
     ? data.defaultAllowed
       ? defaultValue
       : hermesValue(fallback)
-    : onClaude
-      ? claudeValue(claudeModel ?? { id: data.selected })
+    : engine
+      ? engineValue(engine.provider, engineModel ?? { id: data.selected })
       : other
         ? otherValue(other, data.selected)
         : hermesValue(data.selected);
@@ -120,7 +121,7 @@ export function ModelPicker({
                   label={m.id}
                   logo={<ModelLogo model={m.id} provider={data.provider} />}
                   reasoning={m.reasoning}
-                  active={!onClaude && !other && (data.selected ?? (data.defaultAllowed ? null : fallback)) === m.id}
+                  active={!engine && !other && (data.selected ?? (data.defaultAllowed ? null : fallback)) === m.id}
                   onSelect={() => select.mutate({ model: m.id })}
                 />
               ))}
@@ -143,30 +144,25 @@ export function ModelPicker({
                 </CommandGroup>
               </Fragment>
             ))}
-            {claude && (
-              <>
+            {engines.map((e) => (
+              <Fragment key={e.provider}>
                 <CommandSeparator />
-                <CommandGroup heading={<GroupHeading provider={claude.provider} label={claude.label} />}>
-                  {claude.models.map((m) => (
+                <CommandGroup heading={<GroupHeading provider={e.provider} label={e.label} />}>
+                  {e.models.map((m) => (
                     <Option
                       key={m.id}
-                      value={claudeValue(m)}
+                      value={engineValue(e.provider, m)}
                       label={m.label ?? m.id}
                       description={m.description}
-                      logo={<ModelLogo model={m.id} provider={claude.provider} />}
+                      logo={<ModelLogo model={m.id} provider={e.provider} />}
                       reasoning={m.reasoning}
-                      active={onClaude && data.selected === m.id}
-                      onSelect={() =>
-                        select.mutate({
-                          model: m.id,
-                          provider: claude.provider,
-                        })
-                      }
+                      active={engine === e && data.selected === m.id}
+                      onSelect={() => select.mutate({ model: m.id, provider: e.provider })}
                     />
                   ))}
                 </CommandGroup>
-              </>
-            )}
+              </Fragment>
+            ))}
           </CommandList>
         </Command>
       </PopoverContent>

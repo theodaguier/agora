@@ -15,6 +15,8 @@ export default function Layout() {
       <Stack.Screen name="admin/integrations/[integrationId]" options={sheetOptions()} />
       <Stack.Screen name="admin/memory/vault/secret" options={sheetOptions()} />
       <Stack.Screen name="admin/models/provider" options={sheetOptions()} />
+      <Stack.Screen name="admin/models/claude-account" options={sheetOptions()} />
+      <Stack.Screen name="admin/models/codex-account" options={sheetOptions()} />
     </Stack>
   );
 }

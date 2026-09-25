@@ -248,9 +248,12 @@ shows consumption per person and per agent.
 on `https://<DOMAIN>/api/health`, which answers `{"ok":true}`. Check the logs
 from time to time (`./agora logs api`): repeated sign-in failures, 401/403.
 
-**Claude Code engine.** It runs on a personal Claude subscription logged in on
-the machine: leave `CLAUDE_CODE_OWNER_EMAIL` unset on a public instance (the
-production `docker-compose.yml` doesn't pass it).
+**Claude Code and Codex engines.** They run on personal Claude and ChatGPT
+subscriptions logged in on the machine: leave `CLAUDE_CODE_OWNER_EMAIL` and
+`CODEX_OWNER_EMAIL` unset on a public instance (the production
+`docker-compose.yml` doesn't pass them). Accounts added in Settings › Models live
+in `~/.agora/claude-accounts` and `~/.agora/codex-accounts` of the API's user:
+keep that home on a persistent volume.
 
 **Agents' tools.** Whoever writes to an agent steers its tools, and so does text
 planted in a web page it reads or a file it's given. Some Hermes tools give the

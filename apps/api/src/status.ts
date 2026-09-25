@@ -4,6 +4,7 @@
  */
 import { sql } from "drizzle-orm";
 import { canUseClaudeCode, claudeCodeModels } from "./claude-code";
+import { canUseCodex, codexModels } from "./codex";
 import { db, schema } from "./db";
 import { env } from "./env";
 import { hermesApi } from "./hermes";
@@ -205,6 +206,18 @@ export async function systemStatus(viewer: { email: string }) {
             // Only the owner's session triggers the probe: it spawns their Claude subscription.
             if (!canUseClaudeCode(viewer)) return { state: "off", detail: t.claudeOwnerOnly };
             const models = await claudeCodeModels();
+            return { state: models.length ? "ok" : "warn", detail: t.claudeModels(models.length) };
+          }
+        : off(t.claudeOff),
+    ),
+
+    probe(
+      "codex",
+      env.CODEX_OWNER_EMAIL || env.CLAUDE_CODE_OWNER_EMAIL
+        ? async () => {
+            // Same as Claude Code: it spawns the owner's ChatGPT subscription.
+            if (!canUseCodex(viewer)) return { state: "off", detail: t.claudeOwnerOnly };
+            const models = await codexModels();
             return { state: models.length ? "ok" : "warn", detail: t.claudeModels(models.length) };
           }
         : off(t.claudeOff),

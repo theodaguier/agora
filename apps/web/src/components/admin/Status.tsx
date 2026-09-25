@@ -55,6 +55,7 @@ const messages = defineMessages({
       updater: "Update service",
       mail: "Email",
       claudeCode: "Claude Code",
+      codex: "Codex",
     } as Record<string, string>,
   },
   fr: {
@@ -90,6 +91,7 @@ const messages = defineMessages({
       updater: "Service de mise à jour",
       mail: "Email",
       claudeCode: "Claude Code",
+      codex: "Codex",
     },
   },
 });

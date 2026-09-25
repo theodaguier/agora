@@ -302,7 +302,7 @@ export function startUsageCollector() {
   sweeper = setInterval(run, SWEEP_MS);
 }
 
-/* ---------- Claude Code ---------- */
+/* ---------- Claude Code, Codex ---------- */
 
 export type EngineUsage = {
   model: string;
@@ -313,20 +313,27 @@ export type EngineUsage = {
   costUsd: number;
 };
 
-export async function recordClaudeCodeUsage(usage: EngineUsage[], who: { userId: string | null; agentId: string; conversationId: string; sessionId: string }) {
+/** The subscription engines report each reply's tokens themselves. */
+const ENGINE_PROVIDER = { "claude-code": "anthropic", codex: "openai" } as const;
+
+export async function recordEngineUsage(
+  engine: keyof typeof ENGINE_PROVIDER,
+  usage: EngineUsage[],
+  who: { userId: string | null; agentId: string; conversationId: string; sessionId: string },
+) {
   const rows = usage.filter((u) => u.inputTokens || u.outputTokens || u.cacheReadTokens || u.cacheWriteTokens);
   if (!rows.length) return;
   await db.insert(usageEvent).values(
     rows.map(({ costUsd, model, ...tokens }) => ({
       id: crypto.randomUUID(),
       occurredAt: new Date(),
-      engine: "claude-code" as const,
+      engine,
       source: "chat" as const,
       sessionId: who.sessionId,
       userId: who.userId,
       agentId: who.agentId,
       conversationId: who.conversationId,
-      provider: "anthropic",
+      provider: ENGINE_PROVIDER[engine],
       // Claude Code suffixes some ids with a context variant (`claude-opus-5-5[1m]`).
       model: model.replace(/\[[^\]]*\]$/, ""),
       apiCalls: 1,

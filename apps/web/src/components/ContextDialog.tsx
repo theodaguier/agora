@@ -5,6 +5,7 @@ import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress
 import { Spinner } from "@/components/ui/spinner";
 import { defineMessages, useT } from "@/i18n";
 import { numberFormat } from "@/lib/intl";
+import { providerName } from "@/lib/providers";
 import { contextQuery } from "@/lib/queries";
 
 const messages = defineMessages({
@@ -20,7 +21,7 @@ const messages = defineMessages({
     totals: "Tokens used in this session",
     totalsDetail: (input: string, output: string, cache: string) => `${input} in · ${output} out · ${cache} from cache`,
     empty: "Nothing sent to the bot since this context started.",
-    claudeCode: "Claude Code keeps its context outside Hermes: no details available.",
+    outside: (engine: string) => `${engine} keeps its context outside Hermes: no details available.`,
     failed: "Couldn't read the context.",
   },
   fr: {
@@ -35,7 +36,7 @@ const messages = defineMessages({
     totals: "Tokens consommés dans cette session",
     totalsDetail: (input: string, output: string, cache: string) => `${input} en entrée · ${output} en sortie · ${cache} depuis le cache`,
     empty: "Rien n'a été envoyé au bot depuis le début de ce contexte.",
-    claudeCode: "Claude Code garde son contexte hors de Hermes : pas de détail disponible.",
+    outside: (engine: string) => `${engine} garde son contexte hors de Hermes : pas de détail disponible.`,
     failed: "Impossible de lire le contexte.",
   },
 });
@@ -103,7 +104,7 @@ export function ContextDialog({ conversationId, open, onOpenChange }: { conversa
             {data.compacted ? (
               <p className="text-sm text-muted-foreground">{t.compacted}</p>
             ) : (
-              !session && <p className="text-sm text-muted-foreground">{data.engine === "claude-code" ? t.claudeCode : t.empty}</p>
+              !session && <p className="text-sm text-muted-foreground">{data.engine !== "hermes" ? t.outside(providerName(data.engine)) : t.empty}</p>
             )}
           </div>
         )}

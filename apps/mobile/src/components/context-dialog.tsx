@@ -3,6 +3,7 @@ import { Alert, BottomSheet, ListGroup, Separator, SkeletonGroup, Slider, Typogr
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { defineMessages, locale } from "@/lib/i18n";
+import { providerName } from "@/lib/admin";
 import { contextQuery } from "@/lib/queries";
 import { numberFormat } from "@/lib/intl";
 
@@ -21,7 +22,7 @@ const messages = defineMessages({
     totals: "Tokens used in this session",
     totalsDetail: (input: string, output: string, cache: string) => `${input} in · ${output} out · ${cache} from cache`,
     empty: "Nothing sent to the bot since this context started.",
-    claudeCode: "Claude Code keeps its context outside Hermes: no details available.",
+    outside: (engine: string) => `${engine} keeps its context outside Hermes: no details available.`,
     failed: "Couldn't read the context.",
   },
   fr: {
@@ -36,7 +37,7 @@ const messages = defineMessages({
     totals: "Tokens consommés dans cette session",
     totalsDetail: (input: string, output: string, cache: string) => `${input} en entrée · ${output} en sortie · ${cache} depuis le cache`,
     empty: "Rien n'a été envoyé au bot depuis le début de ce contexte.",
-    claudeCode: "Claude Code garde son contexte hors de Hermes : pas de détail disponible.",
+    outside: (engine: string) => `${engine} garde son contexte hors de Hermes : pas de détail disponible.`,
     failed: "Impossible de lire le contexte.",
   },
 });
@@ -66,7 +67,7 @@ export function ContextDialog({ conversationId, open, onOpenChange }: { conversa
           : []),
       ]
     : [];
-  const note = data ? (data.compacted ? t.compacted : !session ? (data.engine === "claude-code" ? t.claudeCode : t.empty) : null) : null;
+  const note = data ? (data.compacted ? t.compacted : !session ? (data.engine !== "hermes" ? t.outside(providerName(data.engine)) : t.empty) : null) : null;
 
   return (
     <BottomSheet isOpen={open} onOpenChange={onOpenChange}>
