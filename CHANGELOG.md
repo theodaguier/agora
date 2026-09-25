@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.2 — 2026-09-25
+
+### Fixes
+- report a CLI update that leaves the running binary behind as failed
+
 ## v0.8.1 — 2026-09-25
 
 ### Fixes
