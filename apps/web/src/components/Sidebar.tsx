@@ -60,6 +60,8 @@ const messages = defineMessages({
     settings: "Settings",
     dnd: "Do not disturb",
     dndOff: "Turn off",
+    dndTurnedOn: "Do not disturb is on.",
+    dndTurnedOff: "Do not disturb is off.",
     schedule: "Hours and absences…",
     shortcuts: "Keyboard shortcuts",
     whatsNew: "What's new",
@@ -77,6 +79,8 @@ const messages = defineMessages({
     settings: "Paramètres",
     dnd: "Ne pas déranger",
     dndOff: "Désactiver",
+    dndTurnedOn: "Ne pas déranger activé.",
+    dndTurnedOff: "Ne pas déranger désactivé.",
     schedule: "Horaires et absences…",
     shortcuts: "Raccourcis clavier",
     whatsNew: "Nouveautés",
@@ -289,6 +293,7 @@ function DndMenu({ userId }: { userId: string }) {
     mutationFn: (until: string | null) => setDnd(userId, until),
     // The live "availability" event does the same; this covers a disconnected stream.
     onSettled: () => qc.invalidateQueries({ queryKey: scheduleSettingsQuery(userId).queryKey }),
+    meta: { success: (_: unknown, until: string | null) => (until ? t.dndTurnedOn : t.dndTurnedOff) },
   });
   const on = status.state === "dnd";
   return (

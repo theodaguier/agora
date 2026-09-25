@@ -102,11 +102,14 @@ export function McpRequestCard({ id }: { id: string }) {
   const decide = useMutation({
     mutationFn: (approve: boolean) => api<McpRequest>(`/mcp-requests/${id}/${approve ? "approve" : "reject"}`, { method: "POST" }),
     onSuccess: refresh,
+    // The card says what failed, next to its buttons.
+    meta: { error: false },
   });
   const install = useMutation({
     mutationFn: (body: { env: Record<string, string>; bearer_token?: string }) =>
       api<McpRequest>(`/mcp-requests/${id}/install`, { method: "POST", body: JSON.stringify(body) }),
     onSuccess: refresh,
+    meta: { error: false },
   });
   const oauth = useMcpOAuth();
   const [client, setClient] = useState({ client_id: "", client_secret: "", scope: "" });
@@ -121,6 +124,7 @@ export function McpRequestCard({ id }: { id: string }) {
       );
     },
     onSettled: () => refresh(),
+    meta: { error: false },
   });
 
   if (error) return null;

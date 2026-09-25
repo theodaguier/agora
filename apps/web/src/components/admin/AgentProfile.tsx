@@ -8,7 +8,6 @@ import { adminAgentsQuery, agentsQuery, conversationsQuery } from "@/lib/queries
 import { AvatarPicker } from "./AvatarPicker";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
-import { ErrorText } from "./ui";
 
 const messages = defineMessages({
   en: { name: "Name", avatar: "Avatar", profile: (p: string) => `Hermes profile: ${p}. Set when the agent was created.` },
@@ -38,6 +37,7 @@ export function AgentProfile({ agent }: { agent: AdminAgent }) {
           qc.invalidateQueries({ queryKey }),
         ),
       ),
+    meta: { success: c.saved },
   });
 
   return (
@@ -61,8 +61,6 @@ export function AgentProfile({ agent }: { agent: AdminAgent }) {
           <Button type="submit" disabled={!dirty || !name.trim() || save.isPending}>
             {save.isPending ? c.saving : c.save}
           </Button>
-          {save.isSuccess && !dirty && <FieldDescription>{c.saved}</FieldDescription>}
-          <ErrorText error={save.error} />
         </Field>
       </FieldGroup>
     </form>

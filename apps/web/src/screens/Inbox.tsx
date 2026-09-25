@@ -30,6 +30,10 @@ const messages = defineMessages({
     markAllRead: "Mark all as read",
     markRead: "Mark as read",
     markUnread: "Mark as unread",
+    allMarkedRead: "Everything is marked as read.",
+    markedRead: "Marked as read.",
+    markedUnread: "Marked as unread.",
+    markFailed: "Couldn't update the inbox.",
     actions: "Notification actions",
     someone: "Someone",
     justNow: "Just now",
@@ -50,6 +54,10 @@ const messages = defineMessages({
     markAllRead: "Tout marquer comme lu",
     markRead: "Marquer comme lu",
     markUnread: "Marquer comme non lu",
+    allMarkedRead: "Tout est marqué comme lu.",
+    markedRead: "Marqué comme lu.",
+    markedUnread: "Marqué comme non lu.",
+    markFailed: "Mise à jour impossible.",
     actions: "Actions de la notification",
     someone: "Quelqu'un",
     justNow: "À l'instant",
@@ -78,6 +86,7 @@ export function Inbox() {
   const markAll = useMutation({
     mutationFn: () => api("/inbox/read", { method: "POST", body: JSON.stringify({}) }),
     onSettled: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
+    meta: { success: t.allMarkedRead, error: t.markFailed },
   });
 
   return (
@@ -158,13 +167,15 @@ function InboxRow({ item }: { item: InboxItem }) {
   const onTask = item.kind === "task.assigned" || item.kind === "task.done";
   const body = onTask ? (item.task?.title ?? item.text) : item.text;
 
+  // From the menu: said with a toast (the row may leave the "Unread" list meanwhile); opening the item says nothing.
   const setRead = useMutation({
-    mutationFn: (read: boolean) => api("/inbox/read", { method: "POST", body: JSON.stringify({ ids: [item.id], read }) }),
+    mutationFn: ({ read }: { read: boolean; menu?: boolean }) => api("/inbox/read", { method: "POST", body: JSON.stringify({ ids: [item.id], read }) }),
     onSettled: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
+    meta: { success: (_: unknown, v: { read: boolean; menu?: boolean }) => (v.menu ? (v.read ? t.markedRead : t.markedUnread) : undefined), error: t.markFailed },
   });
 
   const open = () => {
-    if (!item.read) setRead.mutate(true);
+    if (!item.read) setRead.mutate({ read: true });
     if (onTask) navigate({ to: "/tasks" });
     else if (item.conversationId)
       navigate({ to: "/c/$conversationId", params: { conversationId: item.conversationId }, search: item.messageId ? { m: item.messageId } : {} });
@@ -203,7 +214,7 @@ function InboxRow({ item }: { item: InboxItem }) {
             <MoreIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setRead.mutate(!item.read)}>{item.read ? t.markUnread : t.markRead}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setRead.mutate({ read: !item.read, menu: true })}>{item.read ? t.markUnread : t.markRead}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </ItemActions>

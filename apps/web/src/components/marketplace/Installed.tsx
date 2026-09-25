@@ -2,7 +2,7 @@ import { confirmAction } from "@/lib/confirm";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TrashIcon } from "@/components/icons";
-import { ErrorText, Loading, useRestartNeeded } from "@/components/admin/ui";
+import { Loading, useRestartNeeded } from "@/components/admin/ui";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SkillCreateDialog } from "@/components/SkillCreateDialog";
@@ -33,6 +33,9 @@ const messages = defineMessages({
     skills: "Skills",
     noSkills: "No skills added from the marketplace.",
     skillsHint: "Skills are installed per agent: enable or remove them in Administration › Agents › Skills.",
+    approved: "Request approved.",
+    rejected: "Request declined.",
+    removed: (name: string) => `“${name}” removed.`,
   },
   fr: {
     title: "Installés",
@@ -53,6 +56,9 @@ const messages = defineMessages({
     skills: "Skills",
     noSkills: "Aucun skill ajouté depuis le marketplace.",
     skillsHint: "Les skills s'installent par agent : active-les ou retire-les dans Administration › Agents › Skills.",
+    approved: "Demande validée.",
+    rejected: "Demande refusée.",
+    removed: (name: string) => `« ${name} » retiré.`,
   },
 });
 
@@ -75,6 +81,7 @@ export function Installed() {
       qc.invalidateQueries({ queryKey: ["skill-requests"] });
       qc.invalidateQueries({ queryKey: ["skill-request"] });
     },
+    meta: { success: (_: unknown, { approve }: { approve: boolean }) => (approve ? t.approved : t.rejected) },
   });
   const decide = useMutation({
     mutationFn: ({ id, approve }: { id: string; approve: boolean }) => api(`/mcp-requests/${id}/${approve ? "approve" : "reject"}`, { method: "POST" }),
@@ -83,6 +90,7 @@ export function Installed() {
       qc.invalidateQueries({ queryKey: ["mcp-request"] });
       qc.invalidateQueries({ queryKey: ["hermes"] });
     },
+    meta: { success: (_: unknown, { approve }: { approve: boolean }) => (approve ? t.approved : t.rejected) },
   });
   const changed = () => {
     flagRestart();
@@ -96,11 +104,13 @@ export function Installed() {
   const removeMcp = useMutation({
     mutationFn: (name: string) => api(`/admin/hermes/mcp/servers/${name}`, { method: "DELETE" }),
     onSuccess: changed,
+    meta: { success: (_: unknown, name: string) => t.removed(name) },
   });
   const setType = useMutation({
     mutationFn: ({ name, type }: { name: string; type: IntegrationType }) =>
       api(`/admin/hermes/mcp/servers/${name}/type`, { method: "PUT", body: JSON.stringify({ type }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["hermes", "mcp"] }),
+    meta: { success: c.saved },
   });
   const togglePlugin = useMutation({
     mutationFn: ({ name, enable }: { name: string; enable: boolean }) =>
@@ -113,7 +123,6 @@ export function Installed() {
   return (
     <>
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">{t.title}</h1>
-      <ErrorText error={toggleMcp.error ?? removeMcp.error ?? setType.error ?? togglePlugin.error ?? decide.error ?? decideSkill.error} />
 
       {pendingSkills.length > 0 && (
         <>

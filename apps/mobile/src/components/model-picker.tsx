@@ -8,6 +8,7 @@ import { ModelLogo } from "@/components/model-logo";
 import { FloatingMenu, MENU_MAX_HEIGHT, MenuEmpty, MenuRow } from "@/components/slash-menu";
 import { api, conversationPath } from "@/lib/api";
 import { withTap } from "@/lib/haptics";
+import { useAdminToast } from "@/components/admin/ui";
 import { defineMessages } from "@/lib/i18n";
 import { modelsQuery } from "@/lib/queries";
 import type { ModelOptions } from "@/lib/types";
@@ -142,6 +143,7 @@ type MenuProps = { conversationId: string; bots: Bot[]; bot?: Bot; onBot: (bot: 
  */
 export function ModelMenu({ conversationId, bots, bot, onBot, onClose }: MenuProps) {
   const qc = useQueryClient();
+  const toast = useAdminToast();
   const t = messages;
   const [search, setSearch] = useState("");
   const query = modelsQuery(conversationId, bot?.id);
@@ -165,6 +167,8 @@ export function ModelMenu({ conversationId, bots, bot, onBot, onClose }: MenuPro
       Haptics.selectionAsync().catch(() => {});
       onClose();
     },
+    // The palette is closed by then: a failure is said by a toast (the refetch puts the old model back).
+    onError: (e) => toast.failed(e),
     onSettled: () => qc.invalidateQueries({ queryKey: query.queryKey }),
   });
 

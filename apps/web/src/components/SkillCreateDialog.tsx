@@ -10,11 +10,13 @@ const messages = defineMessages({
   en: {
     title: (name: string) => `Skill ${name}`,
     shared: "Every bot will be able to use it.",
+    approved: "Skill approved.",
     approve: "Approve",
   },
   fr: {
     title: (name: string) => `Skill ${name}`,
     shared: "Tous les bots pourront s'en servir.",
+    approved: "Skill validé.",
     approve: "Valider",
   },
 });
@@ -39,6 +41,7 @@ function Review({ request, onClose }: { request: SkillRequest; onClose: () => vo
       qc.invalidateQueries({ queryKey: ["skill-requests"] });
       onClose();
     },
+    meta: { success: t.approved, error: false },
   });
 
   return (

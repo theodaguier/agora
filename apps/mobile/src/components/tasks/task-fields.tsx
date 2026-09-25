@@ -8,6 +8,7 @@ import { DayPicker } from "@/components/profile/native-pickers";
 import { useMe } from "@/components/server-scope";
 import { defineMessages, tr } from "@/lib/i18n";
 import { usePeople } from "@/lib/people";
+import { useAdminToast } from "@/components/admin/ui";
 import { formatDueDate, fromDay, toDay, useTaskPatch, type Task, type TaskPriority, type TaskStatus } from "@/lib/tasks";
 import { priorityMessages, statusMessages, TASK_PRIORITIES, TASK_STATUSES } from "@/lib/task-status";
 
@@ -147,6 +148,7 @@ export function AssigneesRow({ task }: { task: Task }) {
   const me = useMe();
   const people = usePeople();
   const save = useTaskPatch(task.id);
+  const toast = useAdminToast();
   // What's checked right now, ahead of the refetch.
   const [picked, setPicked] = useState<string[] | null>(null);
   const ids = picked ?? task.assignees.map((a) => a.id);
@@ -163,7 +165,7 @@ export function AssigneesRow({ task }: { task: Task }) {
         if (!next.length) return;
         void Haptics.selectionAsync();
         setPicked(next);
-        save.mutate({ assigneeIds: next });
+        save.mutate({ assigneeIds: next }, { onError: (e) => (setPicked(null), toast.failed(e)) });
       }}
     >
       <Select.Trigger variant="unstyled" asChild>

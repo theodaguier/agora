@@ -22,6 +22,7 @@ import { PersonAvatar } from "./ConversationAvatar";
 import { QuoteBlock } from "./MessageParts";
 import { ModelPicker } from "./ModelPicker";
 import { SlashMenu, type SlashItem } from "./SlashMenu";
+import { toastError } from "@/lib/feedback";
 
 const messages = defineMessages({
   en: {
@@ -240,7 +241,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
   const items = useMemo<SlashItem[]>(() => {
     if (!token) return [];
     if (token.trigger === "@") return mentionItems(token.query.toLowerCase(), mentionables, people, t.mentionHint);
-    const fail = (err: unknown) => console.error("session command", err);
+    const fail = (err: unknown) => void toastError(err);
     const reset = async () => {
       if (await confirmAction({ title: t.newTitle, description: t.newBody, action: t.newAction })) sessionCommand(conversationId, "new").catch(fail);
     };

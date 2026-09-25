@@ -16,6 +16,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, type AdminAgent, type ModelOptions, type Skill, type Toolset } from "@/lib/api";
 import { AgentProfile } from "./AgentProfile";
 import { AgentMemory, AgentSoul } from "./AgentSoul";
+import { toast } from "sonner";
+import { common } from "@agora/core/i18n";
 import { defineMessages, useT } from "@/i18n";
 import { agentSkillsQuery } from "@/lib/queries";
 import { ErrorText, Loading, useAction } from "./ui";
@@ -52,6 +54,8 @@ const messages = defineMessages<{
   uninstallTitle: (name: string) => string;
   uninstallBody: string;
   uninstallAction: string;
+  uninstalled: (name: string) => string;
+  uninstallFailed: (name: string) => string;
 }>({
   en: {
     tabs: { Profil: "Profile", Personnalité: "Personality", Modèle: "Model", Outils: "Tools", Skills: "Skills", Mémoire: "Memory" },
@@ -82,6 +86,8 @@ const messages = defineMessages<{
     uninstallTitle: (name) => `Uninstall the "${name}" skill?`,
     uninstallBody: "The bot will no longer be able to use it. You can install it again from the marketplace.",
     uninstallAction: "Uninstall",
+    uninstalled: (name) => `"${name}" uninstalled.`,
+    uninstallFailed: (name) => `Couldn't uninstall "${name}".`,
   },
   fr: {
     tabs: { Profil: "Profil", Personnalité: "Personnalité", Modèle: "Modèle", Outils: "Outils", Skills: "Skills", Mémoire: "Mémoire" },
@@ -112,6 +118,8 @@ const messages = defineMessages<{
     uninstallTitle: (name) => `Désinstaller la compétence « ${name} » ?`,
     uninstallBody: "Le bot ne pourra plus s'en servir. Tu pourras la réinstaller depuis la marketplace.",
     uninstallAction: "Désinstaller",
+    uninstalled: (name) => `« ${name} » désinstallée.`,
+    uninstallFailed: (name) => `Impossible de désinstaller « ${name} ».`,
   },
 });
 
@@ -185,6 +193,7 @@ export function AgentEditor({ agent, initialTab = "Personnalité" }: { agent: Ad
 
 function ModelSection({ agentId }: { agentId: string }) {
   const t = useT(messages);
+  const c = useT(common);
   const qc = useQueryClient();
   const key = ["hermes", "model", agentId];
   const { data, isPending, error } = useQuery({ queryKey: key, queryFn: () => api<ModelOptions>(`/admin/hermes/agents/${agentId}/model`) });
@@ -194,6 +203,7 @@ function ModelSection({ agentId }: { agentId: string }) {
       qc.invalidateQueries({ queryKey: key });
       qc.invalidateQueries({ queryKey: ["models"] });
     },
+    meta: { success: c.saved },
   });
   if (isPending) return <Loading />;
   if (!data) return <ErrorText error={error} />;
@@ -217,7 +227,6 @@ function ModelSection({ agentId }: { agentId: string }) {
           </FieldLabel>
         ))}
       </RadioGroup>
-      <ErrorText error={save.error} />
     </FieldSet>
   );
 }
@@ -240,7 +249,6 @@ function ToolsSection({ agentId }: { agentId: string }) {
     <FieldSet>
       <FieldLegend>{m.tabs.Outils}</FieldLegend>
       <FieldDescription>{m.toolsIntro}</FieldDescription>
-      <ErrorText error={toggle.error} />
       <SettingList>
         {data.map((t) => (
           <SettingRow
@@ -290,7 +298,6 @@ function McpSection({ agentId, isDefault }: { agentId: string; isDefault: boolea
     <FieldSet>
       <FieldLegend>{t.mcpTitle}</FieldLegend>
       <FieldDescription>{isDefault ? t.mcpDefault : t.mcpIntro}</FieldDescription>
-      <ErrorText error={toggle.error} />
       {data.length === 0 ? (
         <Empty className="border border-dashed">
           <EmptyHeader>
@@ -331,7 +338,8 @@ function SkillsSection({ agentId }: { agentId: string }) {
   const query = agentSkillsQuery(agentId);
   const key = query.queryKey;
   const [filter, setFilter] = useState("");
-  const [action, setAction] = useState<string | null>(null);
+  /** Hermes uninstalling a skill in the background: its action id and the skill, said by a toast until it's done. */
+  const [action, setAction] = useState<{ id: string; skill: string } | null>(null);
   const { data: skills, isPending, error } = useQuery(query);
   const toggle = useMutation({
     mutationFn: ({ name, enabled }: { name: string; enabled: boolean }) =>
@@ -344,9 +352,15 @@ function SkillsSection({ agentId }: { agentId: string }) {
   });
   const remove = useMutation({
     mutationFn: (name: string) => api<{ name?: string }>(`/admin/hermes/agents/${agentId}/skills/${encodeURIComponent(name)}`, { method: "DELETE" }),
-    onSuccess: (r) => (r?.name ? setAction(r.name) : qc.invalidateQueries({ queryKey: key })),
+    onSuccess: (r, skill) => {
+      if (!r?.name) return void qc.invalidateQueries({ queryKey: key });
+      setAction({ id: r.name, skill });
+      toast.loading(t.uninstalling, { id: r.name });
+    },
+    meta: { success: (r: { name?: string } | undefined, skill: string) => (r?.name ? undefined : t.uninstalled(skill)) },
   });
-  useAction(action, () => {
+  useAction(action?.id ?? null, (ok) => {
+    if (action) toast[ok ? "success" : "error"](ok ? t.uninstalled(action.skill) : t.uninstallFailed(action.skill), { id: action.id });
     setAction(null);
     qc.invalidateQueries({ queryKey: key });
     qc.invalidateQueries({ queryKey: ["commands"] });
@@ -356,8 +370,6 @@ function SkillsSection({ agentId }: { agentId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {action && <p className="text-sm text-muted-foreground">{t.uninstalling}</p>}
-      <ErrorText error={remove.error} />
       <FieldSet>
         <FieldLegend>
           {t.skillsTitle}
@@ -366,7 +378,7 @@ function SkillsSection({ agentId }: { agentId: string }) {
         <FieldDescription>{t.skillsHint}</FieldDescription>
         <Input aria-label={t.filterSkills} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t.filter} />
         {isPending && <Loading />}
-        <ErrorText error={error ?? toggle.error} />
+        <ErrorText error={error} />
         <SettingList>
           {list.map((s) => (
             <SettingRow

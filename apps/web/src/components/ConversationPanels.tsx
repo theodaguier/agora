@@ -25,6 +25,7 @@ import { dividerLabel } from "@/lib/dates";
 import { formatSize } from "@/lib/format";
 import { firstUrl, linkLabel } from "@/lib/links";
 import { messagesQuery, pinsQuery } from "@/lib/queries";
+import { copyText } from "@/lib/feedback";
 import { cn } from "@/lib/utils";
 
 export type PanelKind = "search" | "files" | "pins";
@@ -44,6 +45,8 @@ const messages = defineMessages({
     noPins: "Nothing pinned yet. Pin a message or a file from its menu so everyone finds it here.",
     pin: "Pin",
     unpin: "Unpin",
+    pinned: "Pinned.",
+    unpinned: "Unpinned.",
     show: "Show in conversation",
     download: "Download",
     actions: "Actions",
@@ -69,6 +72,8 @@ const messages = defineMessages({
     noPins: "Rien d'épinglé pour l'instant. Épingle un message ou un fichier depuis son menu pour que tout le monde le retrouve ici.",
     pin: "Épingler",
     unpin: "Désépingler",
+    pinned: "Épinglé.",
+    unpinned: "Désépinglé.",
     show: "Voir dans la conversation",
     download: "Télécharger",
     actions: "Actions",
@@ -92,12 +97,14 @@ const pinKey = (t: PinTarget) => `${t.messageId}:${t.attachmentId ?? ""}`;
 
 /** The conversation's pins, shared by its members, and how to pin or unpin. */
 export function usePins(conversationId: string) {
+  const t = useT(messages);
   const qc = useQueryClient();
   const { data: pins = noPins } = useQuery(pinsQuery(conversationId));
   const pinned = useMemo(() => new Set(pins.map((p) => pinKey({ messageId: p.message.id, attachmentId: p.attachment?.id }))), [pins]);
   const toggle = useMutation({
     mutationFn: ({ target, pin }: { target: PinTarget; pin: boolean }) => setPinned(conversationId, target, pin),
     onSettled: () => qc.invalidateQueries({ queryKey: pinsQuery(conversationId).queryKey }),
+    meta: { success: (_: unknown, { pin }: { pin: boolean }) => (pin ? t.pinned : t.unpinned) },
   });
   const isPinned = (target: PinTarget) => pinned.has(pinKey(target));
   return {
@@ -189,7 +196,7 @@ export function PinnedBar({ conversationId, onJump, onSeeAll }: { conversationId
           </ContextMenuTrigger>
           <ContextMenuContent className="w-56">
             <ContextMenuGroup>
-              {link && <ContextMenuItem onClick={() => navigator.clipboard.writeText(link.url)}>{t.copyLink}</ContextMenuItem>}
+              {link && <ContextMenuItem onClick={() => copyText(link.url)}>{t.copyLink}</ContextMenuItem>}
               <ContextMenuItem onClick={() => onJump(p.message.id)}>{t.show}</ContextMenuItem>
               <ContextMenuItem onClick={() => toggle({ messageId: p.message.id, attachmentId: p.attachment?.id })}>{t.unpin}</ContextMenuItem>
             </ContextMenuGroup>

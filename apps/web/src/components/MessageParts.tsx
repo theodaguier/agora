@@ -18,6 +18,7 @@ import type { Mentionable } from "@/lib/mentions";
 import { cn } from "@/lib/utils";
 import { BubbleAttachments, SentAttachments } from "./Attachments";
 import { isImage } from "../lib/files";
+import { copyText } from "@/lib/feedback";
 import { PeerBubble, UserBubble } from "./Bubbles";
 import { MessageText } from "./MessageText";
 
@@ -207,7 +208,7 @@ export function MessageRow(props: {
       {(props.text || files.length > 0) && <Separator />}
       <Group>
         {props.text && (
-          <Item onClick={() => navigator.clipboard.writeText(props.text!)}>
+          <Item onClick={() => copyText(props.text!)}>
             <CopyIcon /> {t.copy}
           </Item>
         )}

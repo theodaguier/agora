@@ -153,7 +153,6 @@ function DndCard({ userId, settings }: { userId: string; settings: ScheduleSetti
       <ItemContent>
         <ItemTitle>{active ? t.dndOn : t.dndOff}</ItemTitle>
         <ItemDescription>{status ?? t.dndOffHelp}</ItemDescription>
-        <ErrorText error={change.error} />
       </ItemContent>
       <ItemActions className="flex-wrap">
         {active ? (
@@ -196,6 +195,7 @@ function HoursForm({ userId, settings, self }: { userId: string; settings: Sched
         body: JSON.stringify({ timezone: zone === ORG ? null : zone, hours: enabled ? hours : null }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: scheduleSettingsQuery(userId).queryKey }),
+    meta: { success: c.saved },
   });
   const dirty = JSON.stringify([zone === ORG ? null : zone, enabled ? hours : null]) !== JSON.stringify([settings.timezone, settings.hours]);
   const setDay = (day: number, ranges: TimeRange[]) => setHours((h) => h.map((r, i) => (i === day ? ranges : r)));
@@ -300,8 +300,6 @@ function HoursForm({ userId, settings, self }: { userId: string; settings: Sched
             <Button type="submit" disabled={!dirty || save.isPending}>
               {save.isPending ? c.saving : c.save}
             </Button>
-            {save.isSuccess && !dirty && <FieldDescription>{c.saved}</FieldDescription>}
-            <ErrorText error={save.error} />
           </Field>
         </FieldGroup>
       </FieldSet>
@@ -330,12 +328,14 @@ function nextRange(ranges: TimeRange[]): TimeRange {
 
 function Absences({ userId, settings }: { userId: string; settings: ScheduleSettings }) {
   const t = useT(messages);
+  const c = useT(common);
   const qc = useQueryClient();
   const locale = intlLocale(useLocale());
   const [adding, setAdding] = useState(false);
   const remove = useMutation({
     mutationFn: (id: string) => api(`/availability/${encodeURIComponent(userId)}/absences/${encodeURIComponent(id)}`, { method: "DELETE" }),
     onSettled: () => qc.invalidateQueries({ queryKey: scheduleSettingsQuery(userId).queryKey }),
+    meta: { success: c.deleted },
   });
   const day = (d: string) => fromDay(d).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
 
@@ -389,7 +389,6 @@ function Absences({ userId, settings }: { userId: string; settings: ScheduleSett
           </Item>
         ))}
       </ItemGroup>
-      <ErrorText error={remove.error} />
       <div>{addButton}</div>
       {dialog}
     </>
@@ -413,6 +412,7 @@ function AbsenceForm({ userId, onDone }: { userId: string; onDone: () => void })
       await qc.invalidateQueries({ queryKey: scheduleSettingsQuery(userId).queryKey });
       onDone();
     },
+    meta: { success: c.added, error: false },
   });
   const today = fromDay(toDay(new Date()));
 

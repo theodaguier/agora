@@ -15,6 +15,7 @@ import { Field, FieldGroup, FieldLegend, FieldSeparator, FieldSet } from "@/comp
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { api, type AdminInvitation, type AdminUser, type InvitationSent } from "@/lib/api";
 import { adminInvitationsQuery, adminUsersQuery } from "@/lib/queries";
+import { common } from "@agora/core/i18n";
 import { defineMessages, intlLocale, useLocale, useT } from "@/i18n";
 import { ErrorText, SectionHeader } from "./ui";
 
@@ -56,6 +57,8 @@ const messages = defineMessages({
     removeTitle: (name: string) => `Delete ${name}'s account?`,
     removeBody:
       "They are signed out everywhere and lose access to the app. Their messages, tasks and conversations stay, without their name. This can't be undone, but you can invite them again.",
+    removed: (name: string) => `${name}'s account was deleted.`,
+    revoked: "Invitation canceled.",
   },
   fr: {
     title: "Utilisateurs",
@@ -94,6 +97,8 @@ const messages = defineMessages({
     removeTitle: (name: string) => `Supprimer le compte de ${name} ?`,
     removeBody:
       "Ses sessions sont fermées partout et l'app ne lui est plus accessible. Ses messages, tâches et conversations restent, sans son nom. C'est définitif, mais tu pourras l'inviter à nouveau.",
+    removed: (name: string) => `Le compte de ${name} a été supprimé.`,
+    revoked: "Invitation annulée.",
   },
 });
 
@@ -115,6 +120,7 @@ export function Users() {
       setResult({ ...sent, email: body.email });
       refresh();
     },
+    meta: { loading: t.sending, success: (sent: InvitationSent, body: InviteBody) => (sent.sent ? t.sentTo(body.email) : undefined), error: false },
   });
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
@@ -226,6 +232,7 @@ function AccessSelect({
 
 function UserRow({ user: u }: { user: AdminUser }) {
   const t = useT(messages);
+  const c = useT(common);
   const qc = useQueryClient();
   const me = useRouteContext({ from: "/app" }).user.id;
   const [title, setTitle] = useState(u.title);
@@ -235,10 +242,12 @@ function UserRow({ user: u }: { user: AdminUser }) {
       api(`/admin/users/${encodeURIComponent(u.id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
     onSettled: () => qc.invalidateQueries({ queryKey: adminUsersQuery.queryKey }),
     onError: () => setTitle(u.title),
+    meta: { success: c.saved },
   });
   const remove = useMutation({
     mutationFn: () => api(`/admin/users/${encodeURIComponent(u.id)}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: adminUsersQuery.queryKey }),
+    meta: { success: t.removed(u.name) },
   });
   const saveTitle = () => {
     const next = title.trim();
@@ -315,11 +324,6 @@ function UserRow({ user: u }: { user: AdminUser }) {
           </DropdownMenu>
         )}
       </ItemActions>
-      {(update.error || remove.error) && (
-        <div className="basis-full">
-          <ErrorText error={update.error ?? remove.error} />
-        </div>
-      )}
     </Item>
   );
 }
@@ -342,10 +346,12 @@ function PendingInvitation({
       onSent(sent);
       onChange();
     },
+    meta: { loading: t.sending, success: (sent: InvitationSent) => (sent.sent ? t.sentTo(inv.email) : undefined) },
   });
   const revoke = useMutation({
     mutationFn: () => api(`/admin/invitations/${encodeURIComponent(inv.id)}`, { method: "DELETE" }),
     onSuccess: onChange,
+    meta: { success: t.revoked },
   });
 
   return (
@@ -372,17 +378,11 @@ function PendingInvitation({
   );
 }
 
-/** Send confirmation; without email configured (or on failure), the link to pass on yourself. */
+/** Without email configured (or on failure), the link to pass on yourself; a sent invitation is said by a toast. */
 function SentNotice({ result, email }: { result: InvitationSent; email: string }) {
   const t = useT(messages);
   const [copied, setCopied] = useState(false);
-  if (result.sent) {
-    return (
-      <Alert>
-        <AlertTitle>{t.sentTo(email)}</AlertTitle>
-      </Alert>
-    );
-  }
+  if (result.sent) return null;
   return (
     <Alert>
       <AlertTitle>{result.error ?? t.mailOff}</AlertTitle>

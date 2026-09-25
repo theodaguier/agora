@@ -26,6 +26,7 @@ const messages = defineMessages({
     profilePlaceholder: "hermes-profile",
     profileHelp: "The Hermes profile is created from the default profile (model, tools, skills), then editable here.",
     creating: "Creating the Hermes profile…",
+    created: (name: string) => `${name} created.`,
     create: "Create agent",
   },
   fr: {
@@ -38,6 +39,7 @@ const messages = defineMessages({
     profilePlaceholder: "profil-hermes",
     profileHelp: "Le profil Hermes est créé à partir du profil par défaut (modèle, outils, skills), puis modifiable ici.",
     creating: "Création du profil Hermes…",
+    created: (name: string) => `${name} créé.`,
     create: "Créer l'agent",
   },
 });
@@ -92,6 +94,7 @@ function CreateAgent({ onClose }: { onClose: () => void }) {
       qc.invalidateQueries({ queryKey: adminAgentsQuery.queryKey });
       qc.invalidateQueries({ queryKey: agentsQuery.queryKey });
     },
+    meta: { loading: t.creating, success: (_: unknown, body: Omit<AdminAgent, "id">) => t.created(body.name), error: false },
   });
 
   return (

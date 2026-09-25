@@ -227,6 +227,8 @@ export function CustomConnectorSheet({ onDone }: { onDone: () => void }) {
       qc.invalidateQueries({ queryKey: ["hermes"] });
       qc.invalidateQueries({ queryKey: ["mcp-requests"] });
     },
+    // The sheet tells what's next once added, and what failed next to its button.
+    meta: { success: c.added, error: false },
   });
 
   return (

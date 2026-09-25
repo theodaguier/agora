@@ -45,7 +45,8 @@ export function TaskRow({ task, owner, me, mentionables }: { task: Task; owner: 
     patch.mutate({ priority }, { onError: failed });
   };
   const askDelete = async () => {
-    if (await confirmAction({ title: t.deleteTitle(task.title), description: t.deleteBody, action: c.delete })) remove.mutate(undefined, { onError: failed });
+    if (await confirmAction({ title: t.deleteTitle(task.title), description: t.deleteBody, action: c.delete }))
+      remove.mutate(undefined, { onSuccess: () => toast.show({ variant: "success", label: c.deleted }), onError: failed });
   };
   const priority = !done ? priorityColor[task.priority] : null;
   const hasMenu = task.canEdit || task.canDelete;

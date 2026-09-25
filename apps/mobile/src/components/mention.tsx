@@ -17,6 +17,7 @@ import type { AgentSummary } from "@/lib/types";
 import { splitTaskRefs } from "@/lib/task-refs";
 import { usePopoverInsets } from "@/lib/popover-insets";
 import { contentKeys } from "@/lib/utils";
+import { useAdminToast } from "@/components/admin/ui";
 import { safeColor, mentionStyle } from "@/components/mention-style";
 
 /*
@@ -80,6 +81,7 @@ export function Mention({ text, color, target }: { text: string; color: string; 
 function AgentCard({ agent, onClose }: { agent: Extract<MentionTarget, { kind: "agent" }>["agent"]; onClose: () => void }) {
   const t = messages;
   const openDirect = useOpenDirect();
+  const toast = useAdminToast();
   return (
     <>
       <View className="flex-row items-center gap-3">
@@ -105,7 +107,7 @@ function AgentCard({ agent, onClose }: { agent: Extract<MentionTarget, { kind: "
           variant="secondary"
           size="sm"
           isDisabled={openDirect.isPending}
-          onPress={withTap(() => openDirect.mutate({ agentId: agent.id }, { onSuccess: onClose }))}
+          onPress={withTap(() => openDirect.mutate({ agentId: agent.id }, { onSuccess: onClose, onError: (e) => toast.failed(e) }))}
         >
           {t.message}
         </Button>

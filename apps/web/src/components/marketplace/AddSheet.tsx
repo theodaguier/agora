@@ -184,6 +184,8 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
       // The "/" menu lists the bots' skills and connectors.
       qc.invalidateQueries({ queryKey: ["commands"] });
     },
+    // The sheet tells what's next once added, and what failed next to its button.
+    meta: { success: item.kind === "skill" ? t.skillInstalled : c.added, error: false },
   });
 
   const Icon = item.kind === "skill" ? BookOpenIcon : PuzzleIcon;
