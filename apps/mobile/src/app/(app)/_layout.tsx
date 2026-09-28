@@ -39,12 +39,14 @@ function SignedIn() {
         <Stack.Screen name="agents/[agentId]" />
         <Stack.Screen name="people/[userId]" />
         <Stack.Screen name="info/[conversationId]" />
+        <Stack.Screen name="code/[conversationId]/[sessionId]" />
         {/* One short job each: a sheet over the current screen, closed before going anywhere else. */}
         <Stack.Screen name="new" options={sheetOptions()} />
         <Stack.Screen name="task/[taskId]" options={sheetOptions([0.75, 1])} />
         <Stack.Screen name="task/new" options={sheetOptions([0.6, 1])} />
         <Stack.Screen name="agents/[agentId]/routines/[routineId]" options={sheetOptions([0.75, 1])} />
         <Stack.Screen name="info/[conversationId]/add" options={sheetOptions([0.6, 1])} />
+        <Stack.Screen name="code/[conversationId]/[sessionId]/pull-request" options={sheetOptions([0.75, 1])} />
         <Stack.Screen name="whats-new" options={sheetOptions()} />
         <Stack.Screen name="digest" options={sheetOptions()} />
       </Stack>

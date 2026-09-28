@@ -62,6 +62,8 @@ export type ActiveTurn = {
   text: string;
   tools: { name: string; status: string }[];
   approval?: PendingApproval | null;
+  /** Claude Code sessions the bot started so far, and where. */
+  codeSessions?: import("@agora/core").CodeSessionRef[];
 };
 
 export type ConversationDetail = {

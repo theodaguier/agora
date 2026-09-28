@@ -8,7 +8,10 @@ import { BottomSheet, Chip, ListGroup, ScrollShadow, Separator, Surface, Typogra
 import { Fragment, useDeferredValue, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { codeSessions } from "@agora/core/i18n";
+import { router } from "expo-router";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { CodeSessionList, codeSessionHref } from "@/components/code-session";
 import { FileKindIcon, ImageViewer } from "@/components/attachments";
 import { attachmentSource, Image, isImage, saveAttachment } from "@/components/attachment-files";
 import { SheetSearch } from "@/components/conversation/sheet-search";
@@ -18,7 +21,7 @@ import { setPinned } from "@/lib/api";
 import { dividerLabel } from "@/lib/dates";
 import { formatSize } from "@/lib/format";
 import { withTap } from "@/lib/haptics";
-import { defineMessages } from "@/lib/i18n";
+import { defineMessages, tr } from "@/lib/i18n";
 import { firstUrl, linkLabel } from "@/lib/links";
 import { messagesQuery, pinsQuery } from "@/lib/queries";
 import type { Attachment, Author, Message, Pin, PinTarget } from "@/lib/types";
@@ -26,12 +29,13 @@ import { LongPressMenu, type MenuEntry } from "@/components/menus";
 import { rowKey } from "@/lib/utils";
 
 /*
- * apps/web/src/components/ConversationPanels.tsx. The side panels (search, files, pins) open as a
+ * apps/web/src/components/ConversationPanels.tsx. The side panels (search, files, pins, and the
+ * web's header list of Claude Code sessions) open as a
  * bottom sheet over the conversation; jumping to a message closes it. Rows and pinned chips: a tap
  * jumps (or opens the file, or the link), a long press shows the other actions in a menu.
  */
 
-export type PanelKind = "search" | "files" | "pins";
+export type PanelKind = "search" | "files" | "pins" | "code";
 
 const messages = defineMessages({
   en: {
@@ -95,7 +99,7 @@ const messages = defineMessages({
 /** Labels of the menu entries that open each panel. */
 export function usePanelLabels() {
   const t = messages;
-  return { search: t.search, files: t.files, pins: t.pins } satisfies Record<PanelKind, string>;
+  return { search: t.search, files: t.files, pins: t.pins, code: tr(codeSessions).sessions } satisfies Record<PanelKind, string>;
 }
 
 const pinKey = (t: PinTarget) => `${t.messageId}:${t.attachmentId ?? ""}`;
@@ -177,6 +181,17 @@ export function ConversationPanel({
             {shown === "search" && <SearchPanel conversationId={conversationId} onJump={jump} />}
             {shown === "files" && <FilesPanel conversationId={conversationId} onJump={jump} />}
             {shown === "pins" && <PinsPanel conversationId={conversationId} onJump={jump} />}
+            {shown === "code" && (
+              <Scroll>
+                <CodeSessionList
+                  conversationId={conversationId}
+                  onOpen={(sessionId) => {
+                    onClose();
+                    router.push(codeSessionHref(conversationId, sessionId));
+                  }}
+                />
+              </Scroll>
+            )}
           </View>
         </BottomSheet.Content>
       </BottomSheet.Portal>

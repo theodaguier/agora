@@ -13,6 +13,7 @@ import { AgentAvatar } from "@/components/agent-avatar";
 import { ApprovalCard, ApprovalLog } from "@/components/approval-card";
 import { AuthorLine, BotBubble, DateDivider, SystemEvent, ToolLine, TypingBubble } from "@/components/bubbles";
 import { ChoiceCard } from "@/components/choice-card";
+import { CodeSessionCard, ReplyWithSessions, useCodeSessions } from "@/components/code-session";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { HeaderTitle } from "@/components/conversation/header";
 import { infoHref } from "@/components/conversation/info-href";
@@ -295,7 +296,10 @@ export function Conversation({ conversationId, focus }: { conversationId: string
 
   const toEnd = () => scroller.current?.scrollTo({ y: 0, animated: true });
 
-  const header = <ConversationHeader conv={conv} me={user.id} title={title} counterpart={(directPerson ?? directBot)?.name} onPanel={setPanel} />;
+  const hasCodeSessions = !!useCodeSessions(conversationId);
+  const header = (
+    <ConversationHeader conv={conv} me={user.id} title={title} counterpart={(directPerson ?? directBot)?.name} codeSessions={hasCodeSessions} onPanel={setPanel} />
+  );
 
   if (detail.error) {
     const gone = detail.error instanceof ApiError && detail.error.status === 404;
@@ -374,6 +378,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
               {messages.slice(hidden).map((m, i) => (
                 <ThreadMessage
                   key={m.id}
+                  conversationId={conversationId}
                   m={m}
                   prev={messages[hidden + i - 1]}
                   me={user.id}
@@ -416,7 +421,18 @@ export function Conversation({ conversationId, focus }: { conversationId: string
                   <Fragment key={turn.turnId}>
                     {group && bot && <AuthorLine name={bot.name} avatar={<AgentAvatar agent={bot} className="size-5" />} />}
                     <ToolLine tools={turn.tools} running={!visible} />
-                    {visible ? (
+                    {turn.codeSessions?.length ? (
+                      <View className="max-w-[88%] self-start">
+                        <ReplyWithSessions
+                          conversationId={conversationId}
+                          text={visible}
+                          sessions={turn.codeSessions}
+                          streaming
+                          typing={!turn.approval && <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} />}
+                          bubble={(text, streaming) => <BotBubble text={text} streaming={streaming} mentionables={mentions} />}
+                        />
+                      </View>
+                    ) : visible ? (
                       <View className="max-w-[88%] self-start">
                         <BotBubble text={visible} streaming mentionables={mentions} />
                       </View>
@@ -498,7 +514,22 @@ export function Conversation({ conversationId, focus }: { conversationId: string
 
 /** Answer of a bot choosing to stay silent (apps/api/src/group.ts). */
 /** The thread's native header: its title, and the menu of its panels and of its info screen. */
-function ConversationHeader({ conv, me, title, counterpart, onPanel }: { conv?: ConversationDetail; me: string; title: string; counterpart?: string; onPanel: (panel: PanelKind) => void }) {
+function ConversationHeader({
+  conv,
+  me,
+  title,
+  counterpart,
+  codeSessions,
+  onPanel,
+}: {
+  conv?: ConversationDetail;
+  me: string;
+  title: string;
+  counterpart?: string;
+  /** Claude Code sessions were started here: the menu lists them (the web's header button). */
+  codeSessions: boolean;
+  onPanel: (panel: PanelKind) => void;
+}) {
   const t = strings;
   const panelLabels = usePanelLabels();
   const group = conv?.kind === "group";
@@ -526,6 +557,7 @@ function ConversationHeader({ conv, me, title, counterpart, onPanel }: { conv?: 
                 { label: panelLabels.search, icon: "magnifyingglass", onPress: () => onPanel("search") },
                 { label: panelLabels.files, icon: "folder", onPress: () => onPanel("files") },
                 { label: panelLabels.pins, icon: "pin", onPress: () => onPanel("pins") },
+                codeSessions && { label: panelLabels.code, icon: "chevron.left.forwardslash.chevron.right", onPress: () => onPanel("code") },
                 !!info && !!infoLabel && { label: infoLabel, icon: group ? "person.2" : "info.circle", onPress: () => router.push(info) },
               ]}
             />
@@ -564,6 +596,7 @@ type RowActions = {
 
 /** A message of the thread, with its date divider and author line. */
 const ThreadMessage = memo(function ThreadMessage({
+  conversationId,
   m,
   prev,
   me,
@@ -575,6 +608,7 @@ const ThreadMessage = memo(function ThreadMessage({
   viewAnswers,
   actions,
 }: {
+  conversationId: string;
   m: Message;
   prev?: Message;
   me: string;
@@ -630,11 +664,7 @@ const ThreadMessage = memo(function ThreadMessage({
         <>
           {m.data?.tools && <ToolLine tools={m.data.tools} />}
           {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
-          {/* Claude Code sessions the bot started: their live view is on the web for now. */}
-          {m.data?.codeSessions?.map((c) => (
-            <SystemEvent key={c.id} label={renderEvent({ type: "code.started", bot: null, title: c.title, sessionId: c.id }, locale)} />
-          ))}
-          {!!m.text && (
+          {(!!m.text || !!m.data?.codeSessions?.length) && (
             <MessageRow
               id={m.id}
               wide
@@ -646,7 +676,16 @@ const ThreadMessage = memo(function ThreadMessage({
               onTogglePin={() => actions.togglePin(m.id)}
               onDelete={() => actions.delete(m.id)}
             >
-              <BotBubble text={m.text} mentionables={mentions} />
+              {m.data?.codeSessions?.length ? (
+                <ReplyWithSessions
+                  conversationId={conversationId}
+                  text={m.text}
+                  sessions={m.data.codeSessions}
+                  bubble={(text) => <BotBubble text={text} mentionables={mentions} />}
+                />
+              ) : (
+                <BotBubble text={m.text} mentionables={mentions} />
+              )}
             </MessageRow>
           )}
           {m.data?.views?.map((view, index) => (
@@ -671,7 +710,11 @@ const ThreadMessage = memo(function ThreadMessage({
           {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
         </>
       )}
-      {m.kind === "event" && <SystemEvent label={m.data?.event ? renderEvent(m.data.event, locale) : m.text} />}
+      {m.data?.event?.type === "code.started" ? (
+        <CodeSessionCard conversationId={conversationId} sessionId={m.data.event.sessionId} title={m.data.event.title} />
+      ) : (
+        m.kind === "event" && <SystemEvent label={m.data?.event ? renderEvent(m.data.event, locale) : m.text} />
+      )}
     </View>
   );
 });
