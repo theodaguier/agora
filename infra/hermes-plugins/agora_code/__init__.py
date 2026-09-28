@@ -185,7 +185,9 @@ START = {
         "GitHub access on a working branch; Claude Code can then commit, push and use `gh`, and the owner can commit, "
         "push, open and merge the pull request from the session's panel. Do not copy code into its directory yourself. "
         "Once started, the session does the work: do not do it yourself in parallel; follow it with claude_code_wait. "
-        "Start several sessions for independent tasks. Write a complete brief: goal, constraints, how to check the "
+        "One session per task: a new issue or feature gets its own session, with a title naming it, even on the "
+        "same repository (pass the same `project` to reuse its clone); claude_code_send is only for following up on "
+        "the task a session was started for. Start several sessions for independent tasks. Write a complete brief: goal, constraints, how to check the "
         "result. Waits for it to finish, then returns its answer and the actions it took. Only available in replies "
         "to the subscription's owner."
     ),
@@ -228,8 +230,10 @@ WAIT = {
 SEND = {
     "name": "claude_code_send",
     "description": (
-        "Send another instruction to a Claude Code session (it keeps its context): a follow-up, a correction. "
-        "If it is working, it reads it at its next step. Then waits like claude_code_wait."
+        "Send another instruction to a Claude Code session (it keeps its context): a follow-up or a correction of "
+        "the task it was started for. Never a new task (another issue, another feature): start a new session for it "
+        "with claude_code_start, with the same `project` to reuse the clone. If it is working, it reads it at its "
+        "next step. Then waits like claude_code_wait."
     ),
     "parameters": {
         "type": "object",
