@@ -646,6 +646,19 @@ const browserNote = (chromium: string) =>
   ].join("\n");
 
 /**
+ * The standing rule of a bot that has the agora_code tools, in a turn its owner started: code goes
+ * through a session. Without it, a conversation where no session ran yet says nothing of them, and
+ * a bot with a GitHub connector writes the fix itself, out of sight, file by file.
+ */
+export const CODE_DELEGATION_PROMPT = [
+  "# Travail de code : sessions Claude Code",
+  "Tu as les outils claude_code_start, claude_code_wait, claude_code_send et claude_code_stop (tool_describe si tu ne vois pas leurs paramètres).",
+  "Tout travail sur du code (corriger une issue, écrire une fonctionnalité, un correctif, un test, ouvrir une PR) passe par une session : claude_code_start avec repo (owner/nom), un titre qui nomme la tâche et un brief complet (but, contraintes, comment vérifier). La session clone le dépôt, a git et gh, et les membres de la conversation la suivent en direct.",
+  "Ne code jamais toi-même : ni fichier créé, modifié ou poussé avec le connecteur GitHub (branches, commits, PR comprises), ni dans ton terminal. Lire une issue ou quelques fichiers pour écrire le brief reste permis, sans t'y attarder.",
+  "Annonce la session en une phrase à la conversation, puis suis-la avec claude_code_wait.",
+].join("\n");
+
+/**
  * The conversation's Claude Code sessions, as they stand, for the system prompt of every bot turn:
  * what the owner told them from the panel, the git actions, their last answer. A bot only hears of
  * a session through its own tool calls otherwise, and would miss what happened since.
