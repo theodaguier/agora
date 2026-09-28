@@ -128,6 +128,11 @@ export function CodeSessionList({ conversationId, onOpen }: { conversationId: st
                 {t.status[s.status]}
                 {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""} · {dividerLabel(new Date(s.updatedAt))}
               </ListGroup.ItemDescription>
+              {s.instruction && (
+                <ListGroup.ItemDescription numberOfLines={2}>
+                  {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
+                </ListGroup.ItemDescription>
+              )}
             </ListGroup.ItemContent>
             <ListGroup.ItemSuffix />
           </ListGroup.Item>

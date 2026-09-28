@@ -139,6 +139,8 @@ export type CodeSession = {
   result: string | null;
   usage: CodeUsage | null;
   stepCount: number;
+  /** The last instruction it was given, cut short, and its sender's name: what it is working on, and who asked. */
+  instruction: { by: string | null; text: string } | null;
   createdAt: string;
   updatedAt: string;
 };

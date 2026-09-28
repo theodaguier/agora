@@ -232,7 +232,7 @@ SEND = {
     "description": (
         "Send another instruction to a Claude Code session (it keeps its context): a follow-up or a correction of "
         "the task it was started for. Never a new task (another issue, another feature): start a new session for it "
-        "with claude_code_start, with the same `project` to reuse the clone. If it is working, it reads it at its "
+        "with claude_code_start, with the same `project` to reuse the clone. Refused once its pull request is merged or closed. If it is working, it reads it at its "
         "next step. Then waits like claude_code_wait."
     ),
     "parameters": {

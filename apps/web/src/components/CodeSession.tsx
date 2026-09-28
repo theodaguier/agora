@@ -219,6 +219,11 @@ export function CodeSessionsButton({ conversationId, current, onOpen }: { conver
                   {t.status[s.status]}
                   {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""} · {dividerLabel(new Date(s.updatedAt))}
                 </span>
+                {s.instruction && (
+                  <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
+                    {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
+                  </span>
+                )}
               </span>
             </button>
           ))}
