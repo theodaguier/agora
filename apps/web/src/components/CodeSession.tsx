@@ -67,6 +67,7 @@ const messages = defineMessages({
   en: {
     claudeCode: "Claude Code",
     sessions: "Claude Code sessions",
+    sessionsWorking: "Claude Code sessions · one is working",
     status: { running: "Working", waiting: "Waiting for approval", idle: "Done", stopped: "Stopped", failed: "Failed" } as Record<CodeSessionStatus, string>,
     follow: "Follow",
     open: "Open",
@@ -141,6 +142,7 @@ const messages = defineMessages({
   fr: {
     claudeCode: "Claude Code",
     sessions: "Sessions Claude Code",
+    sessionsWorking: "Sessions Claude Code · une session travaille",
     status: { running: "En cours", waiting: "Attend une autorisation", idle: "Terminé", stopped: "Arrêté", failed: "Échec" },
     follow: "Suivre",
     open: "Ouvrir",
@@ -339,14 +341,14 @@ export function CodeSessionsButton({ conversationId, current, onOpen }: { conver
         <TooltipTrigger
           render={
             <PopoverTrigger
-              render={<Button variant="ghost" size="icon" aria-label={t.sessions} aria-pressed={!!current} className="relative hidden rounded-lg aria-pressed:bg-muted lg:inline-flex" />}
+              render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden rounded-lg aria-pressed:bg-muted lg:inline-flex" />}
             />
           }
         >
-          <ModelLogo provider="claude-code" className="size-[18px]" />
-          {working && <span className="absolute right-1.5 top-1.5 size-2 rounded-full border-2 border-background bg-success" />}
+          {/* It hops while a session works: that is the sign, no badge. */}
+          <ModelLogo provider="claude-code" className={cn("size-[18px]", working && "code-working")} />
         </TooltipTrigger>
-        <TooltipContent>{t.sessions}</TooltipContent>
+        <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
       </Tooltip>
       <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
         <p className="px-2 pb-1.5 pt-1 text-[12px] font-medium text-muted-foreground">{t.sessions}</p>
