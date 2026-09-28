@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.13.0 — 2026-09-28
+
+### Features
+- delete a message for everyone
+
 ## v0.12.0 — 2026-09-28
 
 ### Features
