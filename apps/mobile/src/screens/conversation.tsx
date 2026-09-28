@@ -21,7 +21,7 @@ import { conversationTitle, othersOf } from "@/components/participants";
 import { ConversationPanel, PinnedBar, usePanelLabels, usePins, type PanelKind } from "@/components/conversation-panels";
 import { ForwardDialog } from "@/components/forward-dialog";
 import { McpRequestCard } from "@/components/mcp-request-card";
-import { ChatMessage, MessageRow } from "@/components/message-parts";
+import { ChatMessage, MessageRow, useDeleteMessage } from "@/components/message-parts";
 import { QuestionsCard } from "@/components/questions-card";
 import { useMe } from "@/components/server-scope";
 import { SkillRequestCard } from "@/components/skill-request-card";
@@ -153,6 +153,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
   const [pinsHeight, setPinsHeight] = useState(0);
   const [barHeight, setBarHeight] = useState(0);
   const { isPinned, toggle: togglePin } = usePins(conversationId);
+  const deleteMessage = useDeleteMessage(conversationId);
   const composer = useRef<ComposerHandle>(null);
   const scroller = useRef<ComponentRef<typeof KeyboardChatScrollView>>(null);
   /** Position of each message in the thread, to jump to a quoted one. */
@@ -266,6 +267,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
     reply: (m) => setReplyTo(quoteOf(m)),
     forward: setForwarding,
     togglePin: (messageId) => togglePin({ messageId }),
+    delete: deleteMessage,
     quote: jumpTo,
     send: (text, mentioned, viewAction) => send(text, [], [], mentioned, undefined, viewAction),
     laidOut: (id, y) => {
@@ -283,6 +285,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
     reply: (m) => latestRow.current.reply(m),
     forward: (m) => latestRow.current.forward(m),
     togglePin: (id) => latestRow.current.togglePin(id),
+    delete: (id) => latestRow.current.delete(id),
     quote: (id) => latestRow.current.quote(id),
     send: (text, mentioned, viewAction) => latestRow.current.send(text, mentioned, viewAction),
     laidOut: (id, y) => latestRow.current.laidOut(id, y),
@@ -553,6 +556,7 @@ type RowActions = {
   reply: (m: Message) => void;
   forward: (m: Message) => void;
   togglePin: (messageId: string) => void;
+  delete: (messageId: string) => void;
   quote: (id: string) => void;
   send: (text: string, mentioned: string[], viewAction?: ViewAction) => void;
   laidOut: (id: string, y: number) => void;
@@ -608,6 +612,7 @@ const ThreadMessage = memo(function ThreadMessage({
           onForward={() => actions.forward(m)}
           pinned={pinned}
           onTogglePin={() => actions.togglePin(m.id)}
+          onDelete={fromMe ? () => actions.delete(m.id) : undefined}
         >
           <ChatMessage
             mine={fromMe}
@@ -639,6 +644,7 @@ const ThreadMessage = memo(function ThreadMessage({
               onForward={() => actions.forward(m)}
               pinned={pinned}
               onTogglePin={() => actions.togglePin(m.id)}
+              onDelete={() => actions.delete(m.id)}
             >
               <BotBubble text={m.text} mentionables={mentions} />
             </MessageRow>

@@ -429,6 +429,11 @@ function route(method: string, path: string, query: URLSearchParams, body: Recor
           }
           return { id: conv.id, kind: conv.kind, title: conv.title, createdBy: conv.createdBy, members: conv.members, agents: conv.agents, turns: [] };
         case "messages":
+          if (method === "DELETE") {
+            conv.messages = conv.messages.filter((m) => m.id !== parts[3]);
+            emit({ type: "message.deleted", conversationId: conv.id, messageId: parts[3] });
+            return {};
+          }
           return method === "POST" ? send(conv, body as { text: string; mentions?: string[] }) : conv.messages;
         case "read":
           conv.unread = false;

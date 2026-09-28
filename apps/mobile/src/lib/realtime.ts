@@ -1,4 +1,4 @@
-import { insertMessage, type Schedule } from "@agora/core";
+import { insertMessage, removeMessage, type Schedule } from "@agora/core";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { fetch } from "expo/fetch";
 import { useEffect, useSyncExternalStore } from "react";
@@ -128,6 +128,7 @@ export function clearApproval(conversationId: string, turnId: string, approvalId
 
 type ServerEvent =
   | { type: "message.created"; conversationId: string; message: Message }
+  | { type: "message.deleted"; conversationId: string; messageId: string }
   | { type: "conversation.updated" | "conversation.removed"; conversationId: string }
   | { type: "read"; conversationId: string; userId: string }
   | { type: "typing"; conversationId: string; userId: string; name: string }
@@ -176,6 +177,12 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       return;
     }
+    case "message.deleted":
+      qc.setQueryData<Message[]>(["messages", cid], (old) => old && removeMessage(old, ev.messageId));
+      // Its pins went with it, and the list shows the last message.
+      qc.invalidateQueries({ queryKey: ["pins", cid] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      return;
     case "conversation.updated":
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["conversation", cid] });

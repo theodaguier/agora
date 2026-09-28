@@ -21,7 +21,7 @@ import { ConversationPanel, PinnedBar, usePanelLabels, usePins, type PanelKind }
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { MembersPanel } from "@/components/MembersPanel";
 import { PersonPanel } from "@/components/PersonPanel";
-import { ChatMessage, MessageRow, PendingRow } from "@/components/MessageParts";
+import { ChatMessage, MessageRow, PendingRow, useDeleteMessage } from "@/components/MessageParts";
 import { RightPanel } from "@/components/RightPanel";
 import { CodeSessionCard, CodeSessionPanel, ReplyWithSessions } from "@/components/CodeSession";
 import { Button } from "@/components/ui/button";
@@ -402,6 +402,10 @@ export function Conversation() {
 
   const [sent, setSending] = useState<Sending[]>([]);
   const sending = sent.filter((s) => !s.id || !messages.some((m) => m.id === s.id));
+  // Once in the thread, a sent message is on its own: deleted later, it must not come back as a pending copy.
+  useEffect(() => {
+    if (sending.length !== sent.length) setSending((xs) => xs.filter((s) => !s.id || !messages.some((m) => m.id === s.id)));
+  }, [messages, sent]);
   const arrived = useArrivals(conversationId, messages, isPending);
   /** Side panel: the bot's or the group's (`info`), search, files or pins; closed by default. */
   const [panel, setPanel] = useState<PanelKind | "info" | null>(null);
@@ -425,6 +429,7 @@ export function Conversation() {
 
   const dragging = useWindowFileDrop((files) => composer.current?.addFiles(files));
   const { isPinned, toggle: togglePin } = usePins(conversationId);
+  const deleteMessage = useDeleteMessage(conversationId);
   /** Every conversation has one: the bot, the group's members, or the colleague's profile. */
   const hasInfo = !!conv;
 
@@ -619,6 +624,7 @@ export function Conversation() {
                         onForward={() => setForwarding(m)}
                         pinned={isPinned({ messageId: m.id })}
                         onTogglePin={() => togglePin({ messageId: m.id })}
+                        onDelete={fromMe ? () => deleteMessage(m.id) : undefined}
                       >
                         <ChatMessage
                           mine={fromMe}
@@ -646,6 +652,7 @@ export function Conversation() {
                             onForward={() => setForwarding(m)}
                             pinned={isPinned({ messageId: m.id })}
                             onTogglePin={() => togglePin({ messageId: m.id })}
+                            onDelete={() => deleteMessage(m.id)}
                           >
                             {m.data?.codeSessions?.length ? (
                               <ReplyWithSessions

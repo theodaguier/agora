@@ -28,7 +28,7 @@ import { allowedClaudeCodeModels, allowedCodexModels, allowedModelOptions } from
 import { deleteRoutine, findRoutine, listRoutines, updateRoutine } from "../routines";
 import { watchScreen } from "../screen";
 import { excerpt, groupCalls, newChain, type Forwarded, type ReplyTo } from "../group";
-import { getMessage, getMessages, listMessages, postEvent, postMessage, userAuthor, type MessageDto } from "../messages";
+import { deleteMessage, getMessage, getMessages, listMessages, postEvent, postMessage, userAuthor, type MessageDto } from "../messages";
 import { requireUser, type AppEnv } from "../middleware";
 import { markConversationRead, quietly } from "../inbox";
 import { defineMessages, tr } from "../i18n";
@@ -456,6 +456,19 @@ export const conversations = new Hono<AppEnv>()
       sent.push((await sendUserMessage(target!, me, { text: original.text, files: copies, forwarded })).id);
     }
     return c.json({ ids: sent }, 201);
+  })
+
+  /** Deletes a message for every member: one of your own, or a bot's. Events and colleagues' messages stay. */
+  .delete("/:id/messages/:messageId", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const msg = await getMessage(conv.conversation.id, c.req.param("messageId"));
+    if (!msg || msg.kind === "event") return c.json({ error: "not_found" }, 404);
+    const mine = msg.kind === "user" && msg.author?.kind === "user" && msg.author.id === me.id;
+    if (!mine && msg.kind !== "bot") return c.json({ error: "forbidden" }, 403);
+    await deleteMessage(msg, conv.conversation.id);
+    return c.body(null, 204);
   })
 
   /** Pinned messages and files, oldest first, with the message they belong to. */

@@ -1,12 +1,13 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { unlink } from "node:fs/promises";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import { renderEvent, type ConversationEvent } from "@agora/core";
-import { publishToConversation } from "./events";
+import { publishToConversation, publishToUser } from "./events";
 import { orgLocale } from "./i18n";
 import { notifyMessage, quietly } from "./inbox";
 import { pushDirectMessage } from "./push";
 
-const { agent, message, user } = schema;
+const { agent, attachment, message, notification, user } = schema;
 
 type MessageRow = typeof message.$inferSelect;
 type AgentRow = typeof agent.$inferSelect;
@@ -128,3 +129,32 @@ export async function postMessage(values: typeof message.$inferInsert, author: A
  */
 export const postEvent = async (conversationId: string, event: ConversationEvent) =>
   postMessage({ id: crypto.randomUUID(), conversationId, kind: "event", text: renderEvent(event, await orgLocale()), data: { event } }, null);
+
+/**
+ * Deletes a message for everyone: the row (its pins and inbox entries go with it), its files unless
+ * another message still shows them, and the excerpt the replies quoting it kept of it.
+ */
+export async function deleteMessage(m: MessageDto, conversationId: string) {
+  const fileIds = ((m.data as { attachments?: { id: string }[] } | null)?.attachments ?? []).map((a) => a.id);
+  const notified = await db.selectDistinct({ userId: notification.userId }).from(notification).where(eq(notification.messageId, m.id));
+  const files = await db.transaction(async (tx) => {
+    await tx.delete(message).where(and(eq(message.conversationId, conversationId), eq(message.id, m.id)));
+    await tx
+      .update(message)
+      .set({ data: sql`${message.data} - 'replyTo'` })
+      .where(and(eq(message.conversationId, conversationId), sql`${message.data}->'replyTo'->>'id' = ${m.id}`));
+    if (!fileIds.length) return [];
+    // A forward copies its files: an id is only shared when another message was saved with the same upload.
+    const shared = await tx
+      .select({ data: message.data })
+      .from(message)
+      .where(and(eq(message.conversationId, conversationId), ne(message.id, m.id), sql`${message.data}->'attachments' is not null`));
+    const kept = new Set(shared.flatMap((r) => ((r.data as { attachments?: { id: string }[] }).attachments ?? []).map((a) => a.id)));
+    const gone = fileIds.filter((id) => !kept.has(id));
+    if (!gone.length) return [];
+    return tx.delete(attachment).where(and(eq(attachment.conversationId, conversationId), inArray(attachment.id, gone))).returning({ path: attachment.path });
+  });
+  for (const f of files) await unlink(f.path).catch(() => {});
+  await publishToConversation(conversationId, { type: "message.deleted", conversationId, messageId: m.id });
+  for (const { userId } of notified) publishToUser(userId, { type: "inbox.changed" });
+}

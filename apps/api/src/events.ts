@@ -4,6 +4,8 @@ import { db, schema } from "./db";
 /** Events pushed to clients on GET /api/events. */
 export type AppEvent =
   | { type: "message.created"; conversationId: string; message: unknown }
+  /** Deleted for everyone: gone from the thread, and from the replies that quoted it. */
+  | { type: "message.deleted"; conversationId: string; messageId: string }
   | { type: "conversation.updated"; conversationId: string }
   | { type: "conversation.removed"; conversationId: string }
   | { type: "read"; conversationId: string; userId: string; at: string }

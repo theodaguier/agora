@@ -1,20 +1,25 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Chip, PressableFeedback, Surface, Typography, useToast } from "heroui-native";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
 import { useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { interpolate, useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
+import { removeMessage } from "@agora/core";
 import { BubbleAttachments, SentAttachments } from "@/components/attachments";
 import { attachmentSource, Image, isImage, saveAttachment } from "@/components/attachment-files";
 import { Bubble, PeerBubble, UserBubble } from "@/components/bubbles";
+import { confirmAction } from "@/components/confirm-action";
 import { LongPressMenu } from "@/components/menus";
 import { ClockIcon, PackageIcon, PlugIcon, ReplyIcon } from "@/components/icons";
 import { MessageText } from "@/components/message-text";
 import { defineMessages } from "@/lib/i18n";
 import type { Mentionable } from "@/lib/mentions";
-import { invocationKey, type Attachment, type Invocation, type ReplyTo } from "@/lib/types";
+import { deleteMessage } from "@/lib/api";
+import { messagesQuery } from "@/lib/queries";
+import { invocationKey, type Attachment, type Invocation, type Message, type ReplyTo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /* apps/web/src/components/MessageParts.tsx */
@@ -28,6 +33,11 @@ const messages = defineMessages({
     unpin: "Unpin",
     copy: "Copy text",
     copied: "Text copied",
+    delete: "Delete",
+    deleteTitle: "Delete this message?",
+    deleteBody: "It will disappear for everyone in the conversation, along with its files. This can't be undone.",
+    deleted: "Message deleted",
+    deleteFailed: "Message not deleted. Try again.",
     download: (n: number) => (n > 1 ? `Download ${n} files` : "Download"),
     forwardedFrom: (name: string) => `Forwarded from ${name}`,
     photo: "Photo",
@@ -40,6 +50,11 @@ const messages = defineMessages({
     unpin: "Désépingler",
     copy: "Copier le texte",
     copied: "Texte copié",
+    delete: "Supprimer",
+    deleteTitle: "Supprimer ce message ?",
+    deleteBody: "Il disparaîtra pour tous les membres de la conversation, avec ses fichiers. Cette action est irréversible.",
+    deleted: "Message supprimé",
+    deleteFailed: "Message non supprimé. Réessaie.",
     download: (n: number) => (n > 1 ? `Télécharger les ${n} fichiers` : "Télécharger"),
     forwardedFrom: (name: string) => `Transféré de ${name}`,
     photo: "Photo",
@@ -180,9 +195,30 @@ function pulled(d: number) {
   return REPLY_AT + (1 - 1 / ((over * 0.55) / STRETCH + 1)) * STRETCH;
 }
 
+/** Deletes a message for everyone, once confirmed; it leaves the thread without waiting for the stream. */
+export function useDeleteMessage(conversationId: string) {
+  const t = messages;
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteMessage(conversationId, id),
+    onSuccess: (_, id) => {
+      qc.setQueryData<Message[]>(messagesQuery(conversationId).queryKey, (old) => old && removeMessage(old, id));
+      toast.show({ variant: "success", label: t.deleted });
+    },
+    onError: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      toast.show({ variant: "danger", label: t.deleteFailed });
+    },
+  });
+  return async (id: string) => {
+    if (await confirmAction({ title: t.deleteTitle, description: t.deleteBody, action: t.delete })) remove.mutate(id);
+  };
+}
+
 /**
  * A message line: its bubble, with its actions in the iOS context menu (long press: reply, forward,
- * pin, copy, download) and a swipe to the right to reply, as in Messages.
+ * pin, copy, download, delete) and a swipe to the right to reply, as in Messages.
  */
 export function MessageRow(props: {
   id: string;
@@ -196,6 +232,8 @@ export function MessageRow(props: {
   /** The message itself is pinned (the menu then offers to unpin it). */
   pinned?: boolean;
   onTogglePin?: () => void;
+  /** Deletes it for everyone: offered on your own messages and on the bots'. */
+  onDelete?: () => void;
   children: ReactNode;
 }) {
   const t = messages;
@@ -255,6 +293,8 @@ export function MessageRow(props: {
                   }),
               },
               files.length > 0 && { label: t.download(files.length), icon: "square.and.arrow.down", onPress: () => downloadAll(files) },
+              !!props.onDelete && "divider",
+              props.onDelete && { label: t.delete, icon: "trash", destructive: true, onPress: props.onDelete },
             ]}
  >
             <View style={{ maxWidth }} className={cn("min-w-0", props.mine ? "items-end" : "items-start")}>
