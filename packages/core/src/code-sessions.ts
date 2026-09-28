@@ -58,6 +58,8 @@ export type CodeGit = {
   base: string | null;
   /** Files changed and not committed. */
   changes: number;
+  /** Those files (the first 200), with their lines added and removed. */
+  files?: CodeGitFile[];
   /** Commits not pushed (all of them when the branch was never pushed). */
   ahead: number;
   /** Commits of the pushed branch not pulled yet. */
@@ -69,6 +71,9 @@ export type CodeGit = {
   /** Agora has a GitHub token: pushing, pull requests and merging are possible. */
   github: boolean;
 };
+
+/** A file changed and not committed; lines are null for a binary. */
+export type CodeGitFile = { path: string; state: "added" | "modified" | "deleted" | "renamed"; added: number | null; removed: number | null };
 
 /** An action Claude Code wants to run, waiting for the owner. */
 export type CodeApproval = {

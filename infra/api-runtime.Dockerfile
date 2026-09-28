@@ -23,13 +23,27 @@ RUN arch="$(dpkg --print-architecture)" \
  && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${arch}/bin/gh" /usr/local/bin/gh \
  && rm -rf "/tmp/gh_${GH_VERSION}_linux_${arch}" \
  && gh --version
+# Browsers for the sessions' Playwright, with their system libraries: a session downloading one
+# hangs, and cannot write to PLAYWRIGHT_BROWSERS_PATH (inherited from Hermes, owned by root).
+# Full Chromium and the headless shell; /usr/local/bin/chromium is the path given to Claude Code
+# for a project whose Playwright wants another revision (code-sessions.ts).
+ARG PLAYWRIGHT_VERSION=1.63.0
+RUN npx -y "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium chromium-headless-shell \
+ && npm cache clean --force \
+ && chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH" \
+ && ln -s "$(ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-*/chrome-linux*/chrome | tail -1)" /usr/local/bin/chromium \
+ && chromium --headless=new --no-sandbox --dump-dom about:blank > /dev/null
 COPY --from=app /app /app
 ENV NODE_ENV=production \
     HOME=/opt/data \
     HERMES_HOME=/opt/data \
     HERMES_BIN=/opt/hermes/.venv/bin/hermes \
     HERMES_VERSION=${HERMES_VERSION} \
-    PORT=3001
+    PORT=3001 \
+    CHROMIUM_PATH=/usr/local/bin/chromium \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    PUPPETEER_SKIP_DOWNLOAD=1 \
+    PUPPETEER_EXECUTABLE_PATH=/usr/local/bin/chromium
 WORKDIR /app/apps/api
 ENTRYPOINT []
 CMD ["sh", "-c", "bun x drizzle-kit migrate && exec bun src/index.ts"]

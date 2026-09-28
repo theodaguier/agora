@@ -9,6 +9,7 @@ import {
   answerCodeApproval,
   CodeSessionError,
   codeSessionReport,
+  commitMessageFor,
   getCodeSession,
   listCodeSessions,
   runGitAction,
@@ -119,6 +120,13 @@ export const codeSessions = new Hono<AppEnv>()
     return switchCodeSessionAccount(owned.sessionId, body.data.id, { id: me.id, name: me.name }, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
   })
 
+  /** A commit message for the clone's changes, written by Claude Code from the diff: the owner edits it before committing. */
+  .post("/:sessionId/git/message", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    return commitMessageFor(owned.sessionId, owned.conversationId).then((message) => c.json({ message }), (err) => failure(c, err));
+  })
+
   /** Commit, push, pull, pull request, merge: run by Agora in the session's clone, between two runs. */
   .post("/:sessionId/git", async (c) => {
     const owned = await ownerOnly(c);
@@ -129,7 +137,8 @@ export const codeSessions = new Hono<AppEnv>()
   });
 
 const gitRequest = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("commit"), message: z.string().trim().min(1).max(5_000) }),
+  // Empty: Claude Code writes it.
+  z.object({ action: z.literal("commit"), message: z.string().trim().max(5_000).default("") }),
   z.object({ action: z.literal("push") }),
   z.object({ action: z.literal("pull") }),
   z.object({ action: z.literal("pr"), title: z.string().trim().min(1).max(250), body: z.string().max(60_000).default(""), draft: z.boolean().default(false) }),
