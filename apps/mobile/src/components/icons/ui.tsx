@@ -353,6 +353,22 @@ export const ChartIcon = createIcon("chart", {
   cut: <Path d="M8 16.5v-4M12 16.5v-9M16 16.5v-6" />,
 });
 
+export const ServerIcon = createIcon("server", {
+  fill: (
+    <>
+      <Rect x="2.5" y="3" width="19" height="8" rx="3" />
+      <Rect x="2.5" y="13" width="19" height="8" rx="3" />
+    </>
+  ),
+  cut: (
+    <>
+      <Path d="M6.5 7h5M6.5 17h5" />
+      <Hole d={circle(17, 7, 1.25)} />
+      <Hole d={circle(17, 17, 1.25)} />
+    </>
+  ),
+});
+
 export const GridIcon = createIcon("grid", {
   solid: (
     <>

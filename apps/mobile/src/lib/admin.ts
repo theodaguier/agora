@@ -1,3 +1,4 @@
+import type { ServerHistoryRange, ServerReport } from "@agora/core";
 import { queryOptions } from "@tanstack/react-query";
 import { ApiError, api, apiUrl, authHeaders } from "./api";
 import { readLocalFile } from "./files";
@@ -125,6 +126,8 @@ export const providersQuery = queryOptions({ queryKey: ["admin", "providers"], q
 export const adminOrgQuery = queryOptions({ queryKey: ["admin", "org"], queryFn: () => api<Org>("/admin/org") });
 export const digestConfigQuery = queryOptions({ queryKey: ["digest", "config"], queryFn: () => api<DigestAdmin>("/digest/config") });
 export const statusQuery = queryOptions({ queryKey: ["admin", "status"], queryFn: () => api<StatusReport>("/admin/status") });
+export const serverQuery = (range: ServerHistoryRange) =>
+  queryOptions({ queryKey: ["admin", "server", range], queryFn: () => api<ServerReport>(`/admin/server?range=${range}`) });
 export const updatesQuery = queryOptions({ queryKey: ["admin", "updates"], queryFn: () => api<UpdatesStatus>("/admin/updates") });
 export const hostModelsQuery = queryOptions({ queryKey: ["admin", "host", "models"], queryFn: () => api<{ runtimes: LocalRuntime[] }>("/admin/host/models") });
 export const hostClisQuery = queryOptions({ queryKey: ["admin", "host", "clis"], queryFn: () => api<{ clis: HostCli[] }>("/admin/host/clis") });
