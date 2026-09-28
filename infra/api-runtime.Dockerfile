@@ -14,6 +14,15 @@ COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 # accounts signed in from Settings › Models. `claude update` (Admin › Host) installs newer
 # versions under $HOME/.local on the data volume, which comes first in PATH.
 RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force && claude --version
+# GitHub CLI for the sessions: Claude Code uses it (pull requests, issues) with the vault's GitHub
+# token, which code-git.ts hands it in GH_TOKEN.
+ARG GH_VERSION=2.101.0
+RUN arch="$(dpkg --print-architecture)" \
+ && curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${arch}.tar.gz" \
+    | tar -xz -C /tmp \
+ && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${arch}/bin/gh" /usr/local/bin/gh \
+ && rm -rf "/tmp/gh_${GH_VERSION}_linux_${arch}" \
+ && gh --version
 COPY --from=app /app /app
 ENV NODE_ENV=production \
     HOME=/opt/data \

@@ -1,3 +1,4 @@
+import type { CodeAccount } from "@agora/core";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { env } from "./env";
@@ -107,6 +108,15 @@ export async function listClaudeAccounts(): Promise<SubscriptionAccountsState> {
     active,
     accounts: s.accounts.map((a, i) => ({ ...a, plan: statuses[i]?.subscriptionType ?? a.plan, loggedIn: !!statuses[i]?.loggedIn })),
   };
+}
+
+/** The accounts Claude Code can run on right now (signed in), the active one first: the server's login has id null. */
+export async function claudeProfiles(): Promise<(CodeAccount & { active: boolean })[]> {
+  const state = await listClaudeAccounts();
+  return [
+    ...(state.machine.loggedIn ? [{ id: null, email: state.machine.email, plan: state.machine.plan, active: state.active === null }] : []),
+    ...state.accounts.filter((a) => a.loggedIn).map((a) => ({ id: a.id, email: a.email, plan: a.plan, active: state.active === a.id })),
+  ].sort((a, b) => Number(b.active) - Number(a.active));
 }
 
 const notFound = (err: unknown): never => {

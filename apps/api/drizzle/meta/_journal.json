@@ -225,6 +225,13 @@
       "when": 1790585439999,
       "tag": "0031_code_session_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790595766501,
+      "tag": "0032_code_session_git",
+      "breakpoints": true
     }
   ]
 }

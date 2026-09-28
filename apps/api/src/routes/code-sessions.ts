@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { attachCodeSession, turnOfHermesSession } from "../bot-runner";
+import { claudeProfiles } from "../claude-accounts";
 import { canUseClaudeCode, resolveClaudeCodeModel } from "../claude-code";
 import {
   announceCodeSession,
@@ -10,7 +11,9 @@ import {
   codeSessionReport,
   getCodeSession,
   listCodeSessions,
+  runGitAction,
   sendToCodeSession,
+  switchCodeSessionAccount,
   setCodeSessionModel,
   startCodeSession,
   stopCodeSession,
@@ -25,8 +28,9 @@ const TEXT_MAX = 20_000;
 
 function failure(c: Context, err: unknown) {
   if (err instanceof CodeSessionError) {
-    const status = err.code === "not_found" ? 404 : err.code === "gone" ? 409 : 400;
-    return c.json({ error: err.code }, status);
+    const status = err.code === "not_found" ? 404 : err.code === "gone" || err.code === "busy" ? 409 : 400;
+    // `message`: read by the agora_code plugin; `error`: shown by the clients.
+    return c.json({ error: err.detail ?? err.code, ...(err.detail && { message: err.detail }) }, status);
   }
   throw err;
 }
@@ -50,6 +54,15 @@ export const codeSessions = new Hono<AppEnv>()
     if (!conv) return c.json({ error: "not_found" }, 404);
     if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
     return c.json(await allowedClaudeCodeModels(me.id).catch((err) => (console.error("code sessions: models", err), [])));
+  })
+
+  /** The owner's Claude accounts signed in, the active one first: a session can move to another when one runs out. */
+  .get("/accounts", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id")!);
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
+    return c.json(await claudeProfiles().catch((err) => (console.error("code sessions: accounts", err), [])));
   })
 
   .get("/:sessionId", async (c) => {
@@ -94,7 +107,34 @@ export const codeSessions = new Hono<AppEnv>()
     const owned = await ownerOnly(c);
     if (owned instanceof Response) return owned;
     return stopCodeSession(owned.sessionId, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
+  /** Moves Claude Code to another account; a session stopped by the limit picks up where it was. */
+  .put("/:sessionId/account", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    const body = z.object({ id: z.string().max(100).nullable() }).safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "invalid" }, 400);
+    const me = c.get("user");
+    return switchCodeSessionAccount(owned.sessionId, body.data.id, { id: me.id, name: me.name }, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
+  /** Commit, push, pull, pull request, merge: run by Agora in the session's clone, between two runs. */
+  .post("/:sessionId/git", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    const body = gitRequest.safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "invalid" }, 400);
+    return runGitAction(owned.sessionId, body.data, c.get("user").name, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
   });
+
+const gitRequest = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("commit"), message: z.string().trim().min(1).max(5_000) }),
+  z.object({ action: z.literal("push") }),
+  z.object({ action: z.literal("pull") }),
+  z.object({ action: z.literal("pr"), title: z.string().trim().min(1).max(250), body: z.string().max(60_000).default(""), draft: z.boolean().default(false) }),
+  z.object({ action: z.literal("merge"), method: z.enum(["squash", "merge", "rebase"]).default("squash") }),
+]);
 
 /** The session runs on the requester's personal subscription: nobody else drives it. */
 async function ownerOnly(c: Context<AppEnv>) {
@@ -134,6 +174,8 @@ export const internalCode = new Hono()
         title: z.string().max(200).optional(),
         project: z.string().max(64).optional(),
         model: z.string().max(100).optional(),
+        repo: z.string().max(300).optional(),
+        branch: z.string().max(200).optional(),
       })
       .safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid", detail: body.error.issues[0]?.message }, 400);
@@ -153,6 +195,8 @@ export const internalCode = new Hono()
       task: body.data.task,
       project: body.data.project,
       model: model?.id,
+      repo: body.data.repo,
+      branch: body.data.branch,
     }).then(
       async (s) => {
         // Its card goes into the bot's reply, where the bot is in its text; the turn just ended: a line of its own.

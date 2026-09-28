@@ -261,9 +261,19 @@ output), and that their owner can write to, approve and stop from the
 session's card. An admin turns the `agora_code` toolset on for that bot (Admin
 › Agents › Tools); it only works in replies to the subscription's owner. Each
 session works in `~/.agora/claude-code/projects/<project>` on the data volume;
-file edits there are allowed, shell commands and anything else wait for the
-owner's approval. For a bot to push to a repository, give the API's user git
-credentials (for example `gh auth login` in the api container).
+Claude Code runs there with `--dangerously-skip-permissions` (no approval asked:
+files, commands, network), so only turn the toolset on for bots whose owner
+accepts that. When an account hits its subscription limit, the panel offers the
+owner's other signed-in Claude accounts (Settings › Models); switching makes it
+the active one and the session resumes. A bot that passes `repo` gets a GitHub clone on a working
+branch of its own; the owner commits, pushes, opens and merges the pull request
+from the session's panel, and Claude Code can use git and `gh` itself. GitHub
+access comes from the vault: `GH_TOKEN` (or `GITHUB_TOKEN`), else the GitHub
+connector's `MCP_GITHUB_API_KEY`. A fine-grained token needs Contents and Pull
+requests (read and write) on the repositories. It is handed to git and `gh`
+through the environment only, never written in a clone. What happens in a
+session (the owner's instructions from the panel, git actions, last answer) is
+given to every bot of the conversation at each of its turns.
 
 **Agents' tools.** Whoever writes to an agent steers its tools, and so does text
 planted in a web page it reads or a file it's given. Some Hermes tools give the
