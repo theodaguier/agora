@@ -184,6 +184,17 @@ export function parseEnv(text: string) {
 /** Quotes a value only when a .env reader would otherwise misread it. */
 const quote = (v: string) => (/^[^\s"'#\\]*$/.test(v) ? v : `"${v.replace(/(["\\])/g, "\\$1")}"`);
 
+/** The first of `keys` set in the instance .env, in clear, for the API's own use (never sent to a client). */
+export async function instanceSecret(...keys: string[]) {
+  const file = await readFile(join(env.HERMES_HOME, ".env"), "utf8").catch(() => "");
+  const values = new Map(parseEnv(file).entries.map((e) => [e.key, e.value]));
+  for (const key of keys) {
+    const value = values.get(key)?.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
 /** The vault's credentials of the instance .env, in clear: NAME=value per line. */
 export async function rawVault() {
   const visible = (await buildVault(await agents())).filter((s) => s.instance).map((s) => s.key);

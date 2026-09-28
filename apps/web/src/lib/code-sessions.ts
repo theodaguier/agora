@@ -1,5 +1,5 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
-import type { CodeApproval, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
+import type { CodeAccount, CodeApproval, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
 import { api, conversationPath } from "./api";
 
 /** Claude Code sessions of a conversation (apps/api/src/code-sessions.ts): list for the cards, detail with steps for the panel. */
@@ -46,6 +46,17 @@ export const sendToCodeSession = (conversationId: string, id: string, text: stri
 export const answerCodeApproval = (conversationId: string, id: string, approvalId: string, choice: CodeApproval["choices"][number]) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/approval`), { method: "POST", body: JSON.stringify({ approvalId, choice }) });
 
+export type CodeGitRequest =
+  | { action: "commit"; message: string }
+  | { action: "push" }
+  | { action: "pull" }
+  | { action: "pr"; title: string; body: string; draft: boolean }
+  | { action: "merge"; method: "squash" | "merge" | "rebase" };
+
+/** Commit, push, pull, pull request, merge in the session's clone (between two runs). */
+export const runCodeGit = (conversationId: string, id: string, req: CodeGitRequest) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/git`), { method: "POST", body: JSON.stringify(req) });
+
 export const stopCodeSession = (conversationId: string, id: string) => api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/stop`), { method: "POST" });
 
 /** Models the owner may give a session (the Claude Code engine's list, minus blocked ones). */
@@ -58,3 +69,15 @@ export const codeModelsQuery = (conversationId: string) =>
 
 export const setCodeSessionModel = (conversationId: string, id: string, model: string) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/model`), { method: "PUT", body: JSON.stringify({ model }) });
+
+/** The owner's Claude accounts signed in, the active one first (Settings › Models). */
+export const codeAccountsQuery = (conversationId: string) =>
+  queryOptions({
+    queryKey: ["code-accounts", conversationId],
+    queryFn: () => api<(CodeAccount & { active: boolean })[]>(path(conversationId, "/accounts")),
+    staleTime: 60_000,
+  });
+
+/** Moves Claude Code to another account; a session stopped by the limit picks up where it was. */
+export const switchCodeSessionAccount = (conversationId: string, id: string, accountId: string | null) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/account`), { method: "PUT", body: JSON.stringify({ id: accountId }) });

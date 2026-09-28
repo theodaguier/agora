@@ -2,9 +2,11 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import type { CodeApproval, CodeSession, CodeSessionDetail, CodeSessionStatus, CodeStep, CodeUsage } from "@agora/core";
-import { claudeCodeEnv } from "./claude-accounts";
+import type { CodeApproval, CodeGitAction, CodeSession, CodeSessionDetail, CodeSessionStatus, CodeStep, CodeUsage } from "@agora/core";
+import { activateClaudeAccount, activeClaudeAccountId, claudeCodeEnv, claudeProfiles } from "./claude-accounts";
 import { resultUsage, sessionExists, workspace, type ClaudeResult } from "./claude-code";
+import * as gitOps from "./code-git";
+import { GitError, githubEnv, githubToken, parseRepo, prepareRepo, readGit, sessionBranch } from "./code-git";
 import { clip, Transcript } from "./code-steps";
 import { db, schema } from "./db";
 import { env } from "./env";
@@ -50,6 +52,12 @@ type Live = {
   activity: string | null;
   limit: CodeSession["limit"];
   stopping: boolean;
+  /** Clone to make before the next run (the first one; again after a failed clone). */
+  prepare: { repo: string; branch: string; author: { name: string; email: string } } | null;
+  /** Instructions of a run whose clone failed: they go with the next one. */
+  held: Instruction[];
+  /** A git action of the owner is under way. */
+  gitBusy: boolean;
   /** Steps changed since the last broadcast. */
   dirty: Map<string, CodeStep>;
   summaryDirty: boolean;
@@ -64,15 +72,20 @@ const SAVE_MS = 2_000;
 /** Steps kept in the database: the latest ones. */
 const MAX_STEPS = 800;
 const STOP_GRACE_MS = 5_000;
-/** Allowed without asking in the session's directory: file edits. Commands and the rest are asked. */
-const DEFAULT_MODE = "acceptEdits";
+
+/** Claude Code's answer when the account ran out of its subscription's usage. */
+const LIMIT_HIT = /hit your .*limit|usage limit reached|limit reached/i;
 
 const PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,99}$/;
 
 export class CodeSessionError extends Error {
-  constructor(public code: "not_found" | "invalid" | "gone") {
-    super(code);
+  /** `detail`: what went wrong, for the person (a git failure, a bad repository). */
+  constructor(
+    public code: "not_found" | "invalid" | "gone" | "busy" | "git",
+    public detail?: string,
+  ) {
+    super(detail ?? code);
   }
 }
 
@@ -89,7 +102,10 @@ function summary(s: Live): CodeSession {
     title: r.title,
     status: r.status,
     cwd: r.cwd,
+    repo: r.repo,
+    git: r.git,
     model: r.model,
+    account: r.account,
     activity: s.activity,
     limit: s.limit,
     approval: a && { id: a.id, tool: a.tool, title: a.title, ...(a.detail && { detail: a.detail }), choices: a.choices },
@@ -113,6 +129,9 @@ function fromRow(row: Row): Live {
     activity: null,
     limit: null,
     stopping: false,
+    prepare: null,
+    held: [],
+    gitBusy: false,
     dirty: new Map(),
     summaryDirty: false,
     flushTimer: null,
@@ -149,7 +168,10 @@ export async function listCodeSessions(conversationId: string): Promise<CodeSess
   return rows.map((row) => summary(live.get(row.id) ?? fromRow(row)));
 }
 
-/** What a bot needs to follow the session it started: status, answer, and the actions since its last instruction. */
+/**
+ * What a bot needs to follow a session: status, answer, the actions since the last instruction,
+ * and the instructions and git actions of everyone (its owner drives it from the panel too).
+ */
 export async function codeSessionReport(id: string) {
   const s = await load(id);
   const steps = s.transcript.steps;
@@ -159,8 +181,12 @@ export async function codeSessionReport(id: string) {
     .filter((st): st is Extract<CodeStep, { kind: "tool" }> => st.kind === "tool" && !st.parentId)
     .slice(-25)
     .map((st) => `${{ done: "✓", running: "…", error: "✗", denied: "✗ (refusé)" }[st.status]} ${st.name}: ${st.title}`);
+  const history = steps
+    .filter((st) => st.kind === "user" || st.kind === "git")
+    .slice(-10)
+    .map((st) => (st.kind === "user" ? `${st.by ?? "?"}: ${clipLine(st.text, 400)}` : `[git ${st.action}${st.ok ? "" : " failed"}${st.by ? ` by ${st.by}` : ""}] ${st.text}`));
   const { id: _, conversationId: __, agentId: ___, requestedBy: ____, ...rest } = summary(s);
-  return { session_id: id, ...rest, actions };
+  return { session_id: id, ...rest, actions, history };
 }
 
 /* ---------- broadcasting and saving ---------- */
@@ -202,6 +228,8 @@ async function save(s: Live) {
         result: r.result,
         model: r.model,
         permissions: r.permissions,
+        git: r.git,
+        account: r.account,
         steps: s.transcript.steps.slice(-MAX_STEPS),
         usage: r.usage,
         updatedAt: r.updatedAt,
@@ -212,9 +240,10 @@ async function save(s: Live) {
   }
 }
 
-/** Status reached at the end of a run: saved and broadcast right away. */
+/** Status reached at the end of a run: saved and broadcast right away, with where its clone stands now. */
 async function settle(s: Live, status: CodeSessionStatus) {
   s.row.status = status;
+  await refreshGit(s);
   touch(s, [], true);
   await save(s);
   await flush(s);
@@ -224,6 +253,14 @@ function setStatus(s: Live, status: CodeSessionStatus) {
   if (s.row.status === status) return;
   s.row.status = status;
   touch(s, [], true);
+}
+
+async function refreshGit(s: Live) {
+  s.row.git = await readGit(s.row.cwd).catch((err) => (console.error("code session: git state", err), s.row.git));
+}
+
+function gitStep(s: Live, action: CodeGitAction, ok: boolean, text: string, by: string | null) {
+  touch(s, [s.transcript.add({ id: crypto.randomUUID(), kind: "git", action, ok, text, by })]);
 }
 
 function notice(s: Live, code: "stopped" | "restart" | "error", text?: string) {
@@ -248,15 +285,22 @@ export async function startCodeSession(opts: {
   /** Sub-directory of the Claude Code workspace, shared by the sessions that name it (a repo, a project). */
   project?: string;
   model?: string;
+  /** GitHub repository (owner/name or URL) cloned into the directory before the first run. */
+  repo?: string;
+  /** Its branch to work on (default: a new one named after the session). */
+  branch?: string;
 }): Promise<CodeSession> {
   const task = opts.task.trim();
   const project = opts.project?.trim();
   const model = opts.model?.trim() || null;
   if (!task || (project && !PROJECT.test(project)) || (model && !MODEL.test(model))) throw new CodeSessionError("invalid");
+  const repo = opts.repo?.trim() ? parseRepo(opts.repo) : null;
+  if (opts.repo?.trim() && !repo) throw new CodeSessionError("invalid", `Not a GitHub repository: ${opts.repo}. Expected owner/name or its URL.`);
   const id = crypto.randomUUID();
-  const cwd = join(await workspace(), "projects", project || `session-${id.slice(0, 8)}`);
+  const cwd = join(await workspace(), "projects", project || (repo ? `${repo.split("/")[1]}-${id.slice(0, 8)}` : `session-${id.slice(0, 8)}`));
   await mkdir(cwd, { recursive: true });
   const title = opts.title.trim().slice(0, 200) || task.split("\n")[0]!.slice(0, 120);
+  const [owner] = repo ? await db.select({ name: schema.user.name, email: schema.user.email }).from(schema.user).where(eq(schema.user.id, opts.requestedBy)) : [];
   const [row] = await db
     .insert(schema.codeSession)
     .values({
@@ -267,12 +311,14 @@ export async function startCodeSession(opts: {
       title,
       status: "running",
       cwd,
+      repo,
       model,
       permissions: { allowedTools: [], dirs: [] },
       steps: [],
     })
     .returning();
   const s = fromRow(row!);
+  if (repo) s.prepare = { repo, branch: opts.branch?.trim() || sessionBranch(title, id), author: owner ?? { name: "Agora", email: "agora@localhost" } };
   live.set(id, s);
   if (opts.announce) await announceCodeSession(opts.conversationId, id, title, opts.botName);
   instruct(s, { text: task, by: opts.by });
@@ -301,9 +347,9 @@ function instruct(s: Live, m: Instruction) {
     else s.outbox.push(m);
     return;
   }
-  s.outbox.push(m);
-  // Stopping: the new run starts once the current one has exited.
-  if (!s.running) start(s);
+  s.outbox.push(...s.held.splice(0), m);
+  // Stopping: the new run starts once the current one has exited; a git action: once it is done.
+  if (!s.running && !s.gitBusy) start(s);
 }
 
 function deliver(s: Live, m: Instruction) {
@@ -366,6 +412,160 @@ export async function stopCodeSession(id: string, conversationId?: string) {
   touch(s, [], true);
   return summary(s);
 }
+
+export type GitRequest =
+  | { action: "commit"; message: string }
+  | { action: "push" }
+  | { action: "pull" }
+  | { action: "pr"; title: string; body: string; draft: boolean }
+  | { action: "merge"; method: "squash" | "merge" | "rebase" };
+
+/**
+ * A git action of the owner, from the panel: never while Claude Code works in the directory.
+ * Recorded in the steps (the bot reads them), and in the conversation for a pull request.
+ */
+export async function runGitAction(id: string, req: GitRequest, by: string, conversationId?: string) {
+  const s = await load(id, conversationId);
+  if (s.running || s.gitBusy) throw new CodeSessionError("busy");
+  s.gitBusy = true;
+  const cwd = s.row.cwd;
+  try {
+    const outcome = await {
+      commit: () => gitOps.commit(cwd, (req as Extract<GitRequest, { action: "commit" }>).message),
+      push: () => gitOps.push(cwd),
+      pull: () => gitOps.pull(cwd),
+      pr: () => gitOps.openPullRequest(cwd, req as Extract<GitRequest, { action: "pr" }>),
+      merge: () => gitOps.mergePullRequest(cwd, (req as Extract<GitRequest, { action: "merge" }>).method),
+    }[req.action]();
+    gitStep(s, req.action, true, outcome.text, by);
+    if (outcome.pr && (outcome.opened || req.action === "merge")) {
+      await postEvent(s.row.conversationId, {
+        type: "code.pr",
+        actor: by,
+        title: s.row.title,
+        sessionId: s.row.id,
+        number: outcome.pr.number,
+        url: outcome.pr.url,
+        merged: req.action === "merge",
+      }).catch((err) => console.error("code session: pr event", err));
+    }
+  } catch (err) {
+    if (!(err instanceof GitError)) throw err;
+    gitStep(s, req.action, false, err.message, by);
+    throw new CodeSessionError("git", err.message);
+  } finally {
+    s.gitBusy = false;
+    await refreshGit(s);
+    touch(s, [], true);
+    await save(s);
+    await flush(s);
+    // An instruction came during the action.
+    if (s.outbox.length && !s.running) start(s);
+  }
+  return summary(s);
+}
+
+/* ---------- what the bots know ---------- */
+
+const clipLine = (text: string, max: number) => {
+  const one = text.replace(/\s+/g, " ").trim();
+  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
+};
+
+/** The clone's state in one line, for a bot. */
+function gitLine(git: CodeSession["git"]) {
+  if (!git) return null;
+  const parts = [git.repo ?? "dépôt local", git.branch ? `branche ${git.branch}` : "aucune branche"];
+  if (git.changes) parts.push(`${git.changes} fichier(s) modifié(s) non commités`);
+  if (git.ahead) parts.push(git.pushed ? `${git.ahead} commit(s) non poussé(s)` : `${git.ahead} commit(s), branche jamais poussée`);
+  if (git.pr) parts.push(`PR #${git.pr.number} ${{ open: "ouverte", closed: "fermée", merged: "mergée" }[git.pr.state]} (${git.pr.url})`);
+  if (!git.github) parts.push("pas d'accès GitHub");
+  return parts.join(", ");
+}
+
+/**
+ * The conversation's Claude Code sessions, as they stand, for the system prompt of every bot turn:
+ * what the owner told them from the panel, the git actions, their last answer. A bot only hears of
+ * a session through its own tool calls otherwise, and would miss what happened since.
+ */
+export async function codeSessionsContext(conversationId: string) {
+  const rows = await db
+    .select()
+    .from(schema.codeSession)
+    .where(eq(schema.codeSession.conversationId, conversationId))
+    .orderBy(desc(schema.codeSession.updatedAt))
+    .limit(6);
+  const recent = rows.filter((r) => Date.now() - r.updatedAt.getTime() < 14 * 24 * 3_600_000);
+  if (!recent.length) return "";
+  const agentIds = [...new Set(recent.map((r) => r.agentId).filter((a): a is string => !!a))];
+  const agentNames = new Map(
+    agentIds.length ? (await db.select({ id: schema.agent.id, name: schema.agent.name }).from(schema.agent).where(inArray(schema.agent.id, agentIds))).map((a) => [a.id, a.name]) : [],
+  );
+  const profiles = recent.some((r) => live.get(r.id)?.limit?.status === "rejected") ? await claudeProfiles().catch(() => []) : [];
+  const status: Record<CodeSessionStatus, string> = {
+    running: "en cours",
+    waiting: "attend une autorisation de son propriétaire",
+    idle: "a terminé ce qu'on lui a demandé",
+    stopped: "arrêtée",
+    failed: "en échec",
+  };
+  const blocks = recent.map((row) => {
+    const s = live.get(row.id) ?? fromRow(row);
+    const r = s.row;
+    const steps = s.transcript.steps;
+    const by = r.agentId ? (agentNames.get(r.agentId) ?? "un bot") : "son propriétaire";
+    const lines = [`## « ${r.title} » (session_id ${r.id})`, `Lancée par ${by}. État : ${status[r.status]}${r.model ? `, modèle ${r.model}` : ""}.`];
+    const git = gitLine(r.git);
+    if (git) lines.push(`Dépôt : ${git}.`);
+    if (r.account?.email) lines.push(`Compte Claude de son dernier run : ${r.account.email}.`);
+    if (s.limit?.status === "rejected") {
+      const others = profiles.filter((p) => p.id !== r.account?.id).map((p) => p.email ?? "compte du serveur");
+      lines.push(
+        `Limite de l'abonnement atteinte${s.limit.resetsAt ? `, reprise ${s.limit.resetsAt}` : ""}.` +
+          (others.length ? ` Autre compte prêt : ${others.join(", ")}. Propose au propriétaire d'y passer (bouton de la session), elle reprendra d'elle-même.` : ""),
+      );
+    }
+    const events = steps.filter((st) => st.kind === "user" || st.kind === "git" || st.kind === "notice").slice(-8);
+    if (events.length) {
+      lines.push("Dernières instructions et actions :");
+      for (const st of events) {
+        if (st.kind === "user") lines.push(`- ${st.by ?? "?"} a écrit à Claude Code : ${clipLine(st.text, 300)}`);
+        else if (st.kind === "git") lines.push(`- ${st.ok ? "" : "ÉCHEC "}${st.action}${st.by ? ` par ${st.by}` : ""} : ${clipLine(st.text, 300)}`);
+        else if (st.kind === "notice") lines.push(`- ${{ stopped: "Arrêtée", restart: "Interrompue par un redémarrage", error: "Erreur" }[st.code]}${st.text ? ` : ${clipLine(st.text, 300)}` : ""}`);
+      }
+    }
+    if (r.result) lines.push(`Sa dernière réponse :\n${clipLine(r.result, 1500)}`);
+    return lines.join("\n");
+  });
+  return [
+    "# Sessions Claude Code de cette conversation",
+    "État réel, relu à chaque message : il fait foi sur ce que tu croyais savoir. Le propriétaire peut piloter une session sans toi, depuis son panneau (instructions, autorisations, commit, push, PR, merge) : tout ce qu'il y a fait est ci-dessous.",
+    "Règles :",
+    "- Une session qui porte sur une tâche fait ce travail : ne le refais jamais toi-même en parallèle. Suis-la (claude_code_wait) ou écris-lui (claude_code_send).",
+    "- N'affirme rien sur ce qu'une session a produit sans t'appuyer sur ce bloc ou sur claude_code_wait.",
+    "- Si une session est bloquée (limite, erreur, autorisation), dis-le et demande au propriétaire comment continuer avant de changer d'approche.",
+    "- Ne lance ni n'installe jamais le CLI `claude` dans ton terminal : passe par les outils claude_code_*.",
+    "",
+    blocks.join("\n\n"),
+  ].join("\n");
+}
+
+/**
+ * The subscription ran out: Claude Code moves to another of the owner's accounts (the active one of
+ * Settings › Models, for the engine too), and the session picks up where it stopped.
+ */
+export async function switchCodeSessionAccount(id: string, accountId: string | null, by: { id: string; name: string }, conversationId?: string) {
+  const s = await load(id, conversationId);
+  if (!(await claudeProfiles()).some((p) => p.id === accountId)) throw new CodeSessionError("invalid", "Unknown or signed-out Claude account.");
+  await activateClaudeAccount(accountId, by.id);
+  const limited = s.limit?.status === "rejected";
+  s.limit = null;
+  touch(s, [], true);
+  if (limited && !s.running) instruct(s, { text: RESUME, by: by.name });
+  return summary(s);
+}
+
+const RESUME = "Tu avais été arrêté par la limite de l'abonnement : reprends exactement là où tu t'étais arrêté.";
 
 /** At startup: the runs the previous process had under way died with it. */
 export async function recoverCodeSessions() {
@@ -433,6 +633,21 @@ function start(s: Live) {
 
 async function execute(s: Live): Promise<void> {
   const r = s.row;
+  if (s.prepare) {
+    const { repo, branch, author } = s.prepare;
+    try {
+      gitStep(s, "clone", true, await prepareRepo(r.cwd, repo, { branch, author }), null);
+      s.prepare = null;
+    } catch (err) {
+      if (!(err instanceof GitError)) throw err;
+      gitStep(s, "clone", false, err.message, null);
+      // Its instructions wait for the next one, which tries the clone again.
+      s.held.push(...s.outbox.splice(0));
+      return settle(s, "failed");
+    }
+    await refreshGit(s);
+    touch(s, [], true);
+  }
   const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools];
   const args = [
     env.CLAUDE_CODE_BIN,
@@ -445,7 +660,8 @@ async function execute(s: Live): Promise<void> {
     "--replay-user-messages",
     // Actions outside the allowed ones are asked on stdout (can_use_tool) and answered on stdin.
     "--permission-prompt-tool", "stdio",
-    "--permission-mode", r.permissions.mode || DEFAULT_MODE,
+    // Nothing is asked: the owner chose to let the sessions act on their own (they still watch and can stop them).
+    "--dangerously-skip-permissions",
     // None of the owner's hooks, CLAUDE.md or personal MCP servers; the project's own settings apply.
     "--setting-sources", "project",
     "--strict-mcp-config",
@@ -454,7 +670,14 @@ async function execute(s: Live): Promise<void> {
     ...(allowed.length ? ["--allowedTools", ...allowed] : []),
     ...r.permissions.dirs.flatMap((d) => ["--add-dir", d]),
   ];
-  const proc = Bun.spawn(args, { cwd: r.cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  // git and gh reach GitHub with the vault's token (the clone's credential helper reads it from there).
+  const spawnEnv = { ...(await claudeCodeEnv()), ...githubEnv(await githubToken()) };
+  // The account this run uses, shown in the panel (the active one of Settings › Models).
+  const accountId = await activeClaudeAccountId();
+  const profile = (await claudeProfiles().catch(() => [])).find((p) => p.id === accountId);
+  r.account = { id: accountId, email: profile?.email ?? null, plan: profile?.plan ?? null };
+  touch(s, [], true);
+  const proc = Bun.spawn(args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   s.proc = proc;
   // Stopped while it was starting.
   if (s.stopping) proc.kill();
@@ -496,6 +719,10 @@ async function execute(s: Live): Promise<void> {
     if (change.result) {
       result = change.result;
       r.result = result.text || null;
+      // "You've hit your session limit · resets …": the run ends on it, sometimes without a rate-limit event.
+      if (result.isError && LIMIT_HIT.test(result.text) && s.limit?.status !== "rejected") {
+        s.limit = { status: "rejected", window: s.limit?.window ?? "session", ...(s.limit?.resetsAt && { resetsAt: s.limit.resetsAt }) };
+      }
       account(s, change.result.event);
       // Everything written has been answered: the run ends (stdin closed, the process exits).
       if (!s.unread.length || s.stopping) proc.stdin.end();

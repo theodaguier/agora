@@ -33,7 +33,42 @@ export type CodeStep =
   /** An instruction sent to the session: the initial task, then each follow-up; `by` is the sender's name. */
   | { id: string; kind: "user"; text: string; by: string | null }
   /** stopped: by its owner; restart: the server restarted during a run; error: the CLI failed (`text`). */
-  | { id: string; kind: "notice"; code: "stopped" | "restart" | "error"; text?: string };
+  | { id: string; kind: "notice"; code: "stopped" | "restart" | "error"; text?: string }
+  /** A git or GitHub action Agora ran for the session (clone, or the owner's from the panel); `text`: its outcome in one line. */
+  | { id: string; kind: "git"; action: CodeGitAction; ok: boolean; text: string; by: string | null; detail?: string };
+
+export type CodeGitAction = "clone" | "commit" | "push" | "pr" | "merge" | "pull";
+
+/** A pull request of the session's branch on GitHub. */
+export type CodePullRequest = {
+  number: number;
+  url: string;
+  title: string;
+  state: "open" | "closed" | "merged";
+  draft: boolean;
+  base: string;
+};
+
+/** Where the session's working directory stands, when it is a GitHub clone (read after each run and action). */
+export type CodeGit = {
+  /** owner/name on GitHub (null: another remote, or none). */
+  repo: string | null;
+  branch: string | null;
+  /** The repository's default branch, target of the pull requests. */
+  base: string | null;
+  /** Files changed and not committed. */
+  changes: number;
+  /** Commits not pushed (all of them when the branch was never pushed). */
+  ahead: number;
+  /** Commits of the pushed branch not pulled yet. */
+  behind: number;
+  /** The branch exists on GitHub. */
+  pushed: boolean;
+  lastCommit: { sha: string; subject: string } | null;
+  pr: CodePullRequest | null;
+  /** Agora has a GitHub token: pushing, pull requests and merging are possible. */
+  github: boolean;
+};
 
 /** An action Claude Code wants to run, waiting for the owner. */
 export type CodeApproval = {
@@ -54,6 +89,9 @@ export type CodeLimit = {
   utilization?: number;
   resetsAt?: string;
 };
+
+/** A Claude account Claude Code can run on (Settings › Models): the server's login (id null) or one added. */
+export type CodeAccount = { id: string | null; email: string | null; plan?: string | null };
 
 /** What a session consumed, all runs together (Claude Code's own count; cost: its API-price estimate). */
 export type CodeUsage = {
@@ -80,7 +118,13 @@ export type CodeSession = {
   status: CodeSessionStatus;
   /** Working directory on the server. */
   cwd: string;
+  /** GitHub repository (owner/name) it was cloned from, when started on one. */
+  repo: string | null;
+  /** State of its clone (null: not a git repository, or not read yet). */
+  git: CodeGit | null;
   model: string | null;
+  /** The Claude account (profile) its last run used: id null for the server's own login. */
+  account: CodeAccount | null;
   /** What it is doing right now, in one line (Claude Code's own summary, or the running tool). */
   activity: string | null;
   /** Subscription usage warning, as Claude Code reports it. */

@@ -5,7 +5,7 @@ runs it (apps/api/src/code-sessions.ts). Every step Claude Code takes shows up
 live in the conversation; its owner can write to it while it works, approve
 or deny the actions it asks about, and stop it.
 
-    claude_code_start(task, title, project, model)   start, then wait
+    claude_code_start(task, title, repo, branch, project, model)   start, then wait
     claude_code_wait(session_id)                     wait for it to finish its work
     claude_code_send(session_id, message)            another instruction, then wait
     claude_code_stop(session_id)
@@ -92,7 +92,8 @@ def _report(report: dict) -> str:
                           "conversation's Claude Code card. Tell them what it asks, then call claude_code_wait.")
     elif status == "idle":
         report["note"] = ("Claude Code finished what it was asked: `result` is its answer. Check it before reporting; "
-                          "send a follow-up with claude_code_send if something is missing.")
+                          "send a follow-up with claude_code_send if something is missing. `history` lists every "
+                          "instruction (the owner's from the panel too) and git action; `git` is where its branch stands.")
     elif status == "stopped":
         report["note"] = "The session was stopped. Do not restart it unless the user asks."
     elif status == "failed":
@@ -120,7 +121,7 @@ def claude_code_start(args: dict, session_id: str = "", **_: Any) -> str:
     if not task:
         return _error("task is required")
     body = {"hermes_session": session_id, "task": task}
-    for key in ("title", "project", "model"):
+    for key in ("title", "repo", "branch", "project", "model"):
         if args.get(key):
             body[key] = str(args[key])
     try:
@@ -177,22 +178,32 @@ START = {
     "name": "claude_code_start",
     "description": (
         "Delegate a coding task to a Claude Code agent running on the server, on its owner's Claude subscription. "
-        "Use this instead of running the `claude` CLI in a terminal: every step it takes (files read and edited, "
-        "commands, results) is shown live to the conversation's members, and its owner can talk to it, approve its "
-        "commands and stop it. File edits in its directory are allowed; other actions (shell commands…) wait for the "
-        "owner's approval. Start several sessions for independent tasks. Write a complete brief: goal, repository "
-        "(URL to clone or project directory), constraints, how to check the result. Waits for it to finish, then "
-        "returns its answer and the actions it took. Only available in replies to the subscription's owner."
+        "Never run or install the `claude` CLI in a terminal: use this. Every step it takes (files read and edited, "
+        "commands, results) is shown live to the conversation's members, and its owner can talk to it and stop it. "
+        "It runs without permission prompts (files, commands, network): write its brief accordingly. When it stops on "
+        "its subscription's limit, its owner can move it to another Claude account from its panel. For work on a GitHub repository, pass `repo`: Agora clones it with the organization's "
+        "GitHub access on a working branch; Claude Code can then commit, push and use `gh`, and the owner can commit, "
+        "push, open and merge the pull request from the session's panel. Do not copy code into its directory yourself. "
+        "Once started, the session does the work: do not do it yourself in parallel; follow it with claude_code_wait. "
+        "Start several sessions for independent tasks. Write a complete brief: goal, constraints, how to check the "
+        "result. Waits for it to finish, then returns its answer and the actions it took. Only available in replies "
+        "to the subscription's owner."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "task": {"type": "string", "description": "The full brief for Claude Code."},
             "title": {"type": "string", "description": "Short title shown in the conversation (a few words)."},
+            "repo": {"type": "string", "description": "GitHub repository to work on: owner/name or its URL. Cloned before Claude Code starts."},
+            "branch": {
+                "type": "string",
+                "description": "Branch of `repo` to work on: checked out when it exists on GitHub, created from the default "
+                               "branch otherwise. Default: a new branch named after the session.",
+            },
             "project": {
                 "type": "string",
                 "description": "Name of its working directory on the server (letters, digits, . _ -). Sessions with the same "
-                               "project share it: reuse it to keep working on a clone. Default: a new directory.",
+                               "project share it: reuse it to keep working on the same clone. Default: a new directory.",
             },
             "model": {"type": "string", "description": "Claude model (alias like opus or sonnet, or a full id). Default: Claude Code's own."},
             "wait": {"type": "boolean", "description": "Wait for the result (default true). False: return right away with its id."},

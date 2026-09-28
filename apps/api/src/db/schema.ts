@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, CodeSessionStatus, CodeStep, CodeUsage, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, CodeAccount, CodeGit, CodeSessionStatus, CodeStep, CodeUsage, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
@@ -355,6 +355,12 @@ export const codeSession = pgTable(
     title: text("title").notNull(),
     status: text("status").$type<CodeSessionStatus>().notNull(),
     cwd: text("cwd").notNull(),
+    /** GitHub repository (owner/name) cloned into `cwd` at the start. */
+    repo: text("repo"),
+    /** Last state read of the clone (code-git.ts). */
+    git: jsonb("git").$type<CodeGit>(),
+    /** Claude account of its last run. */
+    account: jsonb("account").$type<CodeAccount>(),
     model: text("model"),
     result: text("result"),
     /** Rules the owner allowed "for the session", passed again to each run. */

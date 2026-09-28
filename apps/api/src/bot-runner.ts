@@ -19,6 +19,7 @@ import { QUESTIONS_PROMPT } from "./questions";
 import { createSkillCreation, createSkillRequest, SKILL_CREATE_PROMPT, SKILL_REQUEST_PROMPT } from "./skill-requests";
 import { accessibleAgentIds } from "./conversations";
 import { applyTasksBlock, TASKS_PROMPT, tasksContext } from "./tasks";
+import { codeSessionsContext } from "./code-sessions";
 import { applyAvailabilityBlock, AVAILABILITY_BLOCK_PROMPT, availabilityContext } from "./availability-bot";
 import { withAttachments, withInvocations, type Invocation } from "./prompt";
 import { typesForProfile } from "./integrations";
@@ -537,7 +538,7 @@ async function runTurn(turn: Turn) {
   }
   // Outside initial setup, the bot may request a missing MCP connector.
   if (!bot.onboarding) {
-    const [tasks, schedules, views] = await Promise.all([
+    const [tasks, schedules, views, code] = await Promise.all([
       tasksContext(people).catch((err) => {
         console.error("bot-runner: tasks context", err);
         return "";
@@ -550,8 +551,12 @@ async function runTurn(turn: Turn) {
         console.error("bot-runner: integration types", err);
         return "";
       }),
+      codeSessionsContext(conversationId).catch((err) => {
+        console.error("bot-runner: code sessions context", err);
+        return "";
+      }),
     ]);
-    system = [system, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views]
+    system = [system, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, code]
       .filter(Boolean)
       .join("\n\n");
   }

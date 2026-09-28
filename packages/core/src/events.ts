@@ -21,6 +21,8 @@ export type ConversationEvent =
   | { type: "session.reset"; actor: string }
   /** A Claude Code session started in the conversation, by a bot (or by its owner: bot null). */
   | { type: "code.started"; bot: string | null; title: string; sessionId: string }
+  /** A pull request of a Claude Code session opened or merged (by its owner from the panel, or by Agora). */
+  | { type: "code.pr"; actor: string; title: string; sessionId: string; number: number; url: string; merged: boolean }
   | { type: "session.compacted"; actor: string }
   | { type: "session.compactFailed"; bot: string }
   | { type: "agent.updated" }
@@ -93,6 +95,14 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
         : fr
           ? `Session Claude Code lancée : ${e.title}`
           : `Claude Code session started: ${e.title}`;
+    case "code.pr":
+      return e.merged
+        ? fr
+          ? `${e.actor} a mergé la PR #${e.number} de la session « ${e.title} »`
+          : `${e.actor} merged PR #${e.number} of the “${e.title}” session`
+        : fr
+          ? `${e.actor} a ouvert la PR #${e.number} de la session « ${e.title} » : ${e.url}`
+          : `${e.actor} opened PR #${e.number} of the “${e.title}” session: ${e.url}`;
     case "session.reset":
       return fr ? `${e.actor} a démarré un nouveau contexte` : `${e.actor} started a fresh context`;
     case "session.compacted":
