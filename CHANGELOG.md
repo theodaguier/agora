@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.16.3 — 2026-09-28
+
+### Fixes
+- **code-sessions**: bots with the Claude Code tools delegate code to a session
+
 ## v0.16.2 — 2026-09-28
 
 ### Fixes
