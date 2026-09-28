@@ -249,11 +249,21 @@ on `https://<DOMAIN>/api/health`, which answers `{"ok":true}`. Check the logs
 from time to time (`./agora logs api`): repeated sign-in failures, 401/403.
 
 **Claude Code and Codex engines.** They run on personal Claude and ChatGPT
-subscriptions logged in on the machine: leave `CLAUDE_CODE_OWNER_EMAIL` and
-`CODEX_OWNER_EMAIL` unset on a public instance (the production
-`docker-compose.yml` doesn't pass them). Accounts added in Settings › Models live
-in `~/.agora/claude-accounts` and `~/.agora/codex-accounts` of the API's user:
-keep that home on a persistent volume.
+subscriptions logged in on the machine, for their owner only: set
+`CLAUDE_CODE_OWNER_EMAIL` in `.env` to the owner's Agora email to turn them on
+(empty: off). The API image ships the `claude` CLI; sign an account in from
+Settings › Models. Accounts live in `~/.agora/claude-accounts` and
+`~/.agora/codex-accounts` of the API's user, on the data volume.
+
+**Claude Code sessions.** A bot can delegate coding to Claude Code agents that
+the conversation watches live (every file read or edited, every command and its
+output), and that their owner can write to, approve and stop from the
+session's card. An admin turns the `agora_code` toolset on for that bot (Admin
+› Agents › Tools); it only works in replies to the subscription's owner. Each
+session works in `~/.agora/claude-code/projects/<project>` on the data volume;
+file edits there are allowed, shell commands and anything else wait for the
+owner's approval. For a bot to push to a repository, give the API's user git
+credentials (for example `gh auth login` in the api container).
 
 **Agents' tools.** Whoever writes to an agent steers its tools, and so does text
 planted in a web page it reads or a file it's given. Some Hermes tools give the

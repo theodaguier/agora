@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, CodeSessionStatus, CodeStep, CodeUsage, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
@@ -338,6 +338,34 @@ export const pendingTurn = pgTable("pending_turn", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+/**
+ * Claude Code session started in a conversation (code-sessions.ts): its steps
+ * stay readable after it ends. Its id is also Claude Code's session id, so it
+ * can be resumed with the next instruction.
+ */
+export const codeSession = pgTable(
+  "code_session",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    agentId: text("agent_id").references(() => agent.id, { onDelete: "set null" }),
+    requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    status: text("status").$type<CodeSessionStatus>().notNull(),
+    cwd: text("cwd").notNull(),
+    model: text("model"),
+    result: text("result"),
+    /** Rules the owner allowed "for the session", passed again to each run. */
+    permissions: jsonb("permissions").$type<{ allowedTools: string[]; mode?: string; dirs: string[] }>().notNull(),
+    steps: jsonb("steps").$type<CodeStep[]>().notNull(),
+    usage: jsonb("usage").$type<CodeUsage>(),
+    ...timestamps,
+  },
+  (t) => [index("code_session_conversation_idx").on(t.conversationId)],
+);
+
 export type MessageKind = "user" | "bot" | "event";
 
 export const message = pgTable(
@@ -567,7 +595,8 @@ export const notification = pgTable(
 /* ---------- Token usage ---------- */
 
 /** "chat": a turn in a conversation; "cron": a Hermes scheduled job; "system": internal work (memory curator…). */
-export type UsageSource = "chat" | "cron" | "system";
+/** code: a Claude Code session started from a conversation (task = the session). */
+export type UsageSource = "chat" | "cron" | "system" | "code";
 
 /**
  * Tokens consumed by one slice of activity, attributed to who and what caused it.

@@ -19,6 +19,8 @@ export type ConversationEvent =
   /** Posted in a direct conversation: the bot brought other bots into a group opened from it. */
   | { type: "relay.group"; bot: string; bots: string[]; conversationId: string }
   | { type: "session.reset"; actor: string }
+  /** A Claude Code session started in the conversation, by a bot (or by its owner: bot null). */
+  | { type: "code.started"; bot: string | null; title: string; sessionId: string }
   | { type: "session.compacted"; actor: string }
   | { type: "session.compactFailed"; bot: string }
   | { type: "agent.updated" }
@@ -83,6 +85,14 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
       return fr ? "Limite de relais entre bots atteinte." : "Bot-to-bot relay limit reached.";
     case "relay.group":
       return fr ? `${e.bot} a ouvert un groupe avec ${list(e.bots, "et")}` : `${e.bot} opened a group with ${list(e.bots, "and")}`;
+    case "code.started":
+      return e.bot
+        ? fr
+          ? `${e.bot} a lancé une session Claude Code : ${e.title}`
+          : `${e.bot} started a Claude Code session: ${e.title}`
+        : fr
+          ? `Session Claude Code lancée : ${e.title}`
+          : `Claude Code session started: ${e.title}`;
     case "session.reset":
       return fr ? `${e.actor} a démarré un nouveau contexte` : `${e.actor} started a fresh context`;
     case "session.compacted":

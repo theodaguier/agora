@@ -23,6 +23,7 @@ import { MembersPanel } from "@/components/MembersPanel";
 import { PersonPanel } from "@/components/PersonPanel";
 import { ChatMessage, MessageRow, PendingRow } from "@/components/MessageParts";
 import { RightPanel } from "@/components/RightPanel";
+import { CodeSessionCard, CodeSessionPanel, ReplyWithSessions } from "@/components/CodeSession";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ShortcutTooltip } from "@/components/Shortcuts";
@@ -177,21 +178,36 @@ function LiveTurn({
   conversationId,
   group,
   mentionables: mentions,
+  onOpenCode,
 }: {
   turn: ActiveTurn;
   bot: AgentSummary | undefined;
   conversationId: string;
   group: boolean;
   mentionables: Mentionable[];
+  onOpenCode: (sessionId: string) => void;
 }) {
   const t = useT(strings);
   const { user } = useRouteContext({ from: "/app" });
   const visible = hideBlocks(turn.text);
+  const typing = <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} className="chat-arrive" />;
   return (
     <>
       {group && bot && <AuthorLine name={bot.name} avatar={<AgentAvatar agent={bot} className="size-5" />} className="chat-arrive" />}
       <ToolLine tools={turn.tools} running={!visible} className="chat-arrive" />
-      {visible ? (
+      {turn.codeSessions?.length ? (
+        <div className="max-w-[min(680px,88%)]">
+          <ReplyWithSessions
+            conversationId={conversationId}
+            text={visible}
+            sessions={turn.codeSessions}
+            streaming
+            typing={!turn.approval && typing}
+            onOpen={onOpenCode}
+            bubble={(text, streaming) => <BotBubble text={text} streaming={streaming} mentionables={mentions} />}
+          />
+        </div>
+      ) : visible ? (
         <BotBubble text={visible} streaming mentionables={mentions} />
       ) : (
         !turn.approval && <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} className="chat-arrive" />
@@ -389,6 +405,15 @@ export function Conversation() {
   const arrived = useArrivals(conversationId, messages, isPending);
   /** Side panel: the bot's or the group's (`info`), search, files or pins; closed by default. */
   const [panel, setPanel] = useState<PanelKind | "info" | null>(null);
+  /** Claude Code session opened beside the thread (it takes the side panel's place). */
+  const [codeSession, setCodeSession] = useState<string | null>(null);
+  useEffect(() => {
+    if (panel) setCodeSession(null);
+  }, [panel]);
+  const openCodeSession = (id: string) => {
+    setPanel(null);
+    setCodeSession(id);
+  };
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
   const [forwarding, setForwarding] = useState<Message | null>(null);
@@ -413,6 +438,7 @@ export function Conversation() {
   useEffect(() => {
     setSending([]);
     setReplyTo(null);
+    setCodeSession(null);
   }, [conversationId]);
 
   useEffect(() => {
@@ -563,6 +589,8 @@ export function Conversation() {
                 const showAuthor = newAuthor && !fromMe && m.kind !== "event" && (group || (m.kind === "user" && !directBot)) && !!m.author;
                 // A bot's reply takes the place of its live turn and ours of its pending copy: only others' messages arrive.
                 const arriving = m.kind === "user" && !fromMe && arrived(m.id);
+                /** A Claude Code session started here: its card instead of the event line. */
+                const codeStarted = m.kind === "event" && m.data?.event?.type === "code.started" ? m.data.event : null;
                 return (
                   <Fragment key={m.id}>
                     {divider && <DateDivider label={dividerLabel(at)} />}
@@ -608,7 +636,7 @@ export function Conversation() {
                       <>
                         {m.data?.tools && <ToolLine tools={m.data.tools} />}
                         {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
-                        {m.text && (
+                        {(m.text || !!m.data?.codeSessions?.length) && (
                           <MessageRow
                             id={m.id}
                             wide
@@ -619,7 +647,17 @@ export function Conversation() {
                             pinned={isPinned({ messageId: m.id })}
                             onTogglePin={() => togglePin({ messageId: m.id })}
                           >
-                            <BotBubble text={m.text} mentionables={mentions} className="max-w-full" />
+                            {m.data?.codeSessions?.length ? (
+                              <ReplyWithSessions
+                                conversationId={conversationId}
+                                text={m.text}
+                                sessions={m.data.codeSessions}
+                                onOpen={openCodeSession}
+                                bubble={(text) => <BotBubble text={text} mentionables={mentions} className="max-w-full" />}
+                              />
+                            ) : (
+                              <BotBubble text={m.text} mentionables={mentions} className="max-w-full" />
+                            )}
                           </MessageRow>
                         )}
                         {m.data?.views && <BotViews message={m} views={m.data.views} answers={viewAnswers} send={send} />}
@@ -627,7 +665,15 @@ export function Conversation() {
                         {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
                       </>
                     )}
-                    {m.kind === "event" && (
+                    {codeStarted && (
+                      <CodeSessionCard
+                        conversationId={conversationId}
+                        sessionId={codeStarted.sessionId}
+                        title={codeStarted.title}
+                        onOpen={() => openCodeSession(codeStarted.sessionId)}
+                      />
+                    )}
+                    {m.kind === "event" && !codeStarted && (
                       <DateDivider
                         label={eventText(m.text, m.data?.event)}
                         conversationId={m.data?.event?.type === "relay.group" ? m.data.event.conversationId : undefined}
@@ -665,7 +711,15 @@ export function Conversation() {
                 </Fragment>
               ))}
               {turns.map((turn) => (
-                <LiveTurn key={turn.turnId} turn={turn} bot={agentById(turn.agentId)} conversationId={conversationId} group={group} mentionables={mentions} />
+                <LiveTurn
+                  key={turn.turnId}
+                  turn={turn}
+                  bot={agentById(turn.agentId)}
+                  conversationId={conversationId}
+                  group={group}
+                  mentionables={mentions}
+                  onOpenCode={openCodeSession}
+                />
               ))}
               {typing.length > 0 && (
                 <p className="chat-arrive mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
@@ -731,6 +785,11 @@ export function Conversation() {
         {panel === "info" && group && conv && (
           <div className="hidden border-l border-border/60 lg:block">
             <MembersPanel conversation={conv} onClose={() => setPanel(null)} />
+          </div>
+        )}
+        {codeSession && (
+          <div className="border-l border-border/60 max-lg:contents">
+            <CodeSessionPanel key={codeSession} conversationId={conversationId} sessionId={codeSession} onClose={() => setCodeSession(null)} />
           </div>
         )}
         {panel && panel !== "info" && conv && (

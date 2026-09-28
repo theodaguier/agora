@@ -15,6 +15,12 @@ export type AppEvent =
   | { type: "bot.approval"; conversationId: string; turnId: string; approval: import("./bot-runner").PendingApproval | null }
   | { type: "bot.done"; conversationId: string; turnId: string; messageId: string | null }
   | { type: "bot.error"; conversationId: string; turnId: string; message: string }
+  /** The bot started a Claude Code session during its reply: its card goes into the reply. */
+  | { type: "bot.code"; conversationId: string; turnId: string; session: import("@agora/core").CodeSessionRef }
+  /** A Claude Code session's state changed (code-sessions.ts). */
+  | { type: "code.session"; conversationId: string; session: import("@agora/core").CodeSession }
+  /** One of its steps was added or changed (text streamed, tool finished). */
+  | { type: "code.step"; conversationId: string; sessionId: string; step: import("@agora/core").CodeStep }
   | { type: "presence"; userId: string; online: boolean; lastSeenAt: string | null }
   | { type: "agent.status"; agentId: string; working: boolean }
   /** Someone's working hours, absences or "do not disturb" changed (availability.ts). */

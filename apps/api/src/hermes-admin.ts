@@ -205,6 +205,8 @@ export async function createProfile(profile: string, description: string) {
   await (await import("./memory")).installWikiPlugin(profile).catch((err) => console.error("memory: plugin", err));
   // Agent screen: members can watch the browser it drives. A new profile's manager loads it on first use.
   await (await import("./screen")).installScreenPlugin(profile).catch((err) => console.error("screen: plugin", err));
+  // Claude Code sessions, off until an admin turns them on for this agent (code-plugin.ts).
+  await (await import("./code-plugin")).installCodePlugin(profile).catch((err) => console.error("code plugin", err));
   // Without terminal, code, file writes or local browser until an admin decides otherwise (sandbox.ts).
   await (await import("./sandbox")).confineNewProfile(profile);
   // OAuth connectors authorized for the instance work for the new agent too.

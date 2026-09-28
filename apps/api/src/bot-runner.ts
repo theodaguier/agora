@@ -23,7 +23,7 @@ import { applyAvailabilityBlock, AVAILABILITY_BLOCK_PROMPT, availabilityContext 
 import { withAttachments, withInvocations, type Invocation } from "./prompt";
 import { typesForProfile } from "./integrations";
 import { viewPrompt, withViewAction } from "./views";
-import type { ViewAction } from "@agora/core";
+import type { CodeSessionRef, ViewAction } from "@agora/core";
 
 const { agent, attachment, conversation, conversationAgent, conversationMember, message, pendingTurn, user } = schema;
 
@@ -55,6 +55,10 @@ type Turn = TurnRequest & {
   text: string;
   tools: { name: string; status: string }[];
   profile?: string;
+  /** Hermes session of the turn: its plugins (agora_code) name it to act on the turn's behalf. */
+  hermesSession?: string;
+  /** Claude Code sessions the bot started during the turn, saved with its reply. */
+  codeSessions: CodeSessionRef[];
   approval?: PendingApproval & { hermes: HermesApproval };
   /** Decisions made during the turn, kept with the reply. */
   approvals: { command: string; choice: string; by: string | null }[];
@@ -77,7 +81,7 @@ function enqueue(conversationId: string, agentId: string, job: () => Promise<voi
 }
 
 function newTurn(req: TurnRequest): Turn {
-  const turn: Turn = { ...req, turnId: crypto.randomUUID(), controller: new AbortController(), started: false, text: "", tools: [], approvals: [] };
+  const turn: Turn = { ...req, turnId: crypto.randomUUID(), controller: new AbortController(), started: false, text: "", tools: [], approvals: [], codeSessions: [] };
   turns.set(turn.turnId, turn);
   return turn;
 }
@@ -281,7 +285,10 @@ function openChat(
     await attributeSession(bot.hermesProfile, opts.sessionId, { userId: opts.requestedBy, agentId: bot.id, conversationId: opts.conversationId }).catch((err) =>
       console.error("bot-runner: usage attribution", err),
     );
-    if (turn) turn.profile = bot.hermesProfile;
+    if (turn) {
+      turn.profile = bot.hermesProfile;
+      turn.hermesSession = opts.sessionId;
+    }
     yield* chat({ profile: bot.hermesProfile, sessionId: opts.sessionId, text: opts.text, images: opts.images, model: engine.model, system: opts.system, signal: opts.signal });
   })();
 }
@@ -325,7 +332,39 @@ export function abandonTurns(conversationId: string, agentId?: string) {
 export function activeTurns(conversationId: string) {
   return [...turns.values()]
     .filter((t) => t.conversationId === conversationId && t.started)
-    .map(({ turnId, agentId, requestedBy, text, tools, approval }) => ({ turnId, agentId, requestedBy, text, tools, approval: publicApproval(approval) }));
+    .map(({ turnId, agentId, requestedBy, text, tools, approval, codeSessions }) => ({
+      turnId,
+      agentId,
+      requestedBy,
+      text,
+      tools,
+      approval: publicApproval(approval),
+      codeSessions,
+    }));
+}
+
+/** The turn a Hermes session is running right now (a plugin's tool call happens during it). */
+export function turnOfHermesSession(sessionId: string) {
+  for (const t of turns.values()) {
+    if (t.started && t.hermesSession === sessionId) return { conversationId: t.conversationId, agentId: t.agentId, requestedBy: t.requestedBy };
+  }
+  return null;
+}
+
+/** How much of the reply marks where a Claude Code session was started. */
+const ANCHOR = 80;
+
+/**
+ * A Claude Code session the bot just started: shown in its reply being written, where it is
+ * in its text, and saved with it. False when that Hermes session has no turn under way.
+ */
+export async function attachCodeSession(hermesSession: string, session: { id: string; title: string }) {
+  const turn = [...turns.values()].find((t) => t.started && t.hermesSession === hermesSession);
+  if (!turn) return false;
+  const ref: CodeSessionRef = { ...session, after: turn.text.slice(-ANCHOR) };
+  turn.codeSessions.push(ref);
+  await publishToConversation(turn.conversationId, { type: "bot.code", conversationId: turn.conversationId, turnId: turn.turnId, session: ref });
+  return true;
 }
 
 /** Started turns per bot, whatever the conversation: a bot "is working" while it has at least one. */
@@ -624,10 +663,11 @@ async function runTurn(turn: Turn) {
       console.error("bot-runner: availability", err),
     );
   }
-  if (parsed.text || parsed.choices || parsed.questions || parsed.views || request || skill) {
+  if (parsed.text || parsed.choices || parsed.questions || parsed.views || request || skill || turn.codeSessions.length) {
     const extra = {
       ...(turn.tools.length && { tools: turn.tools }),
       ...(turn.approvals.length && { approvals: turn.approvals }),
+      ...(turn.codeSessions.length && { codeSessions: turn.codeSessions }),
       ...(parsed.choices && { choices: parsed.choices }),
       ...(parsed.questions && { questions: parsed.questions }),
       ...(parsed.views && { views: parsed.views }),

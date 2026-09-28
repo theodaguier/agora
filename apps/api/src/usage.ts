@@ -319,7 +319,9 @@ const ENGINE_PROVIDER = { "claude-code": "anthropic", codex: "openai" } as const
 export async function recordEngineUsage(
   engine: keyof typeof ENGINE_PROVIDER,
   usage: EngineUsage[],
-  who: { userId: string | null; agentId: string; conversationId: string; sessionId: string },
+  who: { userId: string | null; agentId: string | null; conversationId: string; sessionId: string },
+  /** Outside a bot's reply: what the tokens were spent on (a Claude Code session). */
+  task?: { source: UsageSource; taskId: string; taskName: string },
 ) {
   const rows = usage.filter((u) => u.inputTokens || u.outputTokens || u.cacheReadTokens || u.cacheWriteTokens);
   if (!rows.length) return;
@@ -328,7 +330,9 @@ export async function recordEngineUsage(
       id: crypto.randomUUID(),
       occurredAt: new Date(),
       engine,
-      source: "chat" as const,
+      source: task?.source ?? ("chat" as const),
+      taskId: task?.taskId ?? null,
+      taskName: task?.taskName ?? null,
       sessionId: who.sessionId,
       userId: who.userId,
       agentId: who.agentId,

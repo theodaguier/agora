@@ -625,6 +625,10 @@ const ThreadMessage = memo(function ThreadMessage({
         <>
           {m.data?.tools && <ToolLine tools={m.data.tools} />}
           {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
+          {/* Claude Code sessions the bot started: their live view is on the web for now. */}
+          {m.data?.codeSessions?.map((c) => (
+            <SystemEvent key={c.id} label={renderEvent({ type: "code.started", bot: null, title: c.title, sessionId: c.id }, locale)} />
+          ))}
           {!!m.text && (
             <MessageRow
               id={m.id}

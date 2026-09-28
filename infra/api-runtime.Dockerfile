@@ -10,6 +10,10 @@ FROM oven/bun:1.3.9-slim AS bun
 FROM ${HERMES_IMAGE}
 ARG HERMES_VERSION=""
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+# Claude Code CLI: the Claude Code engine and the sessions bots start (code-sessions.ts), on
+# accounts signed in from Settings › Models. `claude update` (Admin › Host) installs newer
+# versions under $HOME/.local on the data volume, which comes first in PATH.
+RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force && claude --version
 COPY --from=app /app /app
 ENV NODE_ENV=production \
     HOME=/opt/data \

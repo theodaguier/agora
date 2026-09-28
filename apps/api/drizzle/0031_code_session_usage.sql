@@ -1,0 +1,1 @@
+ALTER TABLE "code_session" ADD COLUMN "usage" jsonb;

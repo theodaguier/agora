@@ -151,5 +151,20 @@ export async function checkContract(opts: {
     });
   }
 
+  const codePlugin = await run(["docker", "exec", opts.container, "test", "-f", "/app/infra/hermes-plugins/agora_code/contract_check.py"]);
+  if (codePlugin.code === 0) {
+    await timed("plugin sessions Claude Code : interface Hermes", async () => {
+      const r = await run(
+        [
+          "docker", "exec", "-u", opts.uid, "-w", "/opt/hermes",
+          "-e", "PYTHONPATH=/opt/hermes",
+          opts.container, "/opt/hermes/.venv/bin/python", "/app/infra/hermes-plugins/agora_code/contract_check.py",
+        ],
+        { timeoutMs: 3 * 60_000 },
+      );
+      if (r.code !== 0) throw new Error((r.stdout + r.stderr).trim().slice(-300));
+    });
+  }
+
   return { ok: checks.every((c) => c.ok), checks };
 }

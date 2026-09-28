@@ -22,7 +22,7 @@ const reportQuery = z.object({
   range: z.enum(Object.keys(RANGES) as [keyof typeof RANGES, ...(keyof typeof RANGES)[]]).default("30d"),
   userId: z.string().optional(),
   agentId: z.string().optional(),
-  source: z.enum(["chat", "cron", "system"]).optional(),
+  source: z.enum(["chat", "cron", "system", "code"]).optional(),
 });
 
 const priceInput = z.object({

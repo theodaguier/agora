@@ -1,0 +1,252 @@
+"""agora_code — Claude Code sessions an agent starts from a conversation.
+
+The agent does not run the `claude` CLI itself: it asks the Agora API, which
+runs it (apps/api/src/code-sessions.ts). Every step Claude Code takes shows up
+live in the conversation; its owner can write to it while it works, approve
+or deny the actions it asks about, and stop it.
+
+    claude_code_start(task, title, project, model)   start, then wait
+    claude_code_wait(session_id)                     wait for it to finish its work
+    claude_code_send(session_id, message)            another instruction, then wait
+    claude_code_stop(session_id)
+
+The API listens on 127.0.0.1 (same network as the gateway) and wrote its URL
+and a token to `<root HERMES_HOME>/agora-code/api.json` when it started. Each
+call names the Hermes session it comes from: the API only starts or drives a
+session during a turn the subscription's owner started.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
+
+TOOLSET = "agora_code"
+POLL_SECONDS = 3
+DEFAULT_WAIT_MINUTES = 10
+MAX_WAIT_MINUTES = 30
+
+
+def _root_home() -> Path:
+    from hermes_constants import get_hermes_home
+
+    home = get_hermes_home()
+    return home.parent.parent if home.parent.name == "profiles" else home
+
+
+def _api() -> Dict[str, str]:
+    return json.loads((_root_home() / "agora-code" / "api.json").read_text())
+
+
+def _call(method: str, path: str, body: Optional[dict] = None, query: Optional[dict] = None) -> dict:
+    api = _api()
+    url = api["url"] + path + (("?" + urllib.parse.urlencode(query)) if query else "")
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method, headers={
+        "Authorization": f"Bearer {api['token']}",
+        "Content-Type": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            return json.loads(res.read() or b"{}")
+    except urllib.error.HTTPError as err:
+        try:
+            payload = json.loads(err.read() or b"{}")
+        except ValueError:
+            payload = {}
+        raise RuntimeError(payload.get("message") or payload.get("detail") or payload.get("error") or f"HTTP {err.code}") from None
+
+
+def _interrupted() -> bool:
+    try:
+        from tools.interrupt import is_interrupted
+
+        return is_interrupted()
+    except Exception:
+        return False
+
+
+def _minutes(args: dict) -> float:
+    try:
+        value = float(args.get("timeout_minutes", DEFAULT_WAIT_MINUTES))
+    except (TypeError, ValueError):
+        value = DEFAULT_WAIT_MINUTES
+    return max(0.0, min(value, MAX_WAIT_MINUTES))
+
+
+def _report(report: dict) -> str:
+    status = report.get("status")
+    if status == "running":
+        report["note"] = ("Claude Code is still working. The members follow it live in the conversation. "
+                          "Call claude_code_wait again to keep waiting, or answer the user now.")
+    elif status == "waiting":
+        report["note"] = ("Claude Code is waiting for its owner to approve an action (see `approval`), in the "
+                          "conversation's Claude Code card. Tell them what it asks, then call claude_code_wait.")
+    elif status == "idle":
+        report["note"] = ("Claude Code finished what it was asked: `result` is its answer. Check it before reporting; "
+                          "send a follow-up with claude_code_send if something is missing.")
+    elif status == "stopped":
+        report["note"] = "The session was stopped. Do not restart it unless the user asks."
+    elif status == "failed":
+        report["note"] = "The session failed: say so plainly, with the error from its last steps."
+    return json.dumps(report, ensure_ascii=False)
+
+
+def _wait(session_id: str, hermes_session: str, minutes: float, report: Optional[dict] = None) -> str:
+    deadline = time.monotonic() + minutes * 60
+    while True:
+        if report is None or report.get("status") == "running":
+            report = _call("GET", f"/sessions/{urllib.parse.quote(session_id)}", query={"hermes_session": hermes_session})
+        if report.get("status") != "running" or time.monotonic() >= deadline or _interrupted():
+            return _report(report)
+        time.sleep(POLL_SECONDS)
+        report = None
+
+
+def _error(message: str) -> str:
+    return json.dumps({"success": False, "error": message}, ensure_ascii=False)
+
+
+def claude_code_start(args: dict, session_id: str = "", **_: Any) -> str:
+    task = str(args.get("task") or "").strip()
+    if not task:
+        return _error("task is required")
+    body = {"hermes_session": session_id, "task": task}
+    for key in ("title", "project", "model"):
+        if args.get(key):
+            body[key] = str(args[key])
+    try:
+        report = _call("POST", "/sessions", body)
+        if args.get("wait", True) is False:
+            return _report(report)
+        return _wait(report["session_id"], session_id, _minutes(args), report)
+    except Exception as exc:
+        return _error(str(exc))
+
+
+def claude_code_wait(args: dict, session_id: str = "", **_: Any) -> str:
+    target = str(args.get("session_id") or "")
+    if not target:
+        return _error("session_id is required")
+    try:
+        return _wait(target, session_id, _minutes(args))
+    except Exception as exc:
+        return _error(str(exc))
+
+
+def claude_code_send(args: dict, session_id: str = "", **_: Any) -> str:
+    target = str(args.get("session_id") or "")
+    message = str(args.get("message") or "").strip()
+    if not target or not message:
+        return _error("session_id and message are required")
+    try:
+        report = _call("POST", f"/sessions/{urllib.parse.quote(target)}/messages", {"hermes_session": session_id, "text": message})
+        if args.get("wait", True) is False:
+            return _report(report)
+        return _wait(target, session_id, _minutes(args))
+    except Exception as exc:
+        return _error(str(exc))
+
+
+def claude_code_stop(args: dict, session_id: str = "", **_: Any) -> str:
+    target = str(args.get("session_id") or "")
+    if not target:
+        return _error("session_id is required")
+    try:
+        return _report(_call("POST", f"/sessions/{urllib.parse.quote(target)}/stop", {"hermes_session": session_id}))
+    except Exception as exc:
+        return _error(str(exc))
+
+
+_WAIT = {
+    "type": "number",
+    "description": f"How long to wait for Claude Code before this call returns (default {DEFAULT_WAIT_MINUTES}, max {MAX_WAIT_MINUTES}). It keeps working after.",
+    "minimum": 0,
+    "maximum": MAX_WAIT_MINUTES,
+}
+
+START = {
+    "name": "claude_code_start",
+    "description": (
+        "Delegate a coding task to a Claude Code agent running on the server, on its owner's Claude subscription. "
+        "Use this instead of running the `claude` CLI in a terminal: every step it takes (files read and edited, "
+        "commands, results) is shown live to the conversation's members, and its owner can talk to it, approve its "
+        "commands and stop it. File edits in its directory are allowed; other actions (shell commands…) wait for the "
+        "owner's approval. Start several sessions for independent tasks. Write a complete brief: goal, repository "
+        "(URL to clone or project directory), constraints, how to check the result. Waits for it to finish, then "
+        "returns its answer and the actions it took. Only available in replies to the subscription's owner."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "task": {"type": "string", "description": "The full brief for Claude Code."},
+            "title": {"type": "string", "description": "Short title shown in the conversation (a few words)."},
+            "project": {
+                "type": "string",
+                "description": "Name of its working directory on the server (letters, digits, . _ -). Sessions with the same "
+                               "project share it: reuse it to keep working on a clone. Default: a new directory.",
+            },
+            "model": {"type": "string", "description": "Claude model (alias like opus or sonnet, or a full id). Default: Claude Code's own."},
+            "wait": {"type": "boolean", "description": "Wait for the result (default true). False: return right away with its id."},
+            "timeout_minutes": _WAIT,
+        },
+        "required": ["task"],
+        "additionalProperties": False,
+    },
+}
+
+WAIT = {
+    "name": "claude_code_wait",
+    "description": "Wait for a Claude Code session to finish its current work (or to need an approval), then return its status, answer and recent actions.",
+    "parameters": {
+        "type": "object",
+        "properties": {"session_id": {"type": "string"}, "timeout_minutes": _WAIT},
+        "required": ["session_id"],
+        "additionalProperties": False,
+    },
+}
+
+SEND = {
+    "name": "claude_code_send",
+    "description": (
+        "Send another instruction to a Claude Code session (it keeps its context): a follow-up, a correction. "
+        "If it is working, it reads it at its next step. Then waits like claude_code_wait."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "session_id": {"type": "string"},
+            "message": {"type": "string"},
+            "wait": {"type": "boolean", "description": "Wait for the result (default true)."},
+            "timeout_minutes": _WAIT,
+        },
+        "required": ["session_id", "message"],
+        "additionalProperties": False,
+    },
+}
+
+STOP = {
+    "name": "claude_code_stop",
+    "description": "Stop a Claude Code session's current work (the command in progress is interrupted).",
+    "parameters": {
+        "type": "object",
+        "properties": {"session_id": {"type": "string"}},
+        "required": ["session_id"],
+        "additionalProperties": False,
+    },
+}
+
+
+def register(ctx) -> None:
+    ctx.register_tool(name="claude_code_start", toolset=TOOLSET, schema=START, handler=claude_code_start, emoji="🧑‍💻")
+    ctx.register_tool(name="claude_code_wait", toolset=TOOLSET, schema=WAIT, handler=claude_code_wait, emoji="⏳")
+    ctx.register_tool(name="claude_code_send", toolset=TOOLSET, schema=SEND, handler=claude_code_send, emoji="💬")
+    ctx.register_tool(name="claude_code_stop", toolset=TOOLSET, schema=STOP, handler=claude_code_stop, emoji="⏹")
