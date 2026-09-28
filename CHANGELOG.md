@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.18.0 — 2026-09-28
+
+### Features
+- **mobile**: Claude Code sessions, as on the web
+
 ## v0.17.0 — 2026-09-28
 
 ### Features
