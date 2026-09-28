@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.19.1 — 2026-09-28
+
+### Fixes
+- **updater**: leave package caches out of the Hermes backup
+
 ## v0.19.0 — 2026-09-28
 
 ### Features
