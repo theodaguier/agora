@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { Fragment, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { placeCodeSessions, type CodeApproval, type CodeGit, type CodeSession, type CodeSessionRef, type CodeSessionStatus, type CodeStep } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import {
@@ -53,6 +53,7 @@ import {
   codeSessionsQuery,
   sendToCodeSession,
   setCodeSessionModel,
+  refreshCodeSessionGit,
   stopCodeSession,
   writeCommitMessage,
 } from "@/lib/code-sessions";
@@ -313,13 +314,27 @@ export function ReplyWithSessions({
  */
 export function CodeSessionsButton({ conversationId, current, onOpen }: { conversationId: string; current: string | null; onOpen: (sessionId: string) => void }) {
   const t = useT(messages);
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
+  // Opened: the pull requests still open, and the branches pushed, as they are on GitHub now.
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) return;
+    for (const s of sessions) {
+      if (s.git?.pr?.state === "open" || (s.git?.pushed && !s.git.pr)) {
+        refreshCodeSessionGit(conversationId, s.id).then(
+          (fresh) => applyCodeSession(qc, fresh),
+          () => {},
+        );
+      }
+    }
+  };
   if (!sessions.length) return null;
   const sorted = [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const working = sessions.some((s) => active(s.status));
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -409,6 +424,7 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
   }, [session?.steps]);
 
   const owner = !!session && session.requestedBy === user.id;
+  useGitRefresh(conversationId, sessionId, !!session?.git);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
@@ -481,6 +497,34 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
       )}
     </div>
   );
+}
+
+const GIT_REFRESH_MS = 30_000;
+
+/**
+ * While the panel is open, the branch and its pull request follow GitHub: read again when it
+ * opens, when the window comes back, and every 30 s while it is visible (a PR merged or closed
+ * there, a push from elsewhere). During a run the server rereads them itself after each push.
+ */
+function useGitRefresh(conversationId: string, sessionId: string, enabled: boolean) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!enabled) return;
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      refreshCodeSessionGit(conversationId, sessionId).then(
+        (s) => applyCodeSession(qc, s),
+        () => {},
+      );
+    };
+    refresh();
+    const timer = setInterval(refresh, GIT_REFRESH_MS);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [conversationId, sessionId, enabled, qc]);
 }
 
 /** Directory and what the session consumed, on one line; the detail on hover. The model too, for those who cannot change it. */

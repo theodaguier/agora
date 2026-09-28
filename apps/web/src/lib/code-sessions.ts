@@ -62,6 +62,10 @@ export const runCodeGit = (conversationId: string, id: string, req: CodeGitReque
 export const writeCommitMessage = (conversationId: string, id: string) =>
   api<{ message: string }>(path(conversationId, `/${encodeURIComponent(id)}/git/message`), { method: "POST" }).then((r) => r.message);
 
+/** Its branch and pull request read again by the server (throttled there): a PR merged on GitHub shows up. */
+export const refreshCodeSessionGit = (conversationId: string, id: string) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/git/refresh`), { method: "POST" });
+
 export const stopCodeSession = (conversationId: string, id: string) => api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/stop`), { method: "POST" });
 
 /** Models the owner may give a session (the Claude Code engine's list, minus blocked ones). */
