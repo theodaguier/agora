@@ -1,4 +1,4 @@
-import type { ConversationEvent, IntegrationType, ViewAction, ViewBlock } from "@agora/core";
+import type { CodeSessionRef, ConversationEvent, IntegrationType, ViewAction, ViewBlock } from "@agora/core";
 import { defineMessages, getLocale, tr } from "@/i18n";
 
 const messages = defineMessages({
@@ -154,6 +154,8 @@ export type ActiveTurn = {
   text: string;
   tools: { name: string; status: string }[];
   approval?: PendingApproval | null;
+  /** Claude Code sessions the bot started so far in this reply. */
+  codeSessions?: CodeSessionRef[];
 };
 
 export type ConversationDetail = {
@@ -272,6 +274,8 @@ export type Message = {
     forwarded?: { authorName: string };
     /** System message parameters, rendered in the reader's language. */
     event?: ConversationEvent;
+    /** Claude Code sessions the bot started during this reply, and where. */
+    codeSessions?: CodeSessionRef[];
     /** Views of connector data shown by the bot (```view``` block). */
     views?: ViewBlock[];
     /** Employee's answer to a draft the bot showed. */

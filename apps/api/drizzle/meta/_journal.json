@@ -211,6 +211,20 @@
       "when": 1790200477688,
       "tag": "0029_skill_create",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790348257086,
+      "tag": "0030_code_session",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790585439999,
+      "tag": "0031_code_session_usage",
+      "breakpoints": true
     }
   ]
 }

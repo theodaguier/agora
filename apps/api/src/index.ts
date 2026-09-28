@@ -9,6 +9,7 @@ import { admin } from "./routes/admin";
 import { agents } from "./routes/agents";
 import { attachments } from "./routes/attachments";
 import { conversations } from "./routes/conversations";
+import { codeSessions, internalCode } from "./routes/code-sessions";
 import { digest } from "./routes/digest";
 import { events } from "./routes/events";
 import { hermesAdmin } from "./routes/hermes-admin";
@@ -29,6 +30,8 @@ import { wiki } from "./routes/wiki";
 import { setupMemory } from "./memory";
 import { setupScreen } from "./screen";
 import { setupSandbox } from "./sandbox";
+import { setupCodePlugin } from "./code-plugin";
+import { recoverCodeSessions } from "./code-sessions";
 import { setupSharedSkills } from "./skill-requests";
 import { ensureHermesInstance, shareMcpTokensWithAll } from "./hermes-admin";
 import { setup } from "./routes/setup";
@@ -66,6 +69,7 @@ const app = new Hono()
   .route("/agents", agents)
   .route("/attachments", attachments)
   .route("/conversations", conversations)
+  .route("/conversations/:id/code-sessions", codeSessions)
   .route("/digest", digest)
   .route("/events", events)
   .route("/inbox", inbox)
@@ -86,7 +90,9 @@ const app = new Hono()
   .route("/admin/status", status)
   .route("/admin/updates", updates)
   .route("/admin/wiki", wiki)
-  .route("/admin", admin);
+  .route("/admin", admin)
+  // The agora_code Hermes plugin only (127.0.0.1, its own token).
+  .route("/internal/code", internalCode);
 
 export type AppType = typeof app;
 
@@ -100,6 +106,8 @@ ensureHermesInstance()
   .catch((err) => console.error("screen: setup", err))
   .then(() => setupSandbox())
   .catch((err) => console.error("sandbox: setup", err))
+  .then(() => setupCodePlugin())
+  .catch((err) => console.error("code plugin: setup", err))
   .then(() => setupSharedSkills())
   .catch((err) => console.error("shared skills: setup", err))
   .then(() => shareMcpTokensWithAll())
@@ -108,6 +116,7 @@ ensureHermesInstance()
 startUsageCollector();
 startDigest();
 recoverTurns().catch((err) => console.error("bot-runner: recovery", err));
+recoverCodeSessions().catch((err) => console.error("code sessions: recovery", err));
 void syncSessionSearch();
 
 export default { port: env.PORT, fetch: app.fetch, idleTimeout: 255, maxRequestBodySize: 30 * 1024 * 1024 };

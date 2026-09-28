@@ -1,0 +1,8 @@
+name: agora_code
+version: 0.1.0
+description: "Claude Code sessions (Agora) — lets an agent delegate coding to Claude Code agents that the conversation's members watch live, talk to and approve."
+provides_tools:
+  - claude_code_start
+  - claude_code_wait
+  - claude_code_send
+  - claude_code_stop

@@ -128,7 +128,7 @@ async function menuModels(): Promise<MenuModel[]> {
   }
 }
 
-async function workspace() {
+export async function workspace() {
   const cwd = env.CLAUDE_CODE_CWD || join(homedir(), ".agora", "claude-code");
   await mkdir(cwd, { recursive: true });
   return cwd;
@@ -153,7 +153,7 @@ function sessionUuid(key: string) {
 }
 
 /** An existing session is resumed (--resume); otherwise it is created under this id (--session-id). */
-async function sessionExists(id: string) {
+export async function sessionExists(id: string) {
   const projects = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");
   for await (const _ of new Bun.Glob(`*/${id}.jsonl`).scan({ cwd: projects, onlyFiles: true })) return true;
   return false;
@@ -242,7 +242,7 @@ export async function* claudeCodeChat(opts: {
   }
 }
 
-type ClaudeResult = {
+export type ClaudeResult = {
   is_error?: boolean;
   result?: string;
   usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
@@ -251,7 +251,7 @@ type ClaudeResult = {
 };
 
 /** Per-model usage from the `result` event (the main model plus any helper model Claude Code called). */
-function resultUsage(result: ClaudeResult, model: string): EngineUsage[] {
+export function resultUsage(result: ClaudeResult, model: string): EngineUsage[] {
   const perModel = Object.entries(result.modelUsage ?? {});
   if (perModel.length) {
     return perModel.map(([id, u]) => ({

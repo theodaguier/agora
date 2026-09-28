@@ -150,6 +150,8 @@ export type Message = {
     tools?: { name: string; status: string }[];
     /** Approvals granted or denied during the turn. */
     approvals?: { command: string; choice: string; by: string | null }[];
+    /** Claude Code sessions the bot started during this reply, and where. */
+    codeSessions?: import("@agora/core").CodeSessionRef[];
     attachments?: Attachment[];
     invocations?: Invocation[];
     choices?: Choices;

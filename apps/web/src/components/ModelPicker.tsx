@@ -106,7 +106,7 @@ export function ModelPicker({
             <CommandEmpty>{t.empty}</CommandEmpty>
             <CommandGroup heading={<GroupHeading provider={data.provider} label={t.providerModels(providerName(data.provider))} />}>
               {data.defaultAllowed && (
-                <Option
+                <ModelOption
                   value={defaultValue}
                   label={t.byDefault(data.defaultModel)}
                   logo={<ModelLogo model={data.defaultModel} provider={data.provider} />}
@@ -115,7 +115,7 @@ export function ModelPicker({
                 />
               )}
               {data.models.map((m) => (
-                <Option
+                <ModelOption
                   key={m.id}
                   value={hermesValue(m.id)}
                   label={m.id}
@@ -131,7 +131,7 @@ export function ModelPicker({
                 <CommandSeparator />
                 <CommandGroup heading={<GroupHeading provider={p.provider} label={t.providerModels(providerName(p.provider))} />}>
                   {p.models.map((m) => (
-                    <Option
+                    <ModelOption
                       key={m.id}
                       value={otherValue(p.provider, m.id)}
                       label={m.id}
@@ -149,7 +149,7 @@ export function ModelPicker({
                 <CommandSeparator />
                 <CommandGroup heading={<GroupHeading provider={e.provider} label={e.label} />}>
                   {e.models.map((m) => (
-                    <Option
+                    <ModelOption
                       key={m.id}
                       value={engineValue(e.provider, m)}
                       label={m.label ?? m.id}
@@ -170,7 +170,7 @@ export function ModelPicker({
   );
 }
 
-function GroupHeading({ provider, label }: { provider: string; label: string }) {
+export function GroupHeading({ provider, label }: { provider: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
       <ModelLogo provider={provider} className="size-3.5" />
@@ -179,7 +179,7 @@ function GroupHeading({ provider, label }: { provider: string; label: string }) 
   );
 }
 
-function Option(props: {
+export function ModelOption(props: {
   value: string;
   label: string;
   logo: React.ReactNode;

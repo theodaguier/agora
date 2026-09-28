@@ -81,6 +81,9 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       AGORA_SETUP_TOKEN: ${AGORA_SETUP_TOKEN:-}
       MAIL_FROM: ${MAIL_FROM:-Agora <no-reply@example.com>}
+      # Owner of the Claude Code and Codex subscriptions signed in from Settings › Models;
+      # empty: those engines and the Claude Code sessions stay off (infra/DEPLOY.md).
+      CLAUDE_CODE_OWNER_EMAIL: ${CLAUDE_CODE_OWNER_EMAIL:-}
     volumes:
       - hermes-data:/opt/data
     depends_on:

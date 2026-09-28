@@ -4,6 +4,8 @@ import type { ActiveTurn, Message, PendingApproval } from "./api";
 import { insertMessage, type Schedule } from "@agora/core";
 import { applySchedule } from "./availability";
 import { applyAgentStatus, applyPresence, presenceQuery } from "./presence";
+import type { CodeSession, CodeSessionRef, CodeStep } from "@agora/core";
+import { applyCodeSession, applyCodeStep } from "./code-sessions";
 
 /** Delay after which "X is typing" disappears without a new signal. */
 const TYPING_MS = 5_000;
@@ -119,7 +121,10 @@ type ServerEvent =
   | { type: "bot.tool"; conversationId: string; turnId: string; name: string; status: string }
   | { type: "bot.approval"; conversationId: string; turnId: string; approval: PendingApproval | null }
   | { type: "bot.done"; conversationId: string; turnId: string; messageId: string | null }
-  | { type: "bot.error"; conversationId: string; turnId: string };
+  | { type: "bot.error"; conversationId: string; turnId: string }
+  | { type: "bot.code"; conversationId: string; turnId: string; session: CodeSessionRef }
+  | { type: "code.session"; conversationId: string; session: CodeSession }
+  | { type: "code.step"; conversationId: string; sessionId: string; step: CodeStep };
 
 /** Events that do not belong to a conversation. */
 type GlobalEvent =
@@ -192,6 +197,17 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       flushTurn(cid, ev.turnId);
       updateTurns(cid, (ts) => ts.map((t) => (t.turnId === ev.turnId ? { ...t, approval: ev.approval } : t)));
       return;
+    case "bot.code":
+      // The text written until now: the card goes after it.
+      flushTurn(cid, ev.turnId);
+      updateTurns(cid, (ts) => ts.map((t) => (t.turnId === ev.turnId ? { ...t, codeSessions: [...(t.codeSessions ?? []), ev.session] } : t)));
+      return;
+    case "code.session":
+      applyCodeSession(qc, ev.session);
+      return;
+    case "code.step":
+      applyCodeStep(qc, cid, ev.sessionId, ev.step);
+      return;
     case "bot.done":
     case "bot.error":
       flushTurn(cid, ev.turnId);
@@ -219,6 +235,9 @@ const EVENT_TYPES = [
   "bot.approval",
   "bot.done",
   "bot.error",
+  "bot.code",
+  "code.session",
+  "code.step",
   "presence",
   "agent.status",
   "availability",
@@ -262,6 +281,9 @@ export function useEvents(me: string) {
           qc.invalidateQueries({ queryKey: ["conversations"] });
           qc.invalidateQueries({ queryKey: ["conversation"] });
           qc.invalidateQueries({ queryKey: ["messages"] });
+          // Claude Code steps streamed while the tab was away.
+          qc.invalidateQueries({ queryKey: ["code-sessions"] });
+          qc.invalidateQueries({ queryKey: ["code-session"] });
           qc.invalidateQueries({ queryKey: presenceQuery.queryKey });
         }
         connectedOnce = true;

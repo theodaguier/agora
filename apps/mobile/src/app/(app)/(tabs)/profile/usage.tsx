@@ -19,7 +19,7 @@ import type { AvatarShape } from "@/lib/types";
 /* apps/web/src/components/Usage.tsx (Settings › Usage); the admin's price of each model opens in a sheet (usage-price.tsx). */
 
 type Range = "24h" | "7d" | "30d" | "90d" | "12m";
-type Source = "chat" | "cron" | "system";
+type Source = "chat" | "cron" | "system" | "code";
 type PriceSource = "admin" | "models.dev" | "engine";
 type Summary = { tokens: number; inputTokens: number; outputTokens: number; cacheTokens: number; apiCalls: number; cost: number };
 
@@ -51,7 +51,7 @@ const messages = defineMessages({
     member: "Member",
     bot: "Bot",
     source: "Source",
-    sources: { chat: "Conversations", cron: "Scheduled tasks", system: "System" } as Record<Source, string>,
+    sources: { chat: "Conversations", cron: "Scheduled tasks", system: "System", code: "Claude Code sessions" } as Record<Source, string>,
     tokens: "Tokens",
     cost: "Estimated cost",
     calls: "Model calls",
@@ -87,7 +87,7 @@ const messages = defineMessages({
     member: "Membre",
     bot: "Bot",
     source: "Source",
-    sources: { chat: "Conversations", cron: "Tâches planifiées", system: "Système" },
+    sources: { chat: "Conversations", cron: "Tâches planifiées", system: "Système", code: "Sessions Claude Code" },
     tokens: "Tokens",
     cost: "Coût estimé",
     calls: "Appels au modèle",
