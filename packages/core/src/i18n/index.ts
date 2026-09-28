@@ -8,3 +8,4 @@ export { common } from "./common";
 export { auth } from "./auth";
 export { conversations } from "./conversations";
 export { integrations } from "./integrations";
+export { connectors } from "./connectors";

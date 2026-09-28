@@ -2,7 +2,7 @@ import { MCP_ENV_VALUE_MAX } from "@agora/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { HermesError } from "../hermes-admin";
-import { cancelOAuth, createCustom, decide, getRequest, install, listRequests, oauthStatus, relayOAuthCallback, startOAuth } from "../mcp-requests";
+import { cancelOAuth, createCustom, decide, getRequest, install, listRequests, oauthStatus, reconfigure, relayOAuthCallback, startOAuth } from "../mcp-requests";
 import { mcpRequestSchema } from "../mcp-requests";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
 import { errors } from "../errors.messages";
@@ -41,6 +41,13 @@ export const mcpRequests = new Hono<AppEnv>()
     return c.json(await createCustom({ ...body.data, type: body.data.type }, c.get("user")), 201);
   })
 
+  /** An installed connector opened again for new secrets or a new authorization. */
+  .post("/reconfigure/:name", requireAdmin, async (c) => {
+    const name = z.string().regex(/^[\w.-]{1,80}$/).safeParse(c.req.param("name"));
+    if (!name.success) throw new HermesError(tr(errors).invalidRequest, 400);
+    return c.json(await reconfigure(name.data, c.get("user")));
+  })
+
   .get("/:id", async (c) => c.json(await getRequest(c.req.param("id"), c.get("user"))))
 
   .post("/:id/approve", requireAdmin, async (c) => {
@@ -59,6 +66,8 @@ export const mcpRequests = new Hono<AppEnv>()
     if (!(await getRequest(id, c.get("user"))).canConnect) throw new HermesError(tr(errors).notAllowed, 403);
     const body = z
       .object({
+        /** Remote server reconfigured by an admin: how it authenticates from now on. */
+        auth: z.enum(["none", "header", "oauth"]).optional(),
         env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(MCP_ENV_VALUE_MAX)).default({}),
         bearer_token: z.string().min(1).max(4000).optional(),
         /** Client registered by hand with the provider (no dynamic registration). */
@@ -72,6 +81,7 @@ export const mcpRequests = new Hono<AppEnv>()
       })
       .safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) throw new HermesError(tr(errors).invalidRequest, 400);
+    if (body.data.auth && c.get("user").role !== "admin") throw new HermesError(tr(errors).notAllowed, 403);
     await install(id, body.data);
     return c.json(await getRequest(id, c.get("user")));
   })

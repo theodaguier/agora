@@ -8,9 +8,10 @@ import { Switch } from "@/components/ui/switch";
 import { SkillCreateDialog } from "@/components/SkillCreateDialog";
 import { api, type McpRequest, type SkillRequest } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
-import { common } from "@agora/core/i18n";
+import { common, connectors } from "@agora/core/i18n";
 import { mcpServersQuery, pluginsQuery, useSkillOwners } from "./data";
 import { IntegrationTile, IntegrationTypeMenu } from "./IntegrationType";
+import { ReconfigureDialog } from "./ReconfigureDialog";
 import type { IntegrationType } from "@agora/core";
 
 const messages = defineMessages({
@@ -65,6 +66,7 @@ const messages = defineMessages({
 export function Installed() {
   const t = useT(messages);
   const c = useT(common);
+  const k = useT(connectors);
   const qc = useQueryClient();
   const flagRestart = useRestartNeeded();
   const servers = useQuery(mcpServersQuery);
@@ -75,6 +77,11 @@ export function Installed() {
   const skillRequests = useQuery({ queryKey: ["skill-requests"], queryFn: () => api<SkillRequest[]>("/skill-requests") });
   const pendingSkills = (skillRequests.data ?? []).filter((r) => r.status === "pending");
   const [reviewing, setReviewing] = useState<SkillRequest | null>(null);
+  const [reconfiguring, setReconfiguring] = useState<McpRequest | null>(null);
+  const reconfigure = useMutation({
+    mutationFn: (name: string) => api<McpRequest>(`/mcp-requests/reconfigure/${encodeURIComponent(name)}`, { method: "POST" }),
+    onSuccess: setReconfiguring,
+  });
   const decideSkill = useMutation({
     mutationFn: ({ id, approve }: { id: string; approve: boolean }) => api(`/skill-requests/${id}/${approve ? "approve" : "reject"}`, { method: "POST" }),
     onSettled: () => {
@@ -193,6 +200,11 @@ export function Installed() {
               <div className="truncate font-mono text-xs text-muted-foreground">{s.url ?? s.command}</div>
             </div>
             <IntegrationTypeMenu value={s.type} disabled={setType.isPending} onValueChange={(type) => setType.mutate({ name: s.name, type })} />
+            {s.source !== "plugin" && (
+              <Button variant="ghost" size="sm" disabled={reconfigure.isPending} onClick={() => reconfigure.mutate(s.name)}>
+                {k.reconfigure}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -212,6 +224,8 @@ export function Installed() {
           </div>
         ))}
       </div>
+
+      <ReconfigureDialog request={reconfiguring} onClose={() => setReconfiguring(null)} />
 
       <h2 className="mb-2 text-[15px] font-medium">{t.plugins}</h2>
       {plugins.isPending && <Loading />}
