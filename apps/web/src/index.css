@@ -199,6 +199,12 @@
     animation: typing-dot 1.2s ease-in-out infinite both;
   }
 
+  /* Claude Code's logo while one of the conversation's sessions works: a hop, a landing, a rest. */
+  .code-working {
+    transform-origin: 50% 100%;
+    animation: code-hop 1.2s ease-in-out infinite;
+  }
+
   /* A message being sent dims only if sending is slow: a quick send swaps without any change. */
   .chat-pending {
     animation: chat-pending 200ms var(--ease-out) 600ms both;
@@ -218,6 +224,34 @@
     .typing-dot {
       animation-name: typing-dot-fade;
     }
+    /* Still says it works, without moving. */
+    .code-working {
+      animation: code-breathe 1.6s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes code-hop {
+  0%, 55%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  8% {
+    transform: translateY(0) scale(1.06, 0.92);
+  }
+  24% {
+    transform: translateY(-3px) scale(0.96, 1.05);
+  }
+  40% {
+    transform: translateY(0) scale(1.05, 0.94);
+  }
+}
+
+@keyframes code-breathe {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
   }
 }
 
