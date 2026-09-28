@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.12.0 — 2026-09-28
+
+### Features
+- Claude Code sessions bots start, watched and driven live
+
 ## v0.11.0 — 2026-09-28
 
 ### Features
