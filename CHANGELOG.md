@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.15.0 — 2026-09-28
+
+### Features
+- **code-sessions**: IDE-style panel, agent PRs, generated commit messages
+
 ## v0.14.0 — 2026-09-28
 
 ### Features
