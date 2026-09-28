@@ -232,7 +232,11 @@ export const internalCode = new Hono()
     if ("error" in turn) return c.json(turn, 403);
     const [bot] = await db.select({ name: schema.agent.name }).from(schema.agent).where(eq(schema.agent.id, turn.agentId));
     return sendToCodeSession(c.req.param("sessionId"), body.data.text, bot?.name ?? "bot", turn.conversationId).then(
-      (s) => codeSessionReport(s.id).then((r) => c.json(r)),
+      async (s) => {
+        // The reply that puts it back to work carries its card too.
+        await attachCodeSession(body.data.hermes_session, { id: s.id, title: s.title });
+        return c.json(await codeSessionReport(s.id));
+      },
       (err) => failure(c, err),
     );
   })

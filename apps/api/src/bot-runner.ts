@@ -356,12 +356,15 @@ export function turnOfHermesSession(sessionId: string) {
 const ANCHOR = 80;
 
 /**
- * A Claude Code session the bot just started: shown in its reply being written, where it is
- * in its text, and saved with it. False when that Hermes session has no turn under way.
+ * A Claude Code session the bot started or gave an instruction to: shown in its reply being
+ * written, where it is in its text, and saved with it (once per reply). Without it, a reply that
+ * puts an older session back to work shows nothing of it. False when that Hermes session has no
+ * turn under way.
  */
 export async function attachCodeSession(hermesSession: string, session: { id: string; title: string }) {
   const turn = [...turns.values()].find((t) => t.started && t.hermesSession === hermesSession);
   if (!turn) return false;
+  if (turn.codeSessions.some((r) => r.id === session.id)) return true;
   const ref: CodeSessionRef = { ...session, after: turn.text.slice(-ANCHOR) };
   turn.codeSessions.push(ref);
   await publishToConversation(turn.conversationId, { type: "bot.code", conversationId: turn.conversationId, turnId: turn.turnId, session: ref });

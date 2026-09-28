@@ -663,6 +663,7 @@ export async function codeSessionsContext(conversationId: string) {
     "État réel, relu à chaque message : il fait foi sur ce que tu croyais savoir. Le propriétaire peut piloter une session sans toi, depuis son panneau (instructions, autorisations, commit, push, PR, merge) : tout ce qu'il y a fait est ci-dessous.",
     "Règles :",
     "- Une session qui porte sur une tâche fait ce travail : ne le refais jamais toi-même en parallèle. Suis-la (claude_code_wait) ou écris-lui (claude_code_send).",
+    "- Une session par tâche : une nouvelle issue ou fonctionnalité ouvre sa propre session (claude_code_start, avec le même project pour réutiliser le clone), jamais un claude_code_send à une session lancée pour autre chose.",
     "- N'affirme rien sur ce qu'une session a produit sans t'appuyer sur ce bloc ou sur claude_code_wait.",
     "- Si une session est bloquée (limite, erreur, autorisation), dis-le et demande au propriétaire comment continuer avant de changer d'approche.",
     "- Ne lance ni n'installe jamais le CLI `claude` dans ton terminal : passe par les outils claude_code_*.",
