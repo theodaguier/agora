@@ -9,7 +9,7 @@ import { excerpt, findHandoffs, formatGroupContext, isNoReply, MAX_RELAYS, newCh
 import { dirname, join } from "node:path";
 import { CLAUDE_CODE_PROVIDER, claudeCodeChat, canUseClaudeCode, isClaudeCodeModel, resolveClaudeCodeModel } from "./claude-code";
 import { CODEX_PROVIDER, canUseCodex, codexChat, isCodexModel } from "./codex";
-import { answerApproval, chat, profileHome, type HermesApproval } from "./hermes";
+import { answerApproval, chat, profileHome, toolsets, type HermesApproval } from "./hermes";
 import { blockedModels, resolveHermesModel } from "./models";
 import { attributeSession, recordEngineUsage, syncHermesUsage } from "./usage";
 import { agentAuthor, listMessages, postEvent, postMessage, unseenMessages, type MessageDto } from "./messages";
@@ -19,7 +19,7 @@ import { QUESTIONS_PROMPT } from "./questions";
 import { createSkillCreation, createSkillRequest, SKILL_CREATE_PROMPT, SKILL_REQUEST_PROMPT } from "./skill-requests";
 import { accessibleAgentIds } from "./conversations";
 import { applyTasksBlock, TASKS_PROMPT, tasksContext } from "./tasks";
-import { codeSessionsContext } from "./code-sessions";
+import { CODE_DELEGATION_PROMPT, codeSessionsContext } from "./code-sessions";
 import { applyAvailabilityBlock, AVAILABILITY_BLOCK_PROMPT, availabilityContext } from "./availability-bot";
 import { withAttachments, withInvocations, type Invocation } from "./prompt";
 import { typesForProfile } from "./integrations";
@@ -559,7 +559,8 @@ async function runTurn(turn: Turn) {
         return "";
       }),
     ]);
-    system = [system, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, code]
+    const delegation = (await codeToolsUsable(bot.hermesProfile, turn.requestedBy)) ? CODE_DELEGATION_PROMPT : "";
+    system = [system, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, delegation, code]
       .filter(Boolean)
       .join("\n\n");
   }
@@ -748,6 +749,24 @@ async function runTurn(turn: Turn) {
   }
 }
 
+
+/** Per profile: whether its agora_code toolset is on, read at most once a minute (a Hermes call). */
+const codeToolsets = new Map<string, { on: boolean; at: number }>();
+
+/** The bot can start Claude Code sessions in this turn: its agora_code toolset is on and the turn is its owner's. */
+async function codeToolsUsable(profile: string, requestedBy: string | null) {
+  if (!requestedBy) return false;
+  const [who] = await db.select({ email: user.email }).from(user).where(eq(user.id, requestedBy));
+  if (!canUseClaudeCode(who)) return false;
+  const cached = codeToolsets.get(profile);
+  if (cached && Date.now() - cached.at < 60_000) return cached.on;
+  const on = await toolsets(profile).then(
+    (list) => list.some((t) => t.name === "agora_code" && t.enabled),
+    (err) => (console.error("bot-runner: toolsets", err), cached?.on ?? false),
+  );
+  codeToolsets.set(profile, { on, at: Date.now() });
+  return on;
+}
 
 /** Context carried into a bot's next message: a /compact summary, or a titled excerpt (relay group). */
 const carried = (text: string) => (text.startsWith("# ") ? text : `Résumé de notre conversation jusqu'ici (le contexte a été compacté) :\n\n${text}`);
