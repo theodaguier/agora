@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.17.0 — 2026-09-28
+
+### Features
+- **web**: Claude Code's logo hops while a session works
+
 ## v0.16.3 — 2026-09-28
 
 ### Fixes
