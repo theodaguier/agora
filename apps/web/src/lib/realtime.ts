@@ -1,7 +1,7 @@
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import type { ActiveTurn, Message, PendingApproval } from "./api";
-import { insertMessage, type Schedule } from "@agora/core";
+import { insertMessage, removeMessage, type Schedule } from "@agora/core";
 import { applySchedule } from "./availability";
 import { applyAgentStatus, applyPresence, presenceQuery } from "./presence";
 import type { CodeSession, CodeSessionRef, CodeStep } from "@agora/core";
@@ -112,6 +112,7 @@ export function seedTurns(conversationId: string, turns: ActiveTurn[]) {
 
 type ServerEvent =
   | { type: "message.created"; conversationId: string; message: Message }
+  | { type: "message.deleted"; conversationId: string; messageId: string }
   | { type: "conversation.updated" | "conversation.removed"; conversationId: string }
   | { type: "read"; conversationId: string; userId: string }
   | { type: "typing"; conversationId: string; userId: string; name: string }
@@ -161,6 +162,12 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       return;
     }
+    case "message.deleted":
+      qc.setQueryData<Message[]>(["messages", cid], (old) => old && removeMessage(old, ev.messageId));
+      // Its pins went with it, and the list shows the last message.
+      qc.invalidateQueries({ queryKey: ["pins", cid] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      return;
     case "conversation.updated":
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["conversation", cid] });
@@ -225,10 +232,12 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
 
 const EVENT_TYPES = [
   "message.created",
+  "message.deleted",
   "conversation.updated",
   "conversation.removed",
   "read",
   "typing",
+  "pins.changed",
   "bot.started",
   "bot.delta",
   "bot.tool",

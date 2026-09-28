@@ -490,6 +490,10 @@ export type PinTarget = { messageId: string; attachmentId?: string };
 export const setPinned = (conversationId: string, target: PinTarget, pinned: boolean) =>
   api<void>(conversationPath(conversationId, "/pins"), { method: pinned ? "POST" : "DELETE", body: JSON.stringify(target) });
 
+/** Deletes a message for every member: one of your own, or a bot's. */
+export const deleteMessage = (conversationId: string, messageId: string) =>
+  api<void>(conversationPath(conversationId, `/messages/${encodeURIComponent(messageId)}`), { method: "DELETE" });
+
 /** Forwards a message to other conversations; its files are copied. */
 export const forwardMessage = (conversationId: string, messageId: string, conversationIds: string[]) =>
   api<{ ids: string[] }>(conversationPath(conversationId, `/messages/${encodeURIComponent(messageId)}/forward`), {

@@ -1,4 +1,6 @@
-import { PackageIcon, ClockIcon, CopyIcon, DownloadIcon, MoreIcon, ForwardIcon, PinIcon, PinOffIcon, PlugIcon, ReplyIcon } from "@/components/icons";
+import { PackageIcon, ClockIcon, CopyIcon, DownloadIcon, MoreIcon, ForwardIcon, PinIcon, PinOffIcon, PlugIcon, ReplyIcon, TrashIcon } from "@/components/icons";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { removeMessage } from "@agora/core";
 import type { ComponentType, ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +15,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { defineMessages, useT } from "@/i18n";
-import { attachmentUrl, invocationKey, type Attachment, type Invocation, type ReplyTo } from "@/lib/api";
+import { attachmentUrl, deleteMessage, invocationKey, type Attachment, type Invocation, type Message, type ReplyTo } from "@/lib/api";
+import { confirmAction } from "@/lib/confirm";
+import { messagesQuery } from "@/lib/queries";
 import type { Mentionable } from "@/lib/mentions";
 import { cn } from "@/lib/utils";
 import { BubbleAttachments, SentAttachments } from "./Attachments";
@@ -30,6 +34,10 @@ const messages = defineMessages({
     pin: "Pin",
     unpin: "Unpin",
     copy: "Copy text",
+    delete: "Delete",
+    deleteTitle: "Delete this message?",
+    deleteBody: "It will disappear for everyone in the conversation, along with its files. This can't be undone.",
+    deleted: "Message deleted",
     download: (n: number) => (n > 1 ? `Download ${n} files` : "Download"),
     forwardedFrom: (name: string) => `Forwarded from ${name}`,
     photo: "Photo",
@@ -41,6 +49,10 @@ const messages = defineMessages({
     pin: "Épingler",
     unpin: "Désépingler",
     copy: "Copier le texte",
+    delete: "Supprimer",
+    deleteTitle: "Supprimer ce message ?",
+    deleteBody: "Il disparaîtra pour tous les membres de la conversation, avec ses fichiers. Cette action est irréversible.",
+    deleted: "Message supprimé",
     download: (n: number) => (n > 1 ? `Télécharger les ${n} fichiers` : "Télécharger"),
     forwardedFrom: (name: string) => `Transféré de ${name}`,
     photo: "Photo",
@@ -148,12 +160,26 @@ function downloadAll(files: Attachment[]) {
 
 type MenuParts = {
   Group: ComponentType<{ children: ReactNode }>;
-  Item: ComponentType<{ onClick?: () => void; children: ReactNode }>;
+  Item: ComponentType<{ onClick?: () => void; variant?: "default" | "destructive"; children: ReactNode }>;
   Separator: ComponentType;
 };
 
 const dropdownParts: MenuParts = { Group: DropdownMenuGroup, Item: DropdownMenuItem, Separator: DropdownMenuSeparator };
 const contextParts: MenuParts = { Group: ContextMenuGroup, Item: ContextMenuItem, Separator: ContextMenuSeparator };
+
+/** Deletes a message for everyone, once confirmed; it leaves the thread without waiting for the stream. */
+export function useDeleteMessage(conversationId: string) {
+  const t = useT(messages);
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteMessage(conversationId, id),
+    onSuccess: (_, id) => qc.setQueryData<Message[]>(messagesQuery(conversationId).queryKey, (old) => old && removeMessage(old, id)),
+    meta: { success: t.deleted },
+  });
+  return async (id: string) => {
+    if (await confirmAction({ title: t.deleteTitle, description: t.deleteBody, action: t.delete })) remove.mutate(id);
+  };
+}
 
 /** Our message while it is being sent: laid out exactly like its MessageRow, so the swap doesn't move it. */
 export function PendingRow({ failed, children }: { failed?: boolean; children: ReactNode }) {
@@ -169,7 +195,7 @@ export function PendingRow({ failed, children }: { failed?: boolean; children: R
 }
 
 /**
- * A message line: its bubble, and its actions (reply, forward, pin, copy, download),
+ * A message line: its bubble, and its actions (reply, forward, pin, copy, download, delete),
  * from the "…" button shown on hover or from a right click.
  */
 export function MessageRow(props: {
@@ -184,6 +210,8 @@ export function MessageRow(props: {
   /** The message itself is pinned (the menu then offers to unpin it). */
   pinned?: boolean;
   onTogglePin?: () => void;
+  /** Deletes it for everyone: offered on your own messages and on the bots'. */
+  onDelete?: () => void;
   /** Came in while the conversation was open: rises into place. */
   arriving?: boolean;
   children: ReactNode;
@@ -218,6 +246,16 @@ export function MessageRow(props: {
           </Item>
         )}
       </Group>
+      {props.onDelete && (
+        <>
+          <Separator />
+          <Group>
+            <Item variant="destructive" onClick={props.onDelete}>
+              <TrashIcon /> {t.delete}
+            </Item>
+          </Group>
+        </>
+      )}
     </>
   );
 
