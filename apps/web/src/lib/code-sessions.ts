@@ -47,6 +47,7 @@ export const answerCodeApproval = (conversationId: string, id: string, approvalI
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/approval`), { method: "POST", body: JSON.stringify({ approvalId, choice }) });
 
 export type CodeGitRequest =
+  /** An empty message: Claude Code writes it from the diff. */
   | { action: "commit"; message: string }
   | { action: "push" }
   | { action: "pull" }
@@ -56,6 +57,10 @@ export type CodeGitRequest =
 /** Commit, push, pull, pull request, merge in the session's clone (between two runs). */
 export const runCodeGit = (conversationId: string, id: string, req: CodeGitRequest) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/git`), { method: "POST", body: JSON.stringify(req) });
+
+/** A commit message for the clone's changes, written by Claude Code from the diff. */
+export const writeCommitMessage = (conversationId: string, id: string) =>
+  api<{ message: string }>(path(conversationId, `/${encodeURIComponent(id)}/git/message`), { method: "POST" }).then((r) => r.message);
 
 export const stopCodeSession = (conversationId: string, id: string) => api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/stop`), { method: "POST" });
 

@@ -13,7 +13,7 @@ writeFileSync(join(root, "gitconfig"), `[url "file://${remotes}/"]\n\tinsteadOf 
 process.env.GIT_CONFIG_GLOBAL = join(root, "gitconfig");
 process.env.GIT_CONFIG_NOSYSTEM = "1";
 
-const { commit, parseRepo, prepareRepo, push, readGit, sessionBranch } = await import("./code-git");
+const { commit, commitMaterial, parseRepo, prepareRepo, pullRequestLinks, push, readGit, sessionBranch } = await import("./code-git");
 
 const sh = (cwd: string, ...args: string[]) => {
   const r = Bun.spawnSync(["git", ...args], { cwd, env: process.env });
@@ -48,6 +48,19 @@ describe("parseRepo", () => {
     expect(parseRepo("acme/..")).toBeNull();
     expect(parseRepo("acme/app; rm -rf /")).toBeNull();
   });
+});
+
+test("pullRequestLinks: the pull requests Claude Code printed, the last one last", () => {
+  expect(
+    pullRequestLinks([
+      "https://github.com/acme/app/pull/12\n",
+      "Created https://github.com/E-Do-Studio/e-do.studio-4.0/pull/420 and see https://github.com/acme/app/pull/12",
+      "https://github.com/acme/app/issues/3",
+    ]),
+  ).toEqual([
+    { repo: "E-Do-Studio/e-do.studio-4.0", number: 420 },
+    { repo: "acme/app", number: 12 },
+  ]);
 });
 
 test("sessionBranch: the title, unique to the session", () => {
@@ -90,13 +103,30 @@ describe("a session's clone", () => {
     await expect(commit(dir, "again")).rejects.toThrow();
   });
 
+  test("the files changed, with their lines", async () => {
+    writeFileSync(join(dir, "README.md"), "hello\nworld\n");
+    writeFileSync(join(dir, "notes.md"), "a\nb\nc\n");
+    const git = await readGit(dir);
+    expect(git?.changes).toBe(2);
+    expect(git?.files).toEqual([
+      { path: "README.md", state: "modified", added: 1, removed: 0 },
+      { path: "notes.md", state: "added", added: 3, removed: 0 },
+    ]);
+    const material = await commitMaterial(dir);
+    expect(material.diff).toContain("+world");
+    expect(material.untracked).toEqual(["notes.md"]);
+    expect(material.recent).toEqual(["feat: new file", "init"]);
+    await commit(dir, "docs: notes");
+    await expect(commitMaterial(dir)).rejects.toThrow();
+  });
+
   test("pushing needs GitHub access", async () => {
     await expect(push(dir)).rejects.toThrow(/GH_TOKEN/);
   });
 
   test("the same clone is reused; another repository or stray files are refused", async () => {
     expect(await prepareRepo(dir, "acme/app", { branch: "claude/fix-1", author })).toContain("claude/fix-1");
-    expect((await readGit(dir))?.ahead).toBe(1);
+    expect((await readGit(dir))?.ahead).toBe(2);
     await expect(prepareRepo(dir, "acme/other", { branch: "x", author })).rejects.toThrow(/acme\/app/);
     const stray = join(root, "projects", "stray");
     mkdirSync(stray, { recursive: true });

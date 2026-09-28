@@ -31,6 +31,8 @@ export const env = z
     CLAUDE_CODE_BIN: z.string().default("claude"),
     /** Working directory for Claude Code sessions; default: ~/.agora/claude-code. */
     CLAUDE_CODE_CWD: z.string().default(""),
+    /** Chromium preinstalled for the sessions (API image); empty = none, the sessions are not told about one. */
+    CHROMIUM_PATH: z.string().default(""),
     /** Tools allowed without confirmation (-p mode refuses the others). */
     /** Invitation emails via Resend; empty = the link is only shown to the admin and logged. */
     RESEND_API_KEY: z.string().default(""),

@@ -255,8 +255,30 @@ function setStatus(s: Live, status: CodeSessionStatus) {
   touch(s, [], true);
 }
 
+/**
+ * Reads where the clone stands. A pull request Claude Code opened itself (gh, in its terminal) is
+ * found by the links it printed, and announced like one opened from the panel.
+ */
 async function refreshGit(s: Live) {
-  s.row.git = await readGit(s.row.cwd).catch((err) => (console.error("code session: git state", err), s.row.git));
+  const before = s.row.git?.pr ?? null;
+  const texts = s.transcript.steps.flatMap((st) => (st.kind === "tool" ? [st.input ?? "", st.output ?? ""] : st.kind === "text" ? [st.text] : []));
+  s.row.git = await readGit(s.row.cwd, { repo: s.row.repo, pulls: gitOps.pullRequestLinks(texts) }).catch(
+    (err) => (console.error("code session: git state", err), s.row.git),
+  );
+  const pr = s.row.git?.pr;
+  if (!pr || (before?.number === pr.number && before.url === pr.url) || s.gitBusy) return;
+  // Opened from the panel: runGitAction announces it.
+  if (s.transcript.steps.some((st) => st.kind === "git" && st.action === "pr" && st.ok && st.text.includes(`#${pr.number}`))) return;
+  gitStep(s, "pr", true, gitOps.prFoundText(pr), null);
+  await postEvent(s.row.conversationId, {
+    type: "code.pr",
+    actor: "Claude Code",
+    title: s.row.title,
+    sessionId: s.row.id,
+    number: pr.number,
+    url: pr.url,
+    merged: pr.state === "merged",
+  }).catch((err) => console.error("code session: pr event", err));
 }
 
 function gitStep(s: Live, action: CodeGitAction, ok: boolean, text: string, by: string | null) {
@@ -414,6 +436,7 @@ export async function stopCodeSession(id: string, conversationId?: string) {
 }
 
 export type GitRequest =
+  /** An empty message: Claude Code writes it from the diff. */
   | { action: "commit"; message: string }
   | { action: "push" }
   | { action: "pull" }
@@ -431,7 +454,7 @@ export async function runGitAction(id: string, req: GitRequest, by: string, conv
   const cwd = s.row.cwd;
   try {
     const outcome = await {
-      commit: () => gitOps.commit(cwd, (req as Extract<GitRequest, { action: "commit" }>).message),
+      commit: async () => gitOps.commit(cwd, (req as Extract<GitRequest, { action: "commit" }>).message.trim() || (await writeCommitMessage(s))),
       push: () => gitOps.push(cwd),
       pull: () => gitOps.pull(cwd),
       pr: () => gitOps.openPullRequest(cwd, req as Extract<GitRequest, { action: "pr" }>),
@@ -465,6 +488,93 @@ export async function runGitAction(id: string, req: GitRequest, by: string, conv
   return summary(s);
 }
 
+/* ---------- commit messages ---------- */
+
+/** Fast and cheap: a commit message needs no more. */
+const COMMIT_MODEL = "haiku";
+const COMMIT_TIMEOUT_MS = 90_000;
+
+const COMMIT_SYSTEM = [
+  "You write git commit messages. Answer with the message only: no preamble, no code fence, no quotes.",
+  "First line: at most 72 characters, imperative mood, what the change does. Follow the convention of the repository's recent subjects (prefixes such as feat:/fix(scope):, language, casing); plain imperative English when there are none.",
+  "Then, only when the change is not obvious from the first line: a blank line and a short body saying why, wrapped at 72 characters. Never list the files.",
+].join("\n");
+
+/** The owner's request, while no run is working in the directory: a message for every change, to edit before committing. */
+export async function commitMessageFor(id: string, conversationId?: string) {
+  const s = await load(id, conversationId);
+  if (s.running || s.gitBusy) throw new CodeSessionError("busy");
+  return writeCommitMessage(s);
+}
+
+/**
+ * A commit message for every change of the session's clone, by Claude Code (on the owner's active
+ * account) from the diff, the task and the repository's recent subjects. Counted in the session's usage.
+ */
+async function writeCommitMessage(s: Live) {
+  let material: Awaited<ReturnType<typeof gitOps.commitMaterial>>;
+  try {
+    material = await gitOps.commitMaterial(s.row.cwd);
+  } catch (err) {
+    if (err instanceof GitError) throw new CodeSessionError("git", err.message);
+    throw err;
+  }
+  const prompt = [
+    `Task of the session: ${s.row.title}`,
+    material.recent.length ? `Recent subjects of the repository:\n${material.recent.map((l) => `- ${l}`).join("\n")}` : "",
+    material.stat ? `Diff stat:\n${material.stat}` : "",
+    material.untracked.length ? `New files:\n${material.untracked.join("\n")}` : "",
+    material.diff ? `Diff:\n${material.diff}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const args = [
+    env.CLAUDE_CODE_BIN,
+    "-p",
+    "--output-format", "json",
+    "--model", COMMIT_MODEL,
+    "--system-prompt", COMMIT_SYSTEM,
+    // Nothing to run nor read: the diff is in the prompt.
+    "--tools", "",
+    "--setting-sources", "project",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+  ];
+  const proc = Bun.spawn(args, { cwd: s.row.cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe", timeout: COMMIT_TIMEOUT_MS });
+  proc.stdin.write(prompt);
+  proc.stdin.end();
+  const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  let result: (ClaudeResult & { result?: string; is_error?: boolean }) | null = null;
+  try {
+    result = JSON.parse(out);
+  } catch {
+    // Reported below.
+  }
+  const message = result && !result.is_error ? cleanMessage(String(result.result ?? "")) : "";
+  if (!message) {
+    console.error("code session: commit message", err.slice(-500) || out.slice(-500));
+    throw new CodeSessionError("git", "Claude Code could not write the commit message.");
+  }
+  if (result) {
+    recordEngineUsage(
+      "claude-code",
+      resultUsage(result, COMMIT_MODEL),
+      { userId: s.row.requestedBy, agentId: s.row.agentId, conversationId: s.row.conversationId, sessionId: s.row.id },
+      { source: "code", taskId: s.row.id, taskName: s.row.title },
+    ).catch((e) => console.error("code session: usage", e));
+  }
+  return message;
+}
+
+/** Without the fence or quotes a model sometimes adds anyway. */
+const cleanMessage = (text: string) =>
+  text
+    .trim()
+    .replace(/^```[a-z]*\n?|\n?```$/g, "")
+    .replace(/^["'`](.*)["'`]$/s, "$1")
+    .trim()
+    .slice(0, 5_000);
+
 /* ---------- what the bots know ---------- */
 
 const clipLine = (text: string, max: number) => {
@@ -482,6 +592,17 @@ function gitLine(git: CodeSession["git"]) {
   if (!git.github) parts.push("pas d'accès GitHub");
   return parts.join(", ");
 }
+
+/**
+ * The browser the API image ships (infra/api-runtime.Dockerfile). Left to itself, Claude Code runs
+ * `playwright install`, which hangs there: the browsers directory belongs to root.
+ */
+const browserNote = (chromium: string) =>
+  [
+    `Chromium est déjà installé sur cette machine, avec ses bibliothèques système : ${chromium}.`,
+    "Ne lance jamais `playwright install` ni `npx playwright install-deps`, et n'installe aucun autre navigateur : le téléchargement bloque la session.",
+    `Si la version de Playwright du projet réclame une autre révision, lance Chromium avec executablePath: "${chromium}" (Puppeteer le trouve déjà via PUPPETEER_EXECUTABLE_PATH).`,
+  ].join("\n");
 
 /**
  * The conversation's Claude Code sessions, as they stand, for the system prompt of every bot turn:
@@ -669,6 +790,7 @@ async function execute(s: Live): Promise<void> {
     ...(r.model ? ["--model", r.model] : []),
     ...(allowed.length ? ["--allowedTools", ...allowed] : []),
     ...r.permissions.dirs.flatMap((d) => ["--add-dir", d]),
+    ...(env.CHROMIUM_PATH ? ["--append-system-prompt", browserNote(env.CHROMIUM_PATH)] : []),
   ];
   // git and gh reach GitHub with the vault's token (the clone's credential helper reads it from there).
   const spawnEnv = { ...(await claudeCodeEnv()), ...githubEnv(await githubToken()) };

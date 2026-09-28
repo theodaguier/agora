@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { Fragment, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { placeCodeSessions, type CodeApproval, type CodeSession, type CodeSessionRef, type CodeSessionStatus, type CodeStep } from "@agora/core";
+import { placeCodeSessions, type CodeApproval, type CodeGit, type CodeSession, type CodeSessionRef, type CodeSessionStatus, type CodeStep } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import {
   ArrowUpIcon,
+  BranchIcon,
   CheckCircleIcon,
-  CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
   ChevronsRightIcon,
   CloseCircleIcon,
@@ -14,6 +15,8 @@ import {
   ExternalLinkIcon,
   FolderIcon,
   ShieldAlertIcon,
+  SparklesIcon,
+  StopIcon,
   ToolIcon,
   UserIcon,
   WarningIcon,
@@ -24,6 +27,7 @@ import { ModelLogo } from "@/components/ProviderLogo";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -50,6 +54,7 @@ import {
   sendToCodeSession,
   setCodeSessionModel,
   stopCodeSession,
+  writeCommitMessage,
 } from "@/lib/code-sessions";
 import { confirmAction } from "@/lib/confirm";
 import { copyText } from "@/lib/feedback";
@@ -103,13 +108,19 @@ const messages = defineMessages({
       noGithub: "No GitHub access: add GH_TOKEN to the vault.",
       busy: "Available once Claude Code has finished.",
       commit: "Commit",
+      commitPush: "Commit and push",
+      commitPushPr: (n: number) => `Commit and push to PR #${n}`,
+      pushPr: (n: number) => `Push to PR #${n}`,
+      more: "More git actions",
+      moreFiles: (n: number) => `and ${n} more`,
+      messagePlaceholder: "Commit message (written by Claude Code if empty)",
+      generate: "Write the message with Claude Code",
+      writing: "Claude Code is writing the message…",
       push: "Push",
       pull: "Pull",
       openPr: "Open a PR",
       merge: "Merge",
-      commitTitle: "Commit the changes",
-      commitHelp: "Every changed file of the session's directory goes into the commit.",
-      message: "Message",
+      message: "Commit message",
       prTitle: "Open a pull request",
       prHelp: (branch: string, base: string) => `From ${branch} into ${base}. What is not on GitHub yet is pushed first.`,
       title: "Title",
@@ -171,13 +182,19 @@ const messages = defineMessages({
       noGithub: "Pas d'accès GitHub : ajoute GH_TOKEN au coffre.",
       busy: "Disponible quand Claude Code aura terminé.",
       commit: "Committer",
+      commitPush: "Committer et pousser",
+      commitPushPr: (n: number) => `Committer et pousser sur la PR #${n}`,
+      pushPr: (n: number) => `Pousser sur la PR #${n}`,
+      more: "Autres actions git",
+      moreFiles: (n: number) => `et ${n} de plus`,
+      messagePlaceholder: "Message du commit (écrit par Claude Code si vide)",
+      generate: "Écrire le message avec Claude Code",
+      writing: "Claude Code écrit le message…",
       push: "Pousser",
       pull: "Mettre à jour",
       openPr: "Créer la PR",
       merge: "Merger",
-      commitTitle: "Committer les modifications",
-      commitHelp: "Tous les fichiers modifiés du répertoire de la session partent dans le commit.",
-      message: "Message",
+      message: "Message du commit",
       prTitle: "Créer une pull request",
       prHelp: (branch: string, base: string) => `De ${branch} vers ${base}. Ce qui n'est pas encore sur GitHub est poussé d'abord.`,
       title: "Titre",
@@ -323,17 +340,10 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
   const t = useT(messages);
   const c = useT(common);
   const { user } = useRouteContext({ from: "/app" });
-  const qc = useQueryClient();
   const { data: session } = useQuery(codeSessionQuery(conversationId, sessionId));
   const scroller = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   const follow = useRef(true);
-  const stop = useMutation({
-    mutationFn: () => stopCodeSession(conversationId, sessionId),
-    onSuccess: (s) => applyCodeSession(qc, s),
-    meta: { success: t.stopped },
-  });
-
   // Follows the work while the reader stays at the bottom.
   useLayoutEffect(() => {
     if (follow.current) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -353,11 +363,6 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
             </p>
           )}
         </div>
-        {owner && session && active(session.status) && (
-          <Button variant="outline" size="sm" disabled={stop.isPending} onClick={() => stop.mutate()}>
-            {stop.isPending ? t.stopping : t.stop}
-          </Button>
-        )}
         <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
           <ChevronsRightIcon />
         </Button>
@@ -370,7 +375,6 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
       ) : (
         <>
           <Meta session={session} showModel={!owner} showAccount={owner} />
-          {session.git && <GitBar conversationId={conversationId} session={session} git={session.git} owner={owner} />}
           {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
 
           <div className="relative min-h-0 flex-1 border-t border-border/60">
@@ -407,6 +411,7 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
 
           <div className="shrink-0 px-3 pb-3 pt-2">
             {session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />}
+            {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner} />}
             {owner ? (
               <SessionComposer conversationId={conversationId} session={session} />
             ) : (
@@ -513,137 +518,209 @@ function LimitAlert({ conversationId, session, limit, owner }: { conversationId:
 
 /* ---------- git ---------- */
 
-/** The clone's branch and pull request; for the owner, what can be done with them. */
-function GitBar({ conversationId, session, git, owner }: { conversationId: string; session: CodeSession; git: NonNullable<CodeSession["git"]>; owner: boolean }) {
+const FILE_STATE = { added: "A", modified: "M", deleted: "D", renamed: "R" } as const;
+const FILE_TONE = { added: "text-success", modified: "text-warning", deleted: "text-destructive", renamed: "text-muted-foreground" } as const;
+
+/**
+ * Where the clone stands, docked above the field as in an IDE's agent panel: the branch, the files
+ * changed with their lines, the pull request, and for the owner the next git action (commit, push,
+ * PR, merge). A commit without a message gets one written by Claude Code from the diff.
+ */
+function ChangesBar({ conversationId, session, git, owner }: { conversationId: string; session: CodeSession; git: CodeGit; owner: boolean }) {
   const t = useT(messages).git;
   const c = useT(common);
   const qc = useQueryClient();
-  const [dialog, setDialog] = useState<"commit" | "pr" | null>(null);
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [prDialog, setPrDialog] = useState(false);
   const run = useMutation({
-    mutationFn: (req: CodeGitRequest) => runCodeGit(conversationId, session.id, req),
-    onSuccess: (s) => {
+    // One after the other: "commit and push" is two actions, each its own step.
+    mutationFn: async (reqs: CodeGitRequest[]) => {
+      let s: CodeSession | undefined;
+      for (const req of reqs) s = await runCodeGit(conversationId, session.id, req);
+      return s!;
+    },
+    onSuccess: (s, reqs) => {
       applyCodeSession(qc, s);
-      setDialog(null);
+      if (reqs[0]?.action === "commit") setMessage("");
+      setPrDialog(false);
     },
     meta: {
-      loading: (req: CodeGitRequest) => (req.action === "commit" ? "" : c.inProgress),
-      success: (_: CodeSession, req: CodeGitRequest) => ({ commit: t.committed, push: t.pushed, pull: t.pulled, pr: t.opened, merge: t.merged })[req.action],
+      loading: (reqs: CodeGitRequest[]) => (reqs[0]?.action === "commit" && !reqs[0].message ? t.writing : c.inProgress),
+      success: (_: CodeSession, reqs: CodeGitRequest[]) => ({ commit: t.committed, push: t.pushed, pull: t.pulled, pr: t.opened, merge: t.merged })[reqs.at(-1)!.action],
       error: t.failed,
     },
   });
+  const generate = useMutation({
+    mutationFn: () => writeCommitMessage(conversationId, session.id),
+    onSuccess: (m) => {
+      setMessage(m);
+      setOpen(true);
+    },
+    meta: { error: t.failed },
+  });
+
+  const files = git.files ?? [];
+  const added = files.reduce((n, f) => n + (f.added ?? 0), 0);
+  const removed = files.reduce((n, f) => n + (f.removed ?? 0), 0);
   const onBase = !!git.branch && git.branch === git.base;
   const pr = git.pr;
   const openPr = pr?.state === "open" ? pr : null;
-  const state = [
+  const working = active(session.status);
+  const busy = working || run.isPending || generate.isPending;
+  const commitReq = (): CodeGitRequest => ({ action: "commit", message: message.trim() });
+  const merge = async () => {
+    if (openPr && (await confirmAction({ title: t.mergeTitle(openPr.number, openPr.base), description: t.mergeHelp, action: t.merge, destructive: false }))) {
+      run.mutate([{ action: "merge", method: "squash" }]);
+    }
+  };
+
+  // The next thing to do with the branch, and what else can be done with it.
+  type Action = { label: string; onSelect: () => void };
+  const canPush = git.github && !onBase && git.ahead > 0;
+  const canOpenPr = git.github && !onBase && !openPr && (git.ahead > 0 || git.pushed);
+  const actions: Action[] = !owner
+    ? []
+    : git.changes > 0
+      ? [
+          { label: t.commit, onSelect: () => run.mutate([commitReq()]) },
+          ...(git.github && !onBase ? [{ label: openPr ? t.commitPushPr(openPr.number) : t.commitPush, onSelect: () => run.mutate([commitReq(), { action: "push" }]) }] : []),
+        ]
+      : [
+          ...(canOpenPr ? [{ label: t.openPr, onSelect: () => setPrDialog(true) }] : []),
+          ...(canPush ? [{ label: openPr ? t.pushPr(openPr.number) : t.push, onSelect: () => run.mutate([{ action: "push" }]) }] : []),
+          ...(git.pushed && git.behind > 0 ? [{ label: t.pull, onSelect: () => run.mutate([{ action: "pull" }]) }] : []),
+          ...(git.github && openPr && !canPush ? [{ label: t.merge, onSelect: () => void merge() }] : []),
+        ];
+  const [primary, ...more] = actions;
+
+  const summary = [
     git.changes ? t.changes(git.changes) : null,
     git.ahead ? t.ahead(git.ahead, git.pushed) : null,
     git.behind ? t.behind(git.behind) : null,
   ].filter(Boolean);
-  const busy = active(session.status) || run.isPending;
-  const actions = owner && [
-    git.changes > 0 && (
-      <Button key="commit" variant="outline" size="sm" disabled={busy} onClick={() => setDialog("commit")}>
-        {t.commit}
-      </Button>
-    ),
-    git.github && !onBase && git.ahead > 0 && (
-      <Button key="push" variant="outline" size="sm" disabled={busy} onClick={() => run.mutate({ action: "push" })}>
-        {t.push}
-      </Button>
-    ),
-    git.pushed && git.behind > 0 && (
-      <Button key="pull" variant="outline" size="sm" disabled={busy} onClick={() => run.mutate({ action: "pull" })}>
-        {t.pull}
-      </Button>
-    ),
-    git.github && !onBase && !openPr && (git.ahead > 0 || git.pushed) && (
-      <Button key="pr" variant="outline" size="sm" disabled={busy} onClick={() => setDialog("pr")}>
-        {t.openPr}
-      </Button>
-    ),
-    git.github && openPr && (
-      <Button
-        key="merge"
-        size="sm"
-        disabled={busy}
-        onClick={async () => {
-          if (await confirmAction({ title: t.mergeTitle(openPr.number, openPr.base), description: t.mergeHelp, action: t.merge, destructive: false })) {
-            run.mutate({ action: "merge", method: "squash" });
-          }
-        }}
-      >
-        {t.merge}
-      </Button>
-    ),
-  ].filter(Boolean);
+
   return (
-    <div className="flex shrink-0 flex-col gap-2 px-4 pb-3 pl-10.5">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
-        <span className="min-w-0 truncate font-mono text-foreground">{git.repo ? `${git.repo} · ${git.branch ?? "?"}` : (git.branch ?? "?")}</span>
-        <span>{state.length ? state.join(" · ") : t.clean}</span>
+    <Collapsible open={open} onOpenChange={setOpen} className="mb-2 overflow-hidden rounded-2xl border border-border/70 bg-background/60">
+      <div className="flex h-10 items-center gap-2 pl-1.5 pr-1.5">
+        <CollapsibleTrigger
+          disabled={!files.length && !(owner && git.changes)}
+          className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 text-left text-[13px] outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:hover:bg-transparent"
+        >
+          {files.length > 0 && <ChevronRightIcon className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />}
+          <BranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 truncate font-mono text-[12px]">{git.branch ?? "?"}</span>
+          <span className="shrink-0 truncate text-muted-foreground">{summary.length ? summary.join(" · ") : t.clean}</span>
+          {(added > 0 || removed > 0) && (
+            <span className="shrink-0 font-mono text-[12px] tabular-nums">
+              <span className="text-success">+{added}</span> <span className="text-destructive">−{removed}</span>
+            </span>
+          )}
+        </CollapsibleTrigger>
         {pr && (
-          <a href={pr.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+          <a
+            href={pr.url}
+            target="_blank"
+            rel="noreferrer"
+            title={pr.title}
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            <span className={cn("size-1.5 rounded-full", pr.state === "open" ? "bg-success" : pr.state === "merged" ? "bg-violet-500" : "bg-muted-foreground")} />
             {t.pr(pr.number)} · {t.prState[pr.state]}
             <ExternalLinkIcon className="size-3" />
           </a>
         )}
+        {primary && (
+          <Tooltip>
+            <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+              <Button size="xs" disabled={busy} onClick={primary.onSelect} className={cn("px-3", more.length > 0 && "rounded-r-none pr-2.5")}>
+                {run.isPending ? c.inProgress : primary.label}
+              </Button>
+              {more.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button size="xs" aria-label={t.more} disabled={busy} className="rounded-l-none border-l border-primary-foreground/15 px-1.5" />}>
+                    <ChevronDownIcon />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-52">
+                    {more.map((a) => (
+                      <DropdownMenuItem key={a.label} onClick={a.onSelect}>
+                        {a.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </TooltipTrigger>
+            {working && <TooltipContent>{t.busy}</TooltipContent>}
+          </Tooltip>
+        )}
       </div>
-      {owner && !git.github && <p className="text-[12px] text-muted-foreground">{t.noGithub}</p>}
-      {actions && actions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          {actions}
-          {active(session.status) && <span className="text-[12px] text-muted-foreground">{t.busy}</span>}
-        </div>
-      )}
-      <CommitDialog open={dialog === "commit"} onClose={() => setDialog(null)} pending={run.isPending} onSubmit={(message) => run.mutate({ action: "commit", message })} />
+
+      <CollapsibleContent className="border-t border-border/60">
+        {files.length > 0 && (
+          <ul className="max-h-48 overflow-y-auto py-1">
+            {files.map((f) => {
+              const slash = f.path.lastIndexOf("/");
+              return (
+                <li key={f.path} className="flex items-center gap-2 px-3 py-1 text-[12px]" title={f.path}>
+                  <span className={cn("w-3 shrink-0 text-center font-mono font-medium", FILE_TONE[f.state])}>{FILE_STATE[f.state]}</span>
+                  <span className="min-w-0 flex-1 truncate font-mono">
+                    {f.path.slice(slash + 1)}
+                    {slash > 0 && <span className="ml-2 text-muted-foreground">{f.path.slice(0, slash)}</span>}
+                  </span>
+                  {f.added !== null && (
+                    <span className="shrink-0 font-mono tabular-nums">
+                      {f.added > 0 && <span className="text-success">+{f.added}</span>} {!!f.removed && <span className="text-destructive">−{f.removed}</span>}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+            {git.changes > files.length && <li className="px-3 py-1 text-[12px] text-muted-foreground">{t.moreFiles(git.changes - files.length)}</li>}
+          </ul>
+        )}
+        {owner && git.changes > 0 && (
+          <div className="border-t border-border/60 p-1.5">
+            <InputGroup className="h-auto items-end rounded-xl border-0 bg-secondary">
+              <InputGroupTextarea
+                rows={1}
+                value={message}
+                aria-label={t.message}
+                placeholder={t.messagePlaceholder}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !busy) {
+                    e.preventDefault();
+                    run.mutate([commitReq()]);
+                  }
+                }}
+                className="max-h-32 min-h-0 px-2.5 py-1.5 font-mono text-[12px] leading-5 md:text-[12px]"
+              />
+              <InputGroupAddon align="inline-end" className="py-1 pr-1">
+                <Tooltip>
+                  <TooltipTrigger render={<InputGroupButton size="icon-xs" aria-label={t.generate} disabled={busy} onClick={() => generate.mutate()} />}>
+                    {generate.isPending ? <Spinner className="size-3.5" /> : <SparklesIcon />}
+                  </TooltipTrigger>
+                  <TooltipContent>{t.generate}</TooltipContent>
+                </Tooltip>
+              </InputGroupAddon>
+            </InputGroup>
+          </div>
+        )}
+      </CollapsibleContent>
+
+      {owner && !git.github && <p className="border-t border-border/60 px-3 py-2 text-[12px] text-muted-foreground">{t.noGithub}</p>}
       <PullRequestDialog
-        open={dialog === "pr"}
-        onClose={() => setDialog(null)}
+        open={prDialog}
+        onClose={() => setPrDialog(false)}
         pending={run.isPending}
         branch={git.branch ?? ""}
         base={git.base ?? ""}
-        defaultTitle={session.title}
+        defaultTitle={git.ahead === 1 && git.lastCommit ? git.lastCommit.subject : session.title}
         defaultBody={session.result ?? ""}
-        onSubmit={(title, body) => run.mutate({ action: "pr", title, body, draft: false })}
+        onSubmit={(title, body) => run.mutate([{ action: "pr", title, body, draft: false }])}
       />
-    </div>
-  );
-}
-
-function CommitDialog({ open, onClose, pending, onSubmit }: { open: boolean; onClose: () => void; pending: boolean; onSubmit: (message: string) => void }) {
-  const t = useT(messages).git;
-  const c = useT(common);
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const message = String(new FormData(e.currentTarget).get("message") ?? "").trim();
-            if (message) onSubmit(message);
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle className="pr-6">{t.commitTitle}</DialogTitle>
-            <DialogDescription>{t.commitHelp}</DialogDescription>
-          </DialogHeader>
-          <FieldGroup className="my-5">
-            <Field>
-              <FormLabel htmlFor="git-message" required>
-                {t.message}
-              </FormLabel>
-              <Textarea id="git-message" name="message" required autoFocus rows={3} />
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
-            <Button type="submit" disabled={pending}>
-              {pending ? c.inProgress : t.commit}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    </Collapsible>
   );
 }
 
@@ -725,12 +802,9 @@ function Timeline({ steps, running, parentId }: { steps: CodeStep[]; running: bo
     <div className="flex flex-col gap-3">
       {blocks(own).map((b) =>
         b.kind === "tools" ? (
-          <div key={b.steps[0]!.id} className="overflow-hidden rounded-xl border border-border/70 bg-background/40">
-            {b.steps.map((s, i) => (
-              <Fragment key={s.id}>
-                {i > 0 && <div className="border-t border-border/50" />}
-                <ToolRow step={s} all={steps} />
-              </Fragment>
+          <div key={b.steps[0]!.id} className="-mx-2 flex flex-col">
+            {b.steps.map((s) => (
+              <ToolRow key={s.id} step={s} all={steps} />
             ))}
           </div>
         ) : (
@@ -755,8 +829,8 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
       return <MessageText text={step.text} streaming={streaming} className="text-sm" />;
     case "git":
       return (
-        <div className={cn("flex items-start justify-center gap-1.5 text-center text-[13px]", step.ok ? "text-muted-foreground" : "text-destructive")}>
-          {step.ok ? <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-success" /> : <CloseCircleIcon className="mt-0.5 size-3.5 shrink-0" />}
+        <div className={cn("flex items-start gap-2 text-[13px]", step.ok ? "text-muted-foreground" : "text-destructive")}>
+          {step.ok ? <BranchIcon className="mt-0.5 size-3.5 shrink-0" /> : <CloseCircleIcon className="mt-0.5 size-3.5 shrink-0" />}
           <span className="min-w-0 break-words">
             {step.text}
             {step.by ? ` · ${step.by}` : ""}
@@ -773,9 +847,10 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
   }
 }
 
+/** A finished call shows nothing, as in an IDE: only work in progress and failures stand out. */
 function ToolStatus({ status }: { status: ToolStepT["status"] }) {
   if (status === "running") return <Spinner className="size-3.5 shrink-0" />;
-  if (status === "done") return <CheckIcon className="size-3.5 shrink-0 text-success" />;
+  if (status === "done") return null;
   return <CloseCircleIcon className="size-3.5 shrink-0 text-destructive" />;
 }
 
@@ -787,20 +862,20 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const expandable = !!(step.input || step.output || nested);
   const row = (
     <>
-      <ToolIcon name={step.name} className="size-4 shrink-0 text-muted-foreground" />
-      <span className="shrink-0 text-[13px] font-medium">{step.name}</span>
-      <span className="min-w-0 flex-1 truncate text-left font-mono text-[12px] text-muted-foreground">{step.title !== step.name ? step.title : ""}</span>
+      <ToolIcon name={step.name} className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="shrink-0 text-[13px] text-muted-foreground">{step.name}</span>
+      <span className="min-w-0 flex-1 truncate text-left font-mono text-[12px] text-foreground/80">{step.title !== step.name ? step.title : ""}</span>
       <ToolStatus status={step.status} />
     </>
   );
-  if (!expandable) return <div className="flex items-center gap-2 px-3 py-2">{row}</div>;
+  if (!expandable) return <div className="flex h-7 items-center gap-2 px-2">{row}</div>;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 outline-none hover:bg-muted/50 focus-visible:bg-muted/50">
+      <CollapsibleTrigger className="group/tool flex h-7 w-full items-center gap-2 rounded-md px-2 outline-none hover:bg-muted/50 focus-visible:bg-muted/50">
         {row}
-        <ChevronRightIcon className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+        <ChevronRightIcon className={cn("size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover/tool:opacity-100", open && "rotate-90 opacity-100")} />
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-2 px-3 pb-3">
+      <CollapsibleContent className="ml-[21px] flex flex-col gap-2 border-l border-border/70 py-1.5 pl-3 pr-2">
         {step.input && <Detail label={t.input} text={step.input} />}
         {nested && (
           <div className="border-l border-border pl-3">
@@ -881,6 +956,13 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
       setText("");
     },
   });
+  const stop = useMutation({
+    mutationFn: () => stopCodeSession(conversationId, session.id),
+    onSuccess: (s) => applyCodeSession(qc, s),
+    meta: { success: t.stopped },
+  });
+  // While Claude Code works, the send button stops it; typing turns it back into send (an instruction mid-run).
+  const stoppable = active(session.status) && !text.trim();
   const submit = () => {
     const value = text.trim();
     if (value && !send.isPending) send.mutate(value);
@@ -910,9 +992,15 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
         />
         <InputGroupAddon align="inline-end" className="cursor-default gap-1 py-0 pr-0 has-[>button]:mr-0">
           <SessionModelPicker conversationId={conversationId} session={session} />
-          <Button type="submit" size="icon" aria-label={t.send} disabled={!text.trim() || send.isPending} className="disabled:opacity-40">
-            <ArrowUpIcon strokeWidth={2.25} />
-          </Button>
+          {stoppable ? (
+            <Button type="button" size="icon" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()} className="disabled:opacity-40">
+              {stop.isPending ? <Spinner /> : <StopIcon className="size-5" />}
+            </Button>
+          ) : (
+            <Button type="submit" size="icon" aria-label={t.send} disabled={!text.trim() || send.isPending} className="disabled:opacity-40">
+              <ArrowUpIcon strokeWidth={2.25} />
+            </Button>
+          )}
         </InputGroupAddon>
       </InputGroup>
     </form>
