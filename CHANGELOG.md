@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.16.0 — 2026-09-28
+
+### Features
+- **web**: header button listing a conversation's Claude Code sessions
+
 ## v0.15.0 — 2026-09-28
 
 ### Features
