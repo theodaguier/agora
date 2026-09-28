@@ -1,7 +1,7 @@
 import { Link, Stack, type Href } from "expo-router";
 import { ListGroup } from "heroui-native";
 import { AdminGate, PressableRow, Section, SettingsScroll } from "@/components/admin/ui";
-import { BotIcon, BrainIcon, BuildingIcon, CheckCircleIcon, FileTextIcon, KeyIcon, LayersIcon, PlugIcon, RefreshIcon, UsersIcon, type IconComponent } from "@/components/icons";
+import { BotIcon, BrainIcon, BuildingIcon, CheckCircleIcon, FileTextIcon, KeyIcon, LayersIcon, PlugIcon, RefreshIcon, ServerIcon, UsersIcon, type IconComponent } from "@/components/icons";
 import { defineMessages } from "@/lib/i18n";
 
 /* The admin tabs of apps/web/src/components/Settings.tsx, as an iOS settings menu. */
@@ -25,6 +25,8 @@ const messages = defineMessages({
     digestHelp: "Morning recap of the previous day",
     status: "Status",
     statusHelp: "Health of every component",
+    server: "Server",
+    serverHelp: "Processor, memory, disk, activity",
     integrations: "Integrations",
     integrationsHelp: "Emails, brand logos",
     updates: "Updates",
@@ -51,6 +53,8 @@ const messages = defineMessages({
     digestHelp: "Récap du matin sur la veille",
     status: "Statut",
     statusHelp: "L'état de chaque composant",
+    server: "Serveur",
+    serverHelp: "Processeur, mémoire, disque, activité",
     integrations: "Intégrations",
     integrationsHelp: "Emails, logos des marques",
     updates: "Mises à jour",
@@ -88,6 +92,7 @@ export default function Administration() {
       entries: [
         { href: "/profile/admin/integrations", icon: PlugIcon, title: t.integrations, help: t.integrationsHelp },
         { href: "/profile/admin/status", icon: CheckCircleIcon, title: t.status, help: t.statusHelp },
+        { href: "/profile/admin/server", icon: ServerIcon, title: t.server, help: t.serverHelp },
         { href: "/profile/admin/updates", icon: RefreshIcon, title: t.updates, help: t.updatesHelp },
       ],
     },

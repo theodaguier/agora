@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext, useRouter } from "@tanstack/react-router";
-import { BotIcon, BuildingIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, SlidersIcon, ShieldCheckIcon, SmartphoneIcon, UsersIcon, CloseIcon, type IconComponent } from "@/components/icons";
+import { BotIcon, BuildingIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, ServerIcon, SlidersIcon, ShieldCheckIcon, SmartphoneIcon, UsersIcon, CloseIcon, type IconComponent } from "@/components/icons";
 import { lazy, Suspense, useState } from "react";
 import { Access } from "@/components/admin/Access";
 import { AppIntegrations } from "@/components/admin/AppIntegrations";
@@ -32,8 +32,9 @@ import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 import { cn } from "@/lib/utils";
 
-// Recharts only loads with the usage tab.
+// Recharts only loads with the usage and server tabs.
 const Usage = lazy(() => import("@/components/Usage").then((m) => ({ default: m.Usage })));
+const Server = lazy(() => import("@/components/admin/Server").then((m) => ({ default: m.Server })));
 
 const tabs: { id: SettingsTab; icon: IconComponent; admin?: true }[] = [
   { id: "general", icon: SlidersIcon },
@@ -52,6 +53,7 @@ const tabs: { id: SettingsTab; icon: IconComponent; admin?: true }[] = [
   { id: "digest", icon: FileTextIcon, admin: true },
   { id: "usage", icon: ChartIcon },
   { id: "status", icon: CheckCircleIcon, admin: true },
+  { id: "server", icon: ServerIcon, admin: true },
   { id: "updates", icon: RefreshIcon, admin: true },
 ];
 
@@ -75,6 +77,7 @@ const messages = defineMessages({
       digest: "Recaps",
       usage: "Usage",
       status: "Status",
+      server: "Server",
       updates: "Updates",
     } as Record<SettingsTab, string>,
     profile: "Profile",
@@ -106,6 +109,7 @@ const messages = defineMessages({
       digest: "Récaps",
       usage: "Consommation",
       status: "Statut",
+      server: "Serveur",
       updates: "Mises à jour",
     },
     profile: "Profil",
@@ -198,6 +202,11 @@ function SettingsBody({ initial }: { initial: SettingsTab }) {
               </Suspense>
             )}
             {tab === "status" && <Status />}
+            {tab === "server" && (
+              <Suspense fallback={<Loading />}>
+                <Server />
+              </Suspense>
+            )}
             {tab === "updates" && <Updates />}
             {tab === "memory" && <WikiMemory />}
             {tab === "digest" && <DigestSettings />}

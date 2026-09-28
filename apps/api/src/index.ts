@@ -36,8 +36,10 @@ import { setupSharedSkills } from "./skill-requests";
 import { ensureHermesInstance, shareMcpTokensWithAll } from "./hermes-admin";
 import { setup } from "./routes/setup";
 import { status } from "./routes/status";
+import { server } from "./routes/server";
 import { getOrg, ORG_AVATAR_ID } from "./org";
 import { startUsageCollector } from "./usage";
+import { startServerSampler } from "./server";
 import { startDigest } from "./digest";
 import { recoverTurns } from "./bot-runner";
 import { syncSessionSearch } from "./session-search";
@@ -87,6 +89,7 @@ const app = new Hono()
   .route("/users", users)
   .route("/admin/hermes", hermesAdmin)
   .route("/admin/host", host)
+  .route("/admin/server", server)
   .route("/admin/status", status)
   .route("/admin/updates", updates)
   .route("/admin/wiki", wiki)
@@ -114,6 +117,7 @@ ensureHermesInstance()
   .catch((err) => console.error("mcp tokens: setup", err));
 
 startUsageCollector();
+startServerSampler();
 startDigest();
 recoverTurns().catch((err) => console.error("bot-runner: recovery", err));
 recoverCodeSessions().catch((err) => console.error("code sessions: recovery", err));
