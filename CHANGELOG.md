@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.11.0 — 2026-09-28
+
+### Features
+- reconfigure an installed MCP connector
+
 ## v0.10.0 — 2026-09-25
 
 ### Features
