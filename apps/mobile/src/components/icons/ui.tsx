@@ -120,6 +120,19 @@ export const LogOutIcon = createIcon("log-out", {
 
 export const ArrowUpIcon = createIcon("arrow-up", { line: <Path d="M12 20V4.5M6 10s4.4-6 6-6 6 6 6 6" /> });
 
+export const BranchIcon = createIcon("branch", {
+  fill: (
+    <>
+      <Circle cx="6" cy="5" r="2.75" />
+      <Circle cx="6" cy="19" r="2.75" />
+      <Circle cx="18" cy="7" r="2.75" />
+    </>
+  ),
+  line: <Path d="M6 7.5v9M18 9.5c0 5.5-12 2.5-12 7" />,
+});
+
+export const StopIcon = createIcon("stop", { fill: <Rect x="6" y="6" width="12" height="12" rx="3" /> });
+
 export const ChevronDownIcon = createIcon("chevron-down", { line: <Path d="M18 9s-4.4 6-6 6-6-6-6-6" /> });
 export const ChevronUpIcon = createIcon("chevron-up", { line: <Path d="M18 15s-4.4-6-6-6-6 6-6 6" /> });
 export const ChevronLeftIcon = createIcon("chevron-left", { line: <Path d="M15 6s-6 4.4-6 6 6 6 6 6" /> });

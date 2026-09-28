@@ -172,8 +172,8 @@ function Items({ entries }: { entries: MenuEntry[] }) {
   });
 }
 
-/** `placement` "top" for a trigger that rides on the keyboard (the composer's "+"). */
-function Content({ entries, placement }: { entries: MenuEntry[]; placement?: "top" | "bottom" }) {
+/** `placement` "top" for a trigger that rides on the keyboard (the composer's "+"). Exported for a Menu with a trigger of its own (a labelled button). */
+export function MenuContent({ entries, placement }: { entries: MenuEntry[]; placement?: "top" | "bottom" }) {
   const insets = usePopoverInsets();
   return (
     <Menu.Portal>
@@ -211,7 +211,7 @@ export function LongPressMenu({ actions, children }: { actions: MenuEntry[]; chi
       <Menu.Trigger asChild>
         <PressableFeedback onLongPress={show}>{content}</PressableFeedback>
       </Menu.Trigger>
-      <Content entries={actions} />
+      <MenuContent entries={actions} />
     </Menu>
   );
 }
@@ -226,7 +226,7 @@ export function TapMenu({ actions, children, accessibilityLabel }: { actions: Me
           {children}
         </PressableFeedback>
       </Menu.Trigger>
-      <Content entries={actions} />
+      <MenuContent entries={actions} />
     </Menu>
   );
 }
@@ -261,7 +261,7 @@ export function MenuButton({
           <Icon size={20} className="text-foreground" />
         </Button>
       </Menu.Trigger>
-      <Content entries={actions} placement={placement} />
+      <MenuContent entries={actions} placement={placement} />
     </Menu>
   );
 }

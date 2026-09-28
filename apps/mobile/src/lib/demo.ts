@@ -441,6 +441,7 @@ function route(method: string, path: string, query: URLSearchParams, body: Recor
           return {};
         case "pins":
         case "routines":
+        case "code-sessions":
           return get ? [] : {};
         case "commands":
           return { skills: [], mcp: [] };

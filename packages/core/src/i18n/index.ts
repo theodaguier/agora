@@ -9,3 +9,4 @@ export { auth } from "./auth";
 export { conversations } from "./conversations";
 export { integrations } from "./integrations";
 export { connectors } from "./connectors";
+export { codeSessions } from "./code-sessions";
