@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.14.0 — 2026-09-28
+
+### Features
+- Claude Code sessions on GitHub, and bots that know what happened
+
 ## v0.13.0 — 2026-09-28
 
 ### Features
