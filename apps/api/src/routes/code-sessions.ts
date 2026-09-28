@@ -238,8 +238,24 @@ export const internalCode = new Hono()
     if (!body.success) return c.json({ error: "invalid" }, 400);
     const turn = await ownerTurn(body.data.hermes_session);
     if ("error" in turn) return c.json(turn, 403);
+    const sessionId = c.req.param("sessionId");
+    // Its pull request merged or closed: its task is done. Another task goes into a new session, a
+    // line of its own under the conversation's sessions, and not under an older task's title.
+    const pr = await refreshCodeSessionGit(sessionId, turn.conversationId).then(
+      (s) => s.git?.pr,
+      () => null,
+    );
+    if (pr && pr.state !== "open") {
+      return c.json(
+        {
+          error: "done",
+          message: `This session's pull request #${pr.number} is ${pr.state}: its task is over. Start a new session with claude_code_start for any further work (same project to reuse the clone).`,
+        },
+        409,
+      );
+    }
     const [bot] = await db.select({ name: schema.agent.name }).from(schema.agent).where(eq(schema.agent.id, turn.agentId));
-    return sendToCodeSession(c.req.param("sessionId"), body.data.text, bot?.name ?? "bot", turn.conversationId).then(
+    return sendToCodeSession(sessionId, body.data.text, bot?.name ?? "bot", turn.conversationId).then(
       async (s) => {
         // The reply that puts it back to work carries its card too.
         await attachCodeSession(body.data.hermes_session, { id: s.id, title: s.title });

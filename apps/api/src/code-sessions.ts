@@ -115,9 +115,20 @@ function summary(s: Live): CodeSession {
     result: r.result,
     usage: r.usage,
     stepCount: s.transcript.steps.length,
+    instruction: lastInstruction(s.transcript.steps),
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
+}
+
+const INSTRUCTION_MAX = 200;
+
+/** The last instruction given to the session, cut short: what it is working on, and who asked. */
+function lastInstruction(steps: CodeStep[]): CodeSession["instruction"] {
+  const last = steps.findLast((st) => st.kind === "user");
+  if (last?.kind !== "user") return null;
+  const text = last.text.replace(/\s+/g, " ").trim();
+  return { by: last.by, text: text.length > INSTRUCTION_MAX ? `${text.slice(0, INSTRUCTION_MAX - 1)}…` : text };
 }
 
 function fromRow(row: Row): Live {
@@ -655,7 +666,8 @@ export const CODE_DELEGATION_PROMPT = [
   "Tu as les outils claude_code_start, claude_code_wait, claude_code_send et claude_code_stop (tool_describe si tu ne vois pas leurs paramètres).",
   "Tout travail sur du code (corriger une issue, écrire une fonctionnalité, un correctif, un test, ouvrir une PR) passe par une session : claude_code_start avec repo (owner/nom), un titre qui nomme la tâche et un brief complet (but, contraintes, comment vérifier). La session clone le dépôt, a git et gh, et les membres de la conversation la suivent en direct.",
   "Ne code jamais toi-même : ni fichier créé, modifié ou poussé avec le connecteur GitHub (branches, commits, PR comprises), ni dans ton terminal. Lire une issue ou quelques fichiers pour écrire le brief reste permis, sans t'y attarder.",
-  "Annonce la session en une phrase à la conversation, puis suis-la avec claude_code_wait.",
+  "Une session par tâche : chaque nouvelle issue ou fonctionnalité a sa propre session (claude_code_start, avec le même project pour réutiliser le clone), pour que la conversation la voie sous son propre titre. claude_code_send ne sert qu'à poursuivre ou corriger la tâche de la session, et il est refusé une fois sa PR mergée ou fermée.",
+  "Annonce la session en une phrase à la conversation, puis suis-la avec claude_code_wait. Relancer une session avec claude_code_send s'annonce aussi.",
 ].join("\n");
 
 /**
