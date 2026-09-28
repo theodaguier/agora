@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.20.0 — 2026-09-28
+
+### Features
+- admin Server tab with machine and instance metrics
+
 ## v0.19.1 — 2026-09-28
 
 ### Fixes
