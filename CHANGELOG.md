@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.16.2 — 2026-09-28
+
+### Fixes
+- **code-sessions**: branch and pull request state follows GitHub live
+
 ## v0.16.1 — 2026-09-28
 
 ### Fixes
