@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.16.1 — 2026-09-28
+
+### Fixes
+- **code-sessions**: cards for sessions a reply puts back to work, one session per task
+
 ## v0.16.0 — 2026-09-28
 
 ### Features
