@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.19.0 — 2026-09-28
+
+### Features
+- **mobile**: sessions list shows each session's last instruction
+- **code-sessions**: show who put a session to work, one session per task
+
 ## v0.18.0 — 2026-09-28
 
 ### Features
