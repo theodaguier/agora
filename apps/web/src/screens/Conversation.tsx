@@ -3,7 +3,7 @@ import { useEventText } from "@/i18n/events";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
 import { ChevronLeftIcon, ChevronsLeftIcon, FilesIcon, PinIcon, SearchIcon } from "@/components/icons";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { AuthorLine, BotBubble, DateDivider, ToolLine, TypingBubble } from "@/components/Bubbles";
 import { ApprovalCard, ApprovalLog } from "@/components/ApprovalCard";
@@ -23,7 +23,7 @@ import { MembersPanel } from "@/components/MembersPanel";
 import { PersonPanel } from "@/components/PersonPanel";
 import { ChatMessage, MessageRow, PendingRow, useDeleteMessage } from "@/components/MessageParts";
 import { RightPanel } from "@/components/RightPanel";
-import { CodeSessionCard, CodeSessionPanel, ReplyWithSessions } from "@/components/CodeSession";
+import { CodeSessionCard, CodeSessionPanel, CodeSessionsButton, ReplyWithSessions } from "@/components/CodeSession";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ShortcutTooltip } from "@/components/Shortcuts";
@@ -281,16 +281,20 @@ function PanelButtons({
   setPanel,
   hasPanels,
   hasInfo,
+  sessions,
 }: {
   panel: PanelKind | "info" | null;
   setPanel: Dispatch<SetStateAction<PanelKind | "info" | null>>;
   hasPanels: boolean;
   hasInfo: boolean;
+  /** The Claude Code sessions button, first. */
+  sessions?: ReactNode;
 }) {
   const t = useT(strings);
   const panelLabels = usePanelLabels();
   return (
     <div className="flex items-center justify-end gap-1">
+      {sessions}
       {hasPanels &&
         (["search", "files", "pins"] as const).map((kind) => {
           const Icon = {
@@ -563,7 +567,13 @@ export function Conversation() {
             <div className="flex min-w-0 items-center gap-1.5">
               <HeaderTitle conv={conv} me={user.id} title={title} directBot={directBot} directPerson={directPerson} onOpenInfo={() => setPanel("info")} />
             </div>
-            <PanelButtons panel={panel} setPanel={setPanel} hasPanels={!!conv} hasInfo={hasInfo} />
+            <PanelButtons
+              panel={panel}
+              setPanel={setPanel}
+              hasPanels={!!conv}
+              hasInfo={hasInfo}
+              sessions={conv && <CodeSessionsButton conversationId={conversationId} current={codeSession} onOpen={openCodeSession} />}
+            />
           </header>
           {conv && <PinnedBar conversationId={conversationId} onJump={jumpTo} onSeeAll={() => setPanel("pins")} />}
 

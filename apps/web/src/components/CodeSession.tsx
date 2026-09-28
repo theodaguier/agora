@@ -58,12 +58,14 @@ import {
 } from "@/lib/code-sessions";
 import { confirmAction } from "@/lib/confirm";
 import { copyText } from "@/lib/feedback";
+import { dividerLabel } from "@/lib/dates";
 import { useFormat } from "@/lib/usage-format";
 import { cn } from "@/lib/utils";
 
 const messages = defineMessages({
   en: {
     claudeCode: "Claude Code",
+    sessions: "Claude Code sessions",
     status: { running: "Working", waiting: "Waiting for approval", idle: "Done", stopped: "Stopped", failed: "Failed" } as Record<CodeSessionStatus, string>,
     follow: "Follow",
     open: "Open",
@@ -137,6 +139,7 @@ const messages = defineMessages({
   },
   fr: {
     claudeCode: "Claude Code",
+    sessions: "Sessions Claude Code",
     status: { running: "En cours", waiting: "Attend une autorisation", idle: "Terminé", stopped: "Arrêté", failed: "Échec" },
     follow: "Suivre",
     open: "Ouvrir",
@@ -301,6 +304,62 @@ export function ReplyWithSessions({
       )}
       {last?.kind === "code" && typing}
     </div>
+  );
+}
+
+/**
+ * Header button of the conversation: every Claude Code session started in it, the latest first,
+ * each opening its panel. Hidden while there are none; a dot while one works.
+ */
+export function CodeSessionsButton({ conversationId, current, onOpen }: { conversationId: string; current: string | null; onOpen: (sessionId: string) => void }) {
+  const t = useT(messages);
+  const [open, setOpen] = useState(false);
+  const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
+  if (!sessions.length) return null;
+  const sorted = [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const working = sessions.some((s) => active(s.status));
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger
+              render={<Button variant="ghost" size="icon" aria-label={t.sessions} aria-pressed={!!current} className="relative hidden rounded-lg aria-pressed:bg-muted lg:inline-flex" />}
+            />
+          }
+        >
+          <ModelLogo provider="claude-code" className="size-[18px]" />
+          {working && <span className="absolute right-1.5 top-1.5 size-2 rounded-full border-2 border-background bg-success" />}
+        </TooltipTrigger>
+        <TooltipContent>{t.sessions}</TooltipContent>
+      </Tooltip>
+      <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
+        <p className="px-2 pb-1.5 pt-1 text-[12px] font-medium text-muted-foreground">{t.sessions}</p>
+        <div className="flex max-h-96 flex-col overflow-y-auto">
+          {sorted.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              aria-current={s.id === current || undefined}
+              onClick={() => {
+                setOpen(false);
+                onOpen(s.id);
+              }}
+              className="flex items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted aria-[current]:bg-muted"
+            >
+              <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm">{s.title}</span>
+                <span className="block truncate text-[12px] text-muted-foreground">
+                  {t.status[s.status]}
+                  {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""} · {dividerLabel(new Date(s.updatedAt))}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
