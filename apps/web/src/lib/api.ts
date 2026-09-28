@@ -328,6 +328,8 @@ export type McpServer = {
   command?: string;
   enabled?: boolean;
   auth?: string;
+  /** `plugin`: declared by a Hermes plugin, configured there and not from the app. */
+  source?: "config" | "plugin";
   /** Integration type; `typeSet` false = guessed, never chosen by an admin. */
   type: IntegrationType;
   typeSet: boolean;

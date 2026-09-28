@@ -8,11 +8,23 @@
  * and secrets go straight into its .env without touching the database.
  */
 import { guessIntegrationType, INTEGRATION_TYPES, MCP_ENV_INPUTS, type IntegrationType } from "@agora/core";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "./db";
 import { env } from "./env";
-import { agentMcpServers, dashboard, HermesError, restartGateway, setAgentMcp, setMcpOAuth, shareMcpTokens } from "./hermes-admin";
+import {
+  agentMcpServers,
+  carryMcpSettings,
+  dashboard,
+  HermesError,
+  refreshAgentMcp,
+  restartGateway,
+  restoreMcpServer,
+  setAgentMcp,
+  setMcpOAuth,
+  shareMcpTokens,
+  snapshotMcpServer,
+} from "./hermes-admin";
 import { errors } from "./errors.messages";
 import { defineMessages, tr } from "./i18n";
 
@@ -25,6 +37,7 @@ const messages = defineMessages({
     notResponding: "the server isn't responding",
     nothingToAuthorize: "Nothing to authorize",
     nameTaken: (name: string) => `A connector named “${name}” already exists`,
+    pluginManaged: (name: string) => `“${name}” comes from a Hermes plugin: it's configured in the plugin.`,
   },
   fr: {
     notApproved: "Demande non validée",
@@ -34,6 +47,7 @@ const messages = defineMessages({
     notResponding: "le serveur ne répond pas",
     nothingToAuthorize: "Rien à autoriser",
     nameTaken: (name: string) => `Un connecteur « ${name} » existe déjà`,
+    pluginManaged: (name: string) => `« ${name} » vient d'un plugin Hermes : il se configure dans le plugin.`,
   },
 });
 import { isDefaultProfile } from "./hermes";
@@ -92,6 +106,7 @@ export const MCP_REQUEST_PROMPT = [
   "```",
   "- Serveur distant : `url` (https) et `auth` = `oauth` (connexion via le navigateur), `header` (jeton Bearer) ou `none`.",
   "- OAuth : la plupart des serveurs MCP enregistrent l'app d'eux-mêmes. Si la documentation exige de créer soi-même une application OAuth (Client ID / secret), dis-le dans `description` avec le lien vers la page où la créer : la fiche propose de saisir ce client.",
+  "- Un serveur distant ne s'authentifie que par `oauth`, `header` ou `none` : il ne reçoit ni variable d'environnement ni fichier. Une clé de compte de service (fichier JSON) ne passe donc que par un serveur local (`command`) avec une entrée `env` de type `file`.",
   "- Serveur local : `command` (ex. `npx`), `args` (ex. `[\"-y\", \"paquet@version\"]`) et `env`. Chaque entrée dit comment la saisir :",
   '  `{"name":"API_TOKEN","description":"…","required":true,"secret":true}` masque la saisie ;',
   '  `{"name":"SERVICE_ACCOUNT_KEY","description":"Fichier JSON du compte de service","required":true,"secret":true,"input":"file","accept":".json,application/json"}` propose un fichier, dont le contenu devient la valeur ;',
@@ -144,7 +159,8 @@ export async function connectorsPrompt(profile: string, engine: "hermes" | "clau
   lines.push(
     "- Ne demande JAMAIS de relancer la session, d'ouvrir une nouvelle conversation ou de redémarrer quoi que ce soit : après une installation, l'app recharge tes outils d'elle-même avant ton message suivant.",
     "- Ne crée pas un deuxième connecteur pour un service déjà listé ci-dessus : utilise ou demande celui qui existe.",
-    "- Si un connecteur est activé pour toi mais que tu n'as aucun outil qui commence par son préfixe, dis-le clairement, une seule fois, et demande à un administrateur de vérifier sa connexion dans Marketplace › Installés.",
+    "- Si un connecteur est activé pour toi mais que tu n'as aucun outil qui commence par son préfixe, ou que ses outils échouent faute de clé ou d'autorisation, dis-le clairement, une seule fois : un administrateur peut ressaisir ses secrets ou relancer sa connexion OAuth avec « Reconfigurer », sur sa ligne dans Marketplace › Installés.",
+    "- Pour un connecteur installé, l'app ne propose que ceci : son type, « Reconfigurer » (le même formulaire qu'à l'installation : secrets déclarés, jeton, OAuth), l'interrupteur et la suppression. N'invente aucun autre écran, onglet ou champ. Un serveur distant ne reçoit jamais de fichier ni de variable : s'il lui faut une clé JSON, propose de le retirer et de demander un serveur local à la place.",
   );
   return lines.join("\n");
 }
@@ -172,7 +188,10 @@ function toDto(row: Row, viewer: { id: string; role?: string | null }, types: Re
     conversationId: row.conversationId,
     createdAt: row.createdAt,
     canDecide: admin && row.status === "pending",
-    canConnect: (admin || viewer.id === row.requestedBy) && (row.status === "approved" || row.status === "authorizing"),
+    canConnect:
+      ((admin || viewer.id === row.requestedBy) && (row.status === "approved" || row.status === "authorizing")) ||
+      // An installed connector: only an admin reconfigures it (Marketplace › Installés).
+      (admin && row.status === "installed"),
     /** To declare in the provider's app when registering an OAuth client by hand. */
     redirectUri: row.auth === "oauth" ? oauthRedirectUri(row.name) : null,
   };
@@ -204,11 +223,17 @@ export async function listRequests(viewer: { id: string; role?: string | null })
   return rows.map((r) => toDto(r, viewer, types)).reverse();
 }
 
-/** Name already taken in Hermes or by another request still alive. */
+/**
+ * Name already taken in Hermes or by another request still alive. An installed
+ * request whose server was since removed from Installés no longer holds it.
+ */
 async function nameTaken(name: string) {
   const [servers, rows] = await Promise.all([
     dashboard<{ servers: { name: string }[] }>("/api/mcp/servers").catch(() => ({ servers: [] })),
-    db.select({ id: mcpServer.id }).from(mcpServer).where(and(eq(mcpServer.name, name), ne(mcpServer.status, "rejected"))),
+    db
+      .select({ id: mcpServer.id })
+      .from(mcpServer)
+      .where(and(eq(mcpServer.name, name), inArray(mcpServer.status, ["pending", "approved", "authorizing"]))),
   ]);
   return servers.servers.some((s) => s.name === name) || rows.length > 0;
 }
@@ -335,6 +360,60 @@ export async function createCustom(block: McpRequestBlock & { type: IntegrationT
   return toDto(row!, admin, { [block.name]: block.type });
 }
 
+/** What the dashboard says about an instance server (hermes_cli/web_server_mcp.py). */
+type HermesServer = {
+  name: string;
+  url?: string | null;
+  command?: string | null;
+  args?: string[];
+  env?: Record<string, string>;
+  auth?: string | null;
+  source?: "config" | "plugin";
+};
+
+/**
+ * Opens an installed connector again, to enter new secrets or authorize again
+ * (Marketplace › Installés › Reconfigurer). Returns its request, which the form
+ * installs like a first time. A connector installed from a catalog or the
+ * registry has none: it's rebuilt from its Hermes declaration, its variables
+ * becoming the fields of the form.
+ */
+export async function reconfigure(name: string, admin: { id: string; role?: string | null }) {
+  const { servers } = await dashboard<{ servers: HermesServer[] }>("/api/mcp/servers");
+  const server = servers.find((s) => s.name === name);
+  if (!server) throw new HermesError(tr(errors).unknownMcpServer, 404);
+  if (server.source === "plugin") throw new HermesError(tr(messages).pluginManaged(name), 409);
+  const [existing] = await db
+    .select()
+    .from(mcpServer)
+    .where(and(eq(mcpServer.name, name), inArray(mcpServer.status, ["installed", "approved", "authorizing"])))
+    .orderBy(desc(mcpServer.createdAt))
+    .limit(1);
+  const types = await getTypes();
+  // Its request, unless the name now points to another server (removed, then installed again from a catalog).
+  if (existing && (existing.url ?? existing.command) === (server.url ?? server.command)) return toDto(existing, admin, types);
+  const [row] = await db
+    .insert(mcpServer)
+    .values({
+      id: crypto.randomUUID(),
+      name,
+      title: name,
+      url: server.url ?? null,
+      command: server.command ?? null,
+      args: server.args ?? [],
+      // Left empty, a field keeps its current value: none is required.
+      env: Object.keys(server.env ?? {}).map((key) => ({ name: key, required: false, secret: false })),
+      auth: server.auth === "oauth" || server.auth === "header" ? server.auth : "none",
+      status: "installed",
+      tools: [],
+      requestedBy: admin.id,
+      decidedBy: admin.id,
+      decidedAt: new Date(),
+    })
+    .returning();
+  return toDto(row!, admin, types);
+}
+
 const needsNothing = (row: Row) => row.auth === "none" && !row.env.some((e) => e.required);
 
 export async function decide(id: string, adminId: string, approve: boolean) {
@@ -363,26 +442,35 @@ const clientSecretVar = (name: string) => `MCP_${name.toUpperCase().replace(/[^A
 
 export async function install(
   rowOrId: Row | string,
-  secrets: { env?: Record<string, string>; bearer_token?: string; oauth_client?: OAuthClient },
+  secrets: { env?: Record<string, string>; bearer_token?: string; oauth_client?: OAuthClient; auth?: Row["auth"] },
 ) {
-  const row = typeof rowOrId === "string" ? await load(rowOrId) : rowOrId;
-  if (row.status !== "approved" && row.status !== "authorizing") throw new HermesError(tr(messages).notApproved, 409);
-  const values = secrets.env ?? {};
+  let row = typeof rowOrId === "string" ? await load(rowOrId) : rowOrId;
+  if (row.status !== "approved" && row.status !== "authorizing" && row.status !== "installed") throw new HermesError(tr(messages).notApproved, 409);
+  // A remote server can change how it authenticates when it's reconfigured.
+  if (secrets.auth && row.url && secrets.auth !== row.auth) {
+    row = (await db.update(mcpServer).set({ auth: secrets.auth }).where(eq(mcpServer.id, row.id)).returning())[0]!;
+  }
+  const reconfiguring = row.status === "installed";
+  // The declaration in place: a field left empty keeps its value, and a failed reconfiguration puts it back.
+  const previous = await snapshotMcpServer(row.name);
+  const kept = Object.entries((previous?.cfg.env ?? {}) as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string" && !!e[1]);
+  const values = { ...Object.fromEntries(kept), ...Object.fromEntries(Object.entries(secrets.env ?? {}).filter(([, v]) => v)) };
   const missing = row.env.filter((e) => e.required && !values[e.name]);
   if (missing.length) throw new HermesError(tr(messages).missing(missing.map((e) => e.name).join(", ")), 400);
   if (row.auth === "header" && !secrets.bearer_token) throw new HermesError(tr(errors).accessTokenRequired, 400);
 
   const body = row.url
     ? { name: row.name, url: row.url, auth: row.auth, ...(row.auth === "header" && { bearer_token: secrets.bearer_token }) }
-    : {
-        name: row.name,
-        command: row.command,
-        args: row.args,
-        env: Object.fromEntries(row.env.filter((e) => values[e.name]).map((e) => [e.name, values[e.name]!])),
-      };
+    : { name: row.name, command: row.command, args: row.args, env: values };
   // New attempt: start from a clean declaration.
   await dashboard(`/api/mcp/servers/${row.name}`, { method: "DELETE" }).catch(() => {});
-  await dashboard("/api/mcp/servers", { method: "POST", body: JSON.stringify(body) });
+  try {
+    await dashboard("/api/mcp/servers", { method: "POST", body: JSON.stringify(body) });
+  } catch (err) {
+    if (reconfiguring && previous) await restoreMcpServer(row.name, previous).catch((e) => console.error("mcp: restore", e));
+    throw err;
+  }
+  if (previous) await carryMcpSettings(row.name, previous.cfg);
 
   if (row.auth === "oauth") {
     const client = secrets.oauth_client;
@@ -406,6 +494,8 @@ export async function install(
   );
   if (!test.ok) {
     await dashboard(`/api/mcp/servers/${row.name}`, { method: "DELETE" }).catch(() => {});
+    // The connector worked before: a mistyped key mustn't take it away.
+    if (reconfiguring && previous) await restoreMcpServer(row.name, previous).catch((e) => console.error("mcp: restore", e));
     await db.update(mcpServer).set({ error: test.error ?? tr(messages).connectionFailed }).where(eq(mcpServer.id, row.id));
     throw new HermesError(tr(messages).cannotConnect(test.error ?? tr(messages).notResponding), 400);
   }
@@ -466,7 +556,12 @@ export async function relayOAuthCallback(name: string, query: string) {
 /** Connector reachable: enabled for the requesting bot, then a clean gateway restart. */
 async function finish(row: Row, tools: string[]) {
   const [bot] = row.agentId ? await db.select().from(agent).where(eq(agent.id, row.agentId)) : [];
-  if (bot && !isDefaultProfile(bot.hermesProfile)) await setAgentMcp(bot.hermesProfile, row.name, true);
+  // Never installed before: the bot that asked gets it. Reconfigured: the agents that have it get the new secrets.
+  if (row.tools === null) {
+    if (bot && !isDefaultProfile(bot.hermesProfile)) await setAgentMcp(bot.hermesProfile, row.name, true);
+  } else {
+    await refreshAgentMcp(row.name);
+  }
   await db.update(mcpServer).set({ status: "installed", tools, error: null }).where(eq(mcpServer.id, row.id));
   let restarted = true;
   await restartGateway().catch((err) => {

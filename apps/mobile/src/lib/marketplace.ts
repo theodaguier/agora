@@ -41,6 +41,8 @@ export type McpServer = {
   command?: string;
   enabled?: boolean;
   auth?: string;
+  /** `plugin`: declared by a Hermes plugin, configured there and not from the app. */
+  source?: "config" | "plugin";
   /** Integration type; `typeSet` false = guessed, never chosen by an admin. */
   type: IntegrationType;
   typeSet: boolean;
@@ -196,6 +198,8 @@ export const matches = (item: { name: string; description: string }, q: string) 
 export const marketplaceHref = "/profile/marketplace" as Href;
 export const installedHref = "/profile/marketplace/installed" as Href;
 export const customConnectorHref = "/profile/marketplace/custom" as Href;
+/** An installed connector opened again for new secrets or a new authorization. */
+export const reconfigureHref = (name: string) => `/profile/marketplace/reconfigure?${new URLSearchParams({ name })}` as Href;
 /** Every item of a marketplace section (the web's "Show all"), for the same search. */
 export const sectionHref = (section: string, q: string) => `/profile/marketplace/all?${new URLSearchParams({ section, q })}` as Href;
 

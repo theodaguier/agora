@@ -1,7 +1,7 @@
 import type { IntegrationType } from "@agora/core";
-import { common, integrations } from "@agora/core/i18n";
+import { common, connectors, integrations } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, Stack } from "expo-router";
+import { Link, Stack, useRouter } from "expo-router";
 import { Button, LinkButton, ListGroup, Switch, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
@@ -17,7 +17,7 @@ import { agentsHref } from "@/lib/agents-admin";
 import { api } from "@/lib/api";
 import { haptic, withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
-import { flagRestart, mcpServersQuery, pluginsQuery } from "@/lib/marketplace";
+import { flagRestart, mcpServersQuery, pluginsQuery, reconfigureHref } from "@/lib/marketplace";
 import type { McpRequest, SkillRequest } from "@/lib/types";
 
 /* apps/web/src/components/marketplace/Installed.tsx */
@@ -37,7 +37,7 @@ const t = defineMessages({
     removeConfirm: (name: string) => `Remove the “${name}” connector?`,
     removeBody: "Bots will lose access to its tools. Its secrets stay in Hermes's .env.",
     removeAction: "Remove",
-    menuHint: "Touch and hold a connector to change its type or remove it.",
+    menuHint: "Touch and hold a connector to change its type, reconfigure it or remove it.",
     plugins: "Active plugins",
     noPlugins: "No plugins enabled.",
     skills: "Skills",
@@ -61,7 +61,7 @@ const t = defineMessages({
     removeConfirm: (name: string) => `Retirer le connecteur « ${name} » ?`,
     removeBody: "Les bots perdront l'accès à ses outils. Ses secrets restent dans le .env de Hermes.",
     removeAction: "Retirer",
-    menuHint: "Maintiens le doigt sur un connecteur pour changer son type ou le retirer.",
+    menuHint: "Maintiens le doigt sur un connecteur pour changer son type, le reconfigurer ou le retirer.",
     plugins: "Plugins actifs",
     noPlugins: "Aucun plugin activé.",
     skills: "Skills",
@@ -87,6 +87,8 @@ export default function InstalledScreen() {
 function Installed() {
   const c = tr(common);
   const types = tr(integrations).types;
+  const k = tr(connectors);
+  const router = useRouter();
   const qc = useQueryClient();
   // Outcomes and failures are HeroUI Toasts.
   const feedback = useFeedback();
@@ -245,6 +247,7 @@ function Installed() {
               key={s.name}
               items={[integrationTypeSubmenu(s.type, (type) => setType.mutate({ name: s.name, type }))]}
               actions={[
+                ...(s.source === "plugin" ? [] : [{ label: k.reconfigure, icon: "key" as const, onPress: () => router.push(reconfigureHref(s.name)) }]),
                 {
                   label: t.remove,
                   icon: "trash",

@@ -223,7 +223,7 @@ export async function createProfile(profile: string, description: string) {
  * profile's mcp-tokens/ pointing at the instance's (shareMcpTokens).
  */
 
-type McpConfig = Record<string, unknown> & { enabled?: boolean };
+export type McpConfig = Record<string, unknown> & { enabled?: boolean };
 
 async function loadYaml(path: string) {
   const { parseDocument } = await import("yaml");
@@ -338,19 +338,80 @@ export async function setMcpOAuth(server: string, fields: Record<string, string 
   await writeFile(path, doc.toString());
 }
 
-/** Copies the ${VAR} variables used by the declaration into the profile's .env. */
-async function copyReferencedEnv(serialized: string, profile: string) {
+/**
+ * Copies the ${VAR} variables used by the declaration into the profile's .env.
+ * `overwrite`: the instance's value replaces the profile's (a rotated secret).
+ */
+async function copyReferencedEnv(serialized: string, profile: string, { overwrite = false } = {}) {
   const names = new Set([...serialized.matchAll(/\$\{([A-Z][A-Z0-9_]*)\}/g)].map((m) => m[1]!));
   if (!names.size) return;
   const source = await readFile(join(env.HERMES_HOME, ".env"), "utf8").catch(() => "");
   const target = join(profileHome(profile), ".env");
   const current = await readFile(target, "utf8").catch(() => "");
-  const present = new Set(current.split("\n").map((l) => l.split("=")[0]));
-  const additions = source.split("\n").filter((l) => {
-    const key = l.split("=")[0]!;
-    return names.has(key) && !present.has(key);
-  });
-  if (additions.length) await writeFile(target, `${current.replace(/\n?$/, "\n")}${additions.join("\n")}\n`, { mode: 0o600 });
+  const lines = source.split("\n").filter((l) => names.has(l.split("=")[0]!));
+  const replaced = new Set(overwrite ? lines.map((l) => l.split("=")[0]!) : []);
+  const kept = current.split("\n").filter((l) => l && !replaced.has(l.split("=")[0]!));
+  const present = new Set(kept.map((l) => l.split("=")[0]));
+  const additions = lines.filter((l) => !present.has(l.split("=")[0]!));
+  if (!additions.length) return;
+  await writeFile(target, `${[...kept, ...additions].join("\n")}\n`, { mode: 0o600 });
+}
+
+/**
+ * A reconfigured server: every agent that had it gets the new declaration and
+ * its new secrets, keeping its own on/off. Without this an agent keeps the
+ * copy made when it was enabled, old key included.
+ */
+export async function refreshAgentMcp(server: string) {
+  const cfg = (await instanceMcpServers())[server];
+  if (!cfg) return;
+  const profiles = await readdir(join(env.HERMES_HOME, "profiles")).catch(() => [] as string[]);
+  for (const profile of profiles) {
+    const path = join(profileHome(profile), "config.yaml");
+    if (!existsSync(path)) continue;
+    const doc = await loadYaml(path);
+    const own = doc.getIn(["mcp_servers", server, "enabled"]);
+    if (!doc.hasIn(["mcp_servers", server])) continue;
+    doc.setIn(["mcp_servers", server], doc.createNode({ ...cfg, enabled: own !== false }));
+    await writeFile(path, doc.toString());
+    await copyReferencedEnv(JSON.stringify(cfg), profile, { overwrite: true });
+  }
+}
+
+/** A server's declaration and the .env values it references, to put back if a reconfiguration fails. */
+export type McpSnapshot = { cfg: McpConfig; env: Record<string, string> };
+
+export async function snapshotMcpServer(server: string): Promise<McpSnapshot | null> {
+  const cfg = (await instanceMcpServers())[server];
+  if (!cfg) return null;
+  const names = new Set([...JSON.stringify(cfg).matchAll(/\$\{([A-Z][A-Z0-9_]*)\}/g)].map((m) => m[1]!));
+  const values: Record<string, string> = {};
+  for (const key of names) {
+    const res = await dashboard<{ value: string }>("/api/env/reveal", { method: "POST", body: JSON.stringify({ key }) }).catch(() => null);
+    if (res) values[key] = res.value;
+  }
+  return { cfg, env: values };
+}
+
+export async function restoreMcpServer(server: string, snapshot: McpSnapshot) {
+  for (const [key, value] of Object.entries(snapshot.env)) {
+    await dashboard("/api/env", { method: "PUT", body: JSON.stringify({ key, value }) });
+  }
+  const path = join(env.HERMES_HOME, "config.yaml");
+  const doc = await loadYaml(path);
+  doc.setIn(["mcp_servers", server], doc.createNode(snapshot.cfg));
+  await writeFile(path, doc.toString());
+}
+
+/** After a new declaration: the admin's on/off and tool selection of the previous one still apply. */
+export async function carryMcpSettings(server: string, previous: McpConfig) {
+  if (previous.enabled !== false && previous.tools === undefined) return;
+  const path = join(env.HERMES_HOME, "config.yaml");
+  const doc = await loadYaml(path);
+  if (!doc.hasIn(["mcp_servers", server])) return;
+  if (previous.enabled === false) doc.setIn(["mcp_servers", server, "enabled"], false);
+  if (previous.tools !== undefined) doc.setIn(["mcp_servers", server, "tools"], doc.createNode(previous.tools));
+  await writeFile(path, doc.toString());
 }
 
 /**
