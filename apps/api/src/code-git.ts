@@ -89,7 +89,8 @@ export const githubEnv = (token: string | null): Record<string, string> => ({
 type Run = { ok: boolean; out: string; err: string; raw: string };
 
 async function git(cwd: string, args: string[], token: string | null = null, timeoutMs = 60_000): Promise<Run> {
-  const proc = Bun.spawn(["git", ...args], { cwd, env: childEnv(githubEnv(token)), stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: timeoutMs });
+  // No optional locks: reading the state while Claude Code works in the clone must not get in its way.
+  const proc = Bun.spawn(["git", ...args], { cwd, env: childEnv({ ...githubEnv(token), GIT_OPTIONAL_LOCKS: "0" }), stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: timeoutMs });
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { ok: code === 0, out: out.trim(), err: err.trim(), raw: out };
 }

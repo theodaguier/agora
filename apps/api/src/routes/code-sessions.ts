@@ -10,6 +10,7 @@ import {
   CodeSessionError,
   codeSessionReport,
   commitMessageFor,
+  refreshCodeSessionGit,
   getCodeSession,
   listCodeSessions,
   runGitAction,
@@ -118,6 +119,13 @@ export const codeSessions = new Hono<AppEnv>()
     if (!body.success) return c.json({ error: "invalid" }, 400);
     const me = c.get("user");
     return switchCodeSessionAccount(owned.sessionId, body.data.id, { id: me.id, name: me.name }, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
+  /** Its branch and pull request read again (throttled): every member watching it sees a PR merged on GitHub. */
+  .post("/:sessionId/git/refresh", async (c) => {
+    const conv = await loadConversation(c.get("user").id, c.req.param("id")!);
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    return refreshCodeSessionGit(c.req.param("sessionId")!, conv.conversation.id).then((s) => c.json(s), (err) => failure(c, err));
   })
 
   /** A commit message for the clone's changes, written by Claude Code from the diff: the owner edits it before committing. */

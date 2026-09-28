@@ -58,6 +58,9 @@ type Live = {
   held: Instruction[];
   /** A git action of the owner is under way. */
   gitBusy: boolean;
+  /** The clone's state being read (one read at a time), and when the last one started. */
+  gitReading: Promise<void> | null;
+  gitReadAt: number;
   /** Steps changed since the last broadcast. */
   dirty: Map<string, CodeStep>;
   summaryDirty: boolean;
@@ -132,6 +135,8 @@ function fromRow(row: Row): Live {
     prepare: null,
     held: [],
     gitBusy: false,
+    gitReading: null,
+    gitReadAt: 0,
     dirty: new Map(),
     summaryDirty: false,
     flushTimer: null,
@@ -253,6 +258,42 @@ function setStatus(s: Live, status: CodeSessionStatus) {
   if (s.row.status === status) return;
   s.row.status = status;
   touch(s, [], true);
+}
+
+/** Reads of the clone asked from the panel, at most this often: each one queries GitHub. */
+const GIT_READ_MS = 15_000;
+/** A tool call after which the branch or its pull request may have changed. */
+const GIT_TOUCHING = /\bgit\b[^\n|;&]*?\s(push|commit|merge|rebase|reset|checkout|switch|pull)\b|\bgh\s+pr\b|github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+/;
+
+/**
+ * The clone's state read again and broadcast, one read at a time: during a run after a tool call
+ * that pushed or touched a pull request, and when a member looks at the session (`throttle`: not
+ * more often than GIT_READ_MS, a merge done on GitHub shows up at the next look).
+ */
+async function rereadGit(s: Live, throttle: boolean) {
+  if (s.gitReading) return s.gitReading;
+  if (throttle && Date.now() - s.gitReadAt < GIT_READ_MS) return;
+  s.gitReadAt = Date.now();
+  const before = JSON.stringify(s.row.git);
+  s.gitReading = (async () => {
+    try {
+      await refreshGit(s);
+      if (JSON.stringify(s.row.git) !== before) {
+        touch(s, [], true);
+        if (!s.running) await save(s);
+      }
+    } finally {
+      s.gitReading = null;
+    }
+  })();
+  return s.gitReading;
+}
+
+/** A member looking at the session: its branch and pull request as they are now (a PR merged on GitHub). */
+export async function refreshCodeSessionGit(id: string, conversationId?: string) {
+  const s = await load(id, conversationId);
+  if (!s.gitBusy && !s.prepare) await rereadGit(s, true);
+  return summary(s);
 }
 
 /**
@@ -839,6 +880,10 @@ async function execute(s: Live): Promise<void> {
       summaryChanged = true;
     }
     touch(s, change.steps, summaryChanged);
+    // It pushed, committed or opened a pull request: the panel shows it now, not at the end of the run.
+    if (change.steps.some((st) => st?.kind === "tool" && st.status !== "running" && GIT_TOUCHING.test(`${st.input ?? ""}\n${st.output ?? ""}`))) {
+      void rereadGit(s, false).catch((err) => console.error("code session: git state", err));
+    }
     if (change.result) {
       result = change.result;
       r.result = result.text || null;
