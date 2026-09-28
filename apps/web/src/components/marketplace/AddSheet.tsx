@@ -289,7 +289,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
             {reg?.bearer && (
               <Field className="gap-1.5">
                 <FieldLabel htmlFor="bearer_token">{t.token}</FieldLabel>
-                <Input id="bearer_token" name="bearer_token" type="password" required autoComplete="off" className="font-mono" />
+                <Input id="bearer_token" name="bearer_token" type="password" required autoComplete="new-password" className="font-mono" />
                 <FieldDescription className="text-xs">{t.tokenHelp}</FieldDescription>
               </Field>
             )}

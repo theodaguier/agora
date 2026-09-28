@@ -332,7 +332,7 @@ export function CustomConnectorSheet({ onDone }: { onDone: () => void }) {
                       <FormLabel htmlFor="cc-token" required>
                         {t.token}
                       </FormLabel>
-                      <Input id="cc-token" name="bearer_token" type="password" required autoComplete="off" className="font-mono" />
+                      <Input id="cc-token" name="bearer_token" type="password" required autoComplete="new-password" className="font-mono" />
                       <FieldDescription className="text-xs">{t.tokenHelp}</FieldDescription>
                     </Field>
                   )}

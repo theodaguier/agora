@@ -136,7 +136,8 @@ export function ConnectorField({
           value={value}
           placeholder={field.placeholder}
           aria-invalid={invalid || undefined}
-          autoComplete="off"
+          // A browser ignores "off" on a password field and fills in a saved password.
+          autoComplete={input === "secret" ? "new-password" : "off"}
           spellCheck={false}
           onChange={(e) => onChange(e.target.value)}
           className={control}
