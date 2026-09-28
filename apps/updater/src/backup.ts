@@ -1,8 +1,15 @@
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "./config";
-import { compose, must, volumeName } from "./exec";
+import { compose, must, run, volumeName } from "./exec";
 import { withHermesPaused } from "./prod";
+
+/**
+ * Left out of the Hermes archive: package caches and installed dependencies, written by the bots'
+ * and Claude Code sessions' installs, and rebuilt by the next one. A bun cache of several GB made
+ * the archive outlast its timeout, Hermes paused all along.
+ */
+const CACHES = ["node_modules", "./.bun/install/cache", "./.npm", "./.cache", "./.local/share/pnpm"];
 
 /**
  * Pre-update backup: Postgres dump + archive of the Hermes volume.
@@ -16,12 +23,17 @@ export async function backup(label: string) {
     timeoutMs: 10 * 60_000,
   });
   await Bun.write(join(dir, "db.sql"), dump.stdout);
+  // Named: a timeout kills the docker client, not the container, which would go on archiving.
+  const container = `agora-backup-${id}`;
   await withHermesPaused(() => must([
-    "docker", "run", "--rm",
+    "docker", "run", "--rm", "--name", container,
     "-v", `${volumeName("hermes-data")}:/data:ro`,
     "-v", `${config.backupsVolume}:/backups`,
-    "alpine", "tar", "czf", `/backups/${id}/hermes-data.tgz`, "-C", "/data", ".",
-  ], { timeoutMs: 20 * 60_000 }));
+    "alpine", "tar", "czf", `/backups/${id}/hermes-data.tgz`, ...CACHES.map((c) => `--exclude=${c}`), "-C", "/data", ".",
+  ], { timeoutMs: 20 * 60_000 })).catch(async (err) => {
+    await run(["docker", "rm", "-f", container]);
+    throw err;
+  });
   await prune();
   return id;
 }
