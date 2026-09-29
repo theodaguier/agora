@@ -150,12 +150,13 @@ export const hermesAdmin = new Hono<AppEnv>()
 
   /**
    * Installs a skill from the hub. skills.sh: done right away by the app (skills-sh-install.ts),
-   * answers {verdict}; otherwise a Hermes background task, tracked via /actions/:name.
+   * answers {verdict}, or a 409 when the security scan blocked it and `force` may override that;
+   * otherwise a Hermes background task, tracked via /actions/:name.
    */
   .post("/agents/:id/skills-hub/install", async (c) => {
     const profile = await profileOf(c.req.param("id"));
-    const { identifier } = await json(c, z.object({ identifier: ident }));
-    if (isSkillsSh(identifier)) return c.json({ verdict: (await installSkillsSh(identifier, profile)).verdict });
+    const { identifier, force } = await json(c, z.object({ identifier: ident, force: z.boolean().optional() }));
+    if (isSkillsSh(identifier)) return c.json({ verdict: (await installSkillsSh(identifier, profile, force)).verdict });
     return c.json(await dashboard("/api/skills/hub/install", { method: "POST", profile, body: JSON.stringify({ identifier, profile }) }));
   })
 

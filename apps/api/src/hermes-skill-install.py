@@ -4,8 +4,9 @@ Hermes's own pipeline: quarantine, security scan, install policy, then install a
 lock.json entry, exactly as `hermes skills install` does after its download step.
 
 Run with Hermes's interpreter, HERMES_HOME set to the target profile's home.
-stdin: {"name", "identifier", "metadata", "files": {relative path: base64}}
-stdout (last line): {"status": "installed" | "exists" | "blocked", "verdict", "path", "reason"}
+stdin: {"name", "identifier", "metadata", "files": {relative path: base64}, "force"}
+stdout (last line): {"status": "installed" | "exists" | "blocked", "verdict", "path", "reason", "forceable", "findings"}
+`force`: what `hermes skills install --force` does, never past a dangerous verdict.
 """
 
 import base64
@@ -42,10 +43,17 @@ def main() -> None:
     result, _prov = scan_skill_cached(
         q_path, source=bundle.identifier, source_url=source_url_for_bundle(bundle), cache_dir=HUB_DIR / "scan-cache"
     )
-    allowed, reason = should_allow_install(result)
+    allowed, reason = should_allow_install(result, force=bool(req.get("force")))
     if not allowed:
         shutil.rmtree(q_path, ignore_errors=True)
-        print(json.dumps({"status": "blocked", "verdict": result.verdict, "reason": reason}))
+        order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        findings = [
+            {"severity": f.severity, "category": f.category, "file": f.file, "line": f.line, "description": f.description}
+            for f in sorted(result.findings, key=lambda f: order.get(f.severity, 4))
+        ]
+        # What the admin may still override: anything but a hard block.
+        forceable = should_allow_install(result, force=True)[0] is True
+        print(json.dumps({"status": "blocked", "verdict": result.verdict, "reason": reason, "forceable": forceable, "findings": findings}))
         return
     install_dir = install_from_quarantine(q_path, bundle.name, "", bundle, result)
     try:

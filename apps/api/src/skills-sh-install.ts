@@ -27,7 +27,10 @@ const messages = defineMessages({
     tooLarge: (repo: string) => `The ${repo} repository is too large to install from.`,
     notFound: (skill: string, repo: string) => `No “${skill}” skill found in ${repo}.`,
     skillTooLarge: (skill: string) => `The “${skill}” skill has too many or too large files.`,
-    blocked: (verdict: string, reason: string) => `Hermes's security check blocked this skill (${verdict}): ${reason}`,
+    blocked: (verdict: string, n: number, what: string) =>
+      `Hermes's security check flagged this skill (${verdict}, ${n} finding${n === 1 ? "" : "s"})${what ? `: ${what}` : ""}. Check its source before installing it anyway.`,
+    dangerous: (verdict: string, what: string) =>
+      `Hermes's security check blocked this skill (${verdict})${what ? `: ${what}` : ""}. A skill rated dangerous can't be installed.`,
     failed: "Hermes couldn't install the skill.",
   },
   fr: {
@@ -35,7 +38,10 @@ const messages = defineMessages({
     tooLarge: (repo: string) => `Le dépôt ${repo} est trop volumineux pour en installer un skill.`,
     notFound: (skill: string, repo: string) => `Aucun skill « ${skill} » trouvé dans ${repo}.`,
     skillTooLarge: (skill: string) => `Le skill « ${skill} » a trop de fichiers, ou des fichiers trop lourds.`,
-    blocked: (verdict: string, reason: string) => `Le contrôle de sécurité de Hermes a bloqué ce skill (${verdict}) : ${reason}`,
+    blocked: (verdict: string, n: number, what: string) =>
+      `Le contrôle de sécurité de Hermes a signalé ce skill (${verdict}, ${n} point${n === 1 ? "" : "s"})${what ? ` : ${what}` : ""}. Vérifie sa source avant de l'installer quand même.`,
+    dangerous: (verdict: string, what: string) =>
+      `Le contrôle de sécurité de Hermes a bloqué ce skill (${verdict})${what ? ` : ${what}` : ""}. Un skill jugé dangereux ne peut pas être installé.`,
     failed: "Hermes n'a pas pu installer le skill.",
   },
 });
@@ -167,15 +173,25 @@ async function hermesPython() {
   return shebang ?? wrapped ?? join(dirname(bin), "python3");
 }
 
+type Finding = { severity: string; category: string; file: string; line: number; description: string };
+
+/** The scan's distinct findings, most severe first, a few of them. */
+function summarize(findings: Finding[]) {
+  const seen = [...new Set(findings.map((f) => f.description))];
+  return seen.slice(0, 3).join(", ") + (seen.length > 3 ? "…" : "");
+}
+
 /**
  * Installs a skills.sh skill in a bot's profile. Already installed counts as done.
  * `verdict`: the security scan's, in capitals as Hermes prints it (SAFE, CAUTION…).
+ * Blocked by the scan: a 409 the admin may override with `force` (like `hermes skills
+ * install --force`), a 400 for a dangerous verdict, which nothing overrides.
  */
-export async function installSkillsSh(identifier: string, profile: string): Promise<{ skill: string; verdict: string | null }> {
+export async function installSkillsSh(identifier: string, profile: string, force = false): Promise<{ skill: string; verdict: string | null }> {
   const bundle = await download(identifier);
   const proc = Bun.spawn([await hermesPython(), join(import.meta.dir, "hermes-skill-install.py")], {
     env: hermesEnv({ HERMES_HOME: profileHome(profile) }),
-    stdin: new TextEncoder().encode(JSON.stringify(bundle)),
+    stdin: new TextEncoder().encode(JSON.stringify({ ...bundle, force })),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -183,7 +199,7 @@ export async function installSkillsSh(identifier: string, profile: string): Prom
   const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   clearTimeout(timer);
   const last = stdout.trim().split("\n").at(-1) ?? "";
-  let out: { status?: string; verdict?: string | null; reason?: string } = {};
+  let out: { status?: string; verdict?: string | null; forceable?: boolean; findings?: Finding[] } = {};
   try {
     out = JSON.parse(last);
   } catch {}
@@ -192,6 +208,10 @@ export async function installSkillsSh(identifier: string, profile: string): Prom
     throw new HermesError(tr(messages).failed);
   }
   const verdict = out.verdict ? out.verdict.toUpperCase() : null;
-  if (out.status === "blocked") throw new HermesError(tr(messages).blocked(verdict ?? "?", out.reason ?? ""), 400);
+  if (out.status === "blocked") {
+    const findings = out.findings ?? [];
+    if (out.forceable) throw new HermesError(tr(messages).blocked(verdict ?? "?", findings.length, summarize(findings)), 409);
+    throw new HermesError(tr(messages).dangerous(verdict ?? "?", summarize(findings)), 400);
+  }
   return { skill: bundle.name, verdict };
 }
