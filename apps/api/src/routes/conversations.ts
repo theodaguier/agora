@@ -24,7 +24,7 @@ import { HermesError, agentMcpServers, forgetSessions } from "../hermes-admin";
 import { syncSessionSearch } from "../session-search";
 import { allowedClaudeCodeModels, allowedCodexModels, allowedModelOptions } from "../models";
 import { deleteRoutine, findRoutine, listRoutines, updateRoutine } from "../routines";
-import { watchScreen } from "../screen";
+import { screenInput, watchScreen } from "../screen";
 import { excerpt, groupCalls, newChain, type Forwarded, type ReplyTo } from "../group";
 import { deleteMessage, getMessage, getMessages, listMessages, postEvent, postMessage, userAuthor, type MessageDto } from "../messages";
 import { requireUser, type AppEnv } from "../middleware";
@@ -617,6 +617,31 @@ export const conversations = new Hono<AppEnv>()
       clearInterval(ping);
       stop();
     });
+  })
+
+  /**
+   * Takes control of the screen: a click, a scroll, a key, pasted text or navigation, forwarded to the
+   * browser on display. Admins only: that browser reaches the server's own network (dev servers, services).
+   */
+  .post("/:id/screen/input", async (c) => {
+    const at = { x: z.number().min(0).max(1), y: z.number().min(0).max(1) };
+    const body = z
+      .discriminatedUnion("type", [
+        z.object({ type: z.literal("click"), ...at }),
+        z.object({ type: z.literal("wheel"), ...at, dx: z.number().min(-10_000).max(10_000), dy: z.number().min(-10_000).max(10_000) }),
+        z.object({ type: z.literal("key"), key: z.string().min(1).max(40), code: z.string().max(40), keyCode: z.number().int().min(0).max(255), modifiers: z.number().int().min(0).max(15) }),
+        z.object({ type: z.literal("text"), text: z.string().min(1).max(10_000) }),
+        z.object({ type: z.literal("navigate"), url: z.string().url().max(2_000).refine((u) => /^https?:\/\//i.test(u)) }),
+        z.object({ type: z.enum(["back", "forward", "reload"]) }),
+      ])
+      .safeParse(await c.req.json());
+    if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    const me = c.get("user");
+    if (me.role !== "admin") return c.json({ error: "forbidden" }, 403);
+    const conv = await loadConversation(me.id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const done = await screenInput(conv.conversation.id, body.data).catch(() => false);
+    return done ? c.body(null, 204) : c.json({ error: "no_screen" }, 409);
   })
 
   .get("/:id/routines", async (c) => {

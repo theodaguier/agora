@@ -30,8 +30,10 @@ ready="$profile/DevToolsActivePort"
 rm -f "$ready"
 
 # Waits for the port, records it, and removes it when Chromium exits (same pid: exec).
-# Off every descriptor of the caller: Playwright's pipe (3, 4) must close with Chromium alone.
+# Off every descriptor of the caller: Playwright's pipe (3, 4) must close with Chromium alone. It outlives
+# the script that launched the browser when that one is stopped (its whole process group is signalled).
 (
+  trap '' HUP INT TERM
   tries=0
   while [ "$tries" -lt 150 ] && kill -0 "$pid" 2>/dev/null; do
     case "$port" in

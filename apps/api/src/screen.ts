@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { env } from "./env";
 import { installHermesPlugin, restartGateway } from "./hermes-admin";
@@ -18,10 +18,21 @@ import { installHermesPlugin, restartGateway } from "./hermes-admin";
  * the page repaints, and viewers get at most
  * one frame per FRAME_MS: the last one. The browser itself is never
  * started here: Hermes closes it when idle, and the stream ends with it.
+ * A member can also take control of it (`screenInput`): clicks, scrolling,
+ * keys, navigation.
  */
 
 export type ScreenFrame = { data: string; url: string; width: number; height: number };
 export type ScreenViewer = { frame: (f: ScreenFrame) => void; state: (live: boolean) => void };
+/** What a member does on the screen; x and y are fractions of the frame (0 to 1). */
+export type ScreenInput =
+  | { type: "click"; x: number; y: number }
+  | { type: "wheel"; x: number; y: number; dx: number; dy: number }
+  | { type: "key"; key: string; code: string; keyCode: number; modifiers: number }
+  | { type: "text"; text: string }
+  | { type: "navigate"; url: string }
+  | { type: "back" | "forward" | "reload" };
+type Control = (input: ScreenInput) => Promise<void>;
 
 const FRAME_MS = 200;
 const POLL_MS = 3_000;
@@ -31,7 +42,17 @@ const LOCAL_CDP = /^http:\/\/127\.0\.0\.1:(\d{2,5})$/;
 
 const screenDir = () => (env.HERMES_HOME ? join(env.HERMES_HOME, "agora-screen") : "");
 
-/** CDP port of the most recently used browser of the conversation (all its Hermes sessions, groups included). */
+const alive = (port: number) =>
+  fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1_000) }).then(
+    (r) => r.ok,
+    () => false,
+  );
+
+/**
+ * CDP port of the most recently used browser of the conversation that still answers (all its Hermes
+ * sessions and Claude Code sessions, groups included). A record can outlive its browser: a Claude Code
+ * session's script killed with its browser leaves its own behind, and is removed here.
+ */
 async function findBrowser(conversationId: string): Promise<number | null> {
   const dir = screenDir();
   if (!dir) return null;
@@ -39,20 +60,28 @@ async function findBrowser(conversationId: string): Promise<number | null> {
   const names = (await readdir(dir).catch(() => [] as string[])).filter(
     (n) => n.endsWith(".json") && (n === `${prefix}.json` || n.startsWith(`${prefix}-`)),
   );
-  let best: { port: number; at: number } | null = null;
+  const found: { port: number; at: number; path: string }[] = [];
   for (const name of names) {
     try {
       const path = join(dir, name);
       const at = (await stat(path)).mtimeMs;
-      if (Date.now() - at > STALE_MS || (best && best.at >= at)) continue;
+      if (Date.now() - at > STALE_MS) continue;
       const m = LOCAL_CDP.exec(JSON.parse(await readFile(path, "utf8")).cdp ?? "");
-      if (m) best = { port: Number(m[1]), at };
+      if (m) found.push({ port: Number(m[1]), at, path });
     } catch {
       // Being rewritten, or not ours: skip.
     }
   }
-  return best?.port ?? null;
+  for (const r of found.sort((a, b) => b.at - a.at)) {
+    if (await alive(r.port)) return r.port;
+    // Hermes's records are its plugin's (it rewrites them only for a new browser).
+    if (r.path.startsWith(join(dir, `${prefix}-code-`))) await unlink(r.path).catch(() => {});
+  }
+  return null;
 }
+
+/** Text a key types (Enter: a carriage return, which submits forms); none for the others (Tab, arrows…). */
+const typed = (key: string) => (key === "Enter" ? "\r" : key.length === 1 ? key : undefined);
 
 type Target = { targetId: string; type: string; url: string };
 
@@ -63,7 +92,7 @@ const isBlank = (t: Target) => t.url === "about:blank" || t.url === "";
  * One screencast of one browser, for as long as the socket lives. Resolves
  * when the browser goes away (closed by Hermes, or `close()`).
  */
-async function cast(port: number, onFrame: (f: ScreenFrame) => void, signal: AbortSignal) {
+async function cast(port: number, onFrame: (f: ScreenFrame) => void, onControl: (control: Control) => void, signal: AbortSignal) {
   const cdp = (path: string) => fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(2_000) }).then((r) => r.json());
   const version = await cdp("/json/version");
   // Most recently active first: seeded oldest → newest, the order the Map keeps.
@@ -96,7 +125,7 @@ async function cast(port: number, onFrame: (f: ScreenFrame) => void, signal: Abo
       const { sessionId } = await send("Target.attachToTarget", { targetId: pick.targetId, flatten: true });
       if (!sessionId) return;
       current = { targetId: pick.targetId, sessionId };
-      await send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 1280, maxHeight: 800 }, sessionId);
+      await send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 1920, maxHeight: 1200 }, sessionId);
     }).catch(() => {}));
 
   ws.onmessage = (e) => {
@@ -150,6 +179,47 @@ async function cast(port: number, onFrame: (f: ScreenFrame) => void, signal: Abo
   });
   const abort = () => ws.close();
   signal.addEventListener("abort", abort, { once: true });
+  onControl(async (input) => {
+    const session = current?.sessionId;
+    if (!session) return;
+    const on = (method: string, params: object = {}) => send(method, params, session);
+    const at = (x: number, y: number) => ({ x: x * (latest?.width ?? 0), y: y * (latest?.height ?? 0) });
+    switch (input.type) {
+      case "click": {
+        const point = at(input.x, input.y);
+        await on("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+        await on("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
+        await on("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
+        break;
+      }
+      case "wheel":
+        await on("Input.dispatchMouseEvent", { type: "mouseWheel", ...at(input.x, input.y), deltaX: input.dx, deltaY: input.dy });
+        break;
+      case "key": {
+        const text = input.modifiers & ~8 ? undefined : typed(input.key);
+        const key = { key: input.key, code: input.code, windowsVirtualKeyCode: input.keyCode, nativeVirtualKeyCode: input.keyCode, modifiers: input.modifiers };
+        await on("Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", ...key, ...(text && { text, unmodifiedText: text }) });
+        await on("Input.dispatchKeyEvent", { type: "keyUp", ...key });
+        break;
+      }
+      case "text":
+        await on("Input.insertText", { text: input.text });
+        break;
+      case "navigate":
+        await on("Page.navigate", { url: input.url });
+        break;
+      case "reload":
+        await on("Page.reload");
+        break;
+      case "back":
+      case "forward": {
+        const { currentIndex, entries } = await on("Page.getNavigationHistory");
+        const entry = entries?.[currentIndex + (input.type === "back" ? -1 : 1)];
+        if (entry) await on("Page.navigateToHistoryEntry", { entryId: entry.id });
+        break;
+      }
+    }
+  });
   try {
     // Not awaited: a browser closing before the reply would leave it pending forever.
     void send("Target.setDiscoverTargets", { discover: true });
@@ -165,6 +235,8 @@ class Screen {
   viewers = new Set<ScreenViewer>();
   last: ScreenFrame | null = null;
   live = false;
+  /** Drives the browser on display, while there is one. */
+  control: Control | null = null;
   private controller = new AbortController();
 
   constructor(private conversationId: string) {
@@ -182,7 +254,23 @@ class Screen {
     const { signal } = this.controller;
     while (!signal.aborted) {
       const port = await findBrowser(this.conversationId);
+      // A newer browser of the conversation (a session's next one) takes over the screen.
+      let newer = false;
       if (port) {
+        const casting = new AbortController();
+        const stop = () => casting.abort();
+        signal.addEventListener("abort", stop, { once: true });
+        let looking = false;
+        const watch = setInterval(async () => {
+          if (looking) return;
+          looking = true;
+          const next = await findBrowser(this.conversationId).catch(() => null);
+          looking = false;
+          if (next && next !== port) {
+            newer = true;
+            casting.abort();
+          }
+        }, POLL_MS);
         try {
           await cast(
             port,
@@ -191,12 +279,19 @@ class Screen {
               this.setLive(true);
               for (const v of this.viewers) v.frame(f);
             },
-            signal,
+            (control) => (this.control = control),
+            casting.signal,
           );
         } catch {
           // Browser gone between the lookup and the connection.
+        } finally {
+          clearInterval(watch);
+          signal.removeEventListener("abort", stop);
+          this.control = null;
         }
       }
+      // Closed: straight to the conversation's other browser still open, if there is one (no blank in between).
+      if (newer || (port && !signal.aborted && ((await findBrowser(this.conversationId)) ?? port) !== port)) continue;
       this.setLive(false);
       if (!signal.aborted) await new Promise((r) => setTimeout(r, POLL_MS));
     }
@@ -222,6 +317,14 @@ export function watchScreen(conversationId: string, viewer: ScreenViewer) {
     screens.delete(conversationId);
     screen.stop();
   };
+}
+
+/** Acts on the conversation's screen for a member; false when no browser is on display. */
+export async function screenInput(conversationId: string, input: ScreenInput) {
+  const control = screens.get(conversationId)?.control;
+  if (!control) return false;
+  await control(input);
+  return true;
 }
 
 /**

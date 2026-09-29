@@ -133,7 +133,7 @@ export function ConversationPanel({
   const labels = usePanelLabels();
   const c = useT(common);
   return (
-    <aside className="flex h-full w-[320px] shrink-0 flex-col bg-sidebar">
+    <aside className={cn("flex h-full shrink-0 flex-col bg-sidebar", kind === "screen" ? "w-[min(560px,40vw)]" : "w-[320px]")}>
       <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-3">
         <span className="text-[13px] font-medium text-muted-foreground">{labels[kind]}</span>
         <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="rounded-lg">
