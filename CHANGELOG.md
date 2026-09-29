@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.26.0 — 2026-09-29
+
+### Features
+- show a Claude Code session's browser live on the conversation's screen
+
 ## v0.25.1 — 2026-09-29
 
 ### Fixes
