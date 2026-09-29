@@ -1,4 +1,4 @@
-import { guessIntegrationType, type IntegrationType } from "@agora/core";
+import { envValue, guessIntegrationType, isUrlEnvName, type IntegrationType } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -120,6 +120,8 @@ function AddItem({ item }: { item: Item }) {
   const perAgent = item.kind !== "plugin";
   const [type, setType] = useState<IntegrationType>(("type" in item && item.type) || guessIntegrationType(item.name, item.description));
   const set = (k: string, v: string) => setValues((xs) => ({ ...xs, [k]: v }));
+  // An address typed without its scheme gets https:// when the field is left.
+  const complete = (k: string) => setValues((xs) => (xs[k] ? { ...xs, [k]: envValue(k, xs[k]) } : xs));
 
   const enableFor = async (server: string) => {
     for (const id of targets) {
@@ -247,7 +249,14 @@ function AddItem({ item }: { item: Item }) {
               {env.map((k) => (
                 <TextField key={k} isRequired>
                   <Label>{k}</Label>
-                  <Input value={values[k] ?? ""} onChangeText={(v) => set(k, v)} autoCapitalize="none" autoCorrect={false} />
+                  <Input
+                    value={values[k] ?? ""}
+                    onChangeText={(v) => set(k, v)}
+                    onBlur={() => complete(k)}
+                    keyboardType={isUrlEnvName(k) ? "url" : undefined}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
                 </TextField>
               ))}
             </View>
@@ -274,6 +283,8 @@ function AddItem({ item }: { item: Item }) {
                   <Input
                     value={values[e.name] ?? ""}
                     onChangeText={(v) => set(e.name, v)}
+                    onBlur={() => complete(e.name)}
+                    keyboardType={isUrlEnvName(e.name) ? "url" : undefined}
                     secureTextEntry={e.secret}
                     autoCapitalize="none"
                     autoCorrect={false}

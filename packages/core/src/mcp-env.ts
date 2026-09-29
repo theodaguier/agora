@@ -100,3 +100,20 @@ export function fileMatchesAccept(name: string, mime: string, accept?: string): 
   const type = mime.toLowerCase();
   return parts.some((p) => p === ext || p === type || (p.endsWith("/*") && type.startsWith(p.slice(0, -1))));
 }
+
+/** A field holding an address: `STRAPI_URL`, `API_BASE_URI`, `WEBHOOK_ENDPOINT`… */
+export const isUrlEnvName = (name: string) => /(^|_)(URL|URI|ENDPOINT)$/.test(name);
+
+/** An address typed without its scheme gets `https://`; one that has a scheme is kept. */
+export function withHttps(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed.replace(/^\/+/, "")}`;
+}
+
+/** Value to store for a connector field: an address gets its scheme, anything else is left as typed. */
+export const envValue = (name: string, value: string) => (isUrlEnvName(name) && value.trim() ? withHttps(value) : value);
+
+/** `envValue` over a whole set of connector values. */
+export const envValues = (values: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(Object.entries(values).map(([k, v]) => [k, envValue(k, v)]));

@@ -1,4 +1,4 @@
-import { guessIntegrationType, type IntegrationType } from "@agora/core";
+import { guessIntegrationType, withHttps, type IntegrationType } from "@agora/core";
 import { common, integrations } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -174,8 +174,8 @@ function CustomConnector() {
   const editRow = (key: string, patch: Partial<EnvRow>) => setEnv((xs) => xs.map((x) => (x.key === key ? { ...x, ...patch } : x)));
 
   const nameInvalid = !!serverName && !NAME.test(serverName);
-  const urlInvalid = !!url && !HTTPS_URL.test(url);
-  const docsInvalid = !!docs.trim() && !WEB_URL.test(docs.trim());
+  const urlInvalid = !!url.trim() && !HTTPS_URL.test(withHttps(url));
+  const docsInvalid = !!docs.trim() && !WEB_URL.test(withHttps(docs));
 
   const add = useMutation({
     mutationFn: async () => {
@@ -184,7 +184,7 @@ function CustomConnector() {
         setProgress(t.creating);
         const block =
           transport === "remote"
-            ? { url, auth }
+            ? { url: withHttps(url), auth }
             : {
                 command,
                 args: args.split("\n").map((a) => a.trim()).filter(Boolean),
@@ -197,7 +197,7 @@ function CustomConnector() {
             title: title.trim() || serverName,
             description: description.trim(),
             type: shownType,
-            ...(docs.trim() && { docs: docs.trim() }),
+            ...(docs.trim() && { docs: withHttps(docs) }),
             ...block,
           }),
         });
@@ -239,7 +239,7 @@ function CustomConnector() {
     !docsInvalid &&
     (!clientRequired || !!client.client_id.trim()) &&
     (transport === "remote"
-      ? HTTPS_URL.test(url) && (auth !== "header" || !!token.trim())
+      ? HTTPS_URL.test(withHttps(url)) && (auth !== "header" || !!token.trim())
       : COMMAND.test(command) && env.every((e) => ENV_NAME.test(e.name) && !!e.value));
 
   return (
@@ -315,6 +315,7 @@ function CustomConnector() {
                 <Input
                   value={url}
                   onChangeText={setUrl}
+                  onBlur={() => setUrl((u) => withHttps(u))}
                   placeholder="https://"
                   keyboardType="url"
                   autoCapitalize="none"
@@ -427,7 +428,7 @@ function CustomConnector() {
 
           <TextField isInvalid={docsInvalid}>
             <Label>{t.docs}</Label>
-            <Input value={docs} onChangeText={setDocs} placeholder="https://" keyboardType="url" autoCapitalize="none" autoCorrect={false} />
+            <Input value={docs} onChangeText={setDocs} onBlur={() => setDocs((d) => withHttps(d))} placeholder="https://" keyboardType="url" autoCapitalize="none" autoCorrect={false} />
             {docsInvalid && <FieldError>{t.docsInvalid}</FieldError>}
           </TextField>
 

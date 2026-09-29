@@ -5,7 +5,7 @@ import { db, schema } from "../db";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { modelOptions, profileHome, toolsets } from "../hermes";
-import { guessIntegrationType, INTEGRATION_TYPES } from "@agora/core";
+import { envValues, guessIntegrationType, INTEGRATION_TYPES, withHttps } from "@agora/core";
 import { clearType, getTypes, setType } from "../integrations";
 import { agentMcpServers, dashboard, hermesCli, hermesCliJson, HermesError, restartGateway, scheduleGatewayRestart, setAgentMcp } from "../hermes-admin";
 import { bumpAgentRevision } from "../company";
@@ -39,6 +39,7 @@ const { agent } = schema;
 /** Identifiers passed to the CLI / dashboard: never an option or a path. */
 const ident = z.string().regex(/^[\w@./:-]{1,200}$/).refine((s) => !s.startsWith("-"));
 const name = z.string().regex(/^[\w.-]{1,80}$/);
+const httpsUrl = z.string().transform(withHttps).pipe(z.string().url());
 const providerSlug = z.string().regex(/^[\w.-]{1,60}$/);
 
 async function profileOf(agentId: string) {
@@ -204,7 +205,7 @@ export const hermesAdmin = new Hono<AppEnv>()
   .post("/mcp/catalog/install", async (c) => {
     const { type, ...body } = await json(
       c,
-      z.object({ name, env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(4000)).default({}), type: z.enum(INTEGRATION_TYPES).optional() }),
+      z.object({ name, env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(4000)).default({}).transform(envValues), type: z.enum(INTEGRATION_TYPES).optional() }),
     );
     const res = await dashboard("/api/mcp/catalog/install", { method: "POST", body: JSON.stringify({ ...body, enable: true }) });
     if (type) await setType(body.name, type);
@@ -228,7 +229,7 @@ export const hermesAdmin = new Hono<AppEnv>()
       c,
       z.object({
         id: ident,
-        env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(4000)).default({}),
+        env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(4000)).default({}).transform(envValues),
         bearer_token: z.string().min(1).max(4000).optional(),
         oauth: z.boolean().default(false),
         type: z.enum(INTEGRATION_TYPES).optional(),
@@ -252,10 +253,10 @@ export const hermesAdmin = new Hono<AppEnv>()
       z
         .object({
           name,
-          url: z.string().url().optional(),
+          url: httpsUrl.optional(),
           command: z.string().min(1).max(200).optional(),
           args: z.array(z.string().max(500)).max(30).default([]),
-          env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(4000)).default({}),
+          env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(4000)).default({}).transform(envValues),
           bearer_token: z.string().max(4000).optional(),
         })
         .refine((b) => !!b.url !== !!b.command),

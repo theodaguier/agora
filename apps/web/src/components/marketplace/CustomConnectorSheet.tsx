@@ -1,4 +1,4 @@
-import { guessIntegrationType, type IntegrationType } from "@agora/core";
+import { guessIntegrationType, withHttps, type IntegrationType } from "@agora/core";
 import { common, integrations } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -184,7 +184,7 @@ export function CustomConnectorSheet({ onDone }: { onDone: () => void }) {
         setProgress(t.creating);
         const block =
           transport === "remote"
-            ? { url, auth }
+            ? { url: withHttps(url), auth }
             : {
                 command,
                 args: str("args").split("\n").map((a) => a.trim()).filter(Boolean),
@@ -197,7 +197,7 @@ export function CustomConnectorSheet({ onDone }: { onDone: () => void }) {
             title: title.trim() || serverName,
             description: str("description"),
             type: shownType,
-            ...(str("docs") && { docs: str("docs") }),
+            ...(str("docs") && { docs: withHttps(str("docs")) }),
             ...block,
           }),
         });
@@ -297,12 +297,13 @@ export function CustomConnectorSheet({ onDone }: { onDone: () => void }) {
                     </FormLabel>
                     <Input
                       id="cc-url"
-                      type="url"
+                      inputMode="url"
                       required
-                      pattern="https://.+"
+                      pattern="https://\S+|[^:\/\s]+(:\d+)?(\/\S*)?"
                       placeholder="https://"
                       value={url}
                       onChange={(e) => setUrl(e.target.value)}
+                      onBlur={() => setUrl((u) => withHttps(u))}
                       autoComplete="off"
                       className="font-mono"
                     />
@@ -424,7 +425,14 @@ export function CustomConnectorSheet({ onDone }: { onDone: () => void }) {
 
               <Field className="gap-1.5">
                 <FormLabel htmlFor="cc-docs">{t.docs}</FormLabel>
-                <Input id="cc-docs" name="docs" type="url" placeholder="https://" autoComplete="off" />
+                <Input
+                  id="cc-docs"
+                  name="docs"
+                  inputMode="url"
+                  placeholder="https://"
+                  autoComplete="off"
+                  onBlur={(e) => (e.currentTarget.value = withHttps(e.currentTarget.value))}
+                />
               </Field>
 
               <AgentTargets legend={t.enableForAgents} hint={t.defaultProfile} value={targets} onChange={setTargets} withoutDefault />

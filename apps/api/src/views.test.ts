@@ -1,4 +1,4 @@
-import { barRows, funnelSteps, guessIntegrationType, isPastDue, pieSlices, statusTone, withUnit } from "@agora/core";
+import { barRows, envValues, funnelSteps, guessIntegrationType, isPastDue, pieSlices, statusTone, withHttps, withUnit } from "@agora/core";
 import { describe, expect, test } from "bun:test";
 import { mcpRequestSchema } from "./mcp-requests";
 import { parseReply } from "./onboarding";
@@ -176,6 +176,30 @@ describe("integration types", () => {
     const base = { name: "pennylane", url: "https://mcp.pennylane.com/mcp", auth: "oauth" };
     expect(mcpRequestSchema.safeParse({ ...base, type: "finance" }).data?.type).toBe("finance");
     expect(mcpRequestSchema.safeParse({ ...base, type: "weather" }).success).toBe(false);
+  });
+});
+
+describe("connector addresses", () => {
+  test("an address typed without its scheme gets https://", () => {
+    expect(withHttps("cms.e-do.studio")).toBe("https://cms.e-do.studio");
+    expect(withHttps("  //cms.e-do.studio/api ")).toBe("https://cms.e-do.studio/api");
+    expect(withHttps("http://localhost:1337")).toBe("http://localhost:1337");
+    expect(withHttps("postgres://db:5432/app")).toBe("postgres://db:5432/app");
+    expect(withHttps("")).toBe("");
+  });
+  test("only address fields are completed", () => {
+    expect(envValues({ STRAPI_URL: "cms.e-do.studio", STRAPI_API_TOKEN: "abc", REGION: "eu", API_BASE_URI: "" })).toEqual({
+      STRAPI_URL: "https://cms.e-do.studio",
+      STRAPI_API_TOKEN: "abc",
+      REGION: "eu",
+      API_BASE_URI: "",
+    });
+  });
+  test("a bot's request or a custom connector may omit the scheme", () => {
+    const parsed = mcpRequestSchema.safeParse({ name: "strapi", url: "cms.e-do.studio/mcp", docs: "docs.strapi.io" });
+    expect(parsed.data?.url).toBe("https://cms.e-do.studio/mcp");
+    expect(parsed.data?.docs).toBe("https://docs.strapi.io");
+    expect(mcpRequestSchema.safeParse({ name: "strapi", url: "http://cms.e-do.studio/mcp" }).success).toBe(false);
   });
 });
 
