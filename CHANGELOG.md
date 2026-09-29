@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.25.1 — 2026-09-29
+
+### Fixes
+- instant bot creation and reliable renaming during setup
+
 ## v0.25.0 — 2026-09-29
 
 ### Features
