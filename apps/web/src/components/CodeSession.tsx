@@ -21,7 +21,6 @@ import {
   UserIcon,
   WarningIcon,
 } from "@/components/icons";
-import { ErrorText } from "@/components/admin/ui";
 import { MessageText } from "@/components/MessageText";
 import { GroupHeading, ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
@@ -34,7 +33,7 @@ import { Field, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormLabel } from "@/components/FormLabel";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandList } from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -47,6 +46,7 @@ import {
   applyCodeSession,
   codeAccountsQuery,
   codeModelsQuery,
+  codeReposQuery,
   runCodeGit,
   switchCodeSessionAccount,
   type CodeGitRequest,
@@ -162,14 +162,14 @@ export function ReplyWithSessions({
 
 /**
  * Header button of the conversation: every Claude Code session started in it, the latest first,
- * each opening its panel. The owner of the subscription starts one from there too; for everyone
- * else it is hidden while there are none. It hops while one works.
+ * each opening its panel. The owner of the subscription starts one from there too (an empty panel
+ * whose first instruction starts it); for everyone else it is hidden while there are none. It hops
+ * while one works.
  */
 export function CodeSessionsButton({ conversationId, current, onOpen }: { conversationId: string; current: string | null; onOpen: (sessionId: string) => void }) {
   const t = useT(messages);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [starting, setStarting] = useState(false);
   const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
   // Its models answer only the owner (403 otherwise): the sign they may start a session.
   const { isSuccess: canStart } = useQuery({ ...codeModelsQuery(conversationId), retry: false });
@@ -190,145 +190,67 @@ export function CodeSessionsButton({ conversationId, current, onOpen }: { conver
   const sorted = [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const working = sessions.some((s) => active(s.status));
   return (
-    <>
-      <Popover open={open} onOpenChange={onOpenChange}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <PopoverTrigger
-                render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden rounded-lg aria-pressed:bg-muted lg:inline-flex" />}
-              />
-            }
-          >
-            {/* It hops while a session works: that is the sign, no badge. */}
-            <ModelLogo provider="claude-code" className={cn("size-[18px]", working && "code-working")} />
-          </TooltipTrigger>
-          <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
-        </Tooltip>
-        <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
-          <p className="px-2 pb-1.5 pt-1 text-[12px] font-medium text-muted-foreground">{t.sessions}</p>
-          {!sorted.length && <p className="px-2 pb-2 text-sm text-muted-foreground">{t.none}</p>}
-          <div className="flex max-h-96 flex-col overflow-y-auto">
-            {sorted.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                aria-current={s.id === current || undefined}
-                onClick={() => {
-                  setOpen(false);
-                  onOpen(s.id);
-                }}
-                className="flex items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted aria-[current]:bg-muted"
-              >
-                <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{s.title}</span>
-                  <span className="block truncate text-[12px] text-muted-foreground">
-                    {t.status[s.status]}
-                    {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""} · {dividerLabel(new Date(s.updatedAt))}
-                  </span>
-                  {s.instruction && (
-                    <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
-                      {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
-                    </span>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
-          {canStart && (
-            <div className="mt-1 border-t border-border/60 pt-1">
-              <Button
-                variant="ghost"
-                className="w-full justify-start rounded-lg px-2"
-                onClick={() => {
-                  setOpen(false);
-                  setStarting(true);
-                }}
-              >
-                {t.newSession}
-              </Button>
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
-      {canStart && (
-        <StartSessionDialog
-          open={starting}
-          onClose={() => setStarting(false)}
-          conversationId={conversationId}
-          // The repository of the latest session that had one: usually the one to work on again.
-          defaultRepo={sorted.find((s) => s.git?.repo)?.git?.repo ?? ""}
-          onStarted={(id) => {
-            setStarting(false);
-            onOpen(id);
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-/** The owner's task for a new session, and its repository; no title: Claude Code writes it. */
-function StartSessionDialog(props: { open: boolean; onClose: () => void; conversationId: string; defaultRepo: string; onStarted: (sessionId: string) => void }) {
-  const t = useT(messages);
-  const c = useT(common);
-  const qc = useQueryClient();
-  const start = useMutation({
-    mutationFn: (req: { task: string; repo?: string }) => startCodeSession(props.conversationId, req),
-    onSuccess: (s) => {
-      applyCodeSession(qc, s);
-      props.onStarted(s.id);
-    },
-    meta: { error: false },
-  });
-  return (
-    <Dialog
-      open={props.open}
-      onOpenChange={(o) => {
-        if (o) return;
-        props.onClose();
-        start.reset();
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const form = new FormData(e.currentTarget);
-            const task = String(form.get("task") ?? "").trim();
-            const repo = String(form.get("repo") ?? "").trim();
-            if (task) start.mutate({ task, ...(repo && { repo }) });
-          }}
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger
+              render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden rounded-lg aria-pressed:bg-muted lg:inline-flex" />}
+            />
+          }
         >
-          <DialogHeader>
-            <DialogTitle className="pr-6">{t.newTitle}</DialogTitle>
-            <DialogDescription>{t.newHelp}</DialogDescription>
-          </DialogHeader>
-          <FieldGroup className="my-5">
-            <Field>
-              <FormLabel htmlFor="code-new-task" required>
-                {t.task}
-              </FormLabel>
-              <Textarea id="code-new-task" name="task" required autoFocus rows={6} placeholder={t.taskPlaceholder} className="max-h-72" />
-            </Field>
-            <Field>
-              <FormLabel htmlFor="code-new-repo">{t.repo}</FormLabel>
-              <Input id="code-new-repo" name="repo" defaultValue={props.defaultRepo} placeholder={t.repoPlaceholder} autoComplete="off" spellCheck={false} />
-            </Field>
-          </FieldGroup>
-          <div className="mb-5 empty:hidden">
-            <ErrorText error={start.error} />
-          </div>
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
-            <Button type="submit" disabled={start.isPending}>
-              {start.isPending ? t.starting : t.start}
+          {/* It hops while a session works: that is the sign, no badge. */}
+          <ModelLogo provider="claude-code" className={cn("size-[18px]", working && "code-working")} />
+        </TooltipTrigger>
+        <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
+      </Tooltip>
+      <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
+        <p className="px-2 pb-1.5 pt-1 text-[12px] font-medium text-muted-foreground">{t.sessions}</p>
+        {!sorted.length && <p className="px-2 pb-2 text-sm text-muted-foreground">{t.none}</p>}
+        <div className="flex max-h-96 flex-col overflow-y-auto">
+          {sorted.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              aria-current={s.id === current || undefined}
+              onClick={() => {
+                setOpen(false);
+                onOpen(s.id);
+              }}
+              className="flex items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted aria-[current]:bg-muted"
+            >
+              <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm">{s.title}</span>
+                <span className="block truncate text-[12px] text-muted-foreground">
+                  {t.status[s.status]}
+                  {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""} · {dividerLabel(new Date(s.updatedAt))}
+                </span>
+                {s.instruction && (
+                  <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
+                    {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
+                  </span>
+                )}
+              </span>
+            </button>
+          ))}
+        </div>
+        {canStart && (
+          <div className="mt-1 border-t border-border/60 pt-1">
+            <Button
+              variant="ghost"
+              className="w-full justify-start rounded-lg px-2"
+              onClick={() => {
+                setOpen(false);
+                onOpen(NEW_CODE_SESSION);
+              }}
+            >
+              {t.newSession}
             </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -343,23 +265,180 @@ const subscribeWide = (cb: () => void) => {
 /** Large screens show the session beside the thread; smaller ones in a sheet over it. */
 export const useWide = () => useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE).matches);
 
-export function CodeSessionPanel({ conversationId, sessionId, onClose }: { conversationId: string; sessionId: string; onClose: () => void }) {
+/** The panel's id for a session not started yet: the owner's first instruction starts it. */
+export const NEW_CODE_SESSION = "new";
+
+export function CodeSessionPanel({
+  conversationId,
+  sessionId,
+  onOpen,
+  onClose,
+}: {
+  conversationId: string;
+  sessionId: string;
+  /** The session the first instruction of a new one started. */
+  onOpen: (sessionId: string) => void;
+  onClose: () => void;
+}) {
   const t = useT(messages);
   const wide = useWide();
+  const view =
+    sessionId === NEW_CODE_SESSION ? (
+      <NewSessionView conversationId={conversationId} onStarted={onOpen} onClose={onClose} />
+    ) : (
+      <CodeSessionView conversationId={conversationId} sessionId={sessionId} onClose={onClose} />
+    );
   if (!wide) {
     return (
       <Sheet open onOpenChange={(open) => !open && onClose()}>
         <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:sm:max-w-xl">
           <SheetTitle className="sr-only">{t.claudeCode}</SheetTitle>
-          <CodeSessionView conversationId={conversationId} sessionId={sessionId} onClose={onClose} />
+          {view}
         </SheetContent>
       </Sheet>
     );
   }
+  return <aside className="flex h-full w-[520px] shrink-0 flex-col bg-sidebar">{view}</aside>;
+}
+
+/**
+ * A session not started yet: the same panel, empty, with the field. Its first instruction starts it,
+ * in the repository and with the model chosen beside the field, and Claude Code names it from there.
+ */
+function NewSessionView({ conversationId, onStarted, onClose }: { conversationId: string; onStarted: (sessionId: string) => void; onClose: () => void }) {
+  const t = useT(messages);
+  const c = useT(common);
+  const qc = useQueryClient();
+  const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
+  // The conversation's repositories, the latest session's first: usually the one to work on again.
+  const recent = [...new Set([...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).flatMap((s) => (s.git?.repo ? [s.git.repo] : [])))];
+  const [repo, setRepo] = useState<string | null>(recent[0] ?? null);
+  const [model, setModel] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const start = useMutation({
+    mutationFn: (task: string) => startCodeSession(conversationId, { task, ...(repo && { repo }), ...(model && { model }) }),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      onStarted(s.id);
+    },
+  });
+  const submit = () => {
+    const value = text.trim();
+    if (value && !start.isPending) start.mutate(value);
+  };
   return (
-    <aside className="flex h-full w-[520px] shrink-0 flex-col bg-sidebar">
-      <CodeSessionView conversationId={conversationId} sessionId={sessionId} onClose={onClose} />
-    </aside>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-medium leading-snug">{t.newSession}</p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{start.isPending ? t.empty : t.newHint}</p>
+        </div>
+        <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
+          <ChevronsRightIcon />
+        </Button>
+      </header>
+      <div className="min-h-0 flex-1 border-t border-border/60" />
+      <div className="shrink-0 px-3 pb-3 pt-2">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+          className="rounded-[22px] bg-secondary p-1.5"
+        >
+          <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent">
+            <InputGroupTextarea
+              rows={2}
+              value={text}
+              autoFocus
+              readOnly={start.isPending}
+              placeholder={t.placeholderNew}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              className="max-h-60 min-h-0 min-w-0 px-2 py-1 text-[15px] leading-6 md:text-[15px]"
+            />
+            <InputGroupAddon align="block-end" className="cursor-default gap-1 px-0 pb-0">
+              <RepoPicker conversationId={conversationId} recent={recent} value={repo} onSelect={setRepo} />
+              <span className="flex-1" />
+              <CodeModelPicker conversationId={conversationId} value={model} onSelect={setModel} />
+              <Button type="submit" size="icon" aria-label={t.send} disabled={!text.trim() || start.isPending} className="disabled:opacity-40">
+                {start.isPending ? <Spinner /> : <ArrowUpIcon strokeWidth={2.25} />}
+              </Button>
+            </InputGroupAddon>
+          </InputGroup>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
+
+/** Where a new session works: a repository of the conversation, one the instance's GitHub token reaches, one typed, or none. */
+function RepoPicker({ conversationId, recent, value, onSelect }: { conversationId: string; recent: string[]; value: string | null; onSelect: (repo: string | null) => void }) {
+  const t = useT(messages);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const { data: repos = [], isPending } = useQuery({ ...codeReposQuery(conversationId), enabled: open });
+  const others = repos.filter((r) => !recent.includes(r.repo));
+  // A repository typed in full, that no list holds (another owner's, or one the token does not list).
+  const typed = search.trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$|\/$/g, "");
+  const custom = REPO.test(typed) && !recent.includes(typed) && !repos.some((r) => r.repo === typed) ? typed : null;
+  const choose = (repo: string | null) => {
+    setOpen(false);
+    setSearch("");
+    onSelect(repo);
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger render={<InputGroupButton size="sm" aria-label={t.repo} />} className="min-w-0 max-w-[60%] gap-1.5">
+        <BranchIcon className="size-3.5 shrink-0" />
+        <span className="truncate">{value ?? t.noRepo}</span>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" sideOffset={8} className="w-80 p-0">
+        <Command>
+          <CommandInput placeholder={t.searchRepo} value={search} onValueChange={setSearch} />
+          <CommandList className="max-h-80">
+            <CommandEmpty>{isPending ? <Spinner className="mx-auto size-4" /> : t.noRepos}</CommandEmpty>
+            {custom && (
+              <CommandGroup>
+                <CommandItem value={custom} onSelect={() => choose(custom)} className="h-9 px-2.5 text-sm">
+                  {t.useRepo(custom)}
+                </CommandItem>
+              </CommandGroup>
+            )}
+            <CommandGroup>
+              <CommandItem value={t.noRepo} data-checked={!value} onSelect={() => choose(null)} className="h-9 px-2.5 text-sm">
+                {t.noRepo}
+              </CommandItem>
+            </CommandGroup>
+            {recent.length > 0 && (
+              <CommandGroup heading={t.recentRepos}>
+                {recent.map((r) => (
+                  <CommandItem key={r} value={r} data-checked={r === value} onSelect={() => choose(r)} className="h-9 px-2.5 text-sm">
+                    <span className="truncate">{r}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            {others.length > 0 && (
+              <CommandGroup heading="GitHub">
+                {others.map((r) => (
+                  <CommandItem key={r.repo} value={r.repo} data-checked={r.repo === value} onSelect={() => choose(r.repo)} className="h-9 px-2.5 text-sm">
+                    <span className="truncate">{r.repo}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -1064,30 +1143,39 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
   );
 }
 
-/** The session's model, among the ones its owner may use: searchable, each with its vendor's logo, as in the conversation's picker. */
+/** The session's model, among the ones its owner may use. */
 function SessionModelPicker({ conversationId, session }: { conversationId: string; session: CodeSession }) {
   const t = useT(messages);
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const { data: models = [] } = useQuery(codeModelsQuery(conversationId));
   const change = useMutation({
     mutationFn: (model: string) => setCodeSessionModel(conversationId, session.id, model),
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { success: t.modelChanged },
   });
-  if (!models.length && !session.model) return null;
-  const current = models.find((m) => m.id === session.model);
+  return <CodeModelPicker conversationId={conversationId} value={session.model} onSelect={(model) => change.mutate(model)} />;
+}
+
+/**
+ * A Claude Code model among the ones the owner may use: searchable, each with its vendor's logo, as
+ * in the conversation's picker. Null: Claude Code's default.
+ */
+function CodeModelPicker({ conversationId, value, onSelect }: { conversationId: string; value: string | null; onSelect: (model: string) => void }) {
+  const t = useT(messages);
+  const [open, setOpen] = useState(false);
+  const { data: models = [] } = useQuery(codeModelsQuery(conversationId));
+  if (!models.length && !value) return null;
+  const current = models.find((m) => m.id === value);
   // Claude Code's default, as it resolved it: listed even when it is not among the models offered.
-  const list = session.model && !current ? [{ id: session.model }, ...models] : models;
-  const value = (m: { id: string; label?: string }) => `${m.id} ${m.label ?? ""}`;
+  const list = value && !current ? [{ id: value }, ...models] : models;
+  const key = (m: { id: string; label?: string }) => `${m.id} ${m.label ?? ""}`;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger render={<InputGroupButton size="sm" />} className="gap-1.5">
-        <ModelLogo provider="anthropic" model={session.model ?? undefined} className="size-3.5" />
-        {current?.label ?? session.model ?? t.model}
+        <ModelLogo provider="anthropic" model={value ?? undefined} className="size-3.5" />
+        {current?.label ?? value ?? t.model}
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
-        <Command defaultValue={value(current ?? list[0] ?? { id: "" })}>
+        <Command defaultValue={key(current ?? list[0] ?? { id: "" })}>
           <CommandInput placeholder={t.searchModel} />
           <CommandList className="max-h-80">
             <CommandEmpty>{t.noModel}</CommandEmpty>
@@ -1095,15 +1183,15 @@ function SessionModelPicker({ conversationId, session }: { conversationId: strin
               {list.map((m) => (
                 <ModelOption
                   key={m.id}
-                  value={value(m)}
+                  value={key(m)}
                   label={"label" in m && m.label ? m.label : m.id}
                   description={"description" in m ? m.description : undefined}
                   reasoning={"reasoning" in m ? m.reasoning : undefined}
                   logo={<ModelLogo model={m.id} provider="anthropic" />}
-                  active={m.id === session.model}
+                  active={m.id === value}
                   onSelect={() => {
                     setOpen(false);
-                    if (m.id !== session.model) change.mutate(m.id);
+                    if (m.id !== value) onSelect(m.id);
                   }}
                 />
               ))}

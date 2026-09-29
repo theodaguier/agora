@@ -20,6 +20,7 @@ import {
   startCodeSession,
   stopCodeSession,
 } from "../code-sessions";
+import { listRepos } from "../code-git";
 import { internalToken } from "../code-plugin";
 import { loadConversation } from "../conversations";
 import { db, schema } from "../db";
@@ -49,7 +50,7 @@ export const codeSessions = new Hono<AppEnv>()
     return c.json(await listCodeSessions(conv.conversation.id));
   })
 
-  /** A session the owner starts from the panel, without a bot: Claude Code names it from the task. */
+  /** A session the owner starts from the panel, without a bot: Claude Code names it from its first instruction. */
   .post("/", async (c) => {
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id")!);
@@ -90,6 +91,15 @@ export const codeSessions = new Hono<AppEnv>()
     if (!conv) return c.json({ error: "not_found" }, 404);
     if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
     return c.json(await claudeProfiles().catch((err) => (console.error("code sessions: accounts", err), [])));
+  })
+
+  /** GitHub repositories a new session can clone: the ones the instance's token reaches. */
+  .get("/repos", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id")!);
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
+    return c.json(await listRepos().catch((err) => (console.error("code sessions: repos", err), [])));
   })
 
   .get("/:sessionId", async (c) => {

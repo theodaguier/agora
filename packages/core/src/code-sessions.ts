@@ -96,6 +96,9 @@ export type CodeLimit = {
 };
 
 /** A Claude account Claude Code can run on (Settings › Models): the server's login (id null) or one added. */
+/** A GitHub repository a new session can work in (the instance's token reaches it). */
+export type CodeRepo = { repo: string; private: boolean; pushedAt: string | null };
+
 export type CodeAccount = { id: string | null; email: string | null; plan?: string | null };
 
 /** What a session consumed, all runs together (Claude Code's own count; cost: its API-price estimate). */

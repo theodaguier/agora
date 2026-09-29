@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import type { CodeGit, CodeGitFile, CodePullRequest } from "@agora/core";
+import type { CodeGit, CodeGitFile, CodePullRequest, CodeRepo } from "@agora/core";
 import { childEnv } from "./harden";
 import { defineMessages, tr } from "./i18n";
 import { instanceSecret } from "./vault";
@@ -209,6 +209,24 @@ async function github<T>(token: string, method: string, path: string, body?: unk
     throw new GitError(`GitHub ${res.status}${detail ? ` : ${detail}` : ""}`);
   }
   return data as T;
+}
+
+const REPOS_TTL_MS = 5 * 60_000;
+let reposCache: { token: string; at: number; repos: CodeRepo[] } | null = null;
+
+/** The repositories the instance's token reaches, the latest pushed first; empty without a token. Cached a few minutes. */
+export async function listRepos(): Promise<CodeRepo[]> {
+  const token = await githubToken();
+  if (!token) return [];
+  if (reposCache?.token === token && Date.now() - reposCache.at < REPOS_TTL_MS) return reposCache.repos;
+  const list = await github<{ full_name: string; private: boolean; pushed_at: string | null; archived?: boolean }[]>(
+    token,
+    "GET",
+    "/user/repos?sort=pushed&per_page=100&affiliation=owner,collaborator,organization_member",
+  );
+  const repos = list.filter((r) => !r.archived).map((r) => ({ repo: r.full_name, private: r.private, pushedAt: r.pushed_at }));
+  reposCache = { token, at: Date.now(), repos };
+  return repos;
 }
 
 type ApiPull = { number: number; html_url: string; title: string; state: "open" | "closed"; merged_at: string | null; draft?: boolean; base: { ref: string } };
