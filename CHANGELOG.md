@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.26.1 — 2026-09-29
+
+### Fixes
+- show the screen in every conversation and record a browser's fixed DevTools port
+
 ## v0.26.0 — 2026-09-29
 
 ### Features
