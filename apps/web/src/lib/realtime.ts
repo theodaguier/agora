@@ -172,6 +172,9 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["conversation", cid] });
       qc.invalidateQueries({ queryKey: ["agents"] });
+      // A bot renamed: its profile, and the messages carry its name.
+      qc.invalidateQueries({ queryKey: ["agent"] });
+      qc.invalidateQueries({ queryKey: ["messages", cid] });
       return;
     case "conversation.removed":
       qc.invalidateQueries({ queryKey: ["conversations"] });

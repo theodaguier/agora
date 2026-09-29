@@ -195,7 +195,10 @@ export async function installHermesPlugin(profile: string, name: string) {
  * (model, provider keys, tools, skills), with its own API key.
  */
 export async function createProfile(profile: string, description: string) {
-  await hermesCli(["profile", "create", profile, "--no-alias", "--clone-from", "default", "--description", description]);
+  // Already there: a setup interrupted after the clone picks up from here (every step below can run again).
+  if (!existsSync(join(profileHome(profile), "config.yaml"))) {
+    await hermesCli(["profile", "create", profile, "--no-alias", "--clone-from", "default", "--description", description]);
+  }
   const envPath = join(profileHome(profile), ".env");
   const current = await readFile(envPath, "utf8").catch(() => "");
   const lines = current.split("\n").filter((l) => l && !/^API_SERVER_(KEY|ENABLED|PORT|HOST)=/.test(l));
@@ -206,13 +209,52 @@ export async function createProfile(profile: string, description: string) {
   // Agent screen: members can watch the browser it drives. A new profile's manager loads it on first use.
   await (await import("./screen")).installScreenPlugin(profile).catch((err) => console.error("screen: plugin", err));
   // Claude Code sessions, off until an admin turns them on for this agent (code-plugin.ts).
-  await (await import("./code-plugin")).installCodePlugin(profile).catch((err) => console.error("code plugin", err));
+  const code = await import("./code-plugin");
+  const linked = await code.linkCodePlugin(profile).then(
+    () => true,
+    (err) => (console.error("code plugin", err), false),
+  );
   // Without terminal, code, file writes or local browser until an admin decides otherwise (sandbox.ts).
-  await (await import("./sandbox")).confineNewProfile(profile);
+  // The code toolset goes off in the same CLI calls: each one is a Hermes start.
+  await (await import("./sandbox")).confineNewProfile(profile, linked ? [code.CODE_TOOLSET] : []);
+  if (linked) await code.markCodePluginInstalled(profile).catch((err) => console.error("code plugin", err));
   // OAuth connectors authorized for the instance work for the new agent too.
   await shareMcpTokens(profile).catch((err) => console.error("mcp tokens", err));
   // Skills written by the bots and shared with all of them.
   await (await import("./skill-requests")).shareSkillsWith(profile).catch((err) => console.error("shared skills", err));
+}
+
+/** Profiles being set up without anyone waiting (POST /agents): a turn of theirs waits for it (profileReady). */
+const settingUp = new Map<string, Promise<void>>();
+/** Setups that failed: the next turn runs them again. */
+const unfinished = new Set<string>();
+
+/**
+ * Sets the profile up in the background: the few Hermes CLI starts it takes
+ * (several seconds) happen while the admin reads the greeting.
+ */
+export function createProfileInBackground(profile: string, description: string) {
+  const setup = createProfile(profile, description).then(
+    () => void unfinished.delete(profile),
+    (err) => {
+      unfinished.add(profile);
+      throw err;
+    },
+  );
+  settingUp.set(profile, setup);
+  void setup.finally(() => settingUp.delete(profile)).catch((err) => console.error(`hermes: profile ${profile}`, err));
+  return setup;
+}
+
+/**
+ * Before a turn: the profile exists and is confined. A setup that failed, or
+ * that a restart interrupted before the clone, starts again.
+ */
+export async function profileReady(profile: string, description: string) {
+  const pending = settingUp.get(profile);
+  if (pending) return pending;
+  if (isDefaultProfile(profile) || (!unfinished.has(profile) && existsSync(join(profileHome(profile), "config.yaml")))) return;
+  return createProfileInBackground(profile, description);
 }
 
 /* ---------- per-agent MCP ---------- */

@@ -41,14 +41,24 @@ async function installed(): Promise<string[]> {
   }
 }
 
+export const CODE_TOOLSET = PLUGIN;
+
+/** Symlink + `plugins.enabled`, toolset untouched. True when the gateway must reload plugins. */
+export const linkCodePlugin = (profile: string) => installHermesPlugin(profile, PLUGIN);
+
+/** Records that the profile's toolset was turned off once: an admin's later choice stays. */
+export async function markCodePluginInstalled(profile: string) {
+  const value = JSON.stringify([...new Set([...(await installed()), profile])].sort());
+  await db.insert(schema.setting).values({ key: KEY, value }).onConflictDoUpdate({ target: schema.setting.key, set: { value } });
+}
+
 /** Links the plugin into the profile; the first time, its toolset starts off. True when the gateway must reload plugins. */
 export async function installCodePlugin(profile: string, done?: string[]) {
-  const enabled = await installHermesPlugin(profile, PLUGIN);
+  const enabled = await linkCodePlugin(profile);
   const list = done ?? (await installed());
   if (list.includes(profile)) return enabled;
   for (const platform of PLATFORMS) await hermesCli(["tools", "disable", PLUGIN, "--platform", platform], { profile, timeoutMs: 60_000 });
-  const value = JSON.stringify([...new Set([...(await installed()), profile])].sort());
-  await db.insert(schema.setting).values({ key: KEY, value }).onConflictDoUpdate({ target: schema.setting.key, set: { value } });
+  await markCodePluginInstalled(profile);
   return enabled;
 }
 

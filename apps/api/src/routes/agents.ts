@@ -4,7 +4,8 @@ import { agentTurns } from "../bot-runner";
 import { accessibleAgentIds, agentDto } from "../conversations";
 import { db, schema } from "../db";
 import { directKey } from "../group";
-import { createProfile, HermesError } from "../hermes-admin";
+import { env } from "../env";
+import { createProfileInBackground } from "../hermes-admin";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
 import { greeting, newBotName, newBotIdentity } from "../onboarding";
 import { errors } from "../errors.messages";
@@ -62,6 +63,7 @@ export const agents = new Hono<AppEnv>()
   /**
    * Creates a "New Bot" (Hermes profile cloned from the default profile) and
    * opens its conversation on the greeting message: it then configures itself through chat.
+   * The profile is set up in the background: the greeting needs nothing from Hermes.
    */
   .post("/", requireAdmin, async (c) => {
     const user = c.get("user");
@@ -69,12 +71,7 @@ export const agents = new Hono<AppEnv>()
     // Greeting and temporary name in the language of the admin who creates the bot (their conversation).
     const locale = await userLocale(user.locale);
     const name = newBotName(locale);
-    try {
-      await createProfile(identity.hermesProfile, `Agent « ${name} »`);
-    } catch (err) {
-      const message = err instanceof HermesError ? err.message : tr(errors).profileCreateFailed;
-      return c.json({ error: message }, 502);
-    }
+    if (!env.HERMES_HOME) return c.json({ error: tr(errors).hermesHomeNotConfigured }, 503);
     const id = crypto.randomUUID();
     const conversationId = crypto.randomUUID();
     const hello = greeting(user.name, locale);
@@ -98,5 +95,7 @@ export const agents = new Hono<AppEnv>()
         data: { choices: hello.choices },
       });
     });
+    // The admin reads the greeting meanwhile; their first reply waits for it (profileReady).
+    createProfileInBackground(identity.hermesProfile, `Agent « ${name} »`);
     return c.json({ id, conversationId }, 201);
   });
