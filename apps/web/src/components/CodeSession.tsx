@@ -21,6 +21,7 @@ import {
   UserIcon,
   WarningIcon,
 } from "@/components/icons";
+import { ErrorText } from "@/components/admin/ui";
 import { MessageText } from "@/components/MessageText";
 import { GroupHeading, ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
@@ -53,6 +54,7 @@ import {
   codeSessionsQuery,
   sendToCodeSession,
   setCodeSessionModel,
+  startCodeSession,
   refreshCodeSessionGit,
   stopCodeSession,
   writeCommitMessage,
@@ -160,13 +162,17 @@ export function ReplyWithSessions({
 
 /**
  * Header button of the conversation: every Claude Code session started in it, the latest first,
- * each opening its panel. Hidden while there are none; a dot while one works.
+ * each opening its panel. The owner of the subscription starts one from there too; for everyone
+ * else it is hidden while there are none. It hops while one works.
  */
 export function CodeSessionsButton({ conversationId, current, onOpen }: { conversationId: string; current: string | null; onOpen: (sessionId: string) => void }) {
   const t = useT(messages);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
   const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
+  // Its models answer only the owner (403 otherwise): the sign they may start a session.
+  const { isSuccess: canStart } = useQuery({ ...codeModelsQuery(conversationId), retry: false });
   // Opened: the pull requests still open, and the branches pushed, as they are on GitHub now.
   const onOpenChange = (next: boolean) => {
     setOpen(next);
@@ -180,56 +186,149 @@ export function CodeSessionsButton({ conversationId, current, onOpen }: { conver
       }
     }
   };
-  if (!sessions.length) return null;
+  if (!sessions.length && !canStart) return null;
   const sorted = [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const working = sessions.some((s) => active(s.status));
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden rounded-lg aria-pressed:bg-muted lg:inline-flex" />}
-            />
-          }
-        >
-          {/* It hops while a session works: that is the sign, no badge. */}
-          <ModelLogo provider="claude-code" className={cn("size-[18px]", working && "code-working")} />
-        </TooltipTrigger>
-        <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
-      </Tooltip>
-      <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
-        <p className="px-2 pb-1.5 pt-1 text-[12px] font-medium text-muted-foreground">{t.sessions}</p>
-        <div className="flex max-h-96 flex-col overflow-y-auto">
-          {sorted.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-current={s.id === current || undefined}
-              onClick={() => {
-                setOpen(false);
-                onOpen(s.id);
-              }}
-              className="flex items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted aria-[current]:bg-muted"
-            >
-              <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm">{s.title}</span>
-                <span className="block truncate text-[12px] text-muted-foreground">
-                  {t.status[s.status]}
-                  {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""} · {dividerLabel(new Date(s.updatedAt))}
-                </span>
-                {s.instruction && (
-                  <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
-                    {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
+    <>
+      <Popover open={open} onOpenChange={onOpenChange}>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <PopoverTrigger
+                render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden rounded-lg aria-pressed:bg-muted lg:inline-flex" />}
+              />
+            }
+          >
+            {/* It hops while a session works: that is the sign, no badge. */}
+            <ModelLogo provider="claude-code" className={cn("size-[18px]", working && "code-working")} />
+          </TooltipTrigger>
+          <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
+        </Tooltip>
+        <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
+          <p className="px-2 pb-1.5 pt-1 text-[12px] font-medium text-muted-foreground">{t.sessions}</p>
+          {!sorted.length && <p className="px-2 pb-2 text-sm text-muted-foreground">{t.none}</p>}
+          <div className="flex max-h-96 flex-col overflow-y-auto">
+            {sorted.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                aria-current={s.id === current || undefined}
+                onClick={() => {
+                  setOpen(false);
+                  onOpen(s.id);
+                }}
+                className="flex items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted aria-[current]:bg-muted"
+              >
+                <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">{s.title}</span>
+                  <span className="block truncate text-[12px] text-muted-foreground">
+                    {t.status[s.status]}
+                    {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""} · {dividerLabel(new Date(s.updatedAt))}
                   </span>
-                )}
-              </span>
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+                  {s.instruction && (
+                    <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
+                      {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
+                    </span>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+          {canStart && (
+            <div className="mt-1 border-t border-border/60 pt-1">
+              <Button
+                variant="ghost"
+                className="w-full justify-start rounded-lg px-2"
+                onClick={() => {
+                  setOpen(false);
+                  setStarting(true);
+                }}
+              >
+                {t.newSession}
+              </Button>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+      {canStart && (
+        <StartSessionDialog
+          open={starting}
+          onClose={() => setStarting(false)}
+          conversationId={conversationId}
+          // The repository of the latest session that had one: usually the one to work on again.
+          defaultRepo={sorted.find((s) => s.git?.repo)?.git?.repo ?? ""}
+          onStarted={(id) => {
+            setStarting(false);
+            onOpen(id);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The owner's task for a new session, and its repository; no title: Claude Code writes it. */
+function StartSessionDialog(props: { open: boolean; onClose: () => void; conversationId: string; defaultRepo: string; onStarted: (sessionId: string) => void }) {
+  const t = useT(messages);
+  const c = useT(common);
+  const qc = useQueryClient();
+  const start = useMutation({
+    mutationFn: (req: { task: string; repo?: string }) => startCodeSession(props.conversationId, req),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      props.onStarted(s.id);
+    },
+    meta: { error: false },
+  });
+  return (
+    <Dialog
+      open={props.open}
+      onOpenChange={(o) => {
+        if (o) return;
+        props.onClose();
+        start.reset();
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const form = new FormData(e.currentTarget);
+            const task = String(form.get("task") ?? "").trim();
+            const repo = String(form.get("repo") ?? "").trim();
+            if (task) start.mutate({ task, ...(repo && { repo }) });
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="pr-6">{t.newTitle}</DialogTitle>
+            <DialogDescription>{t.newHelp}</DialogDescription>
+          </DialogHeader>
+          <FieldGroup className="my-5">
+            <Field>
+              <FormLabel htmlFor="code-new-task" required>
+                {t.task}
+              </FormLabel>
+              <Textarea id="code-new-task" name="task" required autoFocus rows={6} placeholder={t.taskPlaceholder} className="max-h-72" />
+            </Field>
+            <Field>
+              <FormLabel htmlFor="code-new-repo">{t.repo}</FormLabel>
+              <Input id="code-new-repo" name="repo" defaultValue={props.defaultRepo} placeholder={t.repoPlaceholder} autoComplete="off" spellCheck={false} />
+            </Field>
+          </FieldGroup>
+          <div className="mb-5 empty:hidden">
+            <ErrorText error={start.error} />
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
+            <Button type="submit" disabled={start.isPending}>
+              {start.isPending ? t.starting : t.start}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

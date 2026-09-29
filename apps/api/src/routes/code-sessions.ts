@@ -49,6 +49,31 @@ export const codeSessions = new Hono<AppEnv>()
     return c.json(await listCodeSessions(conv.conversation.id));
   })
 
+  /** A session the owner starts from the panel, without a bot: Claude Code names it from the task. */
+  .post("/", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id")!);
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
+    const body = z
+      .object({ task: z.string().trim().min(1).max(TEXT_MAX), repo: z.string().trim().max(300).optional(), model: z.string().max(100).optional() })
+      .safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "invalid" }, 400);
+    if (body.data.model && !(await allowedClaudeCodeModels(me.id).catch(() => [])).some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
+    return startCodeSession({
+      conversationId: conv.conversation.id,
+      agentId: null,
+      requestedBy: me.id,
+      by: me.name,
+      botName: null,
+      announce: true,
+      title: "",
+      task: body.data.task,
+      model: body.data.model,
+      repo: body.data.repo,
+    }).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
   /** Models the owner may give a session (Claude Code's list minus the ones an admin blocked for them). */
   .get("/models", async (c) => {
     const me = c.get("user");
