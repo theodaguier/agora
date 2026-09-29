@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.27.0 — 2026-09-29
+
+### Features
+- take control of the agent's screen, full-window view, and skip dead browsers
+
 ## v0.26.1 — 2026-09-29
 
 ### Fixes
