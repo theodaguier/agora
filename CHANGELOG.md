@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.25.0 — 2026-09-29
+
+### Features
+- start a new Claude Code session from its panel, repo picked from a list
+
 ## v0.24.0 — 2026-09-29
 
 ### Features
