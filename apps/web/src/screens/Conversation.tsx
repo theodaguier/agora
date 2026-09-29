@@ -2,7 +2,7 @@ import { defineMessages, useT } from "@/i18n";
 import { useEventText } from "@/i18n/events";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
-import { ChevronLeftIcon, ChevronsLeftIcon, FilesIcon, PinIcon, SearchIcon } from "@/components/icons";
+import { BrowserIcon, ChevronLeftIcon, ChevronsLeftIcon, FilesIcon, PinIcon, SearchIcon } from "@/components/icons";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { AuthorLine, BotBubble, DateDivider, ToolLine, TypingBubble } from "@/components/Bubbles";
@@ -305,8 +305,9 @@ function PanelButtons({
     <div className="flex items-center justify-end gap-1">
       {sessions}
       {hasPanels &&
-        (["search", "files", "pins"] as const).map((kind) => {
+        (["screen", "search", "files", "pins"] as const).map((kind) => {
           const Icon = {
+            screen: BrowserIcon,
             search: SearchIcon,
             files: FilesIcon,
             pins: PinIcon,
