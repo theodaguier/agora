@@ -9,7 +9,8 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { confirmAction } from "@/lib/confirm";
 import { adminAgentsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useSkillOwners, type Item } from "./data";
@@ -38,6 +39,10 @@ const messages = defineMessages({
     added: "Added. Restart Hermes (banner above) so agents load it.",
     verdict: (verdict: string) =>
       `Hermes's security check rated this skill “${verdict}” (external install commands, for example). It was allowed under Hermes's policy for this source. Review it before leaving it active.`,
+    forceTitle: "Install anyway?",
+    forceAction: "Install anyway",
+    forcedVerdict: (verdict: string) =>
+      `Installed despite Hermes's security check (“${verdict}”). Review it before leaving it active.`,
     authorizeBefore: "Then authorize it with",
     authorizeAfter: "on the Hermes server.",
     done: "Done",
@@ -71,6 +76,10 @@ const messages = defineMessages({
     added: "Ajouté. Redémarre Hermes (bandeau ci-dessus) pour que les agents le chargent.",
     verdict: (verdict: string) =>
       `Le contrôle de sécurité de Hermes a classé ce skill « ${verdict} » (commandes d'installation externes, par exemple). Il a été autorisé selon la politique de Hermes pour cette source. Vérifie-le avant de le laisser actif.`,
+    forceTitle: "Installer quand même ?",
+    forceAction: "Installer quand même",
+    forcedVerdict: (verdict: string) =>
+      `Installé malgré le contrôle de sécurité de Hermes (« ${verdict} »). Vérifie-le avant de le laisser actif.`,
     authorizeBefore: "Autorise-le ensuite avec",
     authorizeAfter: "sur le serveur Hermes.",
     done: "Terminé",
@@ -126,6 +135,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
   const { owners } = useSkillOwners();
   const [progress, setProgress] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<string | null>(null);
+  const [forced, setForced] = useState(false);
   const env = item.kind === "mcp" ? item.entry.required_env.map(envName) : [];
   const reg = item.kind === "registry" ? item.server : null;
   const [oauth, setOauth] = useState(false);
@@ -158,12 +168,22 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
         });
         await enableFor(item.server.hermesName);
       } else if (item.kind === "skill") {
+        let force = false;
         for (const id of targets) {
           setProgress(t.installingFor(agentNames.get(id)));
           // skills.sh: installed by the app, the verdict comes back at once; otherwise a Hermes task to wait for.
-          const r = await api<{ name?: string; verdict?: string | null }>(`/admin/hermes/agents/${id}/skills-hub/install`, {
-            method: "POST",
-            body: JSON.stringify({ identifier: item.identifier }),
+          const install = () =>
+            api<{ name?: string; verdict?: string | null }>(`/admin/hermes/agents/${id}/skills-hub/install`, {
+              method: "POST",
+              body: JSON.stringify({ identifier: item.identifier, ...(force && { force }) }),
+            });
+          const r = await install().catch(async (err) => {
+            // skills.sh: blocked by Hermes's scan, which the admin may override, once for every ticked bot.
+            if (force || !(err instanceof ApiError && err.status === 409)) throw err;
+            if (!(await confirmAction({ title: t.forceTitle, description: err.message, action: t.forceAction }))) throw err;
+            force = true;
+            setForced(true);
+            return install();
           });
           const v = r?.name ? await waitAction(r.name) : (r?.verdict ?? null);
           if (v && v !== "SAFE") setVerdict(v);
@@ -221,7 +241,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
             </p>
             {verdict && (
               <p className="text-sm text-warning">
-                {t.verdict(verdict)}
+                {forced ? t.forcedVerdict(verdict) : t.verdict(verdict)}
               </p>
             )}
             {(oauth || (item.kind === "mcp" && item.entry.auth_type === "oauth")) && (

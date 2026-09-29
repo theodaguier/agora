@@ -8,6 +8,7 @@ import { Alert, Button, Card, Description, Input, Label, LinkButton, TextField, 
 import { useState } from "react";
 import { View } from "react-native";
 import { AdminGate, ErrorAlert, SettingsScroll, Section } from "@/components/admin/ui";
+import { confirmAction } from "@/components/confirm-action";
 import { AgentTargets } from "@/components/marketplace/agent-targets";
 import { IntegrationTypeSection } from "@/components/marketplace/integration-type";
 import { ItemTile } from "@/components/marketplace/item-row";
@@ -15,7 +16,7 @@ import { RestartBanner } from "@/components/marketplace/restart-banner";
 import { useSkillOwners } from "@/components/marketplace/use-market";
 import { ToggleRow } from "@/components/profile/settings";
 import { adminAgentsQuery } from "@/lib/agents-admin";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
 import { flagRestart, marketplaceHref, openedItem, waitAction, type Item } from "@/lib/marketplace";
@@ -38,6 +39,10 @@ const t = defineMessages({
     added: "Added. Restart Hermes (banner above) so agents load it.",
     verdict: (verdict: string) =>
       `Hermes's security check rated this skill “${verdict}” (external install commands, for example). It was allowed under Hermes's policy for this source. Review it before leaving it active.`,
+    forceTitle: "Install anyway?",
+    forceAction: "Install anyway",
+    forcedVerdict: (verdict: string) =>
+      `Installed despite Hermes's security check (“${verdict}”). Review it before leaving it active.`,
     authorizeBefore: "Then authorize it with",
     authorizeAfter: "on the Hermes server.",
     done: "Done",
@@ -69,6 +74,10 @@ const t = defineMessages({
     added: "Ajouté. Redémarre Hermes (bandeau ci-dessus) pour que les agents le chargent.",
     verdict: (verdict: string) =>
       `Le contrôle de sécurité de Hermes a classé ce skill « ${verdict} » (commandes d'installation externes, par exemple). Il a été autorisé selon la politique de Hermes pour cette source. Vérifie-le avant de le laisser actif.`,
+    forceTitle: "Installer quand même ?",
+    forceAction: "Installer quand même",
+    forcedVerdict: (verdict: string) =>
+      `Installé malgré le contrôle de sécurité de Hermes (« ${verdict} »). Vérifie-le avant de le laisser actif.`,
     authorizeBefore: "Autorise-le ensuite avec",
     authorizeAfter: "sur le serveur Hermes.",
     done: "Terminé",
@@ -111,6 +120,7 @@ function AddItem({ item }: { item: Item }) {
   const { owners } = useSkillOwners();
   const [progress, setProgress] = useState<string | null>(null);
   const [verdict, setVerdict] = useState<string | null>(null);
+  const [forced, setForced] = useState(false);
   const env = item.kind === "mcp" ? item.entry.required_env.map(envName) : [];
   const reg = item.kind === "registry" ? item.server : null;
   const [values, setValues] = useState<Record<string, string>>({});
@@ -148,12 +158,22 @@ function AddItem({ item }: { item: Item }) {
         });
         await enableFor(item.server.hermesName);
       } else if (item.kind === "skill") {
+        let force = false;
         for (const id of targets) {
           setProgress(t.installingFor(agentName.get(id)));
           // skills.sh: installed by the app, the verdict comes back at once; otherwise a Hermes task to wait for.
-          const r = await api<{ name?: string; verdict?: string | null }>(`/admin/hermes/agents/${id}/skills-hub/install`, {
-            method: "POST",
-            body: JSON.stringify({ identifier: item.identifier }),
+          const install = () =>
+            api<{ name?: string; verdict?: string | null }>(`/admin/hermes/agents/${id}/skills-hub/install`, {
+              method: "POST",
+              body: JSON.stringify({ identifier: item.identifier, ...(force && { force }) }),
+            });
+          const r = await install().catch(async (err) => {
+            // skills.sh: blocked by Hermes's scan, which the admin may override, once for every ticked bot.
+            if (force || !(err instanceof ApiError && err.status === 409)) throw err;
+            if (!(await confirmAction({ title: t.forceTitle, description: err.message, action: t.forceAction }))) throw err;
+            force = true;
+            setForced(true);
+            return install();
           });
           const v = r?.name ? await waitAction(r.name) : (r?.verdict ?? null);
           if (v && v !== "SAFE") setVerdict(v);
@@ -219,7 +239,7 @@ function AddItem({ item }: { item: Item }) {
                 <Alert status="warning">
                   <Alert.Indicator />
                   <Alert.Content>
-                    <Alert.Description>{t.verdict(verdict)}</Alert.Description>
+                    <Alert.Description>{forced ? t.forcedVerdict(verdict) : t.verdict(verdict)}</Alert.Description>
                   </Alert.Content>
                 </Alert>
               )}
