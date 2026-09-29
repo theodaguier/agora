@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.21.0 — 2026-09-29
+
+### Features
+- add https:// to integration URLs typed without a scheme
+
 ## v0.20.0 — 2026-09-28
 
 ### Features
