@@ -34,6 +34,12 @@ RUN npx -y "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium chrom
  && ln -s "$(ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-*/chrome-linux*/chrome | tail -1)" /usr/local/bin/chromium \
  && chromium --headless=new --no-sandbox --dump-dom about:blank > /dev/null
 COPY --from=app /app /app
+# Each of these browsers shows itself on its conversation's screen when a session launches it
+# (infra/chromium-screen.sh stands in for it, the binary becomes <name>.real).
+RUN browsers="$(find "$PLAYWRIGHT_BROWSERS_PATH" -mindepth 3 -maxdepth 3 -type f \( -name chrome -o -name chrome-headless-shell -o -name headless_shell \))" \
+ && [ -n "$browsers" ] \
+ && for b in $browsers; do mv "$b" "$b.real" && install -m 0755 /app/infra/chromium-screen.sh "$b"; done \
+ && chromium --headless=new --no-sandbox --dump-dom about:blank > /dev/null
 ENV NODE_ENV=production \
     HOME=/opt/data \
     HERMES_HOME=/opt/data \
