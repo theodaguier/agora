@@ -13,6 +13,7 @@ import { env } from "./env";
 import { publishToConversation } from "./events";
 import { readLines } from "./lines";
 import { postEvent } from "./messages";
+import { screenEnv } from "./screen";
 import { recordEngineUsage } from "./usage";
 
 /**
@@ -684,6 +685,7 @@ const browserNote = (chromium: string) =>
     `Chromium est déjà installé sur cette machine, avec ses bibliothèques système : ${chromium}.`,
     "Ne lance jamais `playwright install` ni `npx playwright install-deps`, et n'installe aucun autre navigateur : le téléchargement bloque la session.",
     `Si la version de Playwright du projet réclame une autre révision, lance Chromium avec executablePath: "${chromium}" (Puppeteer le trouve déjà via PUPPETEER_EXECUTABLE_PATH).`,
+    "Les membres de la conversation voient en direct la page du navigateur que tu lances, tant qu'il est ouvert : pour leur montrer un rendu, garde-le ouvert sur cette page le temps de l'examiner.",
   ].join("\n");
 
 /**
@@ -890,7 +892,12 @@ async function execute(s: Live): Promise<void> {
     ...(env.CHROMIUM_PATH ? ["--append-system-prompt", browserNote(env.CHROMIUM_PATH)] : []),
   ];
   // git and gh reach GitHub with the vault's token (the clone's credential helper reads it from there).
-  const spawnEnv = { ...(await claudeCodeEnv()), ...githubEnv(await githubToken()) };
+  // The browsers it launches show on the conversation's screen.
+  const spawnEnv = {
+    ...(await claudeCodeEnv()),
+    ...githubEnv(await githubToken()),
+    ...(await screenEnv(r.conversationId, `code-${r.id}`).catch(() => ({}))),
+  };
   // The account this run uses, shown in the panel (the active one of Settings › Models).
   const accountId = await activeClaudeAccountId();
   const profile = (await claudeProfiles().catch(() => [])).find((p) => p.id === accountId);

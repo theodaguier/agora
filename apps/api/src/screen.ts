@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { env } from "./env";
 import { installHermesPlugin, restartGateway } from "./hermes-admin";
@@ -9,7 +9,8 @@ import { installHermesPlugin, restartGateway } from "./hermes-admin";
  * The Hermes plugin agora_screen (infra/hermes-plugins) writes, after each
  * browser tool call, the DevTools endpoint of the session's headless Chromium
  * to `$HERMES_HOME/agora-screen/<session>.json`. This API shares the gateway's
- * network, so that endpoint (127.0.0.1) is reachable from here.
+ * network, so that endpoint (127.0.0.1) is reachable from here. The Chromium
+ * a Claude Code session launches records itself there too (`screenEnv`).
  *
  * Nothing runs without a viewer: a conversation's screen is watched (one file
  * lookup every few seconds, then one CDP screencast shared by every viewer)
@@ -221,6 +222,18 @@ export function watchScreen(conversationId: string, viewer: ScreenViewer) {
     screens.delete(conversationId);
     screen.stop();
   };
+}
+
+/**
+ * Environment of a process whose browsers show on the conversation's screen: the Chromium of the API
+ * image (infra/chromium-screen.sh) records its DevTools port under this prefix, where `findBrowser`
+ * looks. Used by the Claude Code sessions, whose Playwright drives Chromium over a pipe.
+ */
+export async function screenEnv(conversationId: string, name: string): Promise<Record<string, string>> {
+  const dir = screenDir();
+  if (!dir) return {};
+  await mkdir(dir, { recursive: true });
+  return { AGORA_SCREEN: join(dir, `agora-${conversationId}-${name}`) };
 }
 
 /* ---------- plugin in every profile ---------- */
