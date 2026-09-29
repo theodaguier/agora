@@ -16,7 +16,7 @@ import { tasksBlockSchema, type TasksBlock } from "./tasks";
 import { availabilityBlockSchema, type AvailabilityBlock } from "./availability-bot";
 import { currentLocale, defineMessages, tr, type Locale } from "./i18n";
 import { LANGUAGE } from "./org";
-import type { ViewBlock } from "@agora/core";
+import { readPreviews, withoutPreviews, type ViewBlock } from "@agora/core";
 import { parseViews } from "./views";
 
 /** Shown to the admin who creates the bot, in their language (`userLocale`). */
@@ -159,7 +159,9 @@ export function parseReply(reply: string) {
   let tasks: TasksBlock | undefined;
   let availability: AvailabilityBlock | undefined;
   const views: ViewBlock[] = [];
-  const text = reply.replace(BLOCK, (raw, kind: string, body: string) => {
+  // Before the other blocks: a page isn't JSON, and ends at the first ``` starting a line.
+  const previews = readPreviews(reply);
+  const text = withoutPreviews(reply).replace(BLOCK, (raw, kind: string, body: string) => {
     // A SKILL.md, not JSON.
     if (kind === "skill-create") {
       const parsed = parseSkillCreate(body);
@@ -212,7 +214,7 @@ export function parseReply(reply: string) {
     }
     return "";
   });
-  return { text: text.replace(/\n{3,}/g, "\n\n").trim(), choices, profile, name: profile?.name ?? name, mcpRequest, questions, skillRequest, skillCreate, tasks, availability, views: views.length ? views : undefined };
+  return { text: text.replace(/\n{3,}/g, "\n\n").trim(), choices, profile, name: profile?.name ?? name, mcpRequest, questions, skillRequest, skillCreate, tasks, availability, views: views.length ? views : undefined, previews: previews.length ? previews : undefined };
 }
 
 /** Writes the bot's identity into the SOUL.md of its Hermes profile. */

@@ -12,7 +12,7 @@ import { McpRequestCard } from "@/components/McpRequestCard";
 import { QuestionsCard } from "@/components/QuestionsCard";
 import { SkillRequestCard } from "@/components/SkillRequestCard";
 import { ViewCard } from "@/components/views/ViewCard";
-import { insertMessage, type ViewAction } from "@agora/core";
+import { insertMessage, readPreviews, withoutPreviews, type ViewAction } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { Composer, type ComposerHandle } from "@/components/Composer";
 import { ConversationAvatar, ParticipantAvatar, PersonAvatar, useStatus } from "@/components/ConversationAvatar";
@@ -23,7 +23,8 @@ import { MembersPanel } from "@/components/MembersPanel";
 import { PersonPanel } from "@/components/PersonPanel";
 import { ChatMessage, MessageRow, PendingRow, useDeleteMessage } from "@/components/MessageParts";
 import { RightPanel } from "@/components/RightPanel";
-import { CodeSessionCard, CodeSessionPanel, CodeSessionsButton, ReplyWithSessions } from "@/components/CodeSession";
+import { CodeSessionCard, CodeSessionPanel, CodeSessionsButton, ReplyWithSessions, useWide } from "@/components/CodeSession";
+import { findPreview, PreviewCard, PreviewCards, PreviewPanel } from "@/components/Preview";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ShortcutTooltip } from "@/components/Shortcuts";
@@ -179,6 +180,7 @@ function LiveTurn({
   group,
   mentionables: mentions,
   onOpenCode,
+  onOpenPreview,
 }: {
   turn: ActiveTurn;
   bot: AgentSummary | undefined;
@@ -186,10 +188,14 @@ function LiveTurn({
   group: boolean;
   mentionables: Mentionable[];
   onOpenCode: (sessionId: string) => void;
+  onOpenPreview: (key: string) => void;
 }) {
   const t = useT(strings);
   const { user } = useRouteContext({ from: "/app" });
   const visible = hideBlocks(turn.text);
+  const previews = readPreviews(turn.text);
+  // A mockup being written says so on its card.
+  const quiet = !!turn.approval || previews.some((p) => !p.done);
   const typing = <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} className="chat-arrive" />;
   return (
     <>
@@ -202,7 +208,7 @@ function LiveTurn({
             text={visible}
             sessions={turn.codeSessions}
             streaming
-            typing={!turn.approval && typing}
+            typing={!quiet && typing}
             onOpen={onOpenCode}
             bubble={(text, streaming) => <BotBubble text={text} streaming={streaming} mentionables={mentions} />}
           />
@@ -210,8 +216,11 @@ function LiveTurn({
       ) : visible ? (
         <BotBubble text={visible} streaming mentionables={mentions} />
       ) : (
-        !turn.approval && <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} className="chat-arrive" />
+        !quiet && <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} className="chat-arrive" />
       )}
+      {previews.map((p, i) => (
+        <PreviewCard key={i} title={p.title} writing={!p.done} onOpen={() => onOpenPreview(`${turn.turnId}:${i}`)} className="chat-arrive" />
+      ))}
       {turn.approval && (
         <ApprovalCard
           conversationId={conversationId}
@@ -418,10 +427,32 @@ export function Conversation() {
   useEffect(() => {
     if (panel) setCodeSession(null);
   }, [panel]);
+  /** HTML mockup opened beside the thread (`<turnId>:<index>`, see findPreview); it takes the side panel's place too. */
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (panel) setPreviewKey(null);
+  }, [panel]);
   const openCodeSession = (id: string) => {
     setPanel(null);
+    setPreviewKey(null);
     setCodeSession(id);
   };
+  const openPreview = (key: string) => {
+    setPanel(null);
+    setCodeSession(null);
+    setPreviewKey(key);
+  };
+  const preview = previewKey ? findPreview(previewKey, turns, messages) : null;
+  // The mockup someone asked for opens beside the thread as soon as the bot starts writing it, unless something else is open there.
+  const wide = useWide();
+  const followed = useRef(new Set<string>());
+  useEffect(() => {
+    for (const turn of turns) {
+      if (turn.requestedBy !== user.id || followed.current.has(turn.turnId) || !readPreviews(turn.text).length) continue;
+      followed.current.add(turn.turnId);
+      if (wide && !panel && !codeSession && !previewKey) setPreviewKey(`${turn.turnId}:0`);
+    }
+  }, [turns, user.id, wide, panel, codeSession, previewKey]);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null);
   const [forwarding, setForwarding] = useState<Message | null>(null);
@@ -448,6 +479,7 @@ export function Conversation() {
     setSending([]);
     setReplyTo(null);
     setCodeSession(null);
+    setPreviewKey(null);
   }, [conversationId]);
 
   useEffect(() => {
@@ -678,6 +710,7 @@ export function Conversation() {
                           </MessageRow>
                         )}
                         {m.data?.views && <BotViews message={m} views={m.data.views} answers={viewAnswers} send={send} />}
+                        {m.data?.previews && <PreviewCards previews={m.data.previews} onOpen={openPreview} />}
                         {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
                         {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
                       </>
@@ -736,6 +769,7 @@ export function Conversation() {
                   group={group}
                   mentionables={mentions}
                   onOpenCode={openCodeSession}
+                  onOpenPreview={openPreview}
                 />
               ))}
               {typing.length > 0 && (
@@ -809,6 +843,11 @@ export function Conversation() {
             <CodeSessionPanel key={codeSession} conversationId={conversationId} sessionId={codeSession} onClose={() => setCodeSession(null)} />
           </div>
         )}
+        {previewKey && (
+          <div className="border-l border-border/60 max-lg:contents">
+            <PreviewPanel key={previewKey} source={preview} onClose={() => setPreviewKey(null)} />
+          </div>
+        )}
         {panel && panel !== "info" && conv && (
           <div className="hidden border-l border-border/60 lg:block">
             <ConversationPanel key={`${conversationId}:${panel}`} kind={panel} conversationId={conversationId} onJump={jumpTo} onClose={() => setPanel(null)} />
@@ -826,7 +865,7 @@ const NO_REPLY = "NO_REPLY";
 const hideBlocks = (text: string) =>
   NO_REPLY.startsWith(text.trim().replace(/[.\s]+$/, ""))
     ? ""
-    : text
+    : withoutPreviews(text)
         .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[ \t]*\n[\s\S]*?```/g, "")
         .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[\s\S]*$/, "")
         .replace(/\n{3,}/g, "\n\n")

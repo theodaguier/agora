@@ -1,4 +1,4 @@
-import type { CodeSessionRef, ConversationEvent, IntegrationType, ViewAction, ViewBlock } from "@agora/core";
+import type { CodeSessionRef, ConversationEvent, IntegrationType, PreviewRef, ViewAction, ViewBlock } from "@agora/core";
 import { defineMessages, getLocale, tr } from "@/i18n";
 
 const messages = defineMessages({
@@ -278,6 +278,8 @@ export type Message = {
     codeSessions?: CodeSessionRef[];
     /** Views of connector data shown by the bot (```view``` block). */
     views?: ViewBlock[];
+    /** HTML mockups written by the bot (```preview``` block), kept as files of `attachments`. */
+    previews?: PreviewRef[];
     /** Employee's answer to a draft the bot showed. */
     viewAction?: ViewAction;
   } | null;
