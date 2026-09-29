@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { CLAUDE_CODE_PROVIDER, claudeCodeChat, canUseClaudeCode, isClaudeCodeModel, resolveClaudeCodeModel } from "./claude-code";
 import { CODEX_PROVIDER, canUseCodex, codexChat, isCodexModel } from "./codex";
 import { answerApproval, chat, profileHome, toolsets, type HermesApproval } from "./hermes";
+import { profileReady } from "./hermes-admin";
 import { blockedModels, resolveHermesModel } from "./models";
 import { attributeSession, recordEngineUsage, syncHermesUsage } from "./usage";
 import { agentAuthor, listMessages, postEvent, postMessage, unseenMessages, type MessageDto } from "./messages";
@@ -444,7 +445,7 @@ async function runTurn(turn: Turn) {
     .where(and(eq(conversationAgent.conversationId, conversationId), eq(conversationAgent.agentId, agentId)));
   const [trigger] = await db.select().from(message).where(eq(message.id, turn.triggerId));
   if (!conv || !link || !trigger) return;
-  const bot = link.agent;
+  let bot = link.agent;
   const group = conv.kind === "group";
 
   turn.started = true;
@@ -452,6 +453,18 @@ async function runTurn(turn: Turn) {
   setWorking(agentId, 1);
   await db.update(pendingTurn).set({ startedAt: new Date() }).where(eq(pendingTurn.id, turn.turnId));
   await publishToConversation(conversationId, { type: "bot.started", conversationId, turnId: turn.turnId, agentId, requestedBy: turn.requestedBy });
+
+  // A bot just created: its Hermes profile may still be being set up (POST /agents).
+  const ready = await profileReady(bot.hermesProfile, `Agent « ${bot.name} »`).then(
+    () => true,
+    (err) => (console.error("bot-runner: profile setup", err), false),
+  );
+  if (!ready) {
+    const event = { type: "bot.failed", bot: bot.name } as const;
+    await publishToConversation(conversationId, { type: "bot.error", conversationId, turnId: turn.turnId, message: renderEvent(event, await userLocale(await localeOf(turn.requestedBy))) });
+    await postEvent(conversationId, event);
+    return;
+  }
 
   // Build the message sent to Hermes.
   const data = trigger.data as TriggerData;
@@ -673,6 +686,8 @@ async function runTurn(turn: Turn) {
       console.error("bot-runner: availability", err),
     );
   }
+  // Before the message is saved: the reply announcing the name is signed with it.
+  if (!group) bot = await renameOnboarding(bot, parsed, conversationId);
   const previews = parsed.previews
     ? await savePreviews(parsed.previews, { conversationId, turnId: turn.turnId, directProfile: group ? null : bot.hermesProfile })
     : [];
@@ -873,17 +888,21 @@ async function readSoul(profile: string) {
   }
 }
 
-/** Finishes setting up a "Nouveau Bot": name chosen, then SOUL.md written. */
+/** A "Nouveau Bot" takes the name it just gave itself (```bot-name``` or ```bot-profile``` block). */
+async function renameOnboarding(bot: typeof agent.$inferSelect, parsed: ReturnType<typeof parseReply>, conversationId: string) {
+  if (!bot.onboarding || !parsed.name || parsed.name === bot.name) return bot;
+  await db.update(agent).set({ name: parsed.name }).where(eq(agent.id, bot.id));
+  // The clients refetch the conversation, the bot and the messages signed with its old name.
+  await publishToConversation(conversationId, { type: "conversation.updated", conversationId });
+  return { ...bot, name: parsed.name };
+}
+
+/** Finishes setting up a "Nouveau Bot" (already renamed by renameOnboarding): SOUL.md written. */
 async function finishOnboarding(bot: typeof agent.$inferSelect, parsed: ReturnType<typeof parseReply>, conversationId: string) {
-  if (!bot.onboarding) return;
-  if (parsed.name && !parsed.profile && parsed.name !== bot.name) {
-    await db.update(agent).set({ name: parsed.name }).where(eq(agent.id, bot.id));
-    await publishToConversation(conversationId, { type: "conversation.updated", conversationId });
-  }
-  if (!parsed.profile) return;
+  if (!bot.onboarding || !parsed.profile) return;
   try {
     await writeSoul(bot.hermesProfile, parsed.profile);
-    await db.update(agent).set({ name: parsed.profile.name, onboarding: false }).where(eq(agent.id, bot.id));
+    await db.update(agent).set({ onboarding: false }).where(eq(agent.id, bot.id));
     // New Hermes session: the old one caches the "Nouveau Bot" identity.
     // Event seen by every member of the bot's conversations: organization language.
     await bumpAgentRevision(bot.id, { type: "agent.ready", name: parsed.profile.name });

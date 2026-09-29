@@ -84,12 +84,16 @@ export async function setRiskyToolset(profile: string, toolset: string, enabled:
   await setPlatforms(profile, [toolset], enabled);
 }
 
-/** Turns off the risky toolsets this profile was never confined from (all of them for a new profile). */
-async function confine(profile: string, done: string[] = []) {
+/**
+ * Turns off the risky toolsets this profile was never confined from (all of
+ * them for a new profile). `alsoOff`: other toolsets turned off in the same
+ * CLI calls, each of which costs a Hermes start.
+ */
+async function confine(profile: string, done: string[] = [], alsoOff: string[] = []) {
   const todo = RISKY_TOOLSETS.filter((t) => !done.includes(t));
   if (!todo.length) return todo;
   await setDenied(profile, todo, true);
-  await setPlatforms(profile, todo, false);
+  await setPlatforms(profile, [...todo, ...alsoOff], false);
   await saveConfined(profile, todo);
   return todo;
 }
@@ -102,9 +106,9 @@ async function installFilesPlugin(profile: string) {
 }
 
 /** For a new profile (createProfile): confined right away, before its first conversation. */
-export async function confineNewProfile(profile: string) {
+export async function confineNewProfile(profile: string, alsoOff: string[] = []) {
   await installFilesPlugin(profile);
-  await confine(profile);
+  await confine(profile, [], alsoOff);
 }
 
 /** At startup: every profile gets the attachments tool, and loses the risky toolsets it was never confined from. */
