@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.24.0 — 2026-09-29
+
+### Features
+- bots write HTML mockups shown live in the conversation
+
 ## v0.23.0 — 2026-09-29
 
 ### Features
