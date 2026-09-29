@@ -373,7 +373,9 @@ export async function startCodeSession(opts: {
   const id = crypto.randomUUID();
   const cwd = join(await workspace(), "projects", project || (repo ? `${repo.split("/")[1]}-${id.slice(0, 8)}` : `session-${id.slice(0, 8)}`));
   await mkdir(cwd, { recursive: true });
-  const title = opts.title.trim().slice(0, 200) || task.split("\n")[0]!.slice(0, 120);
+  // Untitled (started from the panel): Claude Code names it from the task, the first line otherwise.
+  const named = opts.title.trim() ? null : await nameTask(cwd, task);
+  const title = opts.title.trim().slice(0, 200) || named?.title || task.split("\n")[0]!.slice(0, 120);
   const [owner] = repo ? await db.select({ name: schema.user.name, email: schema.user.email }).from(schema.user).where(eq(schema.user.id, opts.requestedBy)) : [];
   const [row] = await db
     .insert(schema.codeSession)
@@ -392,11 +394,26 @@ export async function startCodeSession(opts: {
     })
     .returning();
   const s = fromRow(row!);
+  if (named) recordQuickUsage(s.row, named.result);
   if (repo) s.prepare = { repo, branch: opts.branch?.trim() || sessionBranch(title, id), author: owner ?? { name: "Agora", email: "agora@localhost" } };
   live.set(id, s);
   if (opts.announce) await announceCodeSession(opts.conversationId, id, title, opts.botName);
   instruct(s, { text: task, by: opts.by });
   return summary(s);
+}
+
+const TITLE_TIMEOUT_MS = 30_000;
+
+const TITLE_SYSTEM = [
+  "You name a coding task, like the title of its ticket. Answer with the title only: no preamble, no quotes, no final period.",
+  "At most 60 characters, in the language of the task. Name what is to be done, not how. Keep the issue or pull request number the task refers to (#402).",
+].join("\n");
+
+/** A title for a task given without one, by Claude Code: null when it could not write one. */
+async function nameTask(cwd: string, task: string) {
+  const answer = await quickClaude(cwd, TITLE_SYSTEM, clip(task, 4_000), TITLE_TIMEOUT_MS);
+  const title = answer && cleanMessage(answer.text).split("\n")[0]!.replace(/[.\s]+$/, "").slice(0, 120);
+  return title ? { title, result: answer.result } : null;
 }
 
 /** The conversation's event line for a session, with its card (when no reply of the bot holds it). */
@@ -542,8 +559,8 @@ export async function runGitAction(id: string, req: GitRequest, by: string, conv
 
 /* ---------- commit messages ---------- */
 
-/** Fast and cheap: a commit message needs no more. */
-const COMMIT_MODEL = "haiku";
+/** Fast and cheap: a commit message or a title needs no more. */
+const QUICK_MODEL = "haiku";
 const COMMIT_TIMEOUT_MS = 90_000;
 
 const COMMIT_SYSTEM = [
@@ -580,19 +597,31 @@ async function writeCommitMessage(s: Live) {
   ]
     .filter(Boolean)
     .join("\n\n");
+  const answer = await quickClaude(s.row.cwd, COMMIT_SYSTEM, prompt, COMMIT_TIMEOUT_MS);
+  const message = answer ? cleanMessage(answer.text) : "";
+  if (!message) throw new CodeSessionError("git", "Claude Code could not write the commit message.");
+  if (answer) recordQuickUsage(s.row, answer.result);
+  return message;
+}
+
+/**
+ * One short answer from Claude Code (Haiku, on the owner's active account): no tools, no session
+ * kept. Null when it failed, logged.
+ */
+async function quickClaude(cwd: string, system: string, prompt: string, timeout: number) {
   const args = [
     env.CLAUDE_CODE_BIN,
     "-p",
     "--output-format", "json",
-    "--model", COMMIT_MODEL,
-    "--system-prompt", COMMIT_SYSTEM,
-    // Nothing to run nor read: the diff is in the prompt.
+    "--model", QUICK_MODEL,
+    "--system-prompt", system,
+    // Nothing to run nor read: everything it needs is in the prompt.
     "--tools", "",
     "--setting-sources", "project",
     "--strict-mcp-config",
     "--no-session-persistence",
   ];
-  const proc = Bun.spawn(args, { cwd: s.row.cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe", timeout: COMMIT_TIMEOUT_MS });
+  const proc = Bun.spawn(args, { cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe", timeout });
   proc.stdin.write(prompt);
   proc.stdin.end();
   const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
@@ -602,20 +631,21 @@ async function writeCommitMessage(s: Live) {
   } catch {
     // Reported below.
   }
-  const message = result && !result.is_error ? cleanMessage(String(result.result ?? "")) : "";
-  if (!message) {
-    console.error("code session: commit message", err.slice(-500) || out.slice(-500));
-    throw new CodeSessionError("git", "Claude Code could not write the commit message.");
+  if (!result || result.is_error || !String(result.result ?? "").trim()) {
+    console.error("code session: quick answer", err.slice(-500) || out.slice(-500));
+    return null;
   }
-  if (result) {
-    recordEngineUsage(
-      "claude-code",
-      resultUsage(result, COMMIT_MODEL),
-      { userId: s.row.requestedBy, agentId: s.row.agentId, conversationId: s.row.conversationId, sessionId: s.row.id },
-      { source: "code", taskId: s.row.id, taskName: s.row.title },
-    ).catch((e) => console.error("code session: usage", e));
-  }
-  return message;
+  return { text: String(result.result), result };
+}
+
+/** Counted in the session's usage. */
+function recordQuickUsage(row: Row, result: ClaudeResult) {
+  recordEngineUsage(
+    "claude-code",
+    resultUsage(result, QUICK_MODEL),
+    { userId: row.requestedBy, agentId: row.agentId, conversationId: row.conversationId, sessionId: row.id },
+    { source: "code", taskId: row.id, taskName: row.title },
+  ).catch((e) => console.error("code session: usage", e));
 }
 
 /** Without the fence or quotes a model sometimes adds anyway. */

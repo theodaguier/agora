@@ -40,6 +40,10 @@ export function applyCodeStep(qc: QueryClient, conversationId: string, sessionId
   qc.setQueryData<CodeSessionDetail>(codeSessionQuery(conversationId, sessionId).queryKey, (old) => old && { ...old, steps: upsert(old.steps, step) });
 }
 
+/** A session the owner starts without a bot: Claude Code names it from the task. */
+export const startCodeSession = (conversationId: string, req: { task: string; repo?: string }) =>
+  api<CodeSession>(path(conversationId), { method: "POST", body: JSON.stringify(req) });
+
 export const sendToCodeSession = (conversationId: string, id: string, text: string) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/messages`), { method: "POST", body: JSON.stringify({ text }) });
 
