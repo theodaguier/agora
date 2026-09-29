@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.22.0 — 2026-09-29
+
+### Features
+- install skills.sh skills anyway after Hermes's security check flags them
+
 ## v0.21.0 — 2026-09-29
 
 ### Features
