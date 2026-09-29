@@ -1,5 +1,5 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
-import type { CodeAccount, CodeApproval, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
+import type { CodeAccount, CodeApproval, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
 import { api, conversationPath } from "./api";
 
 /** Claude Code sessions of a conversation (apps/api/src/code-sessions.ts): list for the cards, detail with steps for the panel. */
@@ -40,9 +40,17 @@ export function applyCodeStep(qc: QueryClient, conversationId: string, sessionId
   qc.setQueryData<CodeSessionDetail>(codeSessionQuery(conversationId, sessionId).queryKey, (old) => old && { ...old, steps: upsert(old.steps, step) });
 }
 
-/** A session the owner starts without a bot: Claude Code names it from the task. */
-export const startCodeSession = (conversationId: string, req: { task: string; repo?: string }) =>
+/** A session the owner starts without a bot: Claude Code names it from its first instruction. */
+export const startCodeSession = (conversationId: string, req: { task: string; repo?: string; model?: string }) =>
   api<CodeSession>(path(conversationId), { method: "POST", body: JSON.stringify(req) });
+
+/** GitHub repositories a new session can clone (the instance's token reaches them), the latest pushed first. */
+export const codeReposQuery = (conversationId: string) =>
+  queryOptions({
+    queryKey: ["code-repos", conversationId],
+    queryFn: () => api<CodeRepo[]>(path(conversationId, "/repos")),
+    staleTime: 5 * 60_000,
+  });
 
 export const sendToCodeSession = (conversationId: string, id: string, text: string) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/messages`), { method: "POST", body: JSON.stringify({ text }) });

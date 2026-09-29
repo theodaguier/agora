@@ -840,7 +840,7 @@ export function Conversation() {
         )}
         {codeSession && (
           <div className="border-l border-border/60 max-lg:contents">
-            <CodeSessionPanel key={codeSession} conversationId={conversationId} sessionId={codeSession} onClose={() => setCodeSession(null)} />
+            <CodeSessionPanel key={codeSession} conversationId={conversationId} sessionId={codeSession} onOpen={openCodeSession} onClose={() => setCodeSession(null)} />
           </div>
         )}
         {previewKey && (
