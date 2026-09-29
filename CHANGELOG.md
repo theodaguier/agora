@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.23.0 — 2026-09-29
+
+### Features
+- start a Claude Code session from the panel, named automatically
+
 ## v0.22.0 — 2026-09-29
 
 ### Features
