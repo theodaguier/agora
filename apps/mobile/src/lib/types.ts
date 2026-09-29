@@ -170,6 +170,8 @@ export type Message = {
     event?: import("@agora/core").ConversationEvent;
     /** Views of connector data shown by the bot (```view``` block). */
     views?: import("@agora/core").ViewBlock[];
+    /** HTML mockups written by the bot (```preview``` block), kept as files of `attachments`. */
+    previews?: import("@agora/core").PreviewRef[];
     /** Employee's answer to a draft the bot showed. */
     viewAction?: import("@agora/core").ViewAction;
   } | null;

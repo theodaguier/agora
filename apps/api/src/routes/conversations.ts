@@ -1,10 +1,8 @@
-import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { MAX_FILE, storeAttachment as storeFile } from "../attachments";
 import { abandonTurns, activeTurns, answerTurnApproval, cancelTurn, compactSession, enqueueTurn, resetSession } from "../bot-runner";
 import { hermesSessionId } from "../company";
 import {
@@ -21,7 +19,7 @@ import { env } from "../env";
 import { forgetMembers, publishToConversation, publishToUser } from "../events";
 import { CLAUDE_CODE_LABEL, CLAUDE_CODE_PROVIDER, canUseClaudeCode, isClaudeCodeModel, resolveClaudeCodeModel } from "../claude-code";
 import { CODEX_LABEL, CODEX_PROVIDER, canUseCodex, isCodexModel } from "../codex";
-import { profileHome, skills } from "../hermes";
+import { skills } from "../hermes";
 import { HermesError, agentMcpServers, forgetSessions } from "../hermes-admin";
 import { syncSessionSearch } from "../session-search";
 import { allowedClaudeCodeModels, allowedCodexModels, allowedModelOptions } from "../models";
@@ -54,15 +52,6 @@ const messages = defineMessages({
 
 const { agent, attachment, conversation, conversationAgent, conversationMember, message, pin, user } = schema;
 
-const MAX_FILE = 25 * 1024 * 1024;
-
-const safeName = (name: string) =>
-  name
-    .normalize("NFKD")
-    .replace(/[^\w.\- ]+/g, "")
-    .replace(/\s+/g, "_")
-    .slice(0, 120) || "fichier";
-
 const detail = (c: LoadedConversation) => ({
   id: c.conversation.id,
   kind: c.conversation.kind,
@@ -89,11 +78,6 @@ async function existingUsers(ids: string[]) {
 const ids = z.array(z.string().min(1).max(100)).max(50);
 
 /**
- * Where a conversation's files go: the bot's Hermes profile in a direct
- * conversation with it (readable by its file tools), a per-conversation
- * shared folder otherwise (groups, colleague to colleague).
- */
-/**
  * The bot whose model is read or chosen: the bot of a direct conversation, or in a group the one named
  * (`agentId`), each bot keeping its own model there (bot-runner reads it per bot).
  */
@@ -102,24 +86,8 @@ function modelTarget(conv: LoadedConversation, agentId: string | undefined) {
   return agentId ? (conv.agents.find((a) => a.agent.id === agentId) ?? null) : null;
 }
 
-function attachmentDir(conv: LoadedConversation) {
-  if (conv.directBot) {
-    if (!env.HERMES_HOME) throw new Error("hermes_home_missing");
-    return join(profileHome(conv.directBot.agent.hermesProfile), "attachments", "agora");
-  }
-  return join(env.HERMES_HOME || join(homedir(), ".agora"), "agora-attachments", conv.conversation.id);
-}
-
-async function storeAttachment(conv: LoadedConversation, name: string, mime: string, content: Blob) {
-  const id = crypto.randomUUID();
-  const dir = attachmentDir(conv);
-  await mkdir(dir, { recursive: true });
-  const path = join(dir, `${id}-${safeName(name)}`);
-  await Bun.write(path, content);
-  const row = { id, conversationId: conv.conversation.id, name: name.slice(0, 200), mime, size: content.size, path };
-  const [saved] = await db.insert(attachment).values(row).returning();
-  return saved!;
-}
+const storeAttachment = (conv: LoadedConversation, name: string, mime: string, content: Blob) =>
+  storeFile(conv.conversation.id, conv.directBot?.agent.hermesProfile ?? null, name, mime, content);
 
 const publicAttachment = ({ id, name, mime, size }: Pick<AttachmentRow, "id" | "name" | "mime" | "size">) => ({ id, name, mime, size });
 
@@ -579,7 +547,7 @@ export const conversations = new Hono<AppEnv>()
     return c.body(null, 204);
   })
 
-  /** Uploads a file, to be sent with the next message (see attachmentDir). */
+  /** Uploads a file, to be sent with the next message (see storeAttachment in attachments.ts). */
   .post("/:id/attachments", async (c) => {
     const conv = await loadConversation(c.get("user").id, c.req.param("id"));
     if (!conv) return c.json({ error: "not_found" }, 404);

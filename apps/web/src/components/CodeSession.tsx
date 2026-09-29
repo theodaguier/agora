@@ -341,7 +341,7 @@ const subscribeWide = (cb: () => void) => {
   return () => mql.removeEventListener("change", cb);
 };
 /** Large screens show the session beside the thread; smaller ones in a sheet over it. */
-const useWide = () => useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE).matches);
+export const useWide = () => useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE).matches);
 
 export function CodeSessionPanel({ conversationId, sessionId, onClose }: { conversationId: string; sessionId: string; onClose: () => void }) {
   const t = useT(messages);
