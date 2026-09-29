@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { useSkillOwners, type Item } from "./data";
 import { defineMessages, tr, useT } from "@/i18n";
 import { common, integrations } from "@agora/core/i18n";
-import { guessIntegrationType, type IntegrationType } from "@agora/core";
+import { envValue, envValues, guessIntegrationType, isUrlEnvName, type IntegrationType } from "@agora/core";
 import { AgentTargets } from "./AgentTargets";
 import { IntegrationTile, IntegrationTypeSelect } from "./IntegrationType";
 
@@ -243,7 +243,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
             const keys = reg ? [...reg.env.map((e) => e.name), ...(reg.bearer ? ["bearer_token"] : [])] : env;
-            add.mutate(Object.fromEntries(keys.map((k) => [k, String(f.get(k) ?? "")])));
+            add.mutate(envValues(Object.fromEntries(keys.map((k) => [k, String(f.get(k) ?? "")]))));
           }}
         >
           <FieldGroup>
@@ -251,7 +251,17 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
               <FieldSet className="gap-2">
                 <FieldLegend variant="label">{t.configuration}</FieldLegend>
                 {env.map((k) => (
-                  <Input key={k} name={k} required placeholder={k} aria-label={k} autoComplete="off" className="font-mono" />
+                  <Input
+                    key={k}
+                    name={k}
+                    required
+                    placeholder={k}
+                    aria-label={k}
+                    inputMode={isUrlEnvName(k) ? "url" : undefined}
+                    autoComplete="off"
+                    onBlur={(e) => (e.currentTarget.value = envValue(k, e.currentTarget.value))}
+                    className="font-mono"
+                  />
                 ))}
               </FieldSet>
             )}
@@ -278,7 +288,9 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
                       name={e.name}
                       required={e.required}
                       type={e.secret ? "password" : "text"}
+                      inputMode={isUrlEnvName(e.name) ? "url" : undefined}
                       autoComplete="off"
+                      onBlur={(ev) => (ev.currentTarget.value = envValue(e.name, ev.currentTarget.value))}
                       className="font-mono"
                     />
                     {e.description && <FieldDescription className="text-xs">{e.description}</FieldDescription>}

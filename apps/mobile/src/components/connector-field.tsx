@@ -1,4 +1,4 @@
-import { envFileValue, fileMatchesAccept, mcpEnvAccept, mcpEnvInput, MCP_ENV_VALUE_MAX, type McpEnvField } from "@agora/core";
+import { envFileValue, envValue, fileMatchesAccept, isUrlEnvName, mcpEnvAccept, mcpEnvInput, MCP_ENV_VALUE_MAX, type McpEnvField } from "@agora/core";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { Button, Description, Input, Label, TextField } from "heroui-native";
@@ -45,6 +45,11 @@ export function ConnectorField({
   const input = mcpEnvInput(field);
   const accept = mcpEnvAccept(field);
   const plain = { autoCapitalize: "none", autoCorrect: false, autoComplete: "off" } as const;
+  // An address typed without its scheme gets https:// when the field is left.
+  const complete = () => {
+    const next = envValue(field.name, value);
+    if (next !== value) onChange(next);
+  };
 
   const pick = async () => {
     const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
@@ -102,6 +107,8 @@ export function ConnectorField({
       <Input
         value={value}
         onChangeText={(text) => onChange(text)}
+        onBlur={complete}
+        keyboardType={isUrlEnvName(field.name) && input !== "textarea" ? "url" : undefined}
         placeholder={field.placeholder}
         secureTextEntry={input === "secret"}
         multiline={input === "textarea"}

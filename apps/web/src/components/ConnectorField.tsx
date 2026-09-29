@@ -1,4 +1,4 @@
-import { envFileValue, fileMatchesAccept, mcpEnvAccept, mcpEnvInput, MCP_ENV_VALUE_MAX, type McpEnvField } from "@agora/core";
+import { envFileValue, envValue, fileMatchesAccept, isUrlEnvName, mcpEnvAccept, mcpEnvInput, MCP_ENV_VALUE_MAX, type McpEnvField } from "@agora/core";
 import { useRef, useState } from "react";
 import { RequiredMark } from "@/components/FormLabel";
 import { FileTextIcon } from "@/components/icons";
@@ -53,6 +53,11 @@ export function ConnectorField({
   const input = mcpEnvInput(field);
   const accept = mcpEnvAccept(field);
   const control = "bg-background font-mono dark:bg-background";
+  // An address typed without its scheme gets https:// when the field is left.
+  const complete = () => {
+    const next = envValue(field.name, value);
+    if (next !== value) onChange(next);
+  };
 
   const pick = async (list: FileList | null) => {
     const file = list?.[0];
@@ -133,12 +138,14 @@ export function ConnectorField({
           id={id}
           required={field.required}
           type={input === "secret" ? "password" : "text"}
+          inputMode={isUrlEnvName(field.name) ? "url" : undefined}
           value={value}
           placeholder={field.placeholder}
           aria-invalid={invalid || undefined}
           autoComplete="off"
           spellCheck={false}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={complete}
           className={control}
         />
       )}

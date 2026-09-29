@@ -7,7 +7,7 @@
  * OAuth from the conversation. Hermes only receives a copy of the declaration,
  * and secrets go straight into its .env without touching the database.
  */
-import { guessIntegrationType, INTEGRATION_TYPES, MCP_ENV_INPUTS, type IntegrationType } from "@agora/core";
+import { guessIntegrationType, INTEGRATION_TYPES, MCP_ENV_INPUTS, withHttps, type IntegrationType } from "@agora/core";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "./db";
@@ -65,7 +65,7 @@ export const mcpRequestSchema = z
     name: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/),
     title: z.string().trim().min(1).max(80).optional(),
     description: z.string().trim().max(500).default(""),
-    url: z.string().url().startsWith("https://").optional(),
+    url: z.string().transform(withHttps).pipe(z.string().url().startsWith("https://")).optional(),
     command: z.string().regex(/^[\w.-]{1,40}$/).optional(),
     args: z.array(z.string().max(500)).max(30).default([]),
     env: z
@@ -88,7 +88,7 @@ export const mcpRequestSchema = z
       .max(20)
       .default([]),
     auth: z.enum(["none", "header", "oauth"]).default("none"),
-    docs: z.string().url().optional(),
+    docs: z.string().transform(withHttps).pipe(z.string().url()).optional(),
     type: z.enum(INTEGRATION_TYPES).optional(),
   })
   .refine((r) => !!r.url !== !!r.command, "url or command, not both")
