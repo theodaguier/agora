@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronsRightIcon, MoreIcon, FileTextIcon, PinIcon, SearchIcon } from "@/components/icons";
 import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
+import { AgentScreen } from "@/components/AgentScreen";
 import { ImageViewer } from "@/components/Attachments";
 import { isImage } from "@/lib/files";
 import { PersonAvatar } from "@/components/ConversationAvatar";
@@ -28,10 +29,11 @@ import { messagesQuery, pinsQuery } from "@/lib/queries";
 import { copyText } from "@/lib/feedback";
 import { cn } from "@/lib/utils";
 
-export type PanelKind = "search" | "files" | "pins";
+export type PanelKind = "screen" | "search" | "files" | "pins";
 
 const messages = defineMessages({
   en: {
+    screen: "Screen",
     search: "Search",
     files: "Files",
     pins: "Pinned",
@@ -59,6 +61,7 @@ const messages = defineMessages({
     seeAll: (n: number) => `See all ${n}`,
   },
   fr: {
+    screen: "Écran",
     search: "Rechercher",
     files: "Fichiers",
     pins: "Épinglés",
@@ -90,7 +93,7 @@ const messages = defineMessages({
 /** Labels of the header buttons that open each panel. */
 export function usePanelLabels() {
   const t = useT(messages);
-  return { search: t.search, files: t.files, pins: t.pins } satisfies Record<PanelKind, string>;
+  return { screen: t.screen, search: t.search, files: t.files, pins: t.pins } satisfies Record<PanelKind, string>;
 }
 
 const pinKey = (t: PinTarget) => `${t.messageId}:${t.attachmentId ?? ""}`;
@@ -114,7 +117,7 @@ export function usePins(conversationId: string) {
   };
 }
 
-/** Side panel of a conversation: search, files or pins. */
+/** Side panel of a conversation: the screen (the browser its bots and Claude Code sessions drive), search, files or pins. */
 export function ConversationPanel({
   kind,
   conversationId,
@@ -137,6 +140,11 @@ export function ConversationPanel({
           <ChevronsRightIcon />
         </Button>
       </div>
+      {kind === "screen" && (
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+          <AgentScreen conversationId={conversationId} />
+        </div>
+      )}
       {kind === "search" && <SearchPanel conversationId={conversationId} onJump={onJump} />}
       {kind === "files" && <FilesPanel conversationId={conversationId} onJump={onJump} />}
       {kind === "pins" && <PinsPanel conversationId={conversationId} onJump={onJump} />}

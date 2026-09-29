@@ -6,12 +6,14 @@ import { defineMessages, useT } from "@/i18n";
 const messages = defineMessages({
   en: {
     noScreen: "The agent isn't using a screen right now",
+    screen: "Screen",
     screenOf: (name: string) => `${name}'s screen`,
     enlarge: "Enlarge the screen",
     live: "Live view of the browser the agent drives.",
   },
   fr: {
     noScreen: "L'agent n'utilise pas d'écran pour le moment",
+    screen: "Écran",
     screenOf: (name: string) => `Écran de ${name}`,
     enlarge: "Agrandir l'écran",
     live: "Vue en direct du navigateur piloté par l'agent.",
@@ -70,7 +72,8 @@ const host = (url: string) => {
   }
 };
 
-export function AgentScreen({ conversationId, agentName }: { conversationId: string; agentName: string }) {
+/** `agentName`: the bot of a direct conversation; without it, the conversation's screen (any of its bots or sessions). */
+export function AgentScreen({ conversationId, agentName }: { conversationId: string; agentName?: string }) {
   const t = useT(messages);
   const frame = useAgentScreen(conversationId);
   const [enlarged, setEnlarged] = useState(false);
@@ -96,14 +99,16 @@ export function AgentScreen({ conversationId, agentName }: { conversationId: str
           </EmptyHeader>
         </Empty>
       )}
-      <p className="mt-2 truncate text-center text-[13px] text-muted-foreground" title={frame?.url}>
-        {frame?.url ? host(frame.url) : t.screenOf(agentName)}
-      </p>
+      {(frame?.url || agentName) && (
+        <p className="mt-2 truncate text-center text-[13px] text-muted-foreground" title={frame?.url}>
+          {frame?.url ? host(frame.url) : t.screenOf(agentName!)}
+        </p>
+      )}
 
       <Dialog open={enlarged && !!src} onOpenChange={setEnlarged}>
         <DialogContent className="sm:max-w-5xl">
           <DialogHeader>
-            <DialogTitle>{t.screenOf(agentName)}</DialogTitle>
+            <DialogTitle>{agentName ? t.screenOf(agentName) : t.screen}</DialogTitle>
             <DialogDescription className="truncate">{frame?.url || t.live}</DialogDescription>
           </DialogHeader>
           {src && <img src={src} alt="" className="block h-auto w-full rounded-md border border-border" />}

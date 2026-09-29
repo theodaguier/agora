@@ -16,7 +16,7 @@ port=""
 for arg in "$@"; do
   case "$arg" in
     --user-data-dir=*) profile="${arg#--user-data-dir=}" ;;
-    --remote-debugging-port=*) port=1 ;;
+    --remote-debugging-port=*) port="${arg#--remote-debugging-port=}" ;;
   esac
 done
 # No profile: the machine's default one, where Chromium refuses a DevTools port (one-off --screenshot, --dump-dom…).
@@ -25,15 +25,19 @@ done
 
 pid=$$
 out="$AGORA_SCREEN-$pid.json"
+# Chromium only writes the port it picked (port 0) in DevToolsActivePort; a port given by the caller is recorded as is.
 ready="$profile/DevToolsActivePort"
 rm -f "$ready"
 
-# Waits for the port Chromium picked, records it, and removes it when Chromium exits (same pid: exec).
+# Waits for the port, records it, and removes it when Chromium exits (same pid: exec).
 # Off every descriptor of the caller: Playwright's pipe (3, 4) must close with Chromium alone.
 (
   tries=0
   while [ "$tries" -lt 150 ] && kill -0 "$pid" 2>/dev/null; do
-    p="$(head -n 1 "$ready" 2>/dev/null)"
+    case "$port" in
+      "" | 0) p="$(head -n 1 "$ready" 2>/dev/null)" ;;
+      *) p="$port" ;;
+    esac
     case "$p" in
       "" | *[!0-9]*) ;;
       *)
