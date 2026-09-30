@@ -10,6 +10,9 @@ or deny the actions it asks about, and stop it.
     claude_code_send(session_id, message)            another instruction, then wait
     claude_code_stop(session_id)
 
+A session can ask the agent a question while it works (its ask_bot tool):
+claude_code_wait returns on it (`question`), and claude_code_send answers it.
+
 The API listens on 127.0.0.1 (same network as the gateway) and wrote its URL
 and a token to `<root HERMES_HOME>/agora-code/api.json` when it started. Each
 call names the Hermes session it comes from: the API only starts or drives a
@@ -84,7 +87,11 @@ def _minutes(args: dict) -> float:
 
 def _report(report: dict) -> str:
     status = report.get("status")
-    if status == "running":
+    if report.get("question"):
+        report["note"] = ("Claude Code is asking you a question (`question.text`) and waits for your answer before it "
+                          "goes on. Answer it with claude_code_send: your message is the answer it gets. If the decision "
+                          "belongs to the user, ask them first, then answer.")
+    elif status == "running":
         report["note"] = ("Claude Code is still working. The members follow it live in the conversation. "
                           "Call claude_code_wait again to keep waiting, or answer the user now.")
     elif status == "waiting":
@@ -110,7 +117,7 @@ def _wait(session_id: str, hermes_session: str, minutes: float, report: Optional
     while True:
         if report is None or report.get("status") == "running":
             report = _call("GET", f"/sessions/{urllib.parse.quote(session_id)}", query={"hermes_session": hermes_session})
-        if report.get("status") != "running" or time.monotonic() >= deadline or _interrupted():
+        if report.get("status") != "running" or report.get("question") or time.monotonic() >= deadline or _interrupted():
             return _report(report)
         time.sleep(POLL_SECONDS)
         report = None
@@ -224,7 +231,7 @@ START = {
 
 WAIT = {
     "name": "claude_code_wait",
-    "description": "Wait for a Claude Code session to finish its current work (or to need an approval), then return its status, answer and recent actions.",
+    "description": "Wait for a Claude Code session to finish its current work (or to need an approval, or to ask you a question), then return its status, answer and recent actions.",
     "parameters": {
         "type": "object",
         "properties": {"session_id": {"type": "string"}, "timeout_minutes": _WAIT},
@@ -239,7 +246,7 @@ SEND = {
         "Send another instruction to a Claude Code session (it keeps its context): a follow-up or a correction of "
         "the task it was started for. Never a new task (another issue, another feature): start a new session for it "
         "with claude_code_start (it gets a worktree of its own). Refused once its pull request is merged or closed. If it is working, it reads it at its "
-        "next step. Then waits like claude_code_wait."
+        "next step; if it waits on its question to you, the message is your answer. Then waits like claude_code_wait."
     ),
     "parameters": {
         "type": "object",

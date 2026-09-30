@@ -326,6 +326,9 @@ export function describeTool(name: string, input: Json, cwd: string): { title: s
       return { title: `#${String(input.taskId ?? "?")}` };
     case "ToolSearch":
       return { title: String(input.query ?? name) };
+    // Its question to the bot that started it (code-sessions.ts).
+    case "mcp__agora__ask_bot":
+      return { title: firstLine(String(input.question ?? name)), input: detail(String(input.question ?? "")) };
     case "AskUserQuestion": {
       const questions: Json[] = Array.isArray(input.questions) ? input.questions : [];
       return {
