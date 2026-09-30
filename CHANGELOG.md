@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.30.0 — 2026-09-30
+
+### Features
+- add a "latest messages" button to the chat
+
 ## v0.29.0 — 2026-09-30
 
 ### Features
