@@ -113,6 +113,7 @@ const strings = defineMessages({
     botTyping: (name: string) => `${name} is typing…`,
     peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
     stop: "Stop response",
+    latest: "Latest messages",
     seeMembers: (n: number) => (n === 1 ? "See 1 member" : `See ${n} members`),
     openProfile: (name: string) => `See ${name}'s profile and tasks`,
   },
@@ -132,6 +133,7 @@ const strings = defineMessages({
     botTyping: (name: string) => `${name} écrit…`,
     peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
     stop: "Arrêter la réponse",
+    latest: "Derniers messages",
     seeMembers: (n: number) => `Voir les ${n} membres`,
     openProfile: (name: string) => `Voir le profil et les tâches de ${name}`,
   },
@@ -461,6 +463,8 @@ export function Conversation() {
   const composer = useRef<ComposerHandle>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
+  /** Scrolled up: a button brings the reader back to the latest messages. */
+  const [scrolledUp, setScrolledUp] = useState(false);
   const lastTyping = useRef(0);
 
   const dragging = useWindowFileDrop((files) => composer.current?.addFiles(files));
@@ -503,6 +507,7 @@ export function Conversation() {
   // Follows the conversation only while it is read at the bottom: scrolled up, new messages don't pull the reader down.
   useLayoutEffect(() => {
     atBottom.current = true;
+    setScrolledUp(false);
   }, [conversationId]);
   useLayoutEffect(() => {
     if (atBottom.current) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -610,176 +615,192 @@ export function Conversation() {
           </header>
           {conv && <PinnedBar conversationId={conversationId} onJump={jumpTo} onSeeAll={() => setPanel("pins")} />}
 
-          <div
-            ref={scroller}
-            onScroll={(e) => {
-              const el = e.currentTarget;
-              atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
-            }}
-            className="min-h-0 flex-1 overflow-y-auto"
-          >
-            <div className="flex flex-col gap-1.5 px-4 pb-6 pt-4">
-              {isPending && <Spinner className="chat-loading mx-auto mt-[20vh] size-5 text-muted-foreground" />}
-              {!isPending && messages.length === 0 && !sending.length && (
-                <Empty className="mx-auto mt-[20vh] max-w-sm flex-none p-0">
-                  <EmptyHeader className="gap-1">
-                    <EmptyTitle className="text-[15px] tracking-normal">{title}</EmptyTitle>
-                    <EmptyDescription>{t.emptyHint}</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
-              {messages.map((m, i) => {
-                const at = new Date(m.createdAt);
-                const prev = messages[i - 1];
-                const divider = needsDivider(prev && new Date(prev.createdAt), at);
-                const newAuthor = divider || !prev || authorKey(prev.author) !== authorKey(m.author);
-                const fromMe = m.kind === "user" && m.author?.kind === "user" && m.author.id === user.id;
-                const showAuthor = newAuthor && !fromMe && m.kind !== "event" && (group || (m.kind === "user" && !directBot)) && !!m.author;
-                // A bot's reply takes the place of its live turn and ours of its pending copy: only others' messages arrive.
-                const arriving = m.kind === "user" && !fromMe && arrived(m.id);
-                /** A Claude Code session started here: its card instead of the event line. */
-                const codeStarted = m.kind === "event" && m.data?.event?.type === "code.started" ? m.data.event : null;
-                return (
-                  <Fragment key={m.id}>
-                    {divider && <DateDivider label={dividerLabel(at)} />}
-                    {showAuthor && m.author && group && (
-                      <AuthorLine
-                        className={arriving ? "chat-arrive" : undefined}
-                        name={m.author.name}
-                        avatar={
-                          m.author.kind === "agent" ? (
-                            <AgentAvatar agent={m.author} className="size-5" />
-                          ) : (
-                            <PersonAvatar person={m.author} className="size-5" />
-                          )
-                        }
-                      />
-                    )}
-                    {m.kind === "user" && (
-                      <MessageRow
-                        id={m.id}
-                        mine={fromMe}
-                        arriving={arriving}
-                        highlighted={highlight === m.id}
-                        text={m.text}
-                        attachments={m.data?.attachments}
-                        onReply={() => setReplyTo(quoteOf(m))}
-                        onForward={() => setForwarding(m)}
-                        pinned={isPinned({ messageId: m.id })}
-                        onTogglePin={() => togglePin({ messageId: m.id })}
-                        onDelete={fromMe ? () => deleteMessage(m.id) : undefined}
-                      >
-                        <ChatMessage
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div
+              ref={scroller}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+                setScrolledUp(!atBottom.current);
+              }}
+              className="min-h-0 flex-1 overflow-y-auto"
+            >
+              <div className="flex flex-col gap-1.5 px-4 pb-6 pt-4">
+                {isPending && <Spinner className="chat-loading mx-auto mt-[20vh] size-5 text-muted-foreground" />}
+                {!isPending && messages.length === 0 && !sending.length && (
+                  <Empty className="mx-auto mt-[20vh] max-w-sm flex-none p-0">
+                    <EmptyHeader className="gap-1">
+                      <EmptyTitle className="text-[15px] tracking-normal">{title}</EmptyTitle>
+                      <EmptyDescription>{t.emptyHint}</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                )}
+                {messages.map((m, i) => {
+                  const at = new Date(m.createdAt);
+                  const prev = messages[i - 1];
+                  const divider = needsDivider(prev && new Date(prev.createdAt), at);
+                  const newAuthor = divider || !prev || authorKey(prev.author) !== authorKey(m.author);
+                  const fromMe = m.kind === "user" && m.author?.kind === "user" && m.author.id === user.id;
+                  const showAuthor = newAuthor && !fromMe && m.kind !== "event" && (group || (m.kind === "user" && !directBot)) && !!m.author;
+                  // A bot's reply takes the place of its live turn and ours of its pending copy: only others' messages arrive.
+                  const arriving = m.kind === "user" && !fromMe && arrived(m.id);
+                  /** A Claude Code session started here: its card instead of the event line. */
+                  const codeStarted = m.kind === "event" && m.data?.event?.type === "code.started" ? m.data.event : null;
+                  return (
+                    <Fragment key={m.id}>
+                      {divider && <DateDivider label={dividerLabel(at)} />}
+                      {showAuthor && m.author && group && (
+                        <AuthorLine
+                          className={arriving ? "chat-arrive" : undefined}
+                          name={m.author.name}
+                          avatar={
+                            m.author.kind === "agent" ? (
+                              <AgentAvatar agent={m.author} className="size-5" />
+                            ) : (
+                              <PersonAvatar person={m.author} className="size-5" />
+                            )
+                          }
+                        />
+                      )}
+                      {m.kind === "user" && (
+                        <MessageRow
+                          id={m.id}
                           mine={fromMe}
+                          arriving={arriving}
+                          highlighted={highlight === m.id}
                           text={m.text}
                           attachments={m.data?.attachments}
-                          invocations={fromMe ? m.data?.invocations : undefined}
-                          replyTo={m.data?.replyTo}
-                          forwarded={m.data?.forwarded}
-                          mentionables={mentions}
-                          onQuote={jumpTo}
-                        />
-                      </MessageRow>
-                    )}
-                    {m.kind === "bot" && (
-                      <>
-                        {m.data?.tools && <ToolLine tools={m.data.tools} />}
-                        {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
-                        {(m.text || !!m.data?.codeSessions?.length) && (
-                          <MessageRow
-                            id={m.id}
-                            wide
-                            highlighted={highlight === m.id}
+                          onReply={() => setReplyTo(quoteOf(m))}
+                          onForward={() => setForwarding(m)}
+                          pinned={isPinned({ messageId: m.id })}
+                          onTogglePin={() => togglePin({ messageId: m.id })}
+                          onDelete={fromMe ? () => deleteMessage(m.id) : undefined}
+                        >
+                          <ChatMessage
+                            mine={fromMe}
                             text={m.text}
-                            onReply={() => setReplyTo(quoteOf(m))}
-                            onForward={() => setForwarding(m)}
-                            pinned={isPinned({ messageId: m.id })}
-                            onTogglePin={() => togglePin({ messageId: m.id })}
-                            onDelete={() => deleteMessage(m.id)}
-                          >
-                            {m.data?.codeSessions?.length ? (
-                              <ReplyWithSessions
-                                conversationId={conversationId}
-                                text={m.text}
-                                sessions={m.data.codeSessions}
-                                onOpen={openCodeSession}
-                                bubble={(text) => <BotBubble text={text} mentionables={mentions} className="max-w-full" />}
-                              />
-                            ) : (
-                              <BotBubble text={m.text} mentionables={mentions} className="max-w-full" />
-                            )}
-                          </MessageRow>
-                        )}
-                        {m.data?.views && <BotViews message={m} views={m.data.views} answers={viewAnswers} send={send} />}
-                        {m.data?.previews && <PreviewCards previews={m.data.previews} onOpen={openPreview} />}
-                        {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
-                        {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
-                      </>
-                    )}
-                    {codeStarted && (
-                      <CodeSessionCard
-                        conversationId={conversationId}
-                        sessionId={codeStarted.sessionId}
-                        title={codeStarted.title}
-                        onOpen={() => openCodeSession(codeStarted.sessionId)}
-                      />
-                    )}
-                    {m.kind === "event" && !codeStarted && (
-                      <DateDivider
-                        label={eventText(m.text, m.data?.event)}
-                        conversationId={m.data?.event?.type === "relay.group" ? m.data.event.conversationId : undefined}
-                      />
+                            attachments={m.data?.attachments}
+                            invocations={fromMe ? m.data?.invocations : undefined}
+                            replyTo={m.data?.replyTo}
+                            forwarded={m.data?.forwarded}
+                            mentionables={mentions}
+                            onQuote={jumpTo}
+                          />
+                        </MessageRow>
+                      )}
+                      {m.kind === "bot" && (
+                        <>
+                          {m.data?.tools && <ToolLine tools={m.data.tools} />}
+                          {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
+                          {(m.text || !!m.data?.codeSessions?.length) && (
+                            <MessageRow
+                              id={m.id}
+                              wide
+                              highlighted={highlight === m.id}
+                              text={m.text}
+                              onReply={() => setReplyTo(quoteOf(m))}
+                              onForward={() => setForwarding(m)}
+                              pinned={isPinned({ messageId: m.id })}
+                              onTogglePin={() => togglePin({ messageId: m.id })}
+                              onDelete={() => deleteMessage(m.id)}
+                            >
+                              {m.data?.codeSessions?.length ? (
+                                <ReplyWithSessions
+                                  conversationId={conversationId}
+                                  text={m.text}
+                                  sessions={m.data.codeSessions}
+                                  onOpen={openCodeSession}
+                                  bubble={(text) => <BotBubble text={text} mentionables={mentions} className="max-w-full" />}
+                                />
+                              ) : (
+                                <BotBubble text={m.text} mentionables={mentions} className="max-w-full" />
+                              )}
+                            </MessageRow>
+                          )}
+                          {m.data?.views && <BotViews message={m} views={m.data.views} answers={viewAnswers} send={send} />}
+                          {m.data?.previews && <PreviewCards previews={m.data.previews} onOpen={openPreview} />}
+                          {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
+                          {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
+                        </>
+                      )}
+                      {codeStarted && (
+                        <CodeSessionCard
+                          conversationId={conversationId}
+                          sessionId={codeStarted.sessionId}
+                          title={codeStarted.title}
+                          onOpen={() => openCodeSession(codeStarted.sessionId)}
+                        />
+                      )}
+                      {m.kind === "event" && !codeStarted && (
+                        <DateDivider
+                          label={eventText(m.text, m.data?.event)}
+                          conversationId={m.data?.event?.type === "relay.group" ? m.data.event.conversationId : undefined}
+                        />
+                      )}
+                    </Fragment>
+                  );
+                })}
+                {question?.data?.questions && (
+                  <QuestionsCard
+                    key={question.id}
+                    questions={question.data.questions}
+                    onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
+                    onDismiss={() => setDismissed(question.id)}
+                  />
+                )}
+                {question?.data?.choices && (
+                  <ChoiceCard
+                    key={question.id}
+                    choices={question.data.choices}
+                    onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
+                    onDismiss={() => setDismissed(question.id)}
+                  />
+                )}
+                {sending.map((s) => (
+                  <Fragment key={s.key}>
+                    <PendingRow failed={s.failed}>
+                      <ChatMessage mine text={s.text} attachments={s.attachments} invocations={s.invocations} replyTo={s.replyTo} mentionables={mentions} onQuote={jumpTo} />
+                    </PendingRow>
+                    {s.failed && (
+                      <p role="alert" className="text-right text-[13px] text-destructive">
+                        {t.sendFailed}
+                      </p>
                     )}
                   </Fragment>
-                );
-              })}
-              {question?.data?.questions && (
-                <QuestionsCard
-                  key={question.id}
-                  questions={question.data.questions}
-                  onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
-                  onDismiss={() => setDismissed(question.id)}
-                />
-              )}
-              {question?.data?.choices && (
-                <ChoiceCard
-                  key={question.id}
-                  choices={question.data.choices}
-                  onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
-                  onDismiss={() => setDismissed(question.id)}
-                />
-              )}
-              {sending.map((s) => (
-                <Fragment key={s.key}>
-                  <PendingRow failed={s.failed}>
-                    <ChatMessage mine text={s.text} attachments={s.attachments} invocations={s.invocations} replyTo={s.replyTo} mentionables={mentions} onQuote={jumpTo} />
-                  </PendingRow>
-                  {s.failed && (
-                    <p role="alert" className="text-right text-[13px] text-destructive">
-                      {t.sendFailed}
-                    </p>
-                  )}
-                </Fragment>
-              ))}
-              {turns.map((turn) => (
-                <LiveTurn
-                  key={turn.turnId}
-                  turn={turn}
-                  bot={agentById(turn.agentId)}
-                  conversationId={conversationId}
-                  group={group}
-                  mentionables={mentions}
-                  onOpenCode={openCodeSession}
-                  onOpenPreview={openPreview}
-                />
-              ))}
-              {typing.length > 0 && (
-                <p className="chat-arrive mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
-                  <TypingBubble label="" />
-                  {t.peopleTyping(typing.map((p) => p.name.split(" ")[0]).join(", "), typing.length)}
-                </p>
-              )}
+                ))}
+                {turns.map((turn) => (
+                  <LiveTurn
+                    key={turn.turnId}
+                    turn={turn}
+                    bot={agentById(turn.agentId)}
+                    conversationId={conversationId}
+                    group={group}
+                    mentionables={mentions}
+                    onOpenCode={openCodeSession}
+                    onOpenPreview={openPreview}
+                  />
+                ))}
+                {typing.length > 0 && (
+                  <p className="chat-arrive mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
+                    <TypingBubble label="" />
+                    {t.peopleTyping(typing.map((p) => p.name.split(" ")[0]).join(", "), typing.length)}
+                  </p>
+                )}
+              </div>
             </div>
+            {scrolledUp && (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-md"
+                onClick={() => {
+                  atBottom.current = true;
+                  scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+                }}
+              >
+                {t.latest}
+              </Button>
+            )}
           </div>
 
           <div className="shrink-0 px-4 pb-3">
