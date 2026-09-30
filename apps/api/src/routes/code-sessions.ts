@@ -11,6 +11,7 @@ import {
   codeSessionReport,
   commitMessageFor,
   refreshCodeSessionGit,
+  removeCodeSessionWorktree,
   getCodeSession,
   listCodeSessions,
   runGitAction,
@@ -20,12 +21,13 @@ import {
   startCodeSession,
   stopCodeSession,
 } from "../code-sessions";
-import { listRepos } from "../code-git";
+import { listRepos, parseRepo } from "../code-git";
 import { internalToken } from "../code-plugin";
 import { loadConversation } from "../conversations";
 import { db, schema } from "../db";
 import { requireUser, type AppEnv } from "../middleware";
 import { allowedClaudeCodeModels } from "../models";
+import { repoEnv, RepoEnvError, saveRepoEnv } from "../repo-env";
 
 const TEXT_MAX = 20_000;
 
@@ -102,6 +104,35 @@ export const codeSessions = new Hono<AppEnv>()
     return c.json(await listRepos().catch((err) => (console.error("code sessions: repos", err), [])));
   })
 
+  /** A repository's credentials, written into the worktree of every session started on it: its owner's .env, in clear. */
+  .get("/repo-env", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id")!);
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
+    const repo = parseRepo(c.req.query("repo") ?? "");
+    if (!repo) return c.json({ error: "invalid" }, 400);
+    console.info(`code sessions: credentials of ${repo} viewed by ${me.email}`);
+    return c.json({ repo, env: await repoEnv(repo) });
+  })
+
+  /** Replaces them (empty: none); sessions started from now on get them. */
+  .put("/repo-env", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id")!);
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
+    const body = z.object({ repo: z.string().max(300), env: z.string().max(100_000) }).safeParse(await c.req.json().catch(() => ({})));
+    const repo = body.success ? parseRepo(body.data.repo) : null;
+    if (!body.success || !repo) return c.json({ error: "invalid" }, 400);
+    try {
+      return c.json({ repo, env: await saveRepoEnv(repo, body.data.env, me.id) });
+    } catch (err) {
+      if (err instanceof RepoEnvError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+  })
+
   .get("/:sessionId", async (c) => {
     const conv = await loadConversation(c.get("user").id, c.req.param("id")!);
     if (!conv) return c.json({ error: "not_found" }, 404);
@@ -144,6 +175,13 @@ export const codeSessions = new Hono<AppEnv>()
     const owned = await ownerOnly(c);
     if (owned instanceof Response) return owned;
     return stopCodeSession(owned.sessionId, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
+  /** Its owner is done with it: its worktree is deleted (the branch stays), and what it left running stops. */
+  .delete("/:sessionId/worktree", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    return removeCodeSessionWorktree(owned.sessionId, c.get("user").name, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
   })
 
   /** Moves Claude Code to another account; a session stopped by the limit picks up where it was. */
@@ -284,7 +322,7 @@ export const internalCode = new Hono()
       return c.json(
         {
           error: "done",
-          message: `This session's pull request #${pr.number} is ${pr.state}: its task is over. Start a new session with claude_code_start for any further work (same project to reuse the clone).`,
+          message: `This session's pull request #${pr.number} is ${pr.state}: its task is over. Start a new session with claude_code_start for any further work (it gets a worktree of its own).`,
         },
         409,
       );

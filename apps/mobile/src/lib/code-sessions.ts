@@ -91,3 +91,19 @@ export const codeAccountsQuery = (conversationId: string) =>
 /** Moves Claude Code to another account; a session stopped by the limit picks up where it was. */
 export const switchCodeSessionAccount = (conversationId: string, id: string, accountId: string | null) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/account`), { method: "PUT", body: JSON.stringify({ id: accountId }) });
+
+/** Its owner is done with it: its worktree is deleted (the branch stays in the clone). */
+export const removeCodeSessionWorktree = (conversationId: string, id: string) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/worktree`), { method: "DELETE" });
+
+/** A repository's credentials: the .env written into the worktree of every session started on it. */
+export const repoEnvQuery = (conversationId: string, repo: string) =>
+  queryOptions({
+    queryKey: ["code-repo-env", repo],
+    queryFn: () => api<{ repo: string; env: string }>(path(conversationId, `/repo-env?repo=${encodeURIComponent(repo)}`)),
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+export const saveRepoEnv = (conversationId: string, repo: string, env: string) =>
+  api<{ repo: string; env: string }>(path(conversationId, "/repo-env"), { method: "PUT", body: JSON.stringify({ repo, env }) });

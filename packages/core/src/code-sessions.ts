@@ -37,7 +37,20 @@ export type CodeStep =
   /** A git or GitHub action Agora ran for the session (clone, or the owner's from the panel); `text`: its outcome in one line. */
   | { id: string; kind: "git"; action: CodeGitAction; ok: boolean; text: string; by: string | null; detail?: string };
 
-export type CodeGitAction = "clone" | "commit" | "push" | "pr" | "merge" | "pull";
+/** clone: the session's worktree prepared (the repository's clone fetched, the project's credentials written); worktree: its worktree deleted. */
+export type CodeGitAction = "clone" | "commit" | "push" | "pr" | "merge" | "pull" | "worktree";
+
+/**
+ * A session started on a GitHub repository works in a git worktree of its own, from the clone the
+ * repository's sessions share. Once it is done, its owner deletes the worktree: the branch stays in
+ * the clone, and a new instruction checks it out again in a fresh worktree.
+ */
+export type CodeWorktree = {
+  /** The branch it works on (the one checked out when it was deleted). */
+  branch: string;
+  /** Deleted, when. */
+  removedAt: string | null;
+};
 
 /** A pull request of the session's branch on GitHub. */
 export type CodePullRequest = {
@@ -128,8 +141,10 @@ export type CodeSession = {
   cwd: string;
   /** GitHub repository (owner/name) it was cloned from, when started on one. */
   repo: string | null;
-  /** State of its clone (null: not a git repository, or not read yet). */
+  /** State of its clone (null: not a git repository, or not read yet); as it was last read, once its worktree is deleted. */
   git: CodeGit | null;
+  /** Its worktree (null: a directory of its own, started without a repository or before worktrees). */
+  worktree: CodeWorktree | null;
   model: string | null;
   /** The Claude account (profile) its last run used: id null for the server's own login. */
   account: CodeAccount | null;

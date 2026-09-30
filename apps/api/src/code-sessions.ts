@@ -1,18 +1,19 @@
 import { desc, eq, inArray } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import type { Subprocess } from "bun";
 import type { CodeApproval, CodeGitAction, CodeSession, CodeSessionDetail, CodeSessionStatus, CodeStep, CodeUsage } from "@agora/core";
 import { activateClaudeAccount, activeClaudeAccountId, claudeCodeEnv, claudeProfiles } from "./claude-accounts";
 import { resultUsage, sessionExists, workspace, type ClaudeResult } from "./claude-code";
 import * as gitOps from "./code-git";
-import { GitError, githubEnv, githubToken, parseRepo, prepareRepo, readGit, sessionBranch } from "./code-git";
+import { GitError, githubEnv, githubToken, parseRepo, prepareWorktree, readGit, removeWorktree, sessionBranch, writeCredentials } from "./code-git";
 import { clip, Transcript } from "./code-steps";
 import { db, schema } from "./db";
 import { env } from "./env";
 import { publishToConversation } from "./events";
 import { readLines } from "./lines";
 import { postEvent } from "./messages";
+import { repoEnv } from "./repo-env";
 import { screenEnv } from "./screen";
 import { recordEngineUsage } from "./usage";
 
@@ -25,6 +26,11 @@ import { recordEngineUsage } from "./usage";
  * streamed to the conversation's members as it happens. The owner can write
  * to it while it works (the message reaches it at its next tool call),
  * approve or deny the actions Claude Code asks about, and stop it.
+ *
+ * A session started on a GitHub repository works in a git worktree of its own
+ * (code-git.ts), from the clone the repository's sessions share, with the
+ * project's credentials written into it (repo-env.ts). Once it is done, its
+ * owner deletes the worktree; a new instruction recreates it on its branch.
  *
  * One `claude -p` process per run: it starts with an instruction and ends
  * with its answer; the next instruction resumes the same Claude Code session
@@ -62,8 +68,8 @@ type Live = {
   activity: string | null;
   limit: CodeSession["limit"];
   stopping: boolean;
-  /** Clone to make before the next run (the first one; again after a failed clone). */
-  prepare: { repo: string; branch: string; author: { name: string; email: string } } | null;
+  /** Worktree to make before the next run (the first one; again after a failed clone, or once deleted). */
+  prepare: { repo: string; branch: string } | null;
   /** Instructions of a run whose clone failed: they go with the next one. */
   held: Instruction[];
   /** A git action of the owner is under way. */
@@ -121,6 +127,7 @@ function summary(s: Live): CodeSession {
     cwd: r.cwd,
     repo: r.repo,
     git: r.git,
+    worktree: r.worktree,
     model: r.model,
     account: r.account,
     activity: s.activity,
@@ -261,6 +268,7 @@ async function save(s: Live) {
         model: r.model,
         permissions: r.permissions,
         git: r.git,
+        worktree: r.worktree,
         account: r.account,
         steps: s.transcript.steps.slice(-MAX_STEPS),
         usage: r.usage,
@@ -328,6 +336,8 @@ export async function refreshCodeSessionGit(id: string, conversationId?: string)
  * found by the links it printed, and announced like one opened from the panel.
  */
 async function refreshGit(s: Live) {
+  // Its worktree is gone: its state stays as it was last read.
+  if (s.row.worktree?.removedAt) return;
   const before = s.row.git?.pr ?? null;
   const texts = s.transcript.steps.flatMap((st) => (st.kind === "tool" ? [st.input ?? "", st.output ?? ""] : st.kind === "text" ? [st.text] : []));
   s.row.git = await readGit(s.row.cwd, { repo: s.row.repo, pulls: gitOps.pullRequestLinks(texts) }).catch(
@@ -372,10 +382,10 @@ export async function startCodeSession(opts: {
   announce: boolean;
   title: string;
   task: string;
-  /** Sub-directory of the Claude Code workspace, shared by the sessions that name it (a repo, a project). */
+  /** Sub-directory of the Claude Code workspace, shared by the sessions that name it; a session on a `repo` has a worktree of its own instead. */
   project?: string;
   model?: string;
-  /** GitHub repository (owner/name or URL) cloned into the directory before the first run. */
+  /** GitHub repository (owner/name or URL): the session works in a worktree of its clone, made before the first run. */
   repo?: string;
   /** Its branch to work on (default: a new one named after the session). */
   branch?: string;
@@ -387,12 +397,14 @@ export async function startCodeSession(opts: {
   const repo = opts.repo?.trim() ? parseRepo(opts.repo) : null;
   if (opts.repo?.trim() && !repo) throw new CodeSessionError("invalid", `Not a GitHub repository: ${opts.repo}. Expected owner/name or its URL.`);
   const id = crypto.randomUUID();
-  const cwd = join(await workspace(), "projects", project || (repo ? `${repo.split("/")[1]}-${id.slice(0, 8)}` : `session-${id.slice(0, 8)}`));
-  await mkdir(cwd, { recursive: true });
+  const root = await workspace();
+  // A repository's worktree is made by git, before the first run.
+  const cwd = repo ? join(worktreesDir(root), `${repo.split("/")[1]}-${id.slice(0, 8)}`) : join(root, "projects", project || `session-${id.slice(0, 8)}`);
+  if (!repo) await mkdir(cwd, { recursive: true });
   // Untitled (started from the panel): Claude Code names it from the task, the first line otherwise.
-  const named = opts.title.trim() ? null : await nameTask(cwd, task);
+  const named = opts.title.trim() ? null : await nameTask(repo ? root : cwd, task);
   const title = opts.title.trim().slice(0, 200) || named?.title || task.split("\n")[0]!.slice(0, 120);
-  const [owner] = repo ? await db.select({ name: schema.user.name, email: schema.user.email }).from(schema.user).where(eq(schema.user.id, opts.requestedBy)) : [];
+  const branch = repo ? opts.branch?.trim() || sessionBranch(title, id) : null;
   const [row] = await db
     .insert(schema.codeSession)
     .values({
@@ -404,6 +416,7 @@ export async function startCodeSession(opts: {
       status: "running",
       cwd,
       repo,
+      worktree: branch ? { branch, removedAt: null } : null,
       model,
       permissions: { allowedTools: [], dirs: [] },
       steps: [],
@@ -411,7 +424,7 @@ export async function startCodeSession(opts: {
     .returning();
   const s = fromRow(row!);
   if (named) recordQuickUsage(s.row, named.result);
-  if (repo) s.prepare = { repo, branch: opts.branch?.trim() || sessionBranch(title, id), author: owner ?? { name: "Agora", email: "agora@localhost" } };
+  if (repo && branch) s.prepare = { repo, branch };
   live.set(id, s);
   if (opts.announce) await announceCodeSession(opts.conversationId, id, title, opts.botName);
   instruct(s, { text: task, by: opts.by });
@@ -449,6 +462,9 @@ export async function sendToCodeSession(id: string, text: string, by: string, co
 
 function instruct(s: Live, m: Instruction) {
   touch(s, [s.transcript.add({ id: crypto.randomUUID(), kind: "user", text: m.text, by: m.by })]);
+  // Its worktree was deleted: the next run starts in a new one, on the same branch.
+  const wt = s.row.worktree;
+  if (wt?.removedAt && s.row.repo && !s.prepare) s.prepare = { repo: s.row.repo, branch: wt.branch };
   if (s.running && !s.stopping) {
     if (s.proc) deliver(s, m);
     else s.outbox.push(m);
@@ -535,6 +551,7 @@ export type GitRequest =
 export async function runGitAction(id: string, req: GitRequest, by: string, conversationId?: string) {
   const s = await load(id, conversationId);
   if (s.running || s.gitBusy) throw new CodeSessionError("busy");
+  noWorktree(s);
   s.gitBusy = true;
   const cwd = s.row.cwd;
   try {
@@ -573,6 +590,65 @@ export async function runGitAction(id: string, req: GitRequest, by: string, conv
   return summary(s);
 }
 
+/* ---------- worktrees ---------- */
+
+/** The repository's clone its sessions share, and where their worktrees go. */
+const cloneDir = (root: string, repo: string) => join(root, "repos", ...repo.toLowerCase().split("/"));
+const worktreesDir = (root: string) => join(root, "worktrees");
+
+/** Who commits in the session's worktree: its owner. */
+async function authorOf(userId: string | null) {
+  const [owner] = userId ? await db.select({ name: schema.user.name, email: schema.user.email }).from(schema.user).where(eq(schema.user.id, userId)) : [];
+  return owner ?? { name: "Agora", email: "agora@localhost" };
+}
+
+const noWorktree = (s: Live) => {
+  if (s.row.worktree?.removedAt) throw new CodeSessionError("gone", "This session's worktree was deleted: give it an instruction to make a new one on its branch.");
+};
+
+/**
+ * Its owner is done with the session: its worktree is deleted, with what is not committed, and
+ * what the session left running there stops. The branch stays in the repository's clone, and the
+ * next instruction makes a new worktree on it.
+ */
+export async function removeCodeSessionWorktree(id: string, by: string, conversationId?: string) {
+  const s = await load(id, conversationId);
+  const r = s.row;
+  const wt = r.worktree;
+  if (!wt || !r.repo) throw new CodeSessionError("invalid", "This session has no worktree.");
+  if (wt.removedAt) return summary(s);
+  if (s.running || s.gitBusy) throw new CodeSessionError("busy");
+  const root = await workspace();
+  // Never anything outside the worktrees' directory.
+  if (!r.cwd.startsWith(worktreesDir(root) + sep)) throw new CodeSessionError("invalid", "This session has no worktree.");
+  s.gitBusy = true;
+  try {
+    // Its warm process and what it started (a dev server, its browser) work in the directory.
+    const proc = s.proc;
+    cool(s);
+    proc?.kill();
+    stopLeftovers((await sessionProcesses()).get(id) ?? []);
+    const { branch, text } = await removeWorktree(cloneDir(root, r.repo), r.cwd);
+    r.worktree = { branch: branch ?? wt.branch, removedAt: new Date().toISOString() };
+    // An instruction written meanwhile starts in a new worktree.
+    s.prepare = s.outbox.length ? { repo: r.repo, branch: r.worktree.branch } : null;
+    // What was not committed is gone; its commits stay on the branch.
+    if (r.git) r.git = { ...r.git, changes: 0, files: [] };
+    gitStep(s, "worktree", true, text, by);
+  } catch (err) {
+    if (!(err instanceof GitError)) throw err;
+    gitStep(s, "worktree", false, err.message, by);
+    throw new CodeSessionError("git", err.message);
+  } finally {
+    s.gitBusy = false;
+    touch(s, [], true);
+    await save(s);
+    await flush(s);
+    if (s.outbox.length && !s.running) start(s);
+  }
+  return summary(s);
+}
+
 /* ---------- commit messages ---------- */
 
 /** Fast and cheap: a commit message or a title needs no more. */
@@ -589,6 +665,7 @@ const COMMIT_SYSTEM = [
 export async function commitMessageFor(id: string, conversationId?: string) {
   const s = await load(id, conversationId);
   if (s.running || s.gitBusy) throw new CodeSessionError("busy");
+  noWorktree(s);
   return writeCommitMessage(s);
 }
 
@@ -704,6 +781,12 @@ const browserNote = (chromium: string) =>
     "Les membres de la conversation voient en direct le navigateur ouvert et peuvent le piloter. Pour leur montrer une page, le plus simple est le navigateur de la session : la commande `agora-browser` affiche l'adresse DevTools d'un Chromium qui reste ouvert, toujours le même. Connecte-toi avec `chromium.connectOverCDP(adresse)` (Playwright) ou `puppeteer.connect({ browserURL: adresse })`, travaille dans son contexte et son onglet existants (`browser.contexts()[0]` et sa première page), et laisse-les ouverts.",
   ].join("\n");
 
+/** The project's credentials, written into its worktree (code-git.ts writeCredentials). */
+const CREDENTIALS_NOTE = [
+  "Les credentials du projet (clés d'API, URL de base de données…) sont déjà dans le fichier .env du répertoire, ou .env.local quand le dépôt versionne son .env : Agora l'a écrit, et git l'ignore.",
+  "Utilise-les tels quels. N'affiche jamais leurs valeurs, ne les recopie dans aucun fichier versionné et ne committe jamais ce fichier.",
+].join("\n");
+
 /**
  * The standing rule of a bot that has the agora_code tools, in a turn its owner started: code goes
  * through a session. Without it, a conversation where no session ran yet says nothing of them, and
@@ -714,7 +797,7 @@ export const CODE_DELEGATION_PROMPT = [
   "Tu as les outils claude_code_start, claude_code_wait, claude_code_send et claude_code_stop (tool_describe si tu ne vois pas leurs paramètres).",
   "Tout travail sur du code (corriger une issue, écrire une fonctionnalité, un correctif, un test, ouvrir une PR) passe par une session : claude_code_start avec repo (owner/nom), un titre qui nomme la tâche et un brief complet (but, contraintes, comment vérifier). La session clone le dépôt, a git et gh, et les membres de la conversation la suivent en direct.",
   "Ne code jamais toi-même : ni fichier créé, modifié ou poussé avec le connecteur GitHub (branches, commits, PR comprises), ni dans ton terminal. Lire une issue ou quelques fichiers pour écrire le brief reste permis, sans t'y attarder.",
-  "Une session par tâche : chaque nouvelle issue ou fonctionnalité a sa propre session (claude_code_start, avec le même project pour réutiliser le clone), pour que la conversation la voie sous son propre titre. claude_code_send ne sert qu'à poursuivre ou corriger la tâche de la session, et il est refusé une fois sa PR mergée ou fermée.",
+  "Une session par tâche : chaque nouvelle issue ou fonctionnalité a sa propre session (claude_code_start), pour que la conversation la voie sous son propre titre. Chaque session sur un dépôt travaille dans son propre worktree, avec les credentials du projet déjà en place : plusieurs sessions sur le même dépôt ne se gênent pas. claude_code_send ne sert qu'à poursuivre ou corriger la tâche de la session, et il est refusé une fois sa PR mergée ou fermée.",
   "Annonce la session en une phrase à la conversation, puis suis-la avec claude_code_wait. Relancer une session avec claude_code_send s'annonce aussi.",
 ].join("\n");
 
@@ -752,6 +835,7 @@ export async function codeSessionsContext(conversationId: string) {
     const lines = [`## « ${r.title} » (session_id ${r.id})`, `Lancée par ${by}. État : ${status[r.status]}${r.model ? `, modèle ${r.model}` : ""}.`];
     const git = gitLine(r.git);
     if (git) lines.push(`Dépôt : ${git}.`);
+    if (r.worktree?.removedAt) lines.push(`Son worktree a été supprimé par son propriétaire : une nouvelle instruction en recrée un sur la branche ${r.worktree.branch}.`);
     if (r.account?.email) lines.push(`Compte Claude de son dernier run : ${r.account.email}.`);
     if (s.limit?.status === "rejected") {
       const others = profiles.filter((p) => p.id !== r.account?.id).map((p) => p.email ?? "compte du serveur");
@@ -777,7 +861,7 @@ export async function codeSessionsContext(conversationId: string) {
     "État réel, relu à chaque message : il fait foi sur ce que tu croyais savoir. Le propriétaire peut piloter une session sans toi, depuis son panneau (instructions, autorisations, commit, push, PR, merge) : tout ce qu'il y a fait est ci-dessous.",
     "Règles :",
     "- Une session qui porte sur une tâche fait ce travail : ne le refais jamais toi-même en parallèle. Suis-la (claude_code_wait) ou écris-lui (claude_code_send).",
-    "- Une session par tâche : une nouvelle issue ou fonctionnalité ouvre sa propre session (claude_code_start, avec le même project pour réutiliser le clone), jamais un claude_code_send à une session lancée pour autre chose.",
+    "- Une session par tâche : une nouvelle issue ou fonctionnalité ouvre sa propre session (claude_code_start, dans son propre worktree du dépôt), jamais un claude_code_send à une session lancée pour autre chose.",
     "- N'affirme rien sur ce qu'une session a produit sans t'appuyer sur ce bloc ou sur claude_code_wait.",
     "- Si une session est bloquée (limite, erreur, autorisation), dis-le et demande au propriétaire comment continuer avant de changer d'approche.",
     "- Ne lance ni n'installe jamais le CLI `claude` dans ton terminal : passe par les outils claude_code_*.",
@@ -826,12 +910,7 @@ const SESSION_ENV = /(?:^|\0)AGORA_SCREEN=[^\0]*-code-([0-9a-f-]{36})(?:\0|$)/;
  * with setsid, found by their environment. Linux only (/proc); nothing to do elsewhere.
  */
 async function sweepLeftovers() {
-  const bySession = new Map<string, number[]>();
-  for (const name of await readdir("/proc").catch(() => [] as string[])) {
-    if (!/^\d+$/.test(name) || Number(name) === process.pid) continue;
-    const id = SESSION_ENV.exec(await readFile(`/proc/${name}/environ`, "latin1").catch(() => ""))?.[1];
-    if (id) bySession.set(id, [...(bySession.get(id) ?? []), Number(name)]);
-  }
+  const bySession = await sessionProcesses();
   if (!bySession.size) return;
   const rows = await db
     .select({ id: schema.codeSession.id, updatedAt: schema.codeSession.updatedAt })
@@ -842,12 +921,27 @@ async function sweepLeftovers() {
     const l = live.get(id);
     // A warm process lets go of its own when it cools down.
     if (l?.running || l?.proc || Date.now() - (active.get(id) ?? 0) < LEFTOVER_MS) continue;
-    for (const pid of pids) {
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch {
-        // Already gone.
-      }
+    stopLeftovers(pids);
+  }
+}
+
+/** The processes sessions started, by session, found by their environment. Linux only (/proc); none elsewhere. */
+async function sessionProcesses() {
+  const bySession = new Map<string, number[]>();
+  for (const name of await readdir("/proc").catch(() => [] as string[])) {
+    if (!/^\d+$/.test(name) || Number(name) === process.pid) continue;
+    const id = SESSION_ENV.exec(await readFile(`/proc/${name}/environ`, "latin1").catch(() => ""))?.[1];
+    if (id) bySession.set(id, [...(bySession.get(id) ?? []), Number(name)]);
+  }
+  return bySession;
+}
+
+function stopLeftovers(pids: number[]) {
+  for (const pid of pids) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Already gone.
     }
   }
 }
@@ -916,8 +1010,8 @@ function start(s: Live) {
       s.proc = null;
       s.approval = null;
       s.activity = null;
-      // An instruction arrived while it was stopping: it starts the next run.
-      if (s.outbox.length) start(s);
+      // An instruction arrived while it was stopping: it starts the next run (a git action, or its worktree being deleted, starts it once done).
+      if (s.outbox.length && !s.gitBusy) start(s);
     });
 }
 
@@ -951,10 +1045,13 @@ function cool(s: Live) {
 async function execute(s: Live, id: number): Promise<void> {
   const r = s.row;
   if (s.prepare) {
-    const { repo, branch, author } = s.prepare;
+    const { repo, branch } = s.prepare;
     try {
-      gitStep(s, "clone", true, await prepareRepo(r.cwd, repo, { branch, author }), null);
+      const made = await prepareWorktree(cloneDir(await workspace(), repo), r.cwd, repo, { branch, author: await authorOf(r.requestedBy) });
+      const credentials = await writeCredentials(r.cwd, await repoEnv(repo));
+      gitStep(s, "clone", true, [made, credentials].filter(Boolean).join(" "), null);
       s.prepare = null;
+      if (r.worktree) r.worktree = { branch, removedAt: null };
     } catch (err) {
       if (!(err instanceof GitError)) throw err;
       gitStep(s, "clone", false, err.message, null);
@@ -965,6 +1062,7 @@ async function execute(s: Live, id: number): Promise<void> {
     await refreshGit(s);
     touch(s, [], true);
   }
+  const appended = [env.CHROMIUM_PATH && browserNote(env.CHROMIUM_PATH), r.worktree && r.repo && (await repoEnv(r.repo)) && CREDENTIALS_NOTE].filter(Boolean).join("\n\n");
   const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools];
   const args = [
     env.CLAUDE_CODE_BIN,
@@ -986,7 +1084,7 @@ async function execute(s: Live, id: number): Promise<void> {
     ...(r.model ? ["--model", r.model] : []),
     ...(allowed.length ? ["--allowedTools", ...allowed] : []),
     ...r.permissions.dirs.flatMap((d) => ["--add-dir", d]),
-    ...(env.CHROMIUM_PATH ? ["--append-system-prompt", browserNote(env.CHROMIUM_PATH)] : []),
+    ...(appended ? ["--append-system-prompt", appended] : []),
   ];
   // git and gh reach GitHub with the vault's token (the clone's credential helper reads it from there).
   // The browsers it launches show on the conversation's screen.
