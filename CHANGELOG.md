@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.29.0 — 2026-09-30
+
+### Features
+- keep a session's Claude Code process warm between replies
+
 ## v0.28.0 — 2026-09-30
 
 ### Features
