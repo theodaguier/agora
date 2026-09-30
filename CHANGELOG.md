@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.32.1 — 2026-09-30
+
+### Fixes
+- worktrees for project clones, and "Done" only once the PR is merged
+
 ## v0.32.0 — 2026-09-30
 
 ### Features
