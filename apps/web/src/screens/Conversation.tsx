@@ -12,7 +12,7 @@ import { McpRequestCard } from "@/components/McpRequestCard";
 import { QuestionsCard } from "@/components/QuestionsCard";
 import { SkillRequestCard } from "@/components/SkillRequestCard";
 import { ViewCard } from "@/components/views/ViewCard";
-import { insertMessage, readPreviews, withoutPreviews, type ViewAction } from "@agora/core";
+import { insertMessage, readPreviews, withoutMediaTags, withoutPreviews, type ViewAction } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { Composer, type ComposerHandle } from "@/components/Composer";
 import { ConversationAvatar, ParticipantAvatar, PersonAvatar, useStatus } from "@/components/ConversationAvatar";
@@ -21,6 +21,7 @@ import { ConversationPanel, PinnedBar, usePanelLabels, usePins, type PanelKind }
 import { ForwardDialog } from "@/components/ForwardDialog";
 import { MembersPanel } from "@/components/MembersPanel";
 import { PersonPanel } from "@/components/PersonPanel";
+import { SentAttachments } from "@/components/Attachments";
 import { ChatMessage, MessageRow, PendingRow, useDeleteMessage } from "@/components/MessageParts";
 import { RightPanel } from "@/components/RightPanel";
 import { CodeSessionCard, CodeSessionPanel, CodeSessionsButton, ReplyWithSessions, useWide } from "@/components/CodeSession";
@@ -719,6 +720,7 @@ export function Conversation() {
                           )}
                           {m.data?.views && <BotViews message={m} views={m.data.views} answers={viewAnswers} send={send} />}
                           {m.data?.previews && <PreviewCards previews={m.data.previews} onOpen={openPreview} />}
+                          <BotFiles message={m} />
                           {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
                           {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
                         </>
@@ -887,11 +889,18 @@ const NO_REPLY = "NO_REPLY";
 const hideBlocks = (text: string) =>
   NO_REPLY.startsWith(text.trim().replace(/[.\s]+$/, ""))
     ? ""
-    : withoutPreviews(text)
+    : withoutMediaTags(withoutPreviews(text))
         .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[ \t]*\n[\s\S]*?```/g, "")
         .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[\s\S]*$/, "")
         .replace(/\n{3,}/g, "\n\n")
         .trimEnd();
+
+/** The files a bot sent with its reply (its mockups have their own cards). */
+function BotFiles({ message }: { message: Message }) {
+  const mockups = new Set(message.data?.previews?.map((p) => p.id));
+  const files = (message.data?.attachments ?? []).filter((a) => !mockups.has(a.id));
+  return files.length > 0 && <SentAttachments items={files} align="start" />;
+}
 
 /** Conversation name, followed in a direct conversation by the colleague's presence or the bot's activity, on the same baseline. */
 function TitleWithStatus({ title, p, className }: { title: string; p?: Participant; className?: string }) {

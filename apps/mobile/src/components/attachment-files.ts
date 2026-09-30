@@ -6,6 +6,7 @@ import { attachmentUrl, authHeaders } from "@/lib/api";
 import type { Attachment } from "@/lib/types";
 
 export const isImage = (mime: string) => mime.startsWith("image/");
+export const isVideo = (mime: string) => mime.startsWith("video/");
 
 export type Shown = Attachment & { previewUri?: string };
 

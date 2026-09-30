@@ -6,7 +6,7 @@ import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/comp
 import { Spinner } from "@/components/ui/spinner";
 import { defineMessages, useT } from "@/i18n";
 import { attachmentUrl, type Attachment } from "@/lib/api";
-import { isImage } from "@/lib/files";
+import { isAudio, isImage, isVideo } from "@/lib/files";
 import { formatSize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -102,6 +102,42 @@ function ImageTile({ a, className, onOpen }: { a: Shown; className?: string; onO
   );
 }
 
+/** A video, played where it is; its controls hold fullscreen and download. */
+function VideoTile({ a, className }: { a: Shown; className?: string }) {
+  return (
+    <video
+      src={a.previewUrl ?? attachmentUrl(a.id)}
+      controls
+      playsInline
+      preload="metadata"
+      aria-label={a.name}
+      className={cn("bg-black object-contain", className)}
+    />
+  );
+}
+
+/** A sound: its name, and the player. */
+function AudioCard({ a, className }: { a: Shown; className?: string }) {
+  return (
+    <Item variant="outline" size="sm" className={cn("w-72 max-w-full flex-col items-stretch rounded-xl", className)}>
+      <ItemContent className="min-w-0 gap-1.5">
+        <ItemTitle className="w-full truncate">{a.name}</ItemTitle>
+        <audio src={a.previewUrl ?? attachmentUrl(a.id)} controls preload="metadata" className="h-9 w-full" />
+      </ItemContent>
+    </Item>
+  );
+}
+
+/** The attachments by how they are shown. */
+function sortShown(items: Shown[]) {
+  return {
+    images: items.filter((a) => isImage(a.mime)),
+    videos: items.filter((a) => isVideo(a.mime)),
+    sounds: items.filter((a) => isAudio(a.mime)),
+    files: items.filter((a) => !isImage(a.mime) && !isVideo(a.mime) && !isAudio(a.mime)),
+  };
+}
+
 /** File card: a click downloads it. */
 function FileCard({ a, className }: { a: Shown; className?: string }) {
   const t = useT(shownMessages);
@@ -134,8 +170,7 @@ export function SentAttachments({
   /** "start" for files sent by a colleague. */
   align?: "start" | "end";
 }) {
-  const images = items.filter((a) => isImage(a.mime));
-  const files = items.filter((a) => !isImage(a.mime));
+  const { images, videos, sounds, files } = sortShown(items);
   const [viewing, setViewing] = useState<number | null>(null);
   return (
     <div className={cn("flex flex-col gap-1.5", align === "end" ? "items-end" : "items-start", className)}>
@@ -147,6 +182,12 @@ export function SentAttachments({
         </div>
       )}
       <ImageViewer images={images} index={viewing} onIndexChange={setViewing} />
+      {videos.map((a) => (
+        <VideoTile key={a.id} a={a} className="max-h-96 w-96 max-w-full rounded-2xl" />
+      ))}
+      {sounds.map((a) => (
+        <AudioCard key={a.id} a={a} />
+      ))}
       {files.map((a) => (
         <FileCard key={a.id} a={a} />
       ))}
@@ -156,8 +197,7 @@ export function SentAttachments({
 
 /** Attachments inside a bubble, above its text. */
 export function BubbleAttachments({ items }: { items: Shown[] }) {
-  const images = items.filter((a) => isImage(a.mime));
-  const files = items.filter((a) => !isImage(a.mime));
+  const { images, videos, sounds, files } = sortShown(items);
   const [viewing, setViewing] = useState<number | null>(null);
   return (
     <div className="flex flex-col gap-1 p-1">
@@ -174,6 +214,12 @@ export function BubbleAttachments({ items }: { items: Shown[] }) {
         </div>
       )}
       <ImageViewer images={images} index={viewing} onIndexChange={setViewing} />
+      {videos.map((a) => (
+        <VideoTile key={a.id} a={a} className="max-h-80 w-full rounded-xl" />
+      ))}
+      {sounds.map((a) => (
+        <AudioCard key={a.id} a={a} className="w-full border-border/60" />
+      ))}
       {files.map((a) => (
         <FileCard key={a.id} a={a} className="w-full border-border/60" />
       ))}

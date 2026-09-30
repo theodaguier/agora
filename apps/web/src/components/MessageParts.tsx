@@ -21,7 +21,7 @@ import { messagesQuery } from "@/lib/queries";
 import type { Mentionable } from "@/lib/mentions";
 import { cn } from "@/lib/utils";
 import { BubbleAttachments, SentAttachments } from "./Attachments";
-import { isImage } from "../lib/files";
+import { isImage, isVideo } from "../lib/files";
 import { copyText } from "@/lib/feedback";
 import { PeerBubble, UserBubble } from "./Bubbles";
 import { MessageText } from "./MessageText";
@@ -132,7 +132,7 @@ export function ChatMessage(props: {
           className={cn(
             "flex w-fit min-w-0 max-w-full flex-col gap-1 overflow-hidden rounded-2xl p-1",
             mine ? "bg-accent" : "bg-secondary",
-            attachments.some((a) => isImage(a.mime)) ? "w-80" : "max-w-[min(100%,24rem)]",
+            attachments.some((a) => isImage(a.mime) || isVideo(a.mime)) ? "w-80" : "max-w-[min(100%,24rem)]",
             replyTo && "min-w-56",
           )}
         >

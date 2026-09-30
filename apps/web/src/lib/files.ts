@@ -31,3 +31,7 @@ export const basename = (path: string) => path.replace(/[/\\]+$/, "").split(/[/\
 
 export const isImage = (mime: string) => mime.startsWith("image/");
 
+
+/** Played in the conversation rather than downloaded. */
+export const isVideo = (mime: string) => mime.startsWith("video/");
+export const isAudio = (mime: string) => mime.startsWith("audio/");

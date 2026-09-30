@@ -14,7 +14,7 @@ export const attachments = new Hono<AppEnv>().use(requireUser).get("/:id", async
     .where(and(eq(attachment.id, c.req.param("id")), eq(conversationMember.userId, c.get("user").id)));
   if (!row) return c.json({ error: "not_found" }, 404);
   const { mime, name, path } = row.attachment;
-  const inline = c.req.query("download") === undefined && (mime.startsWith("image/") || mime === "application/pdf");
+  const inline = c.req.query("download") === undefined && (/^(image|video|audio)\//.test(mime) || mime === "application/pdf");
   return new Response(Bun.file(path), {
     headers: {
       "Content-Type": mime,
