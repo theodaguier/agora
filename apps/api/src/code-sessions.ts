@@ -42,9 +42,18 @@ type PendingApproval = CodeApproval & { requestId: string; toolUseId?: string; i
 type Live = {
   row: Row;
   transcript: Transcript;
-  /** A run is under way, from the spawn to the exit (the process may not be there yet). */
+  /** A run is under way, from the instruction to its result (the process may not be there yet). */
   running: boolean;
+  /**
+   * The Claude Code process. It outlives a run that ended well: kept warm, it takes the next instruction,
+   * and what it started in the background (a dev server, the browser on the conversation's screen) keeps
+   * running in between, until WARM_MS without a run.
+   */
   proc: Subprocess<"pipe", "pipe", "pipe"> | null;
+  /** Lets go of the warm process at the end of WARM_MS. */
+  idleTimer: ReturnType<typeof setTimeout> | null;
+  /** Number of the latest process started: a process let go (cool) no longer touches the session's state. */
+  procId: number;
   /** Instructions not written yet (the process is starting). */
   outbox: Instruction[];
   /** Written, not yet taken into account by Claude Code (--replay-user-messages acknowledges each). */
@@ -76,6 +85,10 @@ const SAVE_MS = 2_000;
 /** Steps kept in the database: the latest ones. */
 const MAX_STEPS = 800;
 const STOP_GRACE_MS = 5_000;
+/** How long a session's Claude Code process, and what it left running, waits for its next instruction. */
+const WARM_MS = 2 * 60 * 60_000;
+/** A process let go: Claude Code stops its background tasks and exits, or is killed after this. */
+const COOL_GRACE_MS = 60_000;
 
 /** Claude Code's answer when the account ran out of its subscription's usage. */
 const LIMIT_HIT = /hit your .*limit|usage limit reached|limit reached/i;
@@ -138,6 +151,8 @@ function fromRow(row: Row): Live {
     transcript: new Transcript(row.cwd, row.steps),
     running: false,
     proc: null,
+    idleTimer: null,
+    procId: 0,
     outbox: [],
     unread: [],
     approval: null,
@@ -685,9 +700,8 @@ const browserNote = (chromium: string) =>
     `Chromium est déjà installé sur cette machine, avec ses bibliothèques système : ${chromium}.`,
     "Ne lance jamais `playwright install` ni `npx playwright install-deps`, et n'installe aucun autre navigateur : le téléchargement bloque la session.",
     `Si la version de Playwright du projet réclame une autre révision, lance Chromium avec executablePath: "${chromium}" (Puppeteer le trouve déjà via PUPPETEER_EXECUTABLE_PATH).`,
-    "Tout ce que tu lances (navigateur, serveur de dev) est arrêté à la fin de chacune de tes réponses.",
-    "Pour montrer une page aux membres de la conversation, qui la voient en direct et peuvent la piloter, utilise le navigateur durable de la session : la commande `agora-browser` affiche l'adresse DevTools d'un Chromium qui reste ouvert entre tes réponses, toujours le même. Connecte-toi avec `chromium.connectOverCDP(adresse)` (Playwright) ou `puppeteer.connect({ browserURL: adresse })`, travaille dans son contexte et son onglet existants (`browser.contexts()[0]` et sa première page), et termine ton script sans fermer ni le navigateur ni l'onglet. Ne lance pas d'autre navigateur pour montrer une page : il disparaîtrait avec ta réponse.",
-    "Un serveur dont cette page a besoin (serveur de dev, API de démonstration) doit survivre de la même façon : lance-le avec `setsid nohup <commande> > <fichier de log> 2>&1 &`. Ce qui reste ainsi ouvert est arrêté quand la session est inactive depuis deux heures.",
+    "Ce que tu lances en tâche de fond (serveur de dev, navigateur) reste ouvert entre tes réponses : ne garde jamais une réponse ouverte pour le faire vivre, termine-la. Tout s'arrête quand la session reste deux heures sans instruction.",
+    "Les membres de la conversation voient en direct le navigateur ouvert et peuvent le piloter. Pour leur montrer une page, le plus simple est le navigateur de la session : la commande `agora-browser` affiche l'adresse DevTools d'un Chromium qui reste ouvert, toujours le même. Connecte-toi avec `chromium.connectOverCDP(adresse)` (Playwright) ou `puppeteer.connect({ browserURL: adresse })`, travaille dans son contexte et son onglet existants (`browser.contexts()[0]` et sa première page), et laisse-les ouverts.",
   ].join("\n");
 
 /**
@@ -780,6 +794,8 @@ export async function switchCodeSessionAccount(id: string, accountId: string | n
   const s = await load(id, conversationId);
   if (!(await claudeProfiles()).some((p) => p.id === accountId)) throw new CodeSessionError("invalid", "Unknown or signed-out Claude account.");
   await activateClaudeAccount(accountId, by.id);
+  // Warm processes run on the previous account: the next instruction starts one on this one.
+  for (const other of live.values()) cool(other);
   const limited = s.limit?.status === "rejected";
   s.limit = null;
   touch(s, [], true);
@@ -823,7 +839,9 @@ async function sweepLeftovers() {
     .where(inArray(schema.codeSession.id, [...bySession.keys()]));
   const active = new Map(rows.map((r) => [r.id, r.updatedAt.getTime()]));
   for (const [id, pids] of bySession) {
-    if (live.get(id)?.running || Date.now() - (active.get(id) ?? 0) < LEFTOVER_MS) continue;
+    const l = live.get(id);
+    // A warm process lets go of its own when it cools down.
+    if (l?.running || l?.proc || Date.now() - (active.get(id) ?? 0) < LEFTOVER_MS) continue;
     for (const pid of pids) {
       try {
         process.kill(pid, "SIGTERM");
@@ -869,13 +887,22 @@ export function remember(p: Permissions, suggestions: Json[]): Permissions {
 }
 
 function start(s: Live) {
+  if (s.idleTimer) clearTimeout(s.idleTimer);
+  s.idleTimer = null;
   s.running = true;
   s.stopping = false;
   s.row.result = null;
   setStatus(s, "running");
-  execute(s)
+  // Warm: the process of the previous run takes the instruction, with everything it knows and left running.
+  if (s.proc) {
+    for (const m of s.outbox.splice(0)) deliver(s, m);
+    return;
+  }
+  const id = ++s.procId;
+  execute(s, id)
     .catch(async (err) => {
       console.error("code session: run", err);
+      if (s.procId !== id) return;
       s.proc = null;
       // The CLI could not even start: its instructions would fail the same way.
       s.outbox = [];
@@ -883,6 +910,8 @@ function start(s: Live) {
       await settle(s, "failed");
     })
     .finally(() => {
+      // A process let go while a newer one started: the session's state is that one's.
+      if (s.procId !== id) return;
       s.running = false;
       s.proc = null;
       s.approval = null;
@@ -892,7 +921,34 @@ function start(s: Live) {
     });
 }
 
-async function execute(s: Live): Promise<void> {
+/** The run just ended well: the process stays, waiting for the next instruction for WARM_MS. */
+async function rest(s: Live) {
+  touch(s, s.transcript.settle(), true);
+  s.running = false;
+  s.approval = null;
+  s.activity = null;
+  s.idleTimer = setTimeout(() => cool(s), WARM_MS);
+  await settle(s, "idle");
+  // Written while it was settling.
+  if (s.outbox.length && !s.running && !s.gitBusy) start(s);
+}
+
+/** Lets go of a warm process: its stdin closes, Claude Code stops its background tasks and exits. */
+function cool(s: Live) {
+  const proc = s.proc;
+  if (!proc || s.running) return;
+  if (s.idleTimer) clearTimeout(s.idleTimer);
+  s.idleTimer = null;
+  s.proc = null;
+  try {
+    proc.stdin.end();
+  } catch {
+    // Already gone.
+  }
+  setTimeout(() => proc.kill(), COOL_GRACE_MS).unref();
+}
+
+async function execute(s: Live, id: number): Promise<void> {
   const r = s.row;
   if (s.prepare) {
     const { repo, branch, author } = s.prepare;
@@ -963,6 +1019,13 @@ async function execute(s: Live): Promise<void> {
       continue;
     }
     if (ev.type === "control_response") continue;
+    // A turn of its own while warm (a background task that ended): shown as a run.
+    if (!s.running && s.proc === proc && (ev.type === "assistant" || ev.type === "stream_event")) {
+      if (s.idleTimer) clearTimeout(s.idleTimer);
+      s.idleTimer = null;
+      s.running = true;
+      setStatus(s, "running");
+    }
     // One of the instructions written, now in Claude Code's context.
     if (ev.type === "user" && ev.isReplay) {
       s.unread.shift();
@@ -995,11 +1058,23 @@ async function execute(s: Live): Promise<void> {
         s.limit = { status: "rejected", window: s.limit?.window ?? "session", ...(s.limit?.resetsAt && { resetsAt: s.limit.resetsAt }) };
       }
       account(s, change.result.event);
-      // Everything written has been answered: the run ends (stdin closed, the process exits).
-      if (!s.unread.length || s.stopping) proc.stdin.end();
+      // Written during the run, not answered yet: it goes on with them.
+      if (s.unread.length && !s.stopping) continue;
+      // Stopped, or failed: the process ends (stdin closed), and the run with it.
+      if (s.stopping || result.isError || s.proc !== proc) {
+        proc.stdin.end();
+        continue;
+      }
+      await rest(s);
+      result = null;
     }
   }
   const code = await proc.exited;
+  // Let go while warm, or replaced: no run of this process was under way.
+  if (s.procId !== id || s.proc !== proc || !s.running) {
+    if (s.proc === proc) s.proc = null;
+    return;
+  }
   s.proc = null;
   s.approval = null;
   s.activity = null;
