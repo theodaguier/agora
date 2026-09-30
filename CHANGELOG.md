@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.28.0 — 2026-09-30
+
+### Features
+- a lasting browser for Claude Code sessions, so the screen survives their replies
+
 ## v0.27.0 — 2026-09-29
 
 ### Features
