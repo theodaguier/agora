@@ -27,6 +27,7 @@ import {
   codeModelsQuery,
   codeSessionQuery,
   refreshCodeSessionGit,
+  removeCodeSessionWorktree,
   runCodeGit,
   sendToCodeSession,
   setCodeSessionModel,
@@ -59,7 +60,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
   const [atBottom, setAtBottom] = useState(true);
   const [barHeight, setBarHeight] = useState(0);
   const owner = !!session && session.requestedBy === me.id;
-  useGitRefresh(conversationId, sessionId, !!session?.git);
+  useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
 
   const toEnd = (animated: boolean) => {
     follow.current = true;
@@ -78,6 +79,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               actions={[
                 { label: t.copyPath, icon: "doc.on.doc", onPress: () => void Clipboard.setStringAsync(session.cwd) },
                 !!session.git?.pr && { label: t.git.pr(session.git.pr.number), icon: "link", onPress: () => void Linking.openURL(session.git!.pr!.url) },
+                owner && !!session.repo && { label: t.credentials.open, icon: "key", onPress: () => router.push(credentialsHref(conversationId, session.id)) },
               ]}
             />
           </Stack.Toolbar.View>
@@ -153,7 +155,8 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               )}
               <Surface className="gap-2 px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
                 {session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />}
-                {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner} />}
+                {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
+                {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
                 {owner ? (
                   <SessionComposer conversationId={conversationId} session={session} onSent={() => toEnd(true)} />
                 ) : (
@@ -312,6 +315,47 @@ const FILE_STATE = { added: "A", modified: "M", deleted: "D", renamed: "R" } as 
 const FILE_TONE = { added: "text-success", modified: "text-warning", deleted: "text-danger", renamed: "text-muted" } as const;
 
 export const pullRequestHref = (conversationId: string, sessionId: string) => `/code/${conversationId}/${sessionId}/pull-request` as Href;
+const credentialsHref = (conversationId: string, sessionId: string) => `/code/${conversationId}/${sessionId}/credentials` as Href;
+
+/**
+ * Once its owner is done with a session started on a repository: the way to delete its worktree
+ * (the branch stays in the clone). Deleted, what a new instruction does.
+ */
+function WorktreeBanner({ conversationId, session, worktree }: { conversationId: string; session: CodeSession; worktree: NonNullable<CodeSession["worktree"]> }) {
+  const t = tr(codeSessions).worktree;
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  const remove = useMutation({
+    mutationFn: () => removeCodeSessionWorktree(conversationId, session.id),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      toast.success(t.removed);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  if (isActive(session.status)) return null;
+  if (worktree.removedAt) {
+    return (
+      <Typography type="body-xs" color="muted" className="px-1">
+        {t.gone(worktree.branch)}
+      </Typography>
+    );
+  }
+  const confirm = async () => {
+    const branch = session.git?.branch ?? worktree.branch;
+    if (await confirmAction({ title: t.confirmTitle(session.title), description: t.confirmHelp(branch, session.git?.changes ?? 0), action: t.remove })) remove.mutate();
+  };
+  return (
+    <Alert status="default">
+      <Alert.Content className="gap-2">
+        <Alert.Description>{t.done}</Alert.Description>
+        <Button size="sm" variant="danger-soft" className="self-start" isDisabled={remove.isPending} onPress={withTap(() => void confirm())}>
+          {remove.isPending ? t.removing : t.remove}
+        </Button>
+      </Alert.Content>
+    </Alert>
+  );
+}
 
 /**
  * Where the clone stands, above the field as in an IDE's agent panel: the branch, the files changed

@@ -52,6 +52,25 @@ export const codeSessions = defineMessages({
     costNote: "Estimated at API prices: the subscription is not billed per token.",
     copyPath: "Copy the path",
     latest: "Latest steps",
+    worktree: {
+      done: "This session is done. Delete its worktree to free the space: its branch stays in the repository's clone.",
+      remove: "Delete the worktree",
+      removing: "Deleting…",
+      confirmTitle: (title: string) => `Delete the worktree of “${title}”?`,
+      confirmHelp: (branch: string, changes: number) =>
+        `${changes ? (changes === 1 ? "1 file changed and not committed is lost. " : `${changes} files changed and not committed are lost. `) : ""}Its commits stay on ${branch}, and a new instruction makes a new worktree on it.`,
+      removed: "Worktree deleted.",
+      gone: (branch: string) => `Worktree deleted. A new instruction makes a new one on ${branch}.`,
+      listGone: "worktree deleted",
+    },
+    credentials: {
+      open: "Project credentials",
+      title: (repo: string) => `Credentials of ${repo}`,
+      help: "Written as .env into the worktree of every session started on this repository, ignored by git. Sessions started from now on get the changes.",
+      label: ".env",
+      placeholder: "API_KEY=…",
+      saved: "Credentials saved.",
+    },
     git: {
       changes: (n: number) => (n === 1 ? "1 file changed" : `${n} files changed`),
       ahead: (n: number, pushed: boolean) => (pushed ? `${n} to push` : n === 1 ? "1 commit, not pushed" : `${n} commits, not pushed`),
@@ -139,6 +158,25 @@ export const codeSessions = defineMessages({
     costNote: "Estimation au prix de l'API : l'abonnement n'est pas facturé au token.",
     copyPath: "Copier le chemin",
     latest: "Dernières étapes",
+    worktree: {
+      done: "Cette session est terminée. Supprime son worktree pour libérer la place : sa branche reste dans le clone du dépôt.",
+      remove: "Supprimer le worktree",
+      removing: "Suppression…",
+      confirmTitle: (title: string) => `Supprimer le worktree de « ${title} » ?`,
+      confirmHelp: (branch: string, changes: number) =>
+        `${changes ? (changes <= 1 ? "1 fichier modifié et non commité sera perdu. " : `${changes} fichiers modifiés et non commités seront perdus. `) : ""}Ses commits restent sur ${branch}, et une nouvelle instruction recrée un worktree dessus.`,
+      removed: "Worktree supprimé.",
+      gone: (branch: string) => `Worktree supprimé. Une nouvelle instruction en recrée un sur ${branch}.`,
+      listGone: "worktree supprimé",
+    },
+    credentials: {
+      open: "Credentials du projet",
+      title: (repo: string) => `Credentials de ${repo}`,
+      help: "Écrits en .env dans le worktree de chaque session lancée sur ce dépôt, ignorés par git. Les sessions lancées à partir de maintenant reçoivent les changements.",
+      label: ".env",
+      placeholder: "API_KEY=…",
+      saved: "Credentials enregistrés.",
+    },
     git: {
       changes: (n: number) => (n <= 1 ? `${n} fichier modifié` : `${n} fichiers modifiés`),
       ahead: (n: number, pushed: boolean) => (pushed ? `${n} à pousser` : n <= 1 ? `${n} commit non poussé` : `${n} commits non poussés`),

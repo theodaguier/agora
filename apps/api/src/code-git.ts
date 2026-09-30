@@ -1,13 +1,19 @@
-import { readdir } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
 import type { CodeGit, CodeGitFile, CodePullRequest, CodeRepo } from "@agora/core";
 import { childEnv } from "./harden";
 import { defineMessages, tr } from "./i18n";
 import { instanceSecret } from "./vault";
 
 /**
- * GitHub for the Claude Code sessions (code-sessions.ts): the clone a session
+ * GitHub for the Claude Code sessions (code-sessions.ts): the worktree a session
  * starts on, the state of its branch, and the actions its owner runs from the
  * panel (commit, push, pull request, merge).
+ *
+ * A repository is cloned once, into a clone its sessions share and never work
+ * in: each session gets a git worktree of it, on its own branch, with the
+ * project's credentials (repo-env.ts) written into it. Deleting the worktree
+ * keeps the branch in the clone.
  *
  * Access comes from a token of the vault (instance .env): GH_TOKEN or
  * GITHUB_TOKEN, else the GitHub connector's. It is handed to git and gh through
@@ -30,6 +36,10 @@ const messages = defineMessages({
     noPr: "This branch has no open pull request.",
     cloned: (repo: string, branch: string, from: string | null) => `Cloned ${repo}, on branch ${branch}${from ? ` (from ${from})` : ""}.`,
     fetched: (repo: string, branch: string) => `${repo} updated, on branch ${branch}.`,
+    worktree: (repo: string, branch: string, from: string | null) => `Worktree of ${repo}, on branch ${branch}${from ? ` (from ${from})` : ""}.`,
+    credentials: (file: string) => `The project's credentials are in ${file}.`,
+    credentialsTracked: "The project's credentials were not written: .env and .env.local are both committed in the repository.",
+    removed: (branch: string | null) => (branch ? `Worktree deleted. Branch ${branch} stays in the clone.` : "Worktree deleted."),
     committed: (sha: string, subject: string) => `Commit ${sha}: ${subject}`,
     pushed: (branch: string) => `Branch ${branch} pushed to GitHub.`,
     opened: (n: number, title: string) => `Pull request #${n} opened: ${title}`,
@@ -54,6 +64,10 @@ const messages = defineMessages({
     noPr: "Cette branche n'a pas de PR ouverte.",
     cloned: (repo: string, branch: string, from: string | null) => `Clone de ${repo}, sur la branche ${branch}${from ? ` (depuis ${from})` : ""}.`,
     fetched: (repo: string, branch: string) => `${repo} mis à jour, sur la branche ${branch}.`,
+    worktree: (repo: string, branch: string, from: string | null) => `Worktree de ${repo}, sur la branche ${branch}${from ? ` (depuis ${from})` : ""}.`,
+    credentials: (file: string) => `Les credentials du projet sont dans ${file}.`,
+    credentialsTracked: "Les credentials du projet n'ont pas été écrits : .env et .env.local sont tous deux versionnés dans le dépôt.",
+    removed: (branch: string | null) => (branch ? `Worktree supprimé. La branche ${branch} reste dans le clone.` : "Worktree supprimé."),
     committed: (sha: string, subject: string) => `Commit ${sha} : ${subject}`,
     pushed: (branch: string) => `Branche ${branch} poussée sur GitHub.`,
     opened: (n: number, title: string) => `PR #${n} ouverte : ${title}`,
@@ -89,8 +103,14 @@ export const githubEnv = (token: string | null): Record<string, string> => ({
 type Run = { ok: boolean; out: string; err: string; raw: string };
 
 async function git(cwd: string, args: string[], token: string | null = null, timeoutMs = 60_000): Promise<Run> {
-  // No optional locks: reading the state while Claude Code works in the clone must not get in its way.
-  const proc = Bun.spawn(["git", ...args], { cwd, env: childEnv({ ...githubEnv(token), GIT_OPTIONAL_LOCKS: "0" }), stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: timeoutMs });
+  let proc: ReturnType<typeof Bun.spawn<"ignore", "pipe", "pipe">>;
+  try {
+    // No optional locks: reading the state while Claude Code works in the clone must not get in its way.
+    proc = Bun.spawn(["git", ...args], { cwd, env: childEnv({ ...githubEnv(token), GIT_OPTIONAL_LOCKS: "0" }), stdin: "ignore", stdout: "pipe", stderr: "pipe", timeout: timeoutMs });
+  } catch (err) {
+    // The directory is gone (a worktree deleted).
+    return { ok: false, out: "", err: String(err instanceof Error ? err.message : err), raw: "" };
+  }
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
   return { ok: code === 0, out: out.trim(), err: err.trim(), raw: out };
 }
@@ -148,44 +168,129 @@ async function configure(cwd: string, author: { name: string; email: string }) {
   await must(cwd, ["config", "--add", "credential.https://github.com.helper", HELPER]);
 }
 
+/** One git operation at a time on a shared clone: two sessions starting on it would clone or fetch it together. */
+const cloneLocks = new Map<string, Promise<unknown>>();
+
+function serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const run = (cloneLocks.get(key) ?? Promise.resolve()).then(fn, fn);
+  const settled = run.catch(() => {});
+  cloneLocks.set(key, settled);
+  void settled.then(() => cloneLocks.get(key) === settled && cloneLocks.delete(key));
+  return run;
+}
+
+/** The directory is the root of a git working tree (a worktree of the clone, not a directory inside another repository). */
+async function isOwnTree(cwd: string) {
+  const r = await git(cwd, ["rev-parse", "--show-toplevel"]);
+  if (!r.ok) return false;
+  const [top, dir] = await Promise.all([realpath(r.out).catch(() => r.out), realpath(cwd).catch(() => cwd)]);
+  return top === dir;
+}
+
 /**
- * The session's directory as a clone of `repo` on its working branch: cloned when empty, fetched
- * when it already is that clone. The branch is `branch` (checked out from GitHub when it exists
- * there, created from the default branch otherwise). Returns the step's text.
+ * The session's directory as a worktree of `repo` on its working branch. `clone`: the repository's
+ * clone its sessions share, cloned when missing and fetched otherwise; it keeps no checkout of its
+ * own (HEAD detached), so that any branch is free for a worktree. The branch is `branch`: the
+ * clone's when it has it (a worktree deleted before), checked out from GitHub when it exists there,
+ * created from the default branch otherwise. Returns the step's text.
  */
-export async function prepareRepo(cwd: string, repo: string, opts: { branch: string; author: { name: string; email: string } }) {
+export async function prepareWorktree(clone: string, cwd: string, repo: string, opts: { branch: string; author: { name: string; email: string } }) {
   const t = tr(messages);
   const token = await githubToken();
   const dir = cwd.split("/").filter(Boolean).at(-1) ?? cwd;
-  let cloned = false;
-  if (await isClone(cwd)) {
-    const origin = await originRepo(cwd);
-    if (origin?.toLowerCase() !== repo.toLowerCase()) throw new GitError(t.otherClone(dir, origin ?? "?"));
-    await must(cwd, ["fetch", "origin", "--prune"], token, 5 * 60_000);
-  } else {
-    if ((await readdir(cwd).catch(() => [])).length) throw new GitError(t.notEmpty(dir));
-    // Clone first, settings after: the helper passed for this one command.
-    await must(cwd, ["-c", "credential.https://github.com.helper=", "-c", `credential.https://github.com.helper=${HELPER}`, "clone", `https://github.com/${repo}.git`, "."], token, 10 * 60_000);
-    cloned = true;
-  }
-  await configure(cwd, opts.author);
+  return serial(clone, async () => {
+    let cloned = false;
+    if (await isOwnTree(clone)) {
+      const origin = await originRepo(clone);
+      if (origin?.toLowerCase() !== repo.toLowerCase()) throw new GitError(t.otherClone(clone, origin ?? "?"));
+      await must(clone, ["fetch", "origin", "--prune"], token, 5 * 60_000);
+    } else {
+      // What a clone that failed halfway left.
+      await rm(clone, { recursive: true, force: true });
+      await mkdir(clone, { recursive: true });
+      // Clone first, settings after: the helper passed for this one command.
+      await must(
+        clone,
+        ["-c", "credential.https://github.com.helper=", "-c", `credential.https://github.com.helper=${HELPER}`, "clone", "--no-checkout", `https://github.com/${repo}.git`, "."],
+        token,
+        10 * 60_000,
+      );
+      await must(clone, ["update-ref", "--no-deref", "HEAD", "HEAD"]);
+      cloned = true;
+    }
+    // Shared by its worktrees: who commits (the owner), and the token for github.com.
+    await configure(clone, opts.author);
+    // Worktrees whose directory is gone.
+    await git(clone, ["worktree", "prune"]);
 
-  const branch = opts.branch;
-  if (!(await git(cwd, ["check-ref-format", "--branch", branch])).ok) throw new GitError(t.badBranch(branch));
-  const base = await defaultBranch(cwd);
-  const current = (await git(cwd, ["branch", "--show-current"])).out;
-  let from: string | null = null;
-  if (current !== branch) {
-    if (await hasRef(cwd, `refs/heads/${branch}`)) await must(cwd, ["checkout", branch]);
-    else if (await hasRef(cwd, `refs/remotes/origin/${branch}`)) await must(cwd, ["checkout", "-b", branch, "--track", `origin/${branch}`]);
-    else {
-      from = base;
-      await must(cwd, ["checkout", "-b", branch, ...(base ? [`origin/${base}`] : [])]);
-      // Not tracking the base: the first push creates the branch on GitHub.
-      await git(cwd, ["branch", "--unset-upstream"]);
+    const branch = opts.branch;
+    if (!(await git(clone, ["check-ref-format", "--branch", branch])).ok) throw new GitError(t.badBranch(branch));
+    const base = await defaultBranch(clone);
+    let from: string | null = null;
+    if (await isOwnTree(cwd)) {
+      // Already its worktree (a clone step retried): back on its branch.
+      if ((await git(cwd, ["branch", "--show-current"])).out !== branch) await must(cwd, ["checkout", branch]);
+    } else {
+      if ((await readdir(cwd).catch(() => [])).length) throw new GitError(t.notEmpty(dir));
+      if (await hasRef(clone, `refs/heads/${branch}`)) await must(clone, ["worktree", "add", cwd, branch]);
+      else if (await hasRef(clone, `refs/remotes/origin/${branch}`)) await must(clone, ["worktree", "add", "--track", "-b", branch, cwd, `origin/${branch}`]);
+      else {
+        from = base;
+        // Not tracking the base: the first push creates the branch on GitHub.
+        await must(clone, ["worktree", "add", "--no-track", "-b", branch, cwd, ...(base ? [`origin/${base}`] : [])]);
+      }
+    }
+    return cloned ? t.cloned(repo, branch, from) : t.worktree(repo, branch, from);
+  });
+}
+
+/** Where Agora writes a project's credentials: .env, else .env.local when the repository commits its .env. */
+const CREDENTIAL_FILES = [".env", ".env.local"];
+const CREDENTIALS_HEAD = "# Written by Agora: this project's credentials. Never commit this file.";
+
+/**
+ * Writes the project's credentials into the worktree, in a file git ignores (excluded in the clone's
+ * info/exclude, whatever its .gitignore says): nothing can commit it, not even a commit of every
+ * change from the panel. Returns the step's text; null without credentials.
+ */
+export async function writeCredentials(cwd: string, text: string) {
+  const t = tr(messages);
+  if (!text.trim()) return null;
+  let file: string | null = null;
+  for (const name of CREDENTIAL_FILES) {
+    if (!(await git(cwd, ["ls-files", "--error-unmatch", "--", name])).ok) {
+      file = name;
+      break;
     }
   }
-  return cloned ? t.cloned(repo, branch, from) : t.fetched(repo, branch);
+  if (!file) return t.credentialsTracked;
+  const common = (await git(cwd, ["rev-parse", "--git-common-dir"])).out;
+  if (common) {
+    const exclude = join(isAbsolute(common) ? common : join(cwd, common), "info", "exclude");
+    const current = await readFile(exclude, "utf8").catch(() => "");
+    if (!current.split("\n").includes(`/${file}`)) {
+      await mkdir(join(exclude, ".."), { recursive: true });
+      await appendFile(exclude, `${current && !current.endsWith("\n") ? "\n" : ""}/${file}\n`);
+    }
+  }
+  await writeFile(join(cwd, file), `${CREDENTIALS_HEAD}\n${text}`, { mode: 0o600 });
+  return t.credentials(file);
+}
+
+/**
+ * Deletes the session's worktree, whatever it holds (changes not committed are lost), and forgets it
+ * in the clone; its branch stays there. Returns the branch it was on and the step's text.
+ */
+export async function removeWorktree(clone: string, cwd: string) {
+  const branch = (await git(cwd, ["branch", "--show-current"])).out || null;
+  return serial(clone, async () => {
+    // Twice: even when it is locked.
+    const r = await git(clone, ["worktree", "remove", "--force", "--force", cwd]);
+    // Not a worktree of the clone anymore (moved, or the clone is gone): the directory goes anyway.
+    if (!r.ok) await rm(cwd, { recursive: true, force: true });
+    await git(clone, ["worktree", "prune"]);
+    return { branch, text: tr(messages).removed(branch) };
+  });
 }
 
 /* ---------- GitHub's API ---------- */

@@ -232,6 +232,13 @@
       "when": 1790595766501,
       "tag": "0032_code_session_git",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790783557458,
+      "tag": "0033_code_session_worktree",
+      "breakpoints": true
     }
   ]
 }

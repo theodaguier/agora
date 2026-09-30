@@ -56,6 +56,9 @@ import {
   setCodeSessionModel,
   startCodeSession,
   refreshCodeSessionGit,
+  removeCodeSessionWorktree,
+  repoEnvQuery,
+  saveRepoEnv,
   stopCodeSession,
   writeCommitMessage,
 } from "@/lib/code-sessions";
@@ -224,7 +227,8 @@ export function CodeSessionsButton({ conversationId, current, onOpen }: { conver
                 <span className="block truncate text-sm">{s.title}</span>
                 <span className="block truncate text-[12px] text-muted-foreground">
                   {t.status[s.status]}
-                  {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""} · {dividerLabel(new Date(s.updatedAt))}
+                  {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
+                  {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
                 </span>
                 {s.instruction && (
                   <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
@@ -383,6 +387,7 @@ const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 function RepoPicker({ conversationId, recent, value, onSelect }: { conversationId: string; recent: string[]; value: string | null; onSelect: (repo: string | null) => void }) {
   const t = useT(messages);
   const [open, setOpen] = useState(false);
+  const [credentials, setCredentials] = useState(false);
   const [search, setSearch] = useState("");
   const { data: repos = [], isPending } = useQuery({ ...codeReposQuery(conversationId), enabled: open });
   const others = repos.filter((r) => !recent.includes(r.repo));
@@ -436,9 +441,84 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
               </CommandGroup>
             )}
           </CommandList>
+          {value && (
+            <div className="border-t border-border/60 p-1">
+              <Button
+                variant="ghost"
+                className="w-full justify-start rounded-md px-2.5 font-normal"
+                onClick={() => {
+                  setOpen(false);
+                  setCredentials(true);
+                }}
+              >
+                {t.credentials.open}
+              </Button>
+            </div>
+          )}
         </Command>
       </PopoverContent>
+      {value && <RepoCredentialsDialog conversationId={conversationId} repo={value} open={credentials} onClose={() => setCredentials(false)} />}
     </Popover>
+  );
+}
+
+/**
+ * A repository's credentials, the .env its clone never has: Agora writes them into the worktree of
+ * every session started on it (ignored by git). Shown in clear to the owner only.
+ */
+function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conversationId: string; repo: string; open: boolean; onClose: () => void }) {
+  const t = useT(messages).credentials;
+  const c = useT(common);
+  const { data, isPending } = useQuery({ ...repoEnvQuery(conversationId, repo), enabled: open });
+  const save = useMutation({
+    mutationFn: (env: string) => saveRepoEnv(conversationId, repo, env),
+    onSuccess: onClose,
+    meta: { success: t.saved, error: false },
+  });
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate(String(new FormData(e.currentTarget).get("env") ?? ""));
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="pr-6">{t.title(repo)}</DialogTitle>
+            <DialogDescription>{t.help}</DialogDescription>
+          </DialogHeader>
+          <FieldGroup className="my-5">
+            <Field>
+              <FormLabel htmlFor="code-repo-env">{t.label}</FormLabel>
+              {isPending ? (
+                <Spinner className="size-4 text-muted-foreground" />
+              ) : (
+                <Textarea
+                  key={repo}
+                  id="code-repo-env"
+                  name="env"
+                  rows={10}
+                  autoFocus
+                  spellCheck={false}
+                  autoComplete="off"
+                  defaultValue={data?.env ?? ""}
+                  placeholder={t.placeholder}
+                  className="max-h-96 font-mono text-[12px] leading-5 md:text-[12px]"
+                />
+              )}
+            </Field>
+            {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
+          </FieldGroup>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
+            <Button type="submit" disabled={isPending || save.isPending}>
+              {save.isPending ? c.saving : c.save}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -457,7 +537,7 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
   }, [session?.steps]);
 
   const owner = !!session && session.requestedBy === user.id;
-  useGitRefresh(conversationId, sessionId, !!session?.git);
+  useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
@@ -482,7 +562,7 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
         </div>
       ) : (
         <>
-          <Meta session={session} showModel={!owner} showAccount={owner} />
+          <Meta conversationId={conversationId} session={session} showModel={!owner} owner={owner} />
           {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
 
           <div className="relative min-h-0 flex-1 border-t border-border/60">
@@ -519,7 +599,8 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
 
           <div className="shrink-0 px-3 pb-3 pt-2">
             {session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />}
-            {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner} />}
+            {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
+            {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
             {owner ? (
               <SessionComposer conversationId={conversationId} session={session} />
             ) : (
@@ -560,10 +641,15 @@ function useGitRefresh(conversationId: string, sessionId: string, enabled: boole
   }, [conversationId, sessionId, enabled, qc]);
 }
 
-/** Directory and what the session consumed, on one line; the detail on hover. The model too, for those who cannot change it. */
-function Meta({ session, showModel, showAccount }: { session: CodeSession; showModel: boolean; showAccount: boolean }) {
+/**
+ * Directory and what the session consumed, on one line; the detail on hover. The model too, for
+ * those who cannot change it; for its owner, the account and the repository's credentials.
+ */
+function Meta({ conversationId, session, showModel, owner }: { conversationId: string; session: CodeSession; showModel: boolean; owner: boolean }) {
   const t = useT(messages);
   const f = useFormat();
+  const [credentials, setCredentials] = useState(false);
+  const showAccount = owner;
   const u = session.usage;
   const folder = session.cwd.split("/").filter(Boolean).at(-1) ?? session.cwd;
   const minutes = u ? u.durationMs / 60_000 : 0;
@@ -609,7 +695,51 @@ function Meta({ session, showModel, showAccount }: { session: CodeSession; showM
           </TooltipContent>
         </Tooltip>
       )}
+      {owner && session.repo && (
+        <>
+          <button
+            type="button"
+            onClick={() => setCredentials(true)}
+            className="rounded-sm underline-offset-3 outline-none hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            {t.credentials.open}
+          </button>
+          <RepoCredentialsDialog conversationId={conversationId} repo={session.repo} open={credentials} onClose={() => setCredentials(false)} />
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * Once its owner is done with a session started on a repository: the way to delete its worktree
+ * (the branch stays in the clone). Deleted, what a new instruction does.
+ */
+function WorktreeBanner({ conversationId, session, worktree }: { conversationId: string; session: CodeSession; worktree: NonNullable<CodeSession["worktree"]> }) {
+  const t = useT(messages).worktree;
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => removeCodeSessionWorktree(conversationId, session.id),
+    onSuccess: (s) => applyCodeSession(qc, s),
+    meta: { loading: t.removing, success: t.removed },
+  });
+  if (active(session.status)) return null;
+  if (worktree.removedAt) return <p className="mb-2 px-1 text-[13px] text-muted-foreground">{t.gone(worktree.branch)}</p>;
+  const confirm = async () => {
+    const branch = session.git?.branch ?? worktree.branch;
+    if (await confirmAction({ title: t.confirmTitle(session.title), description: t.confirmHelp(branch, session.git?.changes ?? 0), action: t.remove })) remove.mutate();
+  };
+  return (
+    <Alert className="mb-2 rounded-2xl px-3.5 py-3">
+      <AlertDescription>
+        <p>{t.done}</p>
+        <div className="mt-2">
+          <Button size="sm" variant="outline" disabled={remove.isPending} onClick={() => void confirm()}>
+            {remove.isPending ? t.removing : t.remove}
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
   );
 }
 

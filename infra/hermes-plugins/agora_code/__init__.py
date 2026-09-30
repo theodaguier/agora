@@ -181,12 +181,13 @@ START = {
         "Never run or install the `claude` CLI in a terminal: use this. Every step it takes (files read and edited, "
         "commands, results) is shown live to the conversation's members, and its owner can talk to it and stop it. "
         "It runs without permission prompts (files, commands, network): write its brief accordingly. When it stops on "
-        "its subscription's limit, its owner can move it to another Claude account from its panel. For work on a GitHub repository, pass `repo`: Agora clones it with the organization's "
-        "GitHub access on a working branch; Claude Code can then commit, push and use `gh`, and the owner can commit, "
+        "its subscription's limit, its owner can move it to another Claude account from its panel. For work on a GitHub repository, pass `repo`: Agora gives the session a git worktree of its own, "
+        "from a clone of the repository shared by its sessions, on a working branch, with the project's credentials (.env) already in place, "
+        "using the organization's GitHub access; Claude Code can then commit, push and use `gh`, and the owner can commit, "
         "push, open and merge the pull request from the session's panel. Do not copy code into its directory yourself. "
         "Once started, the session does the work: do not do it yourself in parallel; follow it with claude_code_wait. "
         "One session per task: a new issue or feature gets its own session, with a title naming it, even on the "
-        "same repository (pass the same `project` to reuse its clone); claude_code_send is only for following up on "
+        "same repository (each gets its own worktree, sessions on one repository never get in each other's way); claude_code_send is only for following up on "
         "the task a session was started for. Start several sessions for independent tasks. Write a complete brief: goal, constraints, how to check the "
         "result. Waits for it to finish, then returns its answer and the actions it took. Only available in replies "
         "to the subscription's owner."
@@ -196,7 +197,7 @@ START = {
         "properties": {
             "task": {"type": "string", "description": "The full brief for Claude Code."},
             "title": {"type": "string", "description": "Short title shown in the conversation (a few words)."},
-            "repo": {"type": "string", "description": "GitHub repository to work on: owner/name or its URL. Cloned before Claude Code starts."},
+            "repo": {"type": "string", "description": "GitHub repository to work on: owner/name or its URL. The session works in a worktree of its own, made before Claude Code starts."},
             "branch": {
                 "type": "string",
                 "description": "Branch of `repo` to work on: checked out when it exists on GitHub, created from the default "
@@ -204,8 +205,8 @@ START = {
             },
             "project": {
                 "type": "string",
-                "description": "Name of its working directory on the server (letters, digits, . _ -). Sessions with the same "
-                               "project share it: reuse it to keep working on the same clone. Default: a new directory.",
+                "description": "Without `repo` only: name of its working directory on the server (letters, digits, . _ -). "
+                               "Sessions with the same project share it. Default: a new directory. Ignored with `repo`: the session gets a worktree.",
             },
             "model": {"type": "string", "description": "Claude model (alias like opus or sonnet, or a full id). Default: Claude Code's own."},
             "wait": {"type": "boolean", "description": "Wait for the result (default true). False: return right away with its id."},
@@ -232,7 +233,7 @@ SEND = {
     "description": (
         "Send another instruction to a Claude Code session (it keeps its context): a follow-up or a correction of "
         "the task it was started for. Never a new task (another issue, another feature): start a new session for it "
-        "with claude_code_start, with the same `project` to reuse the clone. Refused once its pull request is merged or closed. If it is working, it reads it at its "
+        "with claude_code_start (it gets a worktree of its own). Refused once its pull request is merged or closed. If it is working, it reads it at its "
         "next step. Then waits like claude_code_wait."
     ),
     "parameters": {

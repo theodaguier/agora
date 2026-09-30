@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,7 +13,7 @@ writeFileSync(join(root, "gitconfig"), `[url "file://${remotes}/"]\n\tinsteadOf 
 process.env.GIT_CONFIG_GLOBAL = join(root, "gitconfig");
 process.env.GIT_CONFIG_NOSYSTEM = "1";
 
-const { commit, commitMaterial, parseRepo, prepareRepo, pullRequestLinks, push, readGit, sessionBranch } = await import("./code-git");
+const { commit, commitMaterial, parseRepo, prepareWorktree, pullRequestLinks, push, readGit, removeWorktree, sessionBranch, writeCredentials } = await import("./code-git");
 
 const sh = (cwd: string, ...args: string[]) => {
   const r = Bun.spawnSync(["git", ...args], { cwd, env: process.env });
@@ -68,17 +68,20 @@ test("sessionBranch: the title, unique to the session", () => {
   expect(sessionBranch("!!!", "abcd1234")).toBe("claude/session-abcd");
 });
 
-describe("a session's clone", () => {
-  const dir = join(root, "projects", "app-1");
+describe("a session's worktree", () => {
+  const clone = join(root, "repos", "acme", "app");
+  const dir = join(root, "worktrees", "app-1");
 
-  test("cloned on a new branch from the default one", async () => {
-    mkdirSync(dir, { recursive: true });
-    expect(await prepareRepo(dir, "acme/app", { branch: "claude/fix-1", author })).toContain("claude/fix-1");
+  test("a worktree of the shared clone, on a new branch from the default one", async () => {
+    expect(await prepareWorktree(clone, dir, "acme/app", { branch: "claude/fix-1", author })).toContain("claude/fix-1");
     const git = await readGit(dir);
     expect(git).toMatchObject({ repo: "acme/app", branch: "claude/fix-1", base: "main", changes: 0, ahead: 0, pushed: false, pr: null, github: false });
     expect(sh(dir, "config", "user.email")).toBe("theo@example.com");
     // The token is never written: the helper reads it from the environment.
     expect(sh(dir, "config", "--get-all", "credential.https://github.com.helper")).toContain("$GH_TOKEN");
+    // The clone keeps no checkout of its own: every branch is free for a worktree.
+    expect(sh(clone, "branch", "--show-current")).toBe("");
+    expect(existsSync(join(clone, "README.md"))).toBe(false);
   });
 
   test("git gets the token from the environment, for github.com only", () => {
@@ -93,6 +96,17 @@ describe("a session's clone", () => {
     // No token, or another host: no answer (and no prompt).
     expect(fill("github.com").exitCode).not.toBe(0);
     expect(fill("gitlab.com", "tok_123").stdout.toString()).not.toContain("tok_123");
+  });
+
+  test("the project's credentials, in a file git ignores", async () => {
+    expect(await writeCredentials(dir, "")).toBeNull();
+    expect(await writeCredentials(dir, "API_KEY=secret\n")).toContain(".env");
+    expect(readFileSync(join(dir, ".env"), "utf8")).toContain("API_KEY=secret");
+    expect(statSync(join(dir, ".env")).mode & 0o777).toBe(0o600);
+    expect((await readGit(dir))?.changes).toBe(0);
+    // Written again: excluded once.
+    await writeCredentials(dir, "API_KEY=other\n");
+    expect(readFileSync(join(clone, ".git", "info", "exclude"), "utf8").match(/^\/\.env$/gm)).toHaveLength(1);
   });
 
   test("a commit of every change", async () => {
@@ -124,20 +138,37 @@ describe("a session's clone", () => {
     await expect(push(dir)).rejects.toThrow(/GH_TOKEN/);
   });
 
-  test("the same clone is reused; another repository or stray files are refused", async () => {
-    expect(await prepareRepo(dir, "acme/app", { branch: "claude/fix-1", author })).toContain("claude/fix-1");
+  test("prepared again, it stays as it is; another repository or stray files are refused", async () => {
+    expect(await prepareWorktree(clone, dir, "acme/app", { branch: "claude/fix-1", author })).toContain("claude/fix-1");
     expect((await readGit(dir))?.ahead).toBe(2);
-    await expect(prepareRepo(dir, "acme/other", { branch: "x", author })).rejects.toThrow(/acme\/app/);
-    const stray = join(root, "projects", "stray");
+    await expect(prepareWorktree(clone, join(root, "worktrees", "x"), "acme/other", { branch: "x", author })).rejects.toThrow(/acme\/app/);
+    const stray = join(root, "worktrees", "stray");
     mkdirSync(stray, { recursive: true });
     writeFileSync(join(stray, "file"), "");
-    await expect(prepareRepo(stray, "acme/app", { branch: "x", author })).rejects.toThrow(/stray/);
+    await expect(prepareWorktree(clone, stray, "acme/app", { branch: "x", author })).rejects.toThrow(/stray/);
   });
 
-  test("an existing branch on GitHub is checked out", async () => {
-    const other = join(root, "projects", "app-2");
-    mkdirSync(other, { recursive: true });
-    await prepareRepo(other, "acme/app", { branch: "feature/existing", author });
+  test("an existing branch on GitHub is checked out, in a worktree of the same clone", async () => {
+    const other = join(root, "worktrees", "app-2");
+    await prepareWorktree(clone, other, "acme/app", { branch: "feature/existing", author });
     expect(await readGit(other)).toMatchObject({ branch: "feature/existing", pushed: true, ahead: 0, behind: 0 });
+    expect(sh(clone, "worktree", "list")).toContain(other);
+  });
+
+  test("deleted, its branch stays in the clone and a new worktree picks it up", async () => {
+    writeFileSync(join(dir, "draft.txt"), "not committed\n");
+    expect(await removeWorktree(clone, dir)).toMatchObject({ branch: "claude/fix-1" });
+    expect(existsSync(dir)).toBe(false);
+    expect(sh(clone, "worktree", "list")).not.toContain(dir);
+    expect(await readGit(dir)).toBeNull();
+    await prepareWorktree(clone, dir, "acme/app", { branch: "claude/fix-1", author });
+    expect(await readGit(dir)).toMatchObject({ branch: "claude/fix-1", ahead: 2, changes: 0 });
+  });
+
+  test("deleted though its directory is already gone", async () => {
+    const gone = join(root, "worktrees", "app-2");
+    Bun.spawnSync(["rm", "-rf", gone]);
+    expect(await removeWorktree(clone, gone)).toMatchObject({ branch: null });
+    expect(sh(clone, "worktree", "list")).not.toContain(gone);
   });
 });

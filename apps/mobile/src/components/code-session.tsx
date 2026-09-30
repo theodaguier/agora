@@ -126,7 +126,8 @@ export function CodeSessionList({ conversationId, onOpen }: { conversationId: st
               <ListGroup.ItemTitle numberOfLines={2}>{s.title}</ListGroup.ItemTitle>
               <ListGroup.ItemDescription numberOfLines={1}>
                 {t.status[s.status]}
-                {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""} · {dividerLabel(new Date(s.updatedAt))}
+                {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
+                {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
               </ListGroup.ItemDescription>
               {s.instruction && (
                 <ListGroup.ItemDescription numberOfLines={2}>
