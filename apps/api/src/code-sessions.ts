@@ -50,6 +50,9 @@ type Instruction = { text: string; by: string | null };
 
 type PendingApproval = CodeApproval & { requestId: string; toolUseId?: string; input: Json; suggestions: Json[] };
 
+/** An ask_bot call: answered on its control request (`requestId`), with the JSON-RPC id of its tools/call. */
+type PendingQuestion = { requestId: string; rpcId: unknown; text: string; askedAt: Date; timer: ReturnType<typeof setTimeout> };
+
 type Live = {
   row: Row;
   transcript: Transcript;
@@ -70,6 +73,10 @@ type Live = {
   /** Written, not yet taken into account by Claude Code (--replay-user-messages acknowledges each). */
   unread: Instruction[];
   approval: PendingApproval | null;
+  /** Name of the bot that started it, for its ask_bot tool (null: started by its owner, no tool). */
+  bot: string | null;
+  /** Its question to that bot (ask_bot), waiting for an answer. */
+  question: PendingQuestion | null;
   activity: string | null;
   limit: CodeSession["limit"];
   stopping: boolean;
@@ -197,6 +204,8 @@ function fromRow(row: Row): Live {
     outbox: [],
     unread: [],
     approval: null,
+    bot: null,
+    question: null,
     activity: null,
     limit: null,
     stopping: false,
@@ -259,7 +268,9 @@ export async function codeSessionReport(id: string) {
     .slice(-10)
     .map((st) => (st.kind === "user" ? `${st.by ?? "?"}: ${clipLine(st.text, 400)}` : `[git ${st.action}${st.ok ? "" : " failed"}${st.by ? ` by ${st.by}` : ""}] ${st.text}`));
   const { id: _, conversationId: __, agentId: ___, requestedBy: ____, commands: _____, ...rest } = summary(s);
-  return { session_id: id, ...rest, actions, history };
+  // Its question to the bot: claude_code_wait returns on it, and claude_code_send answers it.
+  const question = s.question && { text: s.question.text, asked_at: s.question.askedAt.toISOString() };
+  return { session_id: id, ...rest, ...(question && { question }), actions, history };
 }
 
 /* ---------- broadcasting and saving ---------- */
@@ -517,7 +528,9 @@ function instruct(s: Live, m: Instruction) {
   const wt = s.row.worktree;
   if (wt?.removedAt && s.row.repo && !s.prepare) s.prepare = { repo: s.row.repo, branch: wt.branch, clone: wt.clone ?? null };
   if (s.running && !s.stopping) {
-    if (s.proc) deliver(s, m);
+    // It waits on its question: whoever writes to it (the bot, or its owner from the panel) answers it.
+    if (s.question) answerQuestion(s, `Réponse de ${m.by ?? "son propriétaire"} :\n${m.text}`);
+    else if (s.proc) deliver(s, m);
     else s.outbox.push(m);
     return;
   }
@@ -628,6 +641,7 @@ export async function stopCodeSession(id: string, conversationId?: string) {
   s.outbox = [];
   s.unread = [];
   s.approval = null;
+  dropQuestion(s);
   const proc = s.proc;
   if (proc) {
     write(s, { type: "control_request", request_id: crypto.randomUUID(), request: { subtype: "interrupt" } });
@@ -902,6 +916,7 @@ export const CODE_DELEGATION_PROMPT = [
   "Ne code jamais toi-même : ni fichier créé, modifié ou poussé avec le connecteur GitHub (branches, commits, PR comprises), ni dans ton terminal. Lire une issue ou quelques fichiers pour écrire le brief reste permis, sans t'y attarder.",
   "Une session par tâche : chaque nouvelle issue ou fonctionnalité a sa propre session (claude_code_start), pour que la conversation la voie sous son propre titre. Chaque session sur un dépôt travaille dans son propre worktree, avec les credentials du projet déjà en place : plusieurs sessions sur le même dépôt ne se gênent pas. claude_code_send ne sert qu'à poursuivre ou corriger la tâche de la session, et il est refusé une fois sa PR mergée ou fermée.",
   "Annonce la session en une phrase à la conversation, puis suis-la avec claude_code_wait. Relancer une session avec claude_code_send s'annonce aussi.",
+  "Une session que tu as lancée peut te poser une question pendant qu'elle travaille : claude_code_wait te la rend (champ question) et elle attend. Réponds avec claude_code_send (ta réponse lui arrive comme résultat de sa question), après avoir demandé au propriétaire si la décision lui revient.",
 ].join("\n");
 
 /**
@@ -940,6 +955,7 @@ export async function codeSessionsContext(conversationId: string) {
     const lines = [`## « ${r.title} » (session_id ${r.id})`, `Lancée par ${by}. État : ${waitingFor}${r.model ? `, modèle ${r.model}` : ""}${modeOf(r) === "plan" ? ", en mode plan" : ""}.`];
     const git = gitLine(r.git);
     if (git) lines.push(`Dépôt : ${git}.`);
+    if (s.question) lines.push(`Claude Code attend la réponse de ${by} à sa question : « ${clipLine(s.question.text, 1500)} ». Réponds-lui avec claude_code_send.`);
     if (r.worktree?.removedAt) lines.push(`Son worktree a été supprimé par son propriétaire : une nouvelle instruction en recrée un sur la branche ${r.worktree.branch}.`);
     if (r.account?.email) lines.push(`Compte Claude de son dernier run : ${r.account.email}.`);
     if (s.limit?.status === "rejected") {
@@ -1114,6 +1130,7 @@ function start(s: Live) {
       s.running = false;
       s.proc = null;
       s.approval = null;
+      dropQuestion(s);
       s.activity = null;
       // An instruction arrived while it was stopping: it starts the next run (a git action, or its worktree being deleted, starts it once done).
       if (s.outbox.length && !s.gitBusy) start(s);
@@ -1167,8 +1184,17 @@ async function execute(s: Live, id: number): Promise<void> {
     await refreshGit(s);
     touch(s, [], true);
   }
-  const appended = [env.CHROMIUM_PATH && browserNote(env.CHROMIUM_PATH), r.worktree && r.repo && (await repoEnv(r.repo)) && CREDENTIALS_NOTE].filter(Boolean).join("\n\n");
-  const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools];
+  // Started by a bot: it can ask that bot a question (ask_bot, answered on its stdin like a permission).
+  const [bot] = r.agentId ? await db.select({ name: schema.agent.name }).from(schema.agent).where(eq(schema.agent.id, r.agentId)) : [];
+  s.bot = bot?.name ?? null;
+  const appended = [
+    env.CHROMIUM_PATH && browserNote(env.CHROMIUM_PATH),
+    r.worktree && r.repo && (await repoEnv(r.repo)) && CREDENTIALS_NOTE,
+    s.bot && askNote(s.bot),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools, ...(s.bot ? [ASK_TOOL] : [])];
   const args = [
     env.CLAUDE_CODE_BIN,
     "-p",
@@ -1192,6 +1218,7 @@ async function execute(s: Live, id: number): Promise<void> {
     ...(allowed.length ? ["--allowedTools", ...allowed] : []),
     ...r.permissions.dirs.flatMap((d) => ["--add-dir", d]),
     ...(appended ? ["--append-system-prompt", appended] : []),
+    ...(s.bot ? ["--mcp-config", JSON.stringify({ mcpServers: { [MCP_SERVER]: { type: "sdk", name: MCP_SERVER } } })] : []),
   ];
   // git and gh reach GitHub with the vault's token (the clone's credential helper reads it from there).
   // The browsers it launches show on the conversation's screen.
@@ -1199,6 +1226,8 @@ async function execute(s: Live, id: number): Promise<void> {
     ...(await claudeCodeEnv()),
     ...githubEnv(await githubToken()),
     ...(await screenEnv(r.conversationId, `code-${r.id}`).catch(() => ({}))),
+    // Its question waits for the bot longer than an MCP call usually does.
+    ...(s.bot && { MCP_TOOL_TIMEOUT: String(QUESTION_MS + 60_000) }),
   };
   // The account this run uses, shown in the panel (the active one of Settings › Models).
   const accountId = await activeClaudeAccountId();
@@ -1210,7 +1239,7 @@ async function execute(s: Live, id: number): Promise<void> {
   // Stopped while it was starting.
   if (s.stopping) proc.kill();
   // Its slash commands and skills, with their descriptions, for the owner's field.
-  write(s, { type: "control_request", request_id: `${INITIALIZE}${id}`, request: { subtype: "initialize" } });
+  write(s, { type: "control_request", request_id: `${INITIALIZE}${id}`, request: { subtype: "initialize", ...(s.bot && { sdkMcpServers: [MCP_SERVER] }) } });
   for (const m of s.outbox.splice(0)) deliver(s, m);
 
   let result: { text: string; isError: boolean } | null = null;
@@ -1227,6 +1256,11 @@ async function execute(s: Live, id: number): Promise<void> {
     }
     if (ev.type === "control_response") {
       onControlResponse(s, ev);
+      continue;
+    }
+    // Interrupted while it waited on its question.
+    if (ev.type === "control_cancel_request") {
+      if (s.question?.requestId === ev.request_id) dropQuestion(s);
       continue;
     }
     // A turn of its own while warm (a background task that ended): shown as a run.
@@ -1297,6 +1331,7 @@ async function execute(s: Live, id: number): Promise<void> {
   }
   s.proc = null;
   s.approval = null;
+  dropQuestion(s);
   s.activity = null;
   touch(s, s.transcript.settle(), true);
 
@@ -1341,6 +1376,10 @@ function account(s: Live, ev: Json) {
 
 function onControlRequest(s: Live, ev: Json) {
   const req = ev.request ?? {};
+  if (req.subtype === "mcp_message" && req.server_name === MCP_SERVER && s.bot) {
+    onMcpMessage(s, String(ev.request_id), req.message ?? {});
+    return;
+  }
   if (req.subtype !== "can_use_tool") {
     write(s, { type: "control_response", response: { subtype: "error", request_id: ev.request_id, error: `Unsupported request: ${req.subtype}` } });
     return;
@@ -1386,6 +1425,89 @@ function parseQuestions(value: unknown): CodeQuestion[] {
         .map((o: Json) => ({ label: String(o.label), ...(o.description && { description: String(o.description) }) })),
       multiSelect: !!q.multiSelect,
     }));
+}
+
+/* ---------- its questions to the bot ---------- */
+
+/**
+ * A session a bot started can ask that bot a question while it works: the ask_bot tool of an MCP
+ * server this process hosts (Claude Code's SDK MCP servers: each JSON-RPC message comes as an
+ * mcp_message control request, answered on stdin). The call stays open until the answer: the bot's
+ * claude_code_wait returns on the question, and its claude_code_send answers it (or the owner's
+ * message from the panel). Without an answer after QUESTION_MS, it goes on with its best judgment.
+ */
+const MCP_SERVER = "agora";
+const ASK = "ask_bot";
+const ASK_TOOL = `mcp__${MCP_SERVER}__${ASK}`;
+const QUESTION_MS = 15 * 60_000;
+const QUESTION_MAX = 4_000;
+
+const askNote = (bot: string) =>
+  `Tu travailles pour ${bot}, le bot qui t'a confié cette tâche dans une conversation Agora. Si le brief ne tranche pas un choix qui compte, pose-lui la question avec l'outil ${ASK_TOOL} plutôt que de deviner.`;
+
+const askTool = (bot: string) => ({
+  name: ASK,
+  description: [
+    `Pose une question à ${bot}, le bot qui t'a confié cette tâche, et attends sa réponse : elle revient comme résultat de cet outil. Le propriétaire de la session peut aussi y répondre depuis son panneau.`,
+    "Pour un choix que le brief ne tranche pas et qui change le résultat, ou une information que tu ne peux pas trouver toi-même. Jamais pour ce que tu peux vérifier dans le code, ni pour annoncer ce que tu fais.",
+    `Une question à la fois, complète : le contexte utile et les options que tu envisages. Sans réponse au bout de ${QUESTION_MS / 60_000} minutes, continue avec ton meilleur jugement.`,
+  ].join(" "),
+  inputSchema: {
+    type: "object",
+    properties: { question: { type: "string", description: "La question, avec le contexte nécessaire pour y répondre sans lire ton code." } },
+    required: ["question"],
+    additionalProperties: false,
+  },
+});
+
+function mcpReply(s: Live, requestId: string, message: Json) {
+  write(s, { type: "control_response", response: { subtype: "success", request_id: requestId, response: { mcp_response: message } } });
+}
+
+function onMcpMessage(s: Live, requestId: string, msg: Json) {
+  const reply = (body: Json) => mcpReply(s, requestId, { jsonrpc: "2.0", id: msg.id ?? null, ...body });
+  const toolError = (text: string) => reply({ result: { content: [{ type: "text", text }], isError: true } });
+  switch (msg.method) {
+    case "initialize":
+      return reply({ result: { protocolVersion: msg.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: MCP_SERVER, version: "1" } } });
+    case "tools/list":
+      return reply({ result: { tools: [askTool(s.bot!)] } });
+    case "tools/call": {
+      if (msg.params?.name !== ASK) return toolError(`Unknown tool: ${String(msg.params?.name)}`);
+      const text = String(msg.params?.arguments?.question ?? "").trim();
+      if (!text) return toolError("question is required");
+      if (s.question) return toolError("Une question attend déjà sa réponse : une à la fois.");
+      const question: PendingQuestion = {
+        requestId,
+        rpcId: msg.id ?? null,
+        text: clip(text, QUESTION_MAX),
+        askedAt: new Date(),
+        timer: setTimeout(() => {
+          if (s.question === question) answerQuestion(s, `${s.bot} n'a pas répondu dans les ${QUESTION_MS / 60_000} minutes. Continue avec ton meilleur jugement, et dis dans ta réponse ce que tu as supposé.`);
+        }, QUESTION_MS),
+      };
+      s.question = question;
+      touch(s, [], true);
+      return;
+    }
+    default:
+      // A notification (notifications/initialized…) is acknowledged with an empty result.
+      return msg.id === undefined ? reply({ result: {} }) : reply({ error: { code: -32601, message: `Method not found: ${String(msg.method)}` } });
+  }
+}
+
+/** Its question answered: the text is the ask_bot call's result. */
+function answerQuestion(s: Live, text: string) {
+  const q = s.question;
+  if (!q) return;
+  dropQuestion(s);
+  mcpReply(s, q.requestId, { jsonrpc: "2.0", id: q.rpcId, result: { content: [{ type: "text", text }] } });
+  touch(s, [], true);
+}
+
+function dropQuestion(s: Live) {
+  if (s.question) clearTimeout(s.question.timer);
+  s.question = null;
 }
 
 /** Request ids of the initialize request sent to each process. */

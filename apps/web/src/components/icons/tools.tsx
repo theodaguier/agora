@@ -280,6 +280,8 @@ const exact: Record<string, IconComponent> = {
   enterplanmode: TaskListIcon,
   clarify: ChatQuestionIcon,
   askuserquestion: ChatQuestionIcon,
+  // A Claude Code session's question to the bot that started it.
+  mcp__agora__ask_bot: ChatQuestionIcon,
   delegate_task: DelegateIcon,
   task: DelegateIcon,
   agent: DelegateIcon,
