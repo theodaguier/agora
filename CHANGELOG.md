@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.31.0 — 2026-09-30
+
+### Features
+- a git worktree per Claude Code session, with the project's credentials
+
 ## v0.30.0 — 2026-09-30
 
 ### Features
