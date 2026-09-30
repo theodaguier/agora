@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.32.0 — 2026-09-30
+
+### Features
+- let bots send files, with video and audio players
+
 ## v0.31.0 — 2026-09-30
 
 ### Features
