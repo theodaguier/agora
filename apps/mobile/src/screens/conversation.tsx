@@ -1,4 +1,4 @@
-import { insertMessage, renderEvent, withoutPreviews, type ViewAction } from "@agora/core";
+import { insertMessage, renderEvent, withoutMediaTags, withoutPreviews, type ViewAction } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -11,7 +11,7 @@ import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboar
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { ApprovalCard, ApprovalLog } from "@/components/approval-card";
-import { FileCard } from "@/components/attachments";
+import { FileCard, SentAttachments } from "@/components/attachments";
 import { AuthorLine, BotBubble, DateDivider, SystemEvent, ToolLine, TypingBubble } from "@/components/bubbles";
 import { ChoiceCard } from "@/components/choice-card";
 import { CodeSessionCard, ReplyWithSessions, useCodeSessions } from "@/components/code-session";
@@ -589,7 +589,7 @@ const NO_REPLY = "NO_REPLY";
 const hideBlocks = (text: string) =>
   NO_REPLY.startsWith(text.trim().replace(/[.\s]+$/, ""))
     ? ""
-    : withoutPreviews(text)
+    : withoutMediaTags(withoutPreviews(text))
         .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[ \t]*\n[\s\S]*?```/g, "")
         .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[\s\S]*$/, "")
         .replace(/\n{3,}/g, "\n\n")
@@ -726,6 +726,11 @@ const ThreadMessage = memo(function ThreadMessage({
             const file = m.data?.attachments?.find((a) => a.id === p.id);
             return file && <FileCard key={p.key} a={file} className="my-1 self-start" />;
           })}
+          {/* The other files it sent: videos played here, the rest downloaded. */}
+          {(() => {
+            const files = (m.data?.attachments ?? []).filter((a) => !m.data?.previews?.some((p) => p.id === a.id));
+            return files.length > 0 && <SentAttachments items={files} align="start" className="my-1" />;
+          })()}
           {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
           {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
         </>

@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { bumpAgentRevision, companyMemory, hermesSessionId, turnContext } from "./company";
 import { orgContext, userLocale } from "./org";
 import { defineMessages, orgLocale, tr } from "./i18n";
-import { renderEvent } from "@agora/core";
+import { readMediaTags, renderEvent, withoutMediaTags } from "@agora/core";
 import { db, schema } from "./db";
 import { publishToAll, publishToConversation } from "./events";
 import { excerpt, findHandoffs, formatGroupContext, isNoReply, MAX_RELAYS, newChain, NO_REPLY, withQuote, type Chain, type ImplicitCall, type Quoting } from "./group";
@@ -26,6 +26,7 @@ import { withAttachments, withInvocations, type Invocation } from "./prompt";
 import { typesForProfile } from "./integrations";
 import { viewPrompt, withViewAction } from "./views";
 import { PREVIEW_PROMPT, savePreviews } from "./previews";
+import { mediaPrompt, saveBotFiles } from "./bot-files";
 import type { CodeSessionRef, ViewAction } from "@agora/core";
 
 const { agent, attachment, conversation, conversationAgent, conversationMember, message, pendingTurn, user } = schema;
@@ -574,7 +575,7 @@ async function runTurn(turn: Turn) {
       }),
     ]);
     const delegation = (await codeToolsUsable(bot.hermesProfile, turn.requestedBy)) ? CODE_DELEGATION_PROMPT : "";
-    system = [system, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, PREVIEW_PROMPT, delegation, code]
+    system = [system, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, PREVIEW_PROMPT, mediaPrompt(conversationId), delegation, code]
       .filter(Boolean)
       .join("\n\n");
   }
@@ -691,7 +692,13 @@ async function runTurn(turn: Turn) {
   const previews = parsed.previews
     ? await savePreviews(parsed.previews, { conversationId, turnId: turn.turnId, directProfile: group ? null : bot.hermesProfile })
     : [];
-  if (parsed.text || parsed.choices || parsed.questions || parsed.views || previews.length || request || skill || turn.codeSessions.length) {
+  const media = readMediaTags(parsed.text);
+  const sending = media.length
+    ? await saveBotFiles(media, { conversationId, profile: bot.hermesProfile, directProfile: group ? null : bot.hermesProfile })
+    : null;
+  if (sending?.sent.size) parsed.text = withoutMediaTags(parsed.text, (p) => sending.sent.has(p));
+  const sentFiles = sending?.saved ?? [];
+  if (parsed.text || parsed.choices || parsed.questions || parsed.views || previews.length || sentFiles.length || request || skill || turn.codeSessions.length) {
     const extra = {
       ...(turn.tools.length && { tools: turn.tools }),
       ...(turn.approvals.length && { approvals: turn.approvals }),
@@ -700,7 +707,8 @@ async function runTurn(turn: Turn) {
       ...(parsed.questions && { questions: parsed.questions }),
       ...(parsed.views && { views: parsed.views }),
       // The files too: the conversation's files list them, and deleting the message removes them.
-      ...(previews.length && { attachments: previews.map((p) => p.attachment), previews: previews.map((p) => p.preview) }),
+      ...((previews.length || sentFiles.length) && { attachments: [...previews.map((p) => p.attachment), ...sentFiles] }),
+      ...(previews.length && { previews: previews.map((p) => p.preview) }),
       ...(request && { mcpRequest: request.id }),
       ...(skill && { skillRequest: skill.id }),
     };

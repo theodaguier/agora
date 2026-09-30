@@ -1,5 +1,7 @@
+import { useEventListener } from "expo";
 import * as Haptics from "expo-haptics";
 import { type ImageLoadEventData } from "expo-image";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { Card, CloseButton, LinkButton, PressableFeedback, Surface, Typography } from "heroui-native";
 import { useState } from "react";
 import { Modal, View } from "react-native";
@@ -25,7 +27,7 @@ import { withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
 import type { Attachment } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { isImage, Shown, Image, attachmentSource, saveAttachment } from "@/components/attachment-files";
+import { isImage, isVideo, Shown, Image, attachmentSource, saveAttachment } from "@/components/attachment-files";
 
 /*
  * apps/web/src/components/Attachments.tsx. A tap on an image opens the full-screen viewer (swipe
@@ -200,6 +202,40 @@ function ImageTile({ a, fit, onOpen }: { a: Shown; fit: Fit; onOpen: () => void 
   );
 }
 
+/**
+ * A video, played where it is with the system's controls (fullscreen, AirPlay), at its own
+ * proportions once loaded, 16:9 until then.
+ */
+function VideoTile({ a, className }: { a: Shown; className?: string }) {
+  const player = useVideoPlayer(attachmentSource(a));
+  const [ratio, setRatio] = useState(16 / 9);
+  useEventListener(player, "sourceLoad", ({ availableVideoTracks }) => {
+    const size = availableVideoTracks[0]?.size;
+    if (size?.width && size.height) setRatio(size.width / size.height);
+  });
+  return (
+    <Surface variant="secondary" className={cn("overflow-hidden p-0", className)}>
+      <VideoView
+        player={player}
+        nativeControls
+        contentFit="contain"
+        fullscreenOptions={{ enable: true }}
+        accessibilityLabel={a.name}
+        style={{ width: "100%", aspectRatio: ratio, maxHeight: 360 }}
+      />
+    </Surface>
+  );
+}
+
+/** The attachments by how they are shown. */
+function sortShown(items: Shown[]) {
+  return {
+    images: items.filter((a) => isImage(a.mime)),
+    videos: items.filter((a) => isVideo(a.mime)),
+    files: items.filter((a) => !isImage(a.mime) && !isVideo(a.mime)),
+  };
+}
+
 /** File row: its icon, name and size; a tap downloads it. */
 export function FileCard({ a, className }: { a: Shown; className?: string }) {
   const t = shownMessages;
@@ -240,8 +276,7 @@ export function SentAttachments({
   /** "start" for files sent by a colleague. */
   align?: "start" | "end";
 }) {
-  const images = items.filter((a) => isImage(a.mime));
-  const files = items.filter((a) => !isImage(a.mime));
+  const { images, videos, files } = sortShown(items);
   const [viewing, setViewing] = useState<number | null>(null);
   return (
     <View className={cn("flex-col gap-1.5", align === "end" ? "items-end" : "items-start", className)}>
@@ -253,6 +288,9 @@ export function SentAttachments({
         </View>
       )}
       <ImageViewer images={images} index={viewing} onIndexChange={setViewing} />
+      {videos.map((a) => (
+        <VideoTile key={a.id} a={a} className="w-72 max-w-full" />
+      ))}
       {files.map((a) => (
         <FileCard key={a.id} a={a} />
       ))}
@@ -262,8 +300,7 @@ export function SentAttachments({
 
 /** Attachments inside a bubble, above its text. */
 export function BubbleAttachments({ items }: { items: Shown[] }) {
-  const images = items.filter((a) => isImage(a.mime));
-  const files = items.filter((a) => !isImage(a.mime));
+  const { images, videos, files } = sortShown(items);
   const [viewing, setViewing] = useState<number | null>(null);
   // Rows of two, the last one left half empty when the count is odd.
   const rows = images.length > 1 ? images.flatMap((a, i) => (i % 2 ? [] : [images.slice(i, i + 2)])) : [];
@@ -285,6 +322,9 @@ export function BubbleAttachments({ items }: { items: Shown[] }) {
         </View>
       )}
       <ImageViewer images={images} index={viewing} onIndexChange={setViewing} />
+      {videos.map((a) => (
+        <VideoTile key={a.id} a={a} className="w-full" />
+      ))}
       {files.map((a) => (
         <FileCard key={a.id} a={a} className="w-full" />
       ))}

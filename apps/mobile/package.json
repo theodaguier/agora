@@ -43,6 +43,7 @@
     "expo-store-review": "~57.0.3",
     "expo-symbols": "~57.0.3",
     "expo-system-ui": "~57.0.4",
+    "expo-video": "~57.0.5",
     "expo-web-browser": "~57.0.3",
     "heroui-native": "^1.0.10",
     "mdast-util-from-markdown": "^2.0.3",

@@ -95,7 +95,8 @@
           "speechRecognitionPermission": "Agora uses speech recognition to write what you dictate in a message."
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,
