@@ -5,10 +5,11 @@
  */
 
 /**
- * running: working; waiting: an action is waiting for approval; idle: done with what it was asked,
- * ready for the next instruction; stopped: interrupted by someone; failed: the CLI ended on an error.
+ * running: working; waiting: an action is waiting for approval; idle: it answered, and waits for the
+ * next instruction; done: its pull request is merged, the task is over (never stored: an idle session
+ * whose PR is merged); stopped: interrupted by someone; failed: the CLI ended on an error.
  */
-export type CodeSessionStatus = "running" | "waiting" | "idle" | "stopped" | "failed";
+export type CodeSessionStatus = "running" | "waiting" | "idle" | "done" | "stopped" | "failed";
 
 export type CodeToolStatus = "running" | "done" | "error" | "denied";
 
@@ -50,6 +51,8 @@ export type CodeWorktree = {
   branch: string;
   /** Deleted, when. */
   removedAt: string | null;
+  /** The clone it is a worktree of, on the server: the repository's own, or a project directory an earlier session cloned it into. */
+  clone?: string;
 };
 
 /** A pull request of the session's branch on GitHub. */
