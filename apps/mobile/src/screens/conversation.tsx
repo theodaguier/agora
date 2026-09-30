@@ -89,6 +89,7 @@ const strings = defineMessages({
     botTyping: (name: string) => `${name} is typing…`,
     peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
     stop: "Stop response",
+    latest: "Latest messages",
     seeMembers: (n: number) => (n === 1 ? "See 1 member" : `See ${n} members`),
     openProfile: (name: string) => `See ${name}'s profile and tasks`,
     more: "More",
@@ -106,6 +107,7 @@ const strings = defineMessages({
     botTyping: (name: string) => `${name} écrit…`,
     peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
     stop: "Arrêter la réponse",
+    latest: "Derniers messages",
     seeMembers: (n: number) => `Voir les ${n} membres`,
     openProfile: (name: string) => `Voir le profil et les tâches de ${name}`,
     more: "Plus",
@@ -122,6 +124,8 @@ const PAGE = 40;
 const FIRST = 12;
 /** How close to its top the thread must be scrolled back to lay out older messages. */
 const OLDER_WITHIN = 600;
+/** How far from its end the thread must be scrolled for the "latest messages" button to show. */
+const SCROLLED_UP = 400;
 
 /** `focus`: a message to open the thread on (a notification, the inbox), like the web's `?m=`. */
 export function Conversation({ conversationId, focus }: { conversationId: string; focus?: string }) {
@@ -165,6 +169,8 @@ export function Conversation({ conversationId, focus }: { conversationId: string
   const viewportHeight = useRef(0);
   /** Older messages are laid out only when the user scrolls back, never on their own. */
   const dragged = useRef(false);
+  /** Scrolled up: a button over the composer brings the reader back to the latest messages. */
+  const [scrolledUp, setScrolledUp] = useState(false);
   const lastTyping = useRef(0);
   /** A message to bring into view once it's laid out: the one to open on, or a quoted one not laid out yet. */
   const pendingJump = useRef(focus ?? null);
@@ -355,6 +361,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
             onScrollBeginDrag={() => (dragged.current = true)}
             onScroll={(e) => {
               const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+              setScrolledUp(contentOffset.y > SCROLLED_UP);
               if (dragged.current && hidden > 0 && contentSize.height - contentOffset.y - layoutMeasurement.height < OLDER_WITHIN) setHidden(Math.max(0, hidden - PAGE));
             }}
             onLayout={(e) => (viewportHeight.current = e.nativeEvent.layout.height)}
@@ -479,6 +486,13 @@ export function Conversation({ conversationId, focus }: { conversationId: string
           className="absolute inset-x-0 bottom-0"
           onLayout={(e) => setBarHeight(e.nativeEvent.layout.height)}
  >
+          {scrolledUp && (
+            <View pointerEvents="box-none" className="absolute inset-x-0 bottom-full mb-2 items-center">
+              <Button size="sm" variant="secondary" onPress={withTap(toEnd)}>
+                {t.latest}
+              </Button>
+            </View>
+          )}
           {/* overflow-visible: the composer's "/" and "@" menu floats above the bar, over the thread. */}
           <Surface className="gap-2 overflow-visible px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
             {mine.length > 0 && (
