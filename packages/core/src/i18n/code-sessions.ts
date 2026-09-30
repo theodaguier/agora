@@ -1,4 +1,4 @@
-import type { CodeApproval, CodeSessionStatus } from "../code-sessions";
+import type { CodeApproval, CodePermissionMode, CodeSessionStatus } from "../code-sessions";
 import { defineMessages } from "./define";
 
 /** Claude Code sessions: their card in the thread, their panel (steps, approval, git, field): web and mobile. */
@@ -52,6 +52,45 @@ export const codeSessions = defineMessages({
     costNote: "Estimated at API prices: the subscription is not billed per token.",
     copyPath: "Copy the path",
     latest: "Latest steps",
+    waitingQuestion: "Waiting for an answer",
+    waitingPlan: "Waiting for its plan to be approved",
+    mode: "Mode",
+    modes: { bypassPermissions: "On its own", acceptEdits: "Accept edits", default: "Ask first", plan: "Plan" } as Record<CodePermissionMode, string>,
+    modeHelp: {
+      bypassPermissions: "Acts without asking. You follow it and can stop it.",
+      acceptEdits: "Edits files without asking, asks before other actions.",
+      default: "Asks before each edit and each command.",
+      plan: "Reads and plans without changing anything, then submits its plan.",
+    } as Record<CodePermissionMode, string>,
+    modeShortcut: "Shift+Tab switches the mode",
+    modeChanged: (mode: string) => `Mode: ${mode}.`,
+    question: {
+      title: "Claude Code has a question",
+      titleMany: (n: number) => `Claude Code has ${n} questions`,
+      other: "Other",
+      otherPlaceholder: "Your answer",
+      answer: "Answer",
+      skip: "Skip",
+      answered: "Answer sent.",
+    },
+    plan: {
+      title: "Claude Code's plan",
+      help: "It has not changed anything yet. Approve the plan to let it start, or tell it what to change.",
+      feedback: "What to change",
+      feedbackPlaceholder: "Tell it what to change, then keep planning",
+      approve: "Approve the plan",
+      revise: "Keep planning",
+      approved: "Plan approved: Claude Code starts.",
+      sentBack: "Plan sent back.",
+    },
+    todos: {
+      title: "Tasks",
+      progress: (done: number, total: number) => `${done}/${total}`,
+      label: (done: number, total: number) => `${done} of ${total} tasks done`,
+    },
+    commands: {
+      hint: "Type / for its skills and commands",
+    },
     worktree: {
       done: "This session is done. Delete its worktree to free the space: its branch stays in the repository's clone.",
       closed: "Its pull request was closed without being merged. Delete its worktree to free the space: its branch stays in the repository's clone.",
@@ -159,6 +198,45 @@ export const codeSessions = defineMessages({
     costNote: "Estimation au prix de l'API : l'abonnement n'est pas facturé au token.",
     copyPath: "Copier le chemin",
     latest: "Dernières étapes",
+    waitingQuestion: "Attend une réponse",
+    waitingPlan: "Attend l'approbation de son plan",
+    mode: "Mode",
+    modes: { bypassPermissions: "Autonome", acceptEdits: "Accepter les modifications", default: "Demander", plan: "Plan" },
+    modeHelp: {
+      bypassPermissions: "Agit sans rien demander. Tu le suis et peux l'arrêter.",
+      acceptEdits: "Modifie les fichiers sans demander, demande avant les autres actions.",
+      default: "Demande avant chaque modification et chaque commande.",
+      plan: "Lit et planifie sans rien modifier, puis soumet son plan.",
+    },
+    modeShortcut: "Maj+Tab change de mode",
+    modeChanged: (mode: string) => `Mode : ${mode}.`,
+    question: {
+      title: "Claude Code a une question",
+      titleMany: (n: number) => `Claude Code a ${n} questions`,
+      other: "Autre",
+      otherPlaceholder: "Ta réponse",
+      answer: "Répondre",
+      skip: "Ignorer",
+      answered: "Réponse envoyée.",
+    },
+    plan: {
+      title: "Plan de Claude Code",
+      help: "Il n'a encore rien modifié. Approuve le plan pour qu'il commence, ou dis-lui ce qu'il faut changer.",
+      feedback: "Ce qu'il faut changer",
+      feedbackPlaceholder: "Dis-lui ce qu'il faut changer, puis il continue à planifier",
+      approve: "Approuver le plan",
+      revise: "Continuer à planifier",
+      approved: "Plan approuvé : Claude Code commence.",
+      sentBack: "Plan renvoyé.",
+    },
+    todos: {
+      title: "Tâches",
+      progress: (done: number, total: number) => `${done}/${total}`,
+      label: (done: number, total: number) => `${done} tâche${done > 1 ? "s" : ""} sur ${total} terminée${done > 1 ? "s" : ""}`,
+    },
+    commands: {
+      hint: "Tape / pour ses skills et commandes",
+    },
     worktree: {
       done: "Cette session est terminée. Supprime son worktree pour libérer la place : sa branche reste dans le clone du dépôt.",
       closed: "Sa PR a été fermée sans être mergée. Supprime son worktree pour libérer la place : sa branche reste dans le clone du dépôt.",

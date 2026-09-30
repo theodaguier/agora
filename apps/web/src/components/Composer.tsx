@@ -1,3 +1,4 @@
+import { rankByQuery } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { ArrowUpIcon, PackageIcon, ClockIcon, PlugIcon, PlusIcon, CloseIcon } from "@/components/icons";
@@ -151,15 +152,6 @@ function mentionItems(q: string, mentionables: AgentSummary[], people: ReturnTyp
       media: <PersonAvatar person={p} className="size-[18px]" />,
     }));
   return [...bots, ...colleagues];
-}
-
-/** Names starting with the query first, then those containing it (in the name or the description). */
-function rankByQuery(all: SlashItem[], q: string) {
-  if (!q) return all;
-  const starts = all.filter((i) => i.name.toLowerCase().startsWith(q));
-  const started = new Set(starts);
-  const contains = all.filter((i) => !started.has(i) && `${i.name} ${i.description}`.toLowerCase().includes(q));
-  return [...starts, ...contains];
 }
 
 /** Files attached to the message being written, uploaded as soon as they're added. */

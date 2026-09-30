@@ -2,7 +2,7 @@
 import { Circle, Path, Rect } from "react-native-svg";
 import { createElement } from "react";
 import { circle, createIcon, Dot, Hole, type IconComponent, type IconProps } from "./create-icon";
-import { BrainIcon, ClockIcon, KeyboardIcon, PlugIcon } from "./ui";
+import { BrainIcon, ClockIcon, KeyboardIcon, PlugIcon, TaskListIcon } from "./ui";
 
 // Icons for the tools an agent calls during a reply, solid rounded like the rest.
 // A file tool is a solid document with a badge detached from its bottom-right corner
@@ -274,6 +274,12 @@ const exact: Record<string, IconComponent> = {
   session_search: HistoryIcon,
   todo: ClipboardCheckIcon,
   todowrite: ClipboardCheckIcon,
+  taskcreate: ClipboardCheckIcon,
+  taskupdate: ClipboardCheckIcon,
+  tasklist: ClipboardCheckIcon,
+  taskget: ClipboardCheckIcon,
+  exitplanmode: TaskListIcon,
+  enterplanmode: TaskListIcon,
   clarify: ChatQuestionIcon,
   askuserquestion: ChatQuestionIcon,
   delegate_task: DelegateIcon,

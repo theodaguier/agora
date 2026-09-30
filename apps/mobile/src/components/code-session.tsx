@@ -1,4 +1,4 @@
-import { placeCodeSessions, type CodeSession, type CodeSessionRef, type CodeSessionStatus } from "@agora/core";
+import { codeApprovalLine, codeStatusText, placeCodeSessions, type CodeSession, type CodeSessionRef, type CodeSessionStatus } from "@agora/core";
 import { codeSessions } from "@agora/core/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, type Href } from "expo-router";
@@ -36,7 +36,7 @@ export function CodeSessionCard({ conversationId, sessionId, title }: { conversa
   const { data } = useQuery(codeSessionsQuery(conversationId));
   const session = data?.find((s) => s.id === sessionId);
   const status = session?.status ?? "running";
-  const detail = session?.approval ? `${session.approval.tool} · ${session.approval.title}` : isActive(status) ? session?.activity : null;
+  const detail = session?.approval ? codeApprovalLine(session.approval) : isActive(status) ? session?.activity : null;
   return (
     <Card className="w-full max-w-[92%] self-start">
       <View className="flex-row items-center gap-3">
@@ -44,7 +44,7 @@ export function CodeSessionCard({ conversationId, sessionId, title }: { conversa
         <View className="min-w-0 flex-1 gap-0.5">
           <Card.Title numberOfLines={1}>{session?.title ?? title}</Card.Title>
           <Card.Description numberOfLines={1}>
-            {t.claudeCode} · {t.status[status]}
+            {t.claudeCode} · {session ? codeStatusText(t, session) : t.status[status]}
             {detail ? ` · ${detail}` : ""}
           </Card.Description>
         </View>
@@ -126,7 +126,7 @@ export function CodeSessionList({ conversationId, onOpen }: { conversationId: st
             <ListGroup.ItemContent className="gap-0.5">
               <ListGroup.ItemTitle numberOfLines={2}>{s.title}</ListGroup.ItemTitle>
               <ListGroup.ItemDescription numberOfLines={1}>
-                {t.status[s.status]}
+                {codeStatusText(t, s)}
                 {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
                 {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
               </ListGroup.ItemDescription>

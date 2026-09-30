@@ -1,3 +1,4 @@
+import { rankByQuery } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Button, Chip, Input, Surface, Typography, type InputRef } from "heroui-native";
@@ -280,12 +281,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
       ...(routines ?? []).map((r) => ({ key: `routine:${r.id}`, kind: "routine" as const, id: r.id, name: r.name, description: scheduleLabel(r) })),
       ...actions,
     ].filter((i) => !invocations.some((v) => invocationKey(v) === i.key));
-    const q = token.query.toLowerCase();
-    if (!q) return all;
-    const starts = all.filter((i) => i.name.toLowerCase().startsWith(q));
-    const first = new Set(starts);
-    const contains = all.filter((i) => !first.has(i) && `${i.name} ${i.description}`.toLowerCase().includes(q));
-    return [...starts, ...contains];
+    return rankByQuery(all, token.query);
   };
   const items = slashItems();
 

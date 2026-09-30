@@ -1,12 +1,46 @@
-import type { CodeApproval, CodeGit, CodeSession, CodeStep } from "@agora/core";
+import {
+  CODE_PERMISSION_MODES,
+  codeStatusText,
+  OTHER_ANSWER,
+  questionAnswer,
+  rankByQuery,
+  type CodeApproval,
+  type CodeGit,
+  type CodeQuestion,
+  type CodeSession,
+  type CodeStep,
+  type CodeTodo,
+} from "@agora/core";
 import { codeSessions, common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
 import { Stack, router, useFocusEffect, type Href } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { Accordion, Alert, Avatar, Button, Card, Chip, Input, Menu, Popover, PressableFeedback, Spinner, Surface, Typography, useThemeColor } from "heroui-native";
-import { useCallback, useRef, useState, type ComponentRef } from "react";
+import {
+  Accordion,
+  Alert,
+  Avatar,
+  Button,
+  Card,
+  Chip,
+  ControlField,
+  Description,
+  Input,
+  Label,
+  Menu,
+  Popover,
+  PressableFeedback,
+  Radio,
+  RadioGroup,
+  Separator,
+  Spinner,
+  Surface,
+  TextArea,
+  Typography,
+  useThemeColor,
+} from "heroui-native";
+import { Fragment, useCallback, useRef, useState, type ComponentRef } from "react";
 import { AppState, ScrollView, View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,9 +48,10 @@ import { useAdminToast } from "@/components/admin/ui";
 import { UserBubble } from "@/components/bubbles";
 import { isActive, StatusIcon } from "@/components/code-session";
 import { confirmAction } from "@/components/confirm-action";
-import { ArrowUpIcon, BranchIcon, CloseCircleIcon, FolderIcon, ShieldAlertIcon, StopIcon, ToolIcon, UserIcon } from "@/components/icons";
+import { ArrowUpIcon, BranchIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, FolderIcon, ShieldAlertIcon, StopIcon, TaskListIcon, ToolIcon, UserIcon } from "@/components/icons";
 import { MenuButton, MenuContent } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
+import { SlashMenu, type SlashItem } from "@/components/slash-menu";
 import { ModelLogo } from "@/components/model-logo";
 import { format } from "@/components/profile/usage-format";
 import { useMe } from "@/components/server-scope";
@@ -30,6 +65,7 @@ import {
   removeCodeSessionWorktree,
   runCodeGit,
   sendToCodeSession,
+  setCodeSessionMode,
   setCodeSessionModel,
   stopCodeSession,
   switchCodeSessionAccount,
@@ -126,7 +162,8 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 <StatusIcon status={session.status} className="mt-0.5" />
                 <View className="min-w-0 flex-1 gap-1.5">
                   <Typography type="body-sm" color="muted">
-                    {t.status[session.status]}
+                    {codeStatusText(t, session)}
+                    {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
                     {session.activity && isActive(session.status) ? ` · ${session.activity}` : ""}
                   </Typography>
                   <Meta session={session} showModel={!owner} showAccount={owner} />
@@ -154,7 +191,14 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 </View>
               )}
               <Surface className="gap-2 px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
-                {session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />}
+                {session.todos.length > 0 && <TodoBar todos={session.todos} running={session.status === "running"} />}
+                {session.approval?.kind === "question" && session.approval.questions ? (
+                  <QuestionBlock conversationId={conversationId} session={session} approval={session.approval} questions={session.approval.questions} canAnswer={owner} />
+                ) : session.approval?.kind === "plan" ? (
+                  <PlanBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
+                ) : (
+                  session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
+                )}
                 {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
                 {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
                 {owner ? (
@@ -644,7 +688,7 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
         {expandable && <Accordion.Indicator />}
       </Accordion.Trigger>
       <Accordion.Content className="gap-2 px-0 pb-2">
-        {!!step.input && <Detail label={t.input} text={step.input} />}
+        {!!step.input && (step.name === "ExitPlanMode" ? <MessageText text={step.input} /> : <Detail label={t.input} text={step.input} />)}
         {nested && (
           <View className="pl-3">
             <Timeline steps={all} running={false} parentId={step.id} />
@@ -684,7 +728,7 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
   const toast = useAdminToast();
   const warning = useThemeColor("warning-soft-foreground");
   const answer = useMutation({
-    mutationFn: (choice: CodeApproval["choices"][number]) => answerCodeApproval(conversationId, session.id, approval.id, choice),
+    mutationFn: (choice: CodeApproval["choices"][number]) => answerCodeApproval(conversationId, session.id, approval.id, { choice }),
     onSuccess: (s) => applyCodeSession(qc, s),
     onError: (e) => toast.failed(e),
   });
@@ -727,7 +771,252 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
   );
 }
 
-/** Same field as the conversation's: the instruction, the session's model, send (stop while it works). */
+/**
+ * Claude Code's task list (web: TodoBar), riding above the field: where it stands in one line, each
+ * task on unfolding. Hidden once every task is done and the session rests.
+ */
+function TodoBar({ todos, running }: { todos: CodeTodo[]; running: boolean }) {
+  const t = tr(codeSessions).todos;
+  const [open, setOpen] = useState<string | undefined>(undefined);
+  const done = todos.filter((x) => x.status === "completed").length;
+  const current = todos.find((x) => x.status === "in_progress");
+  if (done === todos.length && !running) return null;
+  return (
+    <Card variant="secondary" className="gap-2">
+      <Accordion value={open} onValueChange={setOpen} hideSeparator>
+        <Accordion.Item value="todos">
+          <Accordion.Trigger accessibilityLabel={t.label(done, todos.length)} className="gap-2 px-0 py-0">
+            <View className="min-w-0 flex-1 flex-row items-center gap-2">
+              <TaskListIcon size={14} className="text-muted" />
+              <Typography type="body-sm">{t.title}</Typography>
+              <Typography type="body-sm" color="muted">
+                {t.progress(done, todos.length)}
+              </Typography>
+              {!!current && !open && (
+                <Typography type="body-sm" color="muted" numberOfLines={1} className="min-w-0 flex-1">
+                  {current.activeForm ?? current.content}
+                </Typography>
+              )}
+            </View>
+            <Accordion.Indicator />
+          </Accordion.Trigger>
+          <Accordion.Content className="px-0 pt-2">
+            <ScrollView nestedScrollEnabled style={{ maxHeight: 192 }} contentContainerClassName="gap-1.5">
+              {todos.map((todo) => (
+                <View key={todo.id} className="flex-row items-start gap-2">
+                  <View className="pt-0.5">
+                    <TodoMark status={todo.status} running={running} />
+                  </View>
+                  <Typography
+                    type="body-sm"
+                    weight={todo.status === "in_progress" ? "medium" : undefined}
+                    color={todo.status === "completed" ? "muted" : "default"}
+                    className={cn("min-w-0 flex-1", todo.status === "completed" && "line-through")}
+                  >
+                    {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
+                  </Typography>
+                </View>
+              ))}
+            </ScrollView>
+          </Accordion.Content>
+        </Accordion.Item>
+      </Accordion>
+    </Card>
+  );
+}
+
+function TodoMark({ status, running }: { status: CodeTodo["status"]; running: boolean }) {
+  if (status === "completed") return <CheckCircleIcon size={14} className="text-success" />;
+  if (status === "in_progress" && running) return <Spinner size="sm" />;
+  return <CircleIcon size={14} className={status === "in_progress" ? "text-foreground" : "text-muted"} />;
+}
+
+type Choice = { picked: string[]; other: string };
+
+const answerOf = (c: Choice | undefined) => (c ? questionAnswer(c.picked, c.other) : "");
+
+/**
+ * Claude Code's questions (AskUserQuestion; web: QuestionBlock): each with its options, one or several
+ * to pick, and "Other" for an answer of one's own. The run waits for the answers.
+ */
+function QuestionBlock({
+  conversationId,
+  session,
+  approval,
+  questions,
+  canAnswer,
+}: {
+  conversationId: string;
+  session: CodeSession;
+  approval: CodeApproval;
+  questions: CodeQuestion[];
+  canAnswer: boolean;
+}) {
+  const t = tr(codeSessions);
+  const c = tr(common);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  const [choices, setChoices] = useState<Record<string, Choice>>({});
+  const answer = useMutation({
+    mutationFn: (skip: boolean) =>
+      answerCodeApproval(
+        conversationId,
+        session.id,
+        approval.id,
+        skip ? { choice: "deny" } : { choice: "once", answers: Object.fromEntries(questions.map((q) => [q.question, answerOf(choices[q.question])])) },
+      ),
+    onSuccess: (s, skip) => {
+      applyCodeSession(qc, s);
+      if (!skip) toast.success(t.question.answered);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  const set = (question: string, change: Partial<Choice>) =>
+    setChoices((all) => ({ ...all, [question]: { ...(all[question] ?? { picked: [], other: "" }), ...change } }));
+  const complete = questions.every((q) => answerOf(choices[q.question]));
+  return (
+    <Card accessibilityLabel={t.question.title} className="gap-3">
+      <Card.Title>{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</Card.Title>
+      <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" style={{ maxHeight: 320 }} contentContainerClassName="gap-4">
+        {questions.map((q) => {
+          const picked = choices[q.question]?.picked ?? [];
+          const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
+          const text = (o: (typeof options)[number]) => (
+            <View className="flex-1">
+              <Label>{o.label}</Label>
+              {!!o.description && <Description>{o.description}</Description>}
+            </View>
+          );
+          return (
+            <View key={q.question} className="gap-2">
+              <View className="flex-row flex-wrap items-center gap-2">
+                {!!q.header && (
+                  <Chip size="sm" variant="secondary">
+                    {q.header}
+                  </Chip>
+                )}
+                <Typography type="body-sm" weight="medium" className="min-w-0 flex-1">
+                  {q.question}
+                </Typography>
+              </View>
+              {q.multiSelect ? (
+                <View className="gap-2">
+                  {options.map((o) => (
+                    <ControlField
+                      key={o.value}
+                      isDisabled={!canAnswer}
+                      isSelected={picked.includes(o.value)}
+                      onSelectedChange={(on) => set(q.question, { picked: on ? [...picked, o.value] : picked.filter((p) => p !== o.value) })}
+                    >
+                      {text(o)}
+                      <ControlField.Indicator variant="checkbox" />
+                    </ControlField>
+                  ))}
+                </View>
+              ) : (
+                <RadioGroup value={picked[0]} isDisabled={!canAnswer} onValueChange={(v) => set(q.question, { picked: [v] })}>
+                  {options.map((o, i) => (
+                    <Fragment key={o.value}>
+                      {i > 0 && <Separator className="my-1" />}
+                      <RadioGroup.Item value={o.value}>
+                        {text(o)}
+                        <Radio />
+                      </RadioGroup.Item>
+                    </Fragment>
+                  ))}
+                </RadioGroup>
+              )}
+              {picked.includes(OTHER_ANSWER) && (
+                <Input
+                  autoFocus
+                  accessibilityLabel={t.question.other}
+                  placeholder={t.question.otherPlaceholder}
+                  value={choices[q.question]?.other ?? ""}
+                  onChangeText={(other) => set(q.question, { other })}
+                />
+              )}
+            </View>
+          );
+        })}
+      </ScrollView>
+      <Card.Footer className="flex-row flex-wrap gap-2">
+        {canAnswer ? (
+          <>
+            <Button size="sm" variant="primary" isDisabled={!complete || answer.isPending} onPress={withTap(() => answer.mutate(false))}>
+              {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
+            </Button>
+            <Button size="sm" variant="ghost" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(true))}>
+              {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
+            </Button>
+          </>
+        ) : (
+          <Typography type="body-sm" color="muted">
+            {t.waitingOwner}
+          </Typography>
+        )}
+      </Card.Footer>
+    </Card>
+  );
+}
+
+/**
+ * The plan Claude Code wrote in plan mode (ExitPlanMode; web: PlanBlock): read whole, then approved
+ * (it starts, in the mode it had before planning) or sent back with what to change.
+ */
+function PlanBlock({ conversationId, session, approval, canAnswer }: { conversationId: string; session: CodeSession; approval: CodeApproval; canAnswer: boolean }) {
+  const t = tr(codeSessions);
+  const c = tr(common);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  const [feedback, setFeedback] = useState("");
+  const answer = useMutation({
+    mutationFn: (approve: boolean) =>
+      answerCodeApproval(conversationId, session.id, approval.id, approve ? { choice: "once" } : { choice: "deny", feedback: feedback.trim() }),
+    onSuccess: (s, approve) => {
+      applyCodeSession(qc, s);
+      setFeedback("");
+      toast.success(approve ? t.plan.approved : t.plan.sentBack);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  return (
+    <Card accessibilityLabel={t.plan.title} className="gap-3">
+      <Card.Header className="gap-0.5">
+        <Card.Title>{t.plan.title}</Card.Title>
+        <Card.Description>{t.plan.help}</Card.Description>
+      </Card.Header>
+      {!!approval.plan && (
+        <Surface variant="secondary" className="p-0">
+          <ScrollView nestedScrollEnabled style={{ maxHeight: 280 }} contentContainerClassName="px-3 py-2">
+            <MessageText text={approval.plan} />
+          </ScrollView>
+        </Surface>
+      )}
+      {canAnswer ? (
+        <>
+          <TextArea value={feedback} onChangeText={setFeedback} accessibilityLabel={t.plan.feedback} placeholder={t.plan.feedbackPlaceholder} />
+          <Card.Footer className="flex-row flex-wrap gap-2">
+            <Button size="sm" variant="primary" isDisabled={answer.isPending || !!feedback.trim()} onPress={withTap(() => answer.mutate(true))}>
+              {answer.isPending && answer.variables ? c.inProgress : t.plan.approve}
+            </Button>
+            <Button size="sm" variant="secondary" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(false))}>
+              {answer.isPending && !answer.variables ? c.inProgress : t.plan.revise}
+            </Button>
+          </Card.Footer>
+        </>
+      ) : (
+        <Typography type="body-sm" color="muted">
+          {t.waitingOwner}
+        </Typography>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Same field as the conversation's: the instruction, the session's mode and model, send (stop while it
+ * works). "/" at its start lists Claude Code's skills and slash commands, as in its terminal.
+ */
 function SessionComposer({ conversationId, session, onSent }: { conversationId: string; session: CodeSession; onSent: () => void }) {
   const t = tr(codeSessions);
   const qc = useQueryClient();
@@ -750,6 +1039,30 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
     },
     onError: (e) => toast.failed(e),
   });
+  const mode = useMutation({
+    mutationFn: (value: CodeSession["mode"]) => setCodeSessionMode(conversationId, session.id, value),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      toast.success(t.modeChanged(t.modes[s.mode]));
+    },
+    onError: (e) => toast.failed(e),
+  });
+  // "/name" alone in the field: a skill or a command being picked.
+  const query = /^\/([\w:.-]*)$/.exec(text)?.[1] ?? null;
+  const items: SlashItem[] =
+    query === null
+      ? []
+      : rankByQuery(
+          [...session.commands]
+            .sort((a, b) => Number(b.skill) - Number(a.skill))
+            .map((cmd) => ({
+              key: `${cmd.skill ? "skill" : "command"}:${cmd.name}`,
+              kind: cmd.skill ? ("skill" as const) : ("command" as const),
+              name: cmd.name,
+              description: cmd.argumentHint ? `${cmd.argumentHint} · ${cmd.description}` : cmd.description,
+            })),
+          query,
+        );
   // While Claude Code works, the send button stops it; typing turns it back into send (an instruction mid-run).
   const stoppable = isActive(session.status) && !text.trim();
   const submit = () => {
@@ -757,28 +1070,51 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
     if (value && !send.isPending) send.mutate(value);
   };
   return (
-    <Surface variant="secondary" className="gap-1 p-2">
-      <Input
-        multiline
-        value={text}
-        onChangeText={setText}
-        placeholder={isActive(session.status) ? t.placeholderRunning : t.placeholderIdle}
-        className="max-h-[152px] bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
-      />
-      <View className="flex-row items-center gap-2">
-        <SessionModelPicker conversationId={conversationId} session={session} />
-        <View className="flex-1" />
-        {stoppable ? (
-          <Button isIconOnly size="sm" variant="primary" accessibilityLabel={stop.isPending ? t.stopping : t.stop} isDisabled={stop.isPending} onPress={withTap(() => stop.mutate())}>
-            {stop.isPending ? <Spinner size="sm" /> : <StopIcon className="size-[18px] text-accent-foreground" />}
-          </Button>
-        ) : (
-          <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.send} isDisabled={!text.trim() || send.isPending} onPress={withTap(submit)}>
-            <ArrowUpIcon className="size-[18px] text-accent-foreground" strokeWidth={2.25} />
-          </Button>
-        )}
-      </View>
-    </Surface>
+    <View>
+      {items.length > 0 && (
+        <View pointerEvents="box-none" className="absolute inset-x-0 bottom-full mb-2">
+          <SlashMenu items={items} onPick={(item) => setText(`/${item.name} `)} />
+        </View>
+      )}
+      <Surface variant="secondary" className="gap-1 p-2">
+        <Input
+          multiline
+          value={text}
+          onChangeText={setText}
+          placeholder={isActive(session.status) ? t.placeholderRunning : session.commands.length ? t.commands.hint : t.placeholderIdle}
+          className="max-h-[152px] bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
+        />
+        <View className="flex-row items-center gap-2">
+          <Menu>
+            <Menu.Trigger asChild>
+              <Button variant="outline" size="sm" accessibilityLabel={`${t.mode}: ${t.modes[session.mode]}`} isDisabled={mode.isPending} className="max-w-[150px]">
+                <Button.Label numberOfLines={1}>{t.modes[session.mode]}</Button.Label>
+              </Button>
+            </Menu.Trigger>
+            <MenuContent
+              placement="top"
+              entries={[
+                {
+                  title: t.mode,
+                  actions: CODE_PERMISSION_MODES.map((m) => ({ label: t.modes[m], checked: m === session.mode, onPress: () => m !== session.mode && mode.mutate(m) })),
+                },
+              ]}
+            />
+          </Menu>
+          <SessionModelPicker conversationId={conversationId} session={session} />
+          <View className="flex-1" />
+          {stoppable ? (
+            <Button isIconOnly size="sm" variant="primary" accessibilityLabel={stop.isPending ? t.stopping : t.stop} isDisabled={stop.isPending} onPress={withTap(() => stop.mutate())}>
+              {stop.isPending ? <Spinner size="sm" /> : <StopIcon className="size-[18px] text-accent-foreground" />}
+            </Button>
+          ) : (
+            <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.send} isDisabled={!text.trim() || send.isPending} onPress={withTap(submit)}>
+              <ArrowUpIcon className="size-[18px] text-accent-foreground" strokeWidth={2.25} />
+            </Button>
+          )}
+        </View>
+      </Surface>
+    </View>
   );
 }
 

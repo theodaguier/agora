@@ -1,12 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { placeCodeSessions, type CodeApproval, type CodeGit, type CodeSession, type CodeSessionRef, type CodeSessionStatus, type CodeStep } from "@agora/core";
+import {
+  CODE_PERMISSION_MODES,
+  codeApprovalLine,
+  codeStatusText,
+  nextCodeMode,
+  OTHER_ANSWER,
+  placeCodeSessions,
+  questionAnswer,
+  rankByQuery,
+  type CodeApproval,
+  type CodeGit,
+  type CodePermissionMode,
+  type CodeQuestion,
+  type CodeSession,
+  type CodeSessionRef,
+  type CodeSessionStatus,
+  type CodeStep,
+  type CodeTodo,
+} from "@agora/core";
 import { codeSessions, common } from "@agora/core/i18n";
 import {
   ArrowUpIcon,
   BranchIcon,
   CheckCircleIcon,
+  CircleIcon,
   ChevronDownIcon,
   ClockIcon,
   ChevronRightIcon,
@@ -18,6 +37,7 @@ import {
   ShieldAlertIcon,
   SparklesIcon,
   StopIcon,
+  TaskListIcon,
   ToolIcon,
   UserIcon,
   WarningIcon,
@@ -28,9 +48,11 @@ import { ModelLogo } from "@/components/ProviderLogo";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldGroup } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormLabel } from "@/components/FormLabel";
@@ -38,9 +60,11 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { SlashMenu, type SlashItem } from "@/components/SlashMenu";
 import { useT } from "@/i18n";
 import {
   answerCodeApproval,
@@ -54,6 +78,7 @@ import {
   codeSessionQuery,
   codeSessionsQuery,
   sendToCodeSession,
+  setCodeSessionMode,
   setCodeSessionModel,
   startCodeSession,
   refreshCodeSessionGit,
@@ -101,14 +126,14 @@ export function CodeSessionCard({
   const { data } = useQuery(codeSessionsQuery(conversationId));
   const session = data?.find((s) => s.id === sessionId);
   const status = session?.status ?? "running";
-  const detail = session?.approval ? `${session.approval.tool} · ${session.approval.title}` : active(status) ? session?.activity : null;
+  const detail = session?.approval ? codeApprovalLine(session.approval) : active(status) ? session?.activity : null;
   return (
     <Item variant="outline" className={cn("my-1 w-full max-w-[min(680px,88%)]", className)}>
       <ItemMedia variant="icon">{session ? <StatusIcon status={status} /> : <CodeIcon />}</ItemMedia>
       <ItemContent className="min-w-0">
         <ItemTitle className="w-full truncate">{session?.title ?? title}</ItemTitle>
         <ItemDescription className="truncate">
-          {t.claudeCode} · {t.status[status]}
+          {t.claudeCode} · {session ? codeStatusText(t, session) : t.status[status]}
           {detail ? ` · ${detail}` : ""}
         </ItemDescription>
       </ItemContent>
@@ -228,7 +253,7 @@ export function CodeSessionsButton({ conversationId, current, onOpen }: { conver
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm">{s.title}</span>
                 <span className="block truncate text-[12px] text-muted-foreground">
-                  {t.status[s.status]}
+                  {codeStatusText(t, s)}
                   {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
                   {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
                 </span>
@@ -320,9 +345,10 @@ function NewSessionView({ conversationId, onStarted, onClose }: { conversationId
   const recent = [...new Set([...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).flatMap((s) => (s.git?.repo ? [s.git.repo] : [])))];
   const [repo, setRepo] = useState<string | null>(recent[0] ?? null);
   const [model, setModel] = useState<string | null>(null);
+  const [mode, setMode] = useState<CodePermissionMode>("bypassPermissions");
   const [text, setText] = useState("");
   const start = useMutation({
-    mutationFn: (task: string) => startCodeSession(conversationId, { task, ...(repo && { repo }), ...(model && { model }) }),
+    mutationFn: (task: string) => startCodeSession(conversationId, { task, mode, ...(repo && { repo }), ...(model && { model }) }),
     onSuccess: (s) => {
       applyCodeSession(qc, s);
       onStarted(s.id);
@@ -361,6 +387,11 @@ function NewSessionView({ conversationId, onStarted, onClose }: { conversationId
               placeholder={t.placeholderNew}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
+                if (e.key === "Tab" && e.shiftKey) {
+                  e.preventDefault();
+                  setMode(nextCodeMode(mode));
+                  return;
+                }
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   submit();
@@ -370,6 +401,7 @@ function NewSessionView({ conversationId, onStarted, onClose }: { conversationId
             />
             <InputGroupAddon align="block-end" className="cursor-default gap-1 px-0 pb-0">
               <RepoPicker conversationId={conversationId} recent={recent} value={repo} onSelect={setRepo} />
+              <ModePicker value={mode} onSelect={setMode} />
               <span className="flex-1" />
               <CodeModelPicker conversationId={conversationId} value={model} onSelect={setModel} />
               <Button type="submit" size="icon" aria-label={t.send} disabled={!text.trim() || start.isPending} className="disabled:opacity-40">
@@ -548,7 +580,8 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
           <p className="truncate text-[15px] font-medium leading-snug">{session?.title ?? t.claudeCode}</p>
           {session && (
             <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
-              {t.status[session.status]}
+              {codeStatusText(t, session)}
+              {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
               {session.activity && active(session.status) ? ` · ${session.activity}` : ""}
             </p>
           )}
@@ -600,7 +633,14 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
           </div>
 
           <div className="shrink-0 px-3 pb-3 pt-2">
-            {session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />}
+            {session.todos.length > 0 && <TodoBar todos={session.todos} running={session.status === "running"} />}
+            {session.approval?.kind === "question" && session.approval.questions ? (
+              <QuestionBlock conversationId={conversationId} session={session} approval={session.approval} questions={session.approval.questions} canAnswer={owner} />
+            ) : session.approval?.kind === "plan" ? (
+              <PlanBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
+            ) : (
+              session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
+            )}
             {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
             {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
             {owner ? (
@@ -1146,7 +1186,7 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
         <ChevronRightIcon className={cn("size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover/tool:opacity-100", open && "rotate-90 opacity-100")} />
       </CollapsibleTrigger>
       <CollapsibleContent className="ml-[21px] flex flex-col gap-2 border-l border-border/70 py-1.5 pl-3 pr-2">
-        {step.input && <Detail label={t.input} text={step.input} />}
+        {step.input && (step.name === "ExitPlanMode" ? <MessageText text={step.input} className="text-sm" /> : <Detail label={t.input} text={step.input} />)}
         {nested && (
           <div className="border-l border-border pl-3">
             <Timeline steps={all} running={false} parentId={step.id} />
@@ -1174,7 +1214,7 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
   const c = useT(common);
   const qc = useQueryClient();
   const answer = useMutation({
-    mutationFn: (choice: CodeApproval["choices"][number]) => answerCodeApproval(conversationId, session.id, approval.id, choice),
+    mutationFn: (choice: CodeApproval["choices"][number]) => answerCodeApproval(conversationId, session.id, approval.id, { choice }),
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { error: false },
   });
@@ -1214,11 +1254,203 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
   );
 }
 
-/** Same field as the conversation's: the instruction, the session's model, send. */
+type Choice = { picked: string[]; other: string };
+
+const answerOf = (c: Choice | undefined) => (c ? questionAnswer(c.picked, c.other) : "");
+
+/**
+ * Claude Code's questions (AskUserQuestion), as in its terminal: each with its options, one or
+ * several to pick, and "Other" for an answer of one's own. The run waits for the answers.
+ */
+function QuestionBlock({
+  conversationId,
+  session,
+  approval,
+  questions,
+  canAnswer,
+}: {
+  conversationId: string;
+  session: CodeSession;
+  approval: CodeApproval;
+  questions: CodeQuestion[];
+  canAnswer: boolean;
+}) {
+  const t = useT(messages);
+  const c = useT(common);
+  const qc = useQueryClient();
+  const [choices, setChoices] = useState<Record<string, Choice>>({});
+  const answer = useMutation({
+    mutationFn: (skip: boolean) =>
+      answerCodeApproval(
+        conversationId,
+        session.id,
+        approval.id,
+        skip ? { choice: "deny" } : { choice: "once", answers: Object.fromEntries(questions.map((q) => [q.question, answerOf(choices[q.question])])) },
+      ),
+    onSuccess: (s) => applyCodeSession(qc, s),
+    meta: { success: (_: CodeSession, skip: boolean) => (skip ? undefined : t.question.answered) },
+  });
+  const set = (question: string, change: Partial<Choice>) =>
+    setChoices((all) => ({ ...all, [question]: { ...(all[question] ?? { picked: [], other: "" }), ...change } }));
+  const complete = questions.every((q) => answerOf(choices[q.question]));
+  return (
+    <section aria-label={t.question.title} className="mb-2 rounded-2xl border border-border/70 bg-secondary p-3.5">
+      <p className="text-sm font-medium">{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (complete && !answer.isPending) answer.mutate(false);
+        }}
+      >
+        <FieldGroup className="mt-3 max-h-[45vh] gap-5 overflow-y-auto">
+          {questions.map((q, qi) => {
+            const choice = choices[q.question];
+            const picked = choice?.picked ?? [];
+            const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
+            const id = (i: number) => `code-q${qi}-${i}`;
+            const card = (o: (typeof options)[number], i: number, control: ReactNode) => (
+              <FieldLabel key={o.value} htmlFor={id(i)}>
+                <Field orientation="horizontal">
+                  <FieldContent>
+                    <FieldTitle>{o.label}</FieldTitle>
+                    {o.description && <FieldDescription>{o.description}</FieldDescription>}
+                  </FieldContent>
+                  {control}
+                </Field>
+              </FieldLabel>
+            );
+            return (
+              <FieldSet key={q.question} disabled={!canAnswer}>
+                <FieldLegend variant="label" className="flex items-start gap-2">
+                  {q.header && <Badge variant="secondary">{q.header}</Badge>}
+                  <span>{q.question}</span>
+                </FieldLegend>
+                {q.multiSelect ? (
+                  <div data-slot="checkbox-group" className="flex flex-col gap-3">
+                    {options.map((o, i) =>
+                      card(
+                        o,
+                        i,
+                        <Checkbox
+                          id={id(i)}
+                          checked={picked.includes(o.value)}
+                          onCheckedChange={(on) => set(q.question, { picked: on ? [...picked, o.value] : picked.filter((p) => p !== o.value) })}
+                        />,
+                      ),
+                    )}
+                  </div>
+                ) : (
+                  <RadioGroup value={picked[0] ?? ""} onValueChange={(v) => set(q.question, { picked: [String(v)] })}>
+                    {options.map((o, i) => card(o, i, <RadioGroupItem value={o.value} id={id(i)} />))}
+                  </RadioGroup>
+                )}
+                {picked.includes(OTHER_ANSWER) && (
+                  <Input
+                    autoFocus
+                    aria-label={t.question.other}
+                    placeholder={t.question.otherPlaceholder}
+                    value={choice?.other ?? ""}
+                    onChange={(e) => set(q.question, { other: e.target.value })}
+                  />
+                )}
+              </FieldSet>
+            );
+          })}
+        </FieldGroup>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {canAnswer ? (
+            <>
+              <Button type="submit" size="sm" disabled={!complete || answer.isPending}>
+                {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
+              </Button>
+              <Button type="button" size="sm" variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate(true)}>
+                {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
+              </Button>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t.waitingOwner}</p>
+          )}
+        </div>
+      </form>
+    </section>
+  );
+}
+
+/**
+ * The plan Claude Code wrote in plan mode (ExitPlanMode): read whole, then approved (it starts, in
+ * the mode it had before planning) or sent back with what to change (it keeps planning).
+ */
+function PlanBlock({ conversationId, session, approval, canAnswer }: { conversationId: string; session: CodeSession; approval: CodeApproval; canAnswer: boolean }) {
+  const t = useT(messages);
+  const c = useT(common);
+  const qc = useQueryClient();
+  const [feedback, setFeedback] = useState("");
+  const answer = useMutation({
+    mutationFn: (approve: boolean) =>
+      answerCodeApproval(conversationId, session.id, approval.id, approve ? { choice: "once" } : { choice: "deny", feedback: feedback.trim() }),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      setFeedback("");
+    },
+    meta: { success: (_: CodeSession, approve: boolean) => (approve ? t.plan.approved : t.plan.sentBack) },
+  });
+  return (
+    <section aria-label={t.plan.title} className="mb-2 rounded-2xl border border-border/70 bg-secondary p-3.5">
+      <div className="flex items-start gap-2.5">
+        <TaskListIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium leading-snug">{t.plan.title}</p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{t.plan.help}</p>
+        </div>
+      </div>
+      {approval.plan && (
+        <div className="mt-3 max-h-[40vh] overflow-y-auto rounded-lg bg-background px-3.5 py-2.5">
+          <MessageText text={approval.plan} className="text-sm" />
+        </div>
+      )}
+      {canAnswer ? (
+        <>
+          <Textarea
+            rows={2}
+            value={feedback}
+            aria-label={t.plan.feedback}
+            placeholder={t.plan.feedbackPlaceholder}
+            onChange={(e) => setFeedback(e.target.value)}
+            className="mt-3 max-h-32 bg-background"
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={answer.isPending || !!feedback.trim()} onClick={() => answer.mutate(true)}>
+              {answer.isPending && answer.variables ? c.inProgress : t.plan.approve}
+            </Button>
+            <Button size="sm" variant="secondary" disabled={answer.isPending} onClick={() => answer.mutate(false)}>
+              {answer.isPending && !answer.variables ? c.inProgress : t.plan.revise}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">{t.waitingOwner}</p>
+      )}
+    </section>
+  );
+}
+
+/** "/name" typed at the start of the field, up to the caret: a slash command or a skill being picked. */
+function slashQuery(text: string, caret: number) {
+  return /^\/([\w:.-]*)$/.exec(text.slice(0, caret))?.[1] ?? null;
+}
+
+/**
+ * Same field as the conversation's: the instruction, the session's mode and model, send. "/" at its
+ * start lists Claude Code's skills and slash commands, as in its terminal; Shift+Tab switches the mode.
+ */
 function SessionComposer({ conversationId, session }: { conversationId: string; session: CodeSession }) {
   const t = useT(messages);
   const qc = useQueryClient();
+  const area = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState("");
+  const [caret, setCaret] = useState(0);
+  const [highlight, setHighlight] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
   const send = useMutation({
     mutationFn: (value: string) => sendToCodeSession(conversationId, session.id, value),
     onSuccess: (s) => {
@@ -1231,11 +1463,26 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { success: t.stopped },
   });
+  const mode = useMutation({
+    mutationFn: (value: CodePermissionMode) => setCodeSessionMode(conversationId, session.id, value),
+    onSuccess: (s) => applyCodeSession(qc, s),
+    meta: { success: (s: CodeSession) => t.modeChanged(t.modes[s.mode]) },
+  });
+  const query = dismissed ? null : slashQuery(text, caret);
+  const items = query === null ? [] : commandItems(session, query);
   // While Claude Code works, the send button stops it; typing turns it back into send (an instruction mid-run).
   const stoppable = active(session.status) && !text.trim();
   const submit = () => {
     const value = text.trim();
     if (value && !send.isPending) send.mutate(value);
+  };
+  const pick = (item: SlashItem) => {
+    const next = `/${item.name} ${text.slice(caret).trimStart()}`;
+    const at = item.name.length + 2;
+    setText(next);
+    setCaret(at);
+    setDismissed(true);
+    requestAnimationFrame(() => area.current?.setSelectionRange(at, at));
   };
   return (
     <form
@@ -1243,16 +1490,49 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
         e.preventDefault();
         submit();
       }}
-      className="rounded-[22px] bg-secondary p-1.5"
+      className="relative rounded-[22px] bg-secondary p-1.5"
     >
-      <InputGroup className="h-auto items-end border-0 bg-transparent">
+      {query !== null && items.length > 0 && <SlashMenu items={items} active={Math.min(highlight, items.length - 1)} onHover={setHighlight} onPick={pick} />}
+      <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent">
         <InputGroupTextarea
+          ref={area}
           rows={1}
           value={text}
           autoFocus
-          placeholder={active(session.status) ? t.placeholderRunning : t.placeholderIdle}
-          onChange={(e) => setText(e.target.value)}
+          aria-expanded={query !== null && items.length > 0}
+          aria-autocomplete="list"
+          placeholder={active(session.status) ? t.placeholderRunning : session.commands.length ? `${t.placeholderIdle} · ${t.commands.hint}` : t.placeholderIdle}
+          onChange={(e) => {
+            setText(e.target.value);
+            setCaret(e.target.selectionStart);
+            setHighlight(0);
+            setDismissed(false);
+          }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={(e) => {
+            if (query !== null && items.length) {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const n = items.length;
+                setHighlight((a) => (Math.min(a, n - 1) + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+                return;
+              }
+              if ((e.key === "Enter" && !e.shiftKey) || (e.key === "Tab" && !e.shiftKey)) {
+                e.preventDefault();
+                pick(items[Math.min(highlight, items.length - 1)]!);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setDismissed(true);
+                return;
+              }
+            }
+            if (e.key === "Tab" && e.shiftKey) {
+              e.preventDefault();
+              if (!mode.isPending) mode.mutate(nextCodeMode(session.mode));
+              return;
+            }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               submit();
@@ -1260,7 +1540,9 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
           }}
           className="max-h-40 min-h-0 min-w-0 px-2 py-1 text-[15px] leading-6 md:text-[15px]"
         />
-        <InputGroupAddon align="inline-end" className="cursor-default gap-1 py-0 pr-0 has-[>button]:mr-0">
+        <InputGroupAddon align="block-end" className="cursor-default gap-1 px-0 pb-0">
+          <ModePicker value={session.mode} disabled={mode.isPending} onSelect={(value) => value !== session.mode && mode.mutate(value)} />
+          <span className="flex-1" />
           <SessionModelPicker conversationId={conversationId} session={session} />
           {stoppable ? (
             <Button type="button" size="icon" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()} className="disabled:opacity-40">
@@ -1275,6 +1557,91 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
       </InputGroup>
     </form>
   );
+}
+
+/** Its skills first, then its commands, best matches of the query first. */
+function commandItems(session: CodeSession, query: string): SlashItem[] {
+  const all = [...session.commands].sort((a, b) => Number(b.skill) - Number(a.skill));
+  return rankByQuery(
+    all.map((c) => ({
+      key: `${c.skill ? "skill" : "command"}:${c.name}`,
+      kind: c.skill ? "skill" : "command",
+      name: c.name,
+      description: c.argumentHint ? `${c.argumentHint} · ${c.description}` : c.description,
+    })),
+    query.toLowerCase(),
+  );
+}
+
+/** Claude Code's permission mode, each with what it lets it do. */
+function ModePicker({ value, onSelect, disabled }: { value: CodePermissionMode; onSelect: (mode: CodePermissionMode) => void; disabled?: boolean }) {
+  const t = useT(messages);
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={t.mode} disabled={disabled} />} />}>{t.modes[value]}</TooltipTrigger>
+        <TooltipContent>{t.modeShortcut}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-72">
+        <DropdownMenuRadioGroup value={value} onValueChange={(v) => onSelect(v as CodePermissionMode)}>
+          {CODE_PERMISSION_MODES.map((m) => (
+            <DropdownMenuRadioItem key={m} value={m} className="h-auto items-start py-2">
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span>{t.modes[m]}</span>
+                <span className="text-[12px] text-muted-foreground">{t.modeHelp[m]}</span>
+              </span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/* ---------- task list ---------- */
+
+/**
+ * Claude Code's task list, docked above the field as in its terminal: where it stands in one line,
+ * each task on unfolding. Hidden once every task is done and the session rests.
+ */
+function TodoBar({ todos, running }: { todos: CodeTodo[]; running: boolean }) {
+  const t = useT(messages).todos;
+  const [open, setOpen] = useState(true);
+  const done = todos.filter((x) => x.status === "completed").length;
+  const current = todos.find((x) => x.status === "in_progress");
+  if (done === todos.length && !running) return null;
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="mb-2 overflow-hidden rounded-2xl border border-border/70 bg-background/60">
+      <CollapsibleTrigger
+        aria-label={t.label(done, todos.length)}
+        className="flex h-10 w-full items-center gap-2 px-3 text-left text-[13px] outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
+        <ChevronRightIcon className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+        <TaskListIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="shrink-0">{t.title}</span>
+        <span className="shrink-0 tabular-nums text-muted-foreground">{t.progress(done, todos.length)}</span>
+        {current && !open && <span className="min-w-0 truncate text-muted-foreground">{current.activeForm ?? current.content}</span>}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="border-t border-border/60">
+        <ul className="max-h-48 overflow-y-auto py-1.5">
+          {todos.map((todo) => (
+            <li key={todo.id} className="flex items-start gap-2 px-3 py-1 text-[13px]">
+              <TodoMark status={todo.status} running={running} />
+              <span className={cn("min-w-0 break-words", todo.status === "completed" && "text-muted-foreground line-through", todo.status === "in_progress" && "font-medium")}>
+                {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function TodoMark({ status, running }: { status: CodeTodo["status"]; running: boolean }) {
+  if (status === "completed") return <CheckCircleIcon className="mt-0.5 size-3.5 shrink-0 text-success" />;
+  if (status === "in_progress" && running) return <Spinner className="mt-0.5 size-3.5 shrink-0" />;
+  return <CircleIcon className={cn("mt-0.5 size-3.5 shrink-0", status === "in_progress" ? "text-foreground" : "text-muted-foreground")} />;
 }
 
 /** The session's model, among the ones its owner may use. */

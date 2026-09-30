@@ -239,6 +239,13 @@
       "when": 1790783557458,
       "tag": "0033_code_session_worktree",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790788415816,
+      "tag": "0034_code_session_todos_commands",
+      "breakpoints": true
     }
   ]
 }

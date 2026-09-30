@@ -88,8 +88,9 @@ def _report(report: dict) -> str:
         report["note"] = ("Claude Code is still working. The members follow it live in the conversation. "
                           "Call claude_code_wait again to keep waiting, or answer the user now.")
     elif status == "waiting":
-        report["note"] = ("Claude Code is waiting for its owner to approve an action (see `approval`), in the "
-                          "conversation's Claude Code card. Tell them what it asks, then call claude_code_wait.")
+        report["note"] = ("Claude Code is waiting for its owner, in the conversation's Claude Code card: to approve an "
+                          "action, answer its questions or approve its plan (`approval.kind`: tool, question or plan). "
+                          "Tell them what it asks, then call claude_code_wait.")
     elif status == "idle":
         report["note"] = ("Claude Code finished what it was asked: `result` is its answer. Check it before reporting; "
                           "send a follow-up with claude_code_send if something is missing. `history` lists every "

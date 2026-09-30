@@ -91,14 +91,91 @@ export type CodeGit = {
 /** A file changed and not committed; lines are null for a binary. */
 export type CodeGitFile = { path: string; state: "added" | "modified" | "deleted" | "renamed"; added: number | null; removed: number | null };
 
-/** An action Claude Code wants to run, waiting for the owner. */
+/**
+ * Claude Code's permission mode, as in its terminal (shift+tab): default asks before each edit or
+ * command, acceptEdits lets the edits through, plan only reads and writes a plan to approve,
+ * bypassPermissions acts on its own (the sessions' default).
+ */
+export type CodePermissionMode = "default" | "acceptEdits" | "plan" | "bypassPermissions";
+
+export const CODE_PERMISSION_MODES: CodePermissionMode[] = ["bypassPermissions", "acceptEdits", "default", "plan"];
+
+/** A question Claude Code asks with its AskUserQuestion tool; "Other" (a free answer) is always possible. */
+export type CodeQuestion = {
+  question: string;
+  /** Its short label (a chip in Claude Code). */
+  header: string;
+  options: { label: string; description?: string }[];
+  multiSelect: boolean;
+};
+
+/**
+ * What Claude Code waits for from the owner.
+ * tool: an action to allow (default and acceptEdits modes, or a tool it asks about);
+ * question: its questions to answer (AskUserQuestion), `answers` keyed by question;
+ * plan: its plan to approve (ExitPlanMode), or to send back with what to change.
+ */
 export type CodeApproval = {
   id: string;
+  /** Missing: tool (sessions saved before questions and plans). */
+  kind?: "tool" | "question" | "plan";
   tool: string;
   title: string;
   detail?: string;
-  /** "session": allowed for the rest of this session, as Claude Code suggests it. */
+  /** "session": allowed for the rest of this session, as Claude Code suggests it. A question can only be answered or dismissed ("deny"). */
   choices: ("once" | "session" | "deny")[];
+  questions?: CodeQuestion[];
+  /** The plan, in Markdown. */
+  plan?: string;
+};
+
+/** The owner's answer to an approval: `answers` for a question, `feedback` when a plan goes back to planning. */
+export type CodeApprovalAnswer = {
+  choice: CodeApproval["choices"][number];
+  answers?: Record<string, string>;
+  feedback?: string;
+};
+
+/** The next mode, as Shift+Tab cycles them in Claude Code's terminal. */
+export const nextCodeMode = (mode: CodePermissionMode) => CODE_PERMISSION_MODES[(CODE_PERMISSION_MODES.indexOf(mode) + 1) % CODE_PERMISSION_MODES.length]!;
+
+/** A session's status in words (the codeSessions messages): what it waits for, when it waits. */
+export function codeStatusText(
+  t: { waitingQuestion: string; waitingPlan: string; status: Record<CodeSessionStatus, string> },
+  session: { status: CodeSessionStatus; approval: CodeApproval | null },
+) {
+  if (session.status === "waiting" && session.approval?.kind === "question") return t.waitingQuestion;
+  if (session.status === "waiting" && session.approval?.kind === "plan") return t.waitingPlan;
+  return t.status[session.status];
+}
+
+/** What it waits for, in one line: the action and its target, or the question, or the plan's title. */
+export const codeApprovalLine = (a: CodeApproval) => (a.kind === "question" || a.kind === "plan" ? a.title : `${a.tool} · ${a.title}`);
+
+/** The value of "Other" among a question's picked options: the owner's own words. */
+export const OTHER_ANSWER = "\u0000other";
+
+/** One question's answer: the options picked, joined, and the owner's own words when "Other" is picked. */
+export function questionAnswer(picked: string[], other: string) {
+  const own = picked.includes(OTHER_ANSWER) ? other.trim() : "";
+  return [...picked.filter((p) => p !== OTHER_ANSWER), ...(own ? [own] : [])].join(", ");
+}
+
+/** An item of Claude Code's task list (TodoWrite, or TaskCreate/TaskUpdate). */
+export type CodeTodo = {
+  id: string;
+  content: string;
+  /** What it says while doing it ("Running the tests"). */
+  activeForm?: string;
+  status: "pending" | "in_progress" | "completed";
+};
+
+/** A slash command the session knows: a skill (project's, or bundled with Claude Code) or a command. */
+export type CodeCommand = {
+  name: string;
+  description: string;
+  argumentHint?: string;
+  skill: boolean;
 };
 
 /** The subscription is close to (warning) or at (rejected) one of its usage limits. */
@@ -149,6 +226,12 @@ export type CodeSession = {
   /** Its worktree (null: a directory of its own, started without a repository or before worktrees). */
   worktree: CodeWorktree | null;
   model: string | null;
+  /** Its permission mode, for the next run and the one under way. */
+  mode: CodePermissionMode;
+  /** Claude Code's task list, as it last wrote it. */
+  todos: CodeTodo[];
+  /** The slash commands and skills it offers (read at each run's start; empty before the first). */
+  commands: CodeCommand[];
   /** The Claude account (profile) its last run used: id null for the server's own login. */
   account: CodeAccount | null;
   /** What it is doing right now, in one line (Claude Code's own summary, or the running tool). */

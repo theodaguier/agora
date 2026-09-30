@@ -82,6 +82,52 @@ describe("Transcript", () => {
     expect(t.settle().map((s) => s.id)).toEqual(["toolu_4"]);
     expect(t.get("toolu_4")).toMatchObject({ status: "error" });
   });
+
+  test("the task list follows TaskCreate and TaskUpdate, once their results say they worked", () => {
+    const t = new Transcript(CWD);
+    const create = (id: string, subject: string, taskId: string) => {
+      t.apply(assistant(`msg_${id}`, [{ type: "tool_use", id, name: "TaskCreate", input: { subject, activeForm: `Doing ${subject}` } }]));
+      return t.apply({ ...toolResult(id, `Task #${taskId} created successfully: ${subject}`), tool_use_result: { task: { id: taskId, subject } } });
+    };
+    expect(create("toolu_c1", "Write the test", "1").todos).toEqual([{ id: "1", content: "Write the test", activeForm: "Doing Write the test", status: "pending" }]);
+    create("toolu_c2", "Fix the bug", "2");
+    t.apply(assistant("msg_u1", [{ type: "tool_use", id: "toolu_u1", name: "TaskUpdate", input: { taskId: "1", status: "in_progress" } }]));
+    // Not applied before its result.
+    expect(t.todos.map((x) => x.status)).toEqual(["pending", "pending"]);
+    expect(t.apply(toolResult("toolu_u1", "Updated task #1 status")).todos?.map((x) => x.status)).toEqual(["in_progress", "pending"]);
+    // A failed update changes nothing.
+    t.apply(assistant("msg_u2", [{ type: "tool_use", id: "toolu_u2", name: "TaskUpdate", input: { taskId: "2", status: "completed" } }]));
+    expect(t.apply(toolResult("toolu_u2", "No such task", true)).todos).toBeUndefined();
+    // Finished, the next task created starts a new list.
+    for (const [id, taskId] of [["toolu_u3", "1"], ["toolu_u4", "2"]] as const) {
+      t.apply(assistant(`msg_${id}`, [{ type: "tool_use", id, name: "TaskUpdate", input: { taskId, status: "completed" } }]));
+      t.apply(toolResult(id, "Updated"));
+    }
+    expect(create("toolu_c3", "Open the PR", "3").todos?.map((x) => x.content)).toEqual(["Open the PR"]);
+  });
+
+  test("TodoWrite replaces the task list", () => {
+    const t = new Transcript(CWD, [], [{ id: "9", content: "Old", status: "pending" }]);
+    const todos = [
+      { content: "Write the test", status: "completed", activeForm: "Writing the test" },
+      { content: "Fix the bug", status: "in_progress", activeForm: "Fixing the bug" },
+    ];
+    t.apply(assistant("msg_t", [{ type: "tool_use", id: "toolu_t", name: "TodoWrite", input: { todos } }]));
+    expect(t.apply(toolResult("toolu_t", "Todos have been modified successfully")).todos).toEqual([
+      { id: "1", content: "Write the test", activeForm: "Writing the test", status: "completed" },
+      { id: "2", content: "Fix the bug", activeForm: "Fixing the bug", status: "in_progress" },
+    ]);
+  });
+
+  test("permission mode and skills from the init and status events", () => {
+    const t = new Transcript(CWD);
+    expect(t.apply({ type: "system", subtype: "init", session_id: "s", model: null, permissionMode: "plan", skills: ["hello"] })).toMatchObject({
+      init: { sessionId: "s", model: null, skills: ["hello"] },
+      mode: "plan",
+    });
+    expect(t.apply({ type: "system", subtype: "status", status: null, permissionMode: "bypassPermissions" }).mode).toBe("bypassPermissions");
+    expect(t.apply({ type: "system", subtype: "status", status: null, permissionMode: "weird" }).mode).toBeUndefined();
+  });
 });
 
 describe("describeTool", () => {
@@ -97,6 +143,18 @@ describe("describeTool", () => {
       { content: "Open the PR", status: "pending", activeForm: "Opening the PR" },
     ];
     expect(describeTool("TodoWrite", { todos }, CWD)).toEqual({ title: "Fixing the bug", input: "[x] Write the test\n[~] Fix the bug\n[ ] Open the PR" });
+  });
+
+  test("skills, questions and plans read as themselves", () => {
+    expect(describeTool("Skill", { skill: "code-review", args: "high" }, CWD)).toEqual({ title: "/code-review high" });
+    expect(
+      describeTool("AskUserQuestion", { questions: [{ question: "Which color?", header: "Color", options: [{ label: "Red", description: "Warm" }, { label: "Blue" }] }] }, CWD),
+    ).toEqual({ title: "Which color?", input: "Which color?\n- Red — Warm\n- Blue" });
+    expect(describeTool("ExitPlanMode", { plan: "# Add the login page\n\n1. Route" }, CWD)).toEqual({ title: "Add the login page", input: "# Add the login page\n\n1. Route" });
+    expect(describeTool("TaskUpdate", { taskId: "2", status: "completed" }, CWD)).toEqual({ title: "#2 · completed" });
+    // Its usual sections are not its title.
+    expect(describeTool("ExitPlanMode", { plan: "# Context\nWhy.\n# Plan\n1. Do" }, CWD).title).toBe("ExitPlanMode");
+    expect(describeTool("ExitPlanMode", { plan: "## Context\n## Rename the API routes" }, CWD).title).toBe("Rename the API routes");
   });
 
   test("unknown tools (MCP) show their input", () => {
