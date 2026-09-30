@@ -13,7 +13,7 @@ writeFileSync(join(root, "gitconfig"), `[url "file://${remotes}/"]\n\tinsteadOf 
 process.env.GIT_CONFIG_GLOBAL = join(root, "gitconfig");
 process.env.GIT_CONFIG_NOSYSTEM = "1";
 
-const { commit, commitMaterial, parseRepo, prepareWorktree, pullRequestLinks, push, readGit, removeWorktree, sessionBranch, writeCredentials } = await import("./code-git");
+const { cloneOf, commit, commitMaterial, parseRepo, prepareWorktree, pullRequestLinks, push, readGit, removeWorktree, sessionBranch, writeCredentials } = await import("./code-git");
 
 const sh = (cwd: string, ...args: string[]) => {
   const r = Bun.spawnSync(["git", ...args], { cwd, env: process.env });
@@ -170,5 +170,24 @@ describe("a session's worktree", () => {
     Bun.spawnSync(["rm", "-rf", gone]);
     expect(await removeWorktree(clone, gone)).toMatchObject({ branch: null });
     expect(sh(clone, "worktree", "list")).not.toContain(gone);
+  });
+});
+
+describe("a project an earlier session cloned the repository into", () => {
+  const project = join(root, "projects", "etouch");
+  const dir = join(root, "worktrees", "app-3");
+
+  test("its sessions get worktrees of it, even with a branch checked out there", async () => {
+    mkdirSync(join(root, "projects"), { recursive: true });
+    sh(root, "clone", "-q", "https://github.com/acme/app.git", project);
+    sh(project, "checkout", "-q", "-b", "fix/old-session");
+    expect(await cloneOf(project)).toBe("acme/app");
+    expect(await cloneOf(join(root, "worktrees"))).toBeNull();
+    await prepareWorktree(project, dir, "acme/app", { branch: "claude/new-task", author });
+    expect(await readGit(dir)).toMatchObject({ repo: "acme/app", branch: "claude/new-task", base: "main", changes: 0 });
+    // The project's own checkout is left as it was.
+    expect(sh(project, "branch", "--show-current")).toBe("fix/old-session");
+    expect(await removeWorktree(project, dir)).toMatchObject({ branch: "claude/new-task" });
+    expect(sh(project, "worktree", "list")).not.toContain(dir);
   });
 });

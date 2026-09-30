@@ -187,6 +187,11 @@ async function isOwnTree(cwd: string) {
   return top === dir;
 }
 
+/** The GitHub repository a directory is a clone of (owner/name), null when it is not one. */
+export async function cloneOf(dir: string) {
+  return (await isOwnTree(dir)) ? originRepo(dir) : null;
+}
+
 /**
  * The session's directory as a worktree of `repo` on its working branch. `clone`: the repository's
  * clone its sessions share, cloned when missing and fetched otherwise; it keeps no checkout of its

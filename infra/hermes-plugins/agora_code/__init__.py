@@ -94,6 +94,9 @@ def _report(report: dict) -> str:
         report["note"] = ("Claude Code finished what it was asked: `result` is its answer. Check it before reporting; "
                           "send a follow-up with claude_code_send if something is missing. `history` lists every "
                           "instruction (the owner's from the panel too) and git action; `git` is where its branch stands.")
+    elif status == "done":
+        report["note"] = ("The session's pull request is merged: its task is over. Report its result; any further "
+                          "work goes into a new session with claude_code_start.")
     elif status == "stopped":
         report["note"] = "The session was stopped. Do not restart it unless the user asks."
     elif status == "failed":
@@ -205,8 +208,9 @@ START = {
             },
             "project": {
                 "type": "string",
-                "description": "Without `repo` only: name of its working directory on the server (letters, digits, . _ -). "
-                               "Sessions with the same project share it. Default: a new directory. Ignored with `repo`: the session gets a worktree.",
+                "description": "Name of a directory on the server (letters, digits, . _ -). When it holds a clone of a GitHub "
+                               "repository, the session gets a worktree of that clone of its own, as with `repo`; otherwise the sessions "
+                               "with the same project share the directory. Default: a new directory.",
             },
             "model": {"type": "string", "description": "Claude model (alias like opus or sonnet, or a full id). Default: Claude Code's own."},
             "wait": {"type": "boolean", "description": "Wait for the result (default true). False: return right away with its id."},
