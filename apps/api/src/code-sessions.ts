@@ -2,12 +2,12 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 import type { Subprocess } from "bun";
-import type { CodeApproval, CodeGitAction, CodeSession, CodeSessionDetail, CodeSessionStatus, CodeStep, CodeUsage } from "@agora/core";
+import type { CodeApproval, CodeApprovalAnswer, CodeCommand, CodeGitAction, CodePermissionMode, CodeQuestion, CodeSession, CodeSessionDetail, CodeSessionStatus, CodeStep, CodeUsage } from "@agora/core";
 import { activateClaudeAccount, activeClaudeAccountId, claudeCodeEnv, claudeProfiles } from "./claude-accounts";
 import { resultUsage, sessionExists, workspace, type ClaudeResult } from "./claude-code";
 import * as gitOps from "./code-git";
 import { GitError, githubEnv, githubToken, parseRepo, prepareWorktree, readGit, removeWorktree, sessionBranch, writeCredentials } from "./code-git";
-import { clip, Transcript } from "./code-steps";
+import { clip, isMode, planTitle, Transcript } from "./code-steps";
 import { db, schema } from "./db";
 import { env } from "./env";
 import { publishToConversation } from "./events";
@@ -36,6 +36,11 @@ import { recordEngineUsage } from "./usage";
  * with its answer; the next instruction resumes the same Claude Code session
  * (its id is the session's). Stdin stays open during the run for the owner's
  * messages and answers (stream-json control protocol, --permission-prompt-tool stdio).
+ *
+ * As in its terminal, the owner picks its permission mode (autonomous by
+ * default, plan, accept edits, ask for everything), answers its questions
+ * (AskUserQuestion), approves its plans (ExitPlanMode), follows its task list
+ * and calls its skills and slash commands.
  */
 
 type Row = typeof schema.codeSession.$inferSelect;
@@ -99,6 +104,17 @@ const COOL_GRACE_MS = 60_000;
 /** Claude Code's answer when the account ran out of its subscription's usage. */
 const LIMIT_HIT = /hit your .*limit|usage limit reached|limit reached/i;
 
+/** Sessions act on their own unless their owner picks another mode. */
+const DEFAULT_MODE: CodePermissionMode = "bypassPermissions";
+
+const modeOf = (r: Row): CodePermissionMode => (isMode(r.permissions.mode) ? r.permissions.mode : DEFAULT_MODE);
+/** The mode a plan approved goes on in: the last one the session had besides plan. */
+const actModeOf = (r: Row): CodePermissionMode => (isMode(r.permissions.actMode) && r.permissions.actMode !== "plan" ? r.permissions.actMode : DEFAULT_MODE);
+
+function setMode(r: Row, mode: CodePermissionMode) {
+  r.permissions = { ...r.permissions, mode, ...(mode !== "plan" && { actMode: mode }) };
+}
+
 const PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,99}$/;
 
@@ -129,10 +145,22 @@ function summary(s: Live): CodeSession {
     git: r.git,
     worktree: r.worktree,
     model: r.model,
+    mode: modeOf(r),
+    todos: s.transcript.todos,
+    commands: r.commands,
     account: r.account,
     activity: s.activity,
     limit: s.limit,
-    approval: a && { id: a.id, tool: a.tool, title: a.title, ...(a.detail && { detail: a.detail }), choices: a.choices },
+    approval: a && {
+      id: a.id,
+      kind: a.kind,
+      tool: a.tool,
+      title: a.title,
+      ...(a.detail && { detail: a.detail }),
+      choices: a.choices,
+      ...(a.questions && { questions: a.questions }),
+      ...(a.plan !== undefined && { plan: a.plan }),
+    },
     result: r.result,
     usage: r.usage,
     stepCount: s.transcript.steps.length,
@@ -155,7 +183,7 @@ function lastInstruction(steps: CodeStep[]): CodeSession["instruction"] {
 function fromRow(row: Row): Live {
   return {
     row,
-    transcript: new Transcript(row.cwd, row.steps),
+    transcript: new Transcript(row.cwd, row.steps, row.todos),
     running: false,
     proc: null,
     idleTimer: null,
@@ -224,7 +252,7 @@ export async function codeSessionReport(id: string) {
     .filter((st) => st.kind === "user" || st.kind === "git")
     .slice(-10)
     .map((st) => (st.kind === "user" ? `${st.by ?? "?"}: ${clipLine(st.text, 400)}` : `[git ${st.action}${st.ok ? "" : " failed"}${st.by ? ` by ${st.by}` : ""}] ${st.text}`));
-  const { id: _, conversationId: __, agentId: ___, requestedBy: ____, ...rest } = summary(s);
+  const { id: _, conversationId: __, agentId: ___, requestedBy: ____, commands: _____, ...rest } = summary(s);
   return { session_id: id, ...rest, actions, history };
 }
 
@@ -271,6 +299,8 @@ async function save(s: Live) {
         worktree: r.worktree,
         account: r.account,
         steps: s.transcript.steps.slice(-MAX_STEPS),
+        todos: s.transcript.todos,
+        commands: r.commands,
         usage: r.usage,
         updatedAt: r.updatedAt,
       })
@@ -389,6 +419,8 @@ export async function startCodeSession(opts: {
   repo?: string;
   /** Its branch to work on (default: a new one named after the session). */
   branch?: string;
+  /** Its permission mode (default: it acts on its own); plan: it starts by writing a plan to approve. */
+  mode?: CodePermissionMode;
 }): Promise<CodeSession> {
   const task = opts.task.trim();
   const project = opts.project?.trim();
@@ -418,7 +450,7 @@ export async function startCodeSession(opts: {
       repo,
       worktree: branch ? { branch, removedAt: null } : null,
       model,
-      permissions: { allowedTools: [], dirs: [] },
+      permissions: { allowedTools: [], dirs: [], ...(opts.mode && opts.mode !== DEFAULT_MODE && { mode: opts.mode }) },
       steps: [],
     })
     .returning();
@@ -480,14 +512,38 @@ function deliver(s: Live, m: Instruction) {
   write(s, { type: "user", message: { role: "user", content: [{ type: "text", text: m.text }] } });
 }
 
-export async function answerCodeApproval(id: string, approvalId: string, choice: CodeApproval["choices"][number], conversationId?: string) {
+export async function answerCodeApproval(id: string, approvalId: string, answer: CodeApprovalAnswer, conversationId?: string) {
   const s = await load(id, conversationId);
   const a = s.approval;
+  const { choice } = answer;
   if (!a || a.id !== approvalId || !s.proc) throw new CodeSessionError("gone");
-  if (!a.choices.includes(choice)) throw new CodeSessionError("invalid");
-  s.approval = null;
+  // A question is answered (its answers) or dismissed, whatever the choices say.
+  if (a.kind === "question" ? choice === "session" : !a.choices.includes(choice)) throw new CodeSessionError("invalid");
   let response: Json;
-  if (choice === "deny") {
+  if (a.kind === "question") {
+    if (choice === "deny") {
+      response = { behavior: "deny", message: "The user dismissed your questions without answering. Go on with your best judgment, and say what you assumed." };
+    } else {
+      const answers = questionAnswers(a.questions ?? [], answer.answers ?? {});
+      if (!answers) throw new CodeSessionError("invalid");
+      response = { behavior: "allow", updatedInput: { ...a.input, answers } };
+    }
+  } else if (a.kind === "plan") {
+    if (choice === "deny") {
+      const feedback = answer.feedback?.trim();
+      response = {
+        behavior: "deny",
+        message: feedback
+          ? `The user wants changes to the plan before you start. Stay in plan mode, revise the plan with this feedback, then present it again:\n${feedback}`
+          : "The user rejected this plan. Stay in plan mode and ask what they want changed.",
+      };
+    } else {
+      // Approved: it goes on in the mode the owner had before planning, as Claude Code's own dialog does.
+      const mode = actModeOf(s.row);
+      setMode(s.row, mode);
+      response = { behavior: "allow", updatedInput: a.input, updatedPermissions: [{ type: "setMode", mode, destination: "session" }] };
+    }
+  } else if (choice === "deny") {
     response = { behavior: "deny", message: "The user denied this action. Do not retry it: take another approach, or stop and explain what you need." };
     if (a.toolUseId) touch(s, [s.transcript.deny(a.toolUseId)]);
   } else if (choice === "session") {
@@ -497,9 +553,37 @@ export async function answerCodeApproval(id: string, approvalId: string, choice:
   } else {
     response = { behavior: "allow", updatedInput: a.input };
   }
+  s.approval = null;
   write(s, { type: "control_response", response: { subtype: "success", request_id: a.requestId, response } });
   s.row.status = "running";
   touch(s, [], true);
+  return summary(s);
+}
+
+const ANSWER_MAX = 2_000;
+
+/** Answers keyed by the questions asked, each one given (an option's label, several joined, or the owner's own words); null otherwise. */
+function questionAnswers(questions: CodeQuestion[], given: Record<string, string>) {
+  const answers: Record<string, string> = {};
+  for (const q of questions) {
+    const value = given[q.question]?.trim();
+    if (!value) return null;
+    answers[q.question] = value.slice(0, ANSWER_MAX);
+  }
+  return questions.length ? answers : null;
+}
+
+/**
+ * Its permission mode, as shift+tab switches it in the terminal: right away when a process is there
+ * (Claude Code's set_permission_mode), otherwise from the next run.
+ */
+export async function setCodeSessionMode(id: string, mode: CodePermissionMode, conversationId?: string) {
+  const s = await load(id, conversationId);
+  if (!isMode(mode)) throw new CodeSessionError("invalid");
+  setMode(s.row, mode);
+  if (s.proc) write(s, { type: "control_request", request_id: crypto.randomUUID(), request: { subtype: "set_permission_mode", mode } });
+  touch(s, [], true);
+  await save(s);
   return summary(s);
 }
 
@@ -832,7 +916,8 @@ export async function codeSessionsContext(conversationId: string) {
     const r = s.row;
     const steps = s.transcript.steps;
     const by = r.agentId ? (agentNames.get(r.agentId) ?? "un bot") : "son propriétaire";
-    const lines = [`## « ${r.title} » (session_id ${r.id})`, `Lancée par ${by}. État : ${status[r.status]}${r.model ? `, modèle ${r.model}` : ""}.`];
+    const waitingFor = r.status === "waiting" && s.approval?.kind === "question" ? "attend la réponse de son propriétaire à une question" : r.status === "waiting" && s.approval?.kind === "plan" ? "attend que son propriétaire approuve son plan" : status[r.status];
+    const lines = [`## « ${r.title} » (session_id ${r.id})`, `Lancée par ${by}. État : ${waitingFor}${r.model ? `, modèle ${r.model}` : ""}${modeOf(r) === "plan" ? ", en mode plan" : ""}.`];
     const git = gitLine(r.git);
     if (git) lines.push(`Dépôt : ${git}.`);
     if (r.worktree?.removedAt) lines.push(`Son worktree a été supprimé par son propriétaire : une nouvelle instruction en recrée un sur la branche ${r.worktree.branch}.`);
@@ -977,7 +1062,7 @@ export function remember(p: Permissions, suggestions: Json[]): Permissions {
       for (const d of Array.isArray(s.directories) ? s.directories : []) dirs.add(String(d));
     }
   }
-  return { allowedTools: [...allowedTools], dirs: [...dirs], ...(mode && { mode }) };
+  return { ...p, allowedTools: [...allowedTools], dirs: [...dirs], ...(mode && { mode }), ...(mode && mode !== "plan" && { actMode: mode }) };
 }
 
 function start(s: Live) {
@@ -1075,8 +1160,10 @@ async function execute(s: Live, id: number): Promise<void> {
     "--replay-user-messages",
     // Actions outside the allowed ones are asked on stdout (can_use_tool) and answered on stdin.
     "--permission-prompt-tool", "stdio",
-    // Nothing is asked: the owner chose to let the sessions act on their own (they still watch and can stop them).
-    "--dangerously-skip-permissions",
+    // Its mode is the owner's: by default nothing is asked, the sessions act on their own (they still watch and
+    // can stop them); plan, accept edits or ask for everything otherwise, switched during the run as well.
+    "--allow-dangerously-skip-permissions",
+    "--permission-mode", modeOf(r),
     // None of the owner's hooks, CLAUDE.md or personal MCP servers; the project's own settings apply.
     "--setting-sources", "project",
     "--strict-mcp-config",
@@ -1102,6 +1189,8 @@ async function execute(s: Live, id: number): Promise<void> {
   s.proc = proc;
   // Stopped while it was starting.
   if (s.stopping) proc.kill();
+  // Its slash commands and skills, with their descriptions, for the owner's field.
+  write(s, { type: "control_request", request_id: `${INITIALIZE}${id}`, request: { subtype: "initialize" } });
   for (const m of s.outbox.splice(0)) deliver(s, m);
 
   let result: { text: string; isError: boolean } | null = null;
@@ -1116,7 +1205,10 @@ async function execute(s: Live, id: number): Promise<void> {
       onControlRequest(s, ev);
       continue;
     }
-    if (ev.type === "control_response") continue;
+    if (ev.type === "control_response") {
+      onControlResponse(s, ev);
+      continue;
+    }
     // A turn of its own while warm (a background task that ended): shown as a run.
     if (!s.running && s.proc === proc && (ev.type === "assistant" || ev.type === "stream_event")) {
       if (s.idleTimer) clearTimeout(s.idleTimer);
@@ -1135,6 +1227,16 @@ async function execute(s: Live, id: number): Promise<void> {
       r.model = change.init.model;
       summaryChanged = true;
     }
+    if (change.init?.skills) {
+      const skills = new Set(change.init.skills);
+      r.commands = r.commands.map((c) => ({ ...c, skill: skills.has(c.name) }));
+      summaryChanged = true;
+    }
+    if (change.mode && change.mode !== modeOf(r)) {
+      setMode(r, change.mode);
+      summaryChanged = true;
+    }
+    if (change.todos) summaryChanged = true;
     if (change.activity !== undefined && change.activity !== s.activity) {
       s.activity = change.activity;
       summaryChanged = true;
@@ -1226,18 +1328,68 @@ function onControlRequest(s: Live, ev: Json) {
   const tool = String(req.tool_name ?? "tool");
   const toolUseId = req.tool_use_id ? String(req.tool_use_id) : undefined;
   const step = toolUseId ? s.transcript.get(toolUseId) : undefined;
-  const detail = step?.kind === "tool" ? step.input : clip(JSON.stringify(req.input ?? {}, null, 2));
-  s.approval = {
-    id: crypto.randomUUID(),
-    requestId: String(ev.request_id),
-    toolUseId,
-    tool,
-    title: step?.kind === "tool" ? step.title : String(req.description ?? tool),
-    ...(detail && { detail }),
-    input: req.input ?? {},
-    suggestions: Array.isArray(req.permission_suggestions) ? req.permission_suggestions : [],
-    choices: ["once", "session", "deny"],
-  };
+  const input: Json = req.input ?? {};
+  const base = { id: crypto.randomUUID(), requestId: String(ev.request_id), toolUseId, tool, input, suggestions: [] as Json[] };
+  const questions = tool === "AskUserQuestion" ? parseQuestions(input.questions) : [];
+  if (questions.length) {
+    s.approval = { ...base, kind: "question", title: questions[0]!.question, questions, choices: ["deny"] };
+  } else if (tool === "ExitPlanMode") {
+    const plan = String(input.plan ?? "");
+    s.approval = { ...base, kind: "plan", title: planTitle(plan) ?? "Plan", plan: clip(plan, PLAN_MAX), choices: ["once", "deny"] };
+  } else {
+    const detail = step?.kind === "tool" ? step.input : clip(JSON.stringify(input, null, 2));
+    s.approval = {
+      ...base,
+      kind: "tool",
+      title: step?.kind === "tool" ? step.title : String(req.description ?? tool),
+      ...(detail && { detail }),
+      suggestions: Array.isArray(req.permission_suggestions) ? req.permission_suggestions : [],
+      choices: ["once", "session", "deny"],
+    };
+  }
   s.row.status = "waiting";
+  touch(s, [], true);
+}
+
+/** A plan is read whole before it is approved. */
+const PLAN_MAX = 40_000;
+
+function parseQuestions(value: unknown): CodeQuestion[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((q) => q && typeof q.question === "string" && q.question.trim())
+    .map((q) => ({
+      question: String(q.question),
+      header: String(q.header ?? ""),
+      options: (Array.isArray(q.options) ? q.options : [])
+        .filter((o: Json) => o && typeof o.label === "string")
+        .map((o: Json) => ({ label: String(o.label), ...(o.description && { description: String(o.description) }) })),
+      multiSelect: !!q.multiSelect,
+    }));
+}
+
+/** Request ids of the initialize request sent to each process. */
+const INITIALIZE = "agora-initialize-";
+
+/** Commands of Claude Code's own offered besides the project's skills and commands: the ones that work without its terminal. */
+const BUILTIN_COMMANDS = new Set(["compact", "init", "code-review", "security-review", "review", "simplify", "verify", "run", "goal"]);
+
+/** Claude Code's answer to a control request: its commands and skills, after initialize. */
+function onControlResponse(s: Live, ev: Json) {
+  const res = ev.response ?? {};
+  if (res.subtype !== "success" || !String(res.request_id ?? "").startsWith(INITIALIZE)) return;
+  const commands: Json[] = Array.isArray(res.response?.commands) ? res.response.commands : [];
+  const known = new Map(s.row.commands.map((c) => [c.name, c]));
+  s.row.commands = commands
+    .filter((c) => typeof c?.name === "string" && !c.name.startsWith("_") && (!c.builtin || BUILTIN_COMMANDS.has(c.name)))
+    .map(
+      (c): CodeCommand => ({
+        name: String(c.name),
+        description: clipLine(String(c.description ?? ""), 300),
+        ...(c.argumentHint && { argumentHint: String(c.argumentHint) }),
+        // Told by the init event, once the first instruction is read.
+        skill: known.get(String(c.name))?.skill ?? false,
+      }),
+    );
   touch(s, [], true);
 }

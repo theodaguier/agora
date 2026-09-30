@@ -17,6 +17,7 @@ import {
   runGitAction,
   sendToCodeSession,
   switchCodeSessionAccount,
+  setCodeSessionMode,
   setCodeSessionModel,
   startCodeSession,
   stopCodeSession,
@@ -30,6 +31,7 @@ import { allowedClaudeCodeModels } from "../models";
 import { repoEnv, RepoEnvError, saveRepoEnv } from "../repo-env";
 
 const TEXT_MAX = 20_000;
+const MODE = z.enum(["default", "acceptEdits", "plan", "bypassPermissions"]);
 
 function failure(c: Context, err: unknown) {
   if (err instanceof CodeSessionError) {
@@ -59,7 +61,7 @@ export const codeSessions = new Hono<AppEnv>()
     if (!conv) return c.json({ error: "not_found" }, 404);
     if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
     const body = z
-      .object({ task: z.string().trim().min(1).max(TEXT_MAX), repo: z.string().trim().max(300).optional(), model: z.string().max(100).optional() })
+      .object({ task: z.string().trim().min(1).max(TEXT_MAX), repo: z.string().trim().max(300).optional(), model: z.string().max(100).optional(), mode: MODE.optional() })
       .safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid" }, 400);
     if (body.data.model && !(await allowedClaudeCodeModels(me.id).catch(() => [])).some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
@@ -74,6 +76,7 @@ export const codeSessions = new Hono<AppEnv>()
       task: body.data.task,
       model: body.data.model,
       repo: body.data.repo,
+      mode: body.data.mode,
     }).then((s) => c.json(s), (err) => failure(c, err));
   })
 
@@ -152,13 +155,30 @@ export const codeSessions = new Hono<AppEnv>()
     const owned = await ownerOnly(c);
     if (owned instanceof Response) return owned;
     const body = z
-      .object({ approvalId: z.string().uuid(), choice: z.enum(["once", "session", "deny"]) })
+      .object({
+        approvalId: z.string().uuid(),
+        choice: z.enum(["once", "session", "deny"]),
+        /** A question's answers, keyed by question. */
+        answers: z.record(z.string().max(2_000), z.string().max(2_000)).optional(),
+        /** What to change in a plan sent back. */
+        feedback: z.string().max(TEXT_MAX).optional(),
+      })
       .safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid" }, 400);
-    return answerCodeApproval(owned.sessionId, body.data.approvalId, body.data.choice, owned.conversationId).then(
+    const { approvalId, ...answer } = body.data;
+    return answerCodeApproval(owned.sessionId, approvalId, answer, owned.conversationId).then(
       (s) => c.json(s),
       (err) => failure(c, err),
     );
+  })
+
+  /** Its permission mode (plan, accept edits, ask, on its own): right away if it works, for the next run otherwise. */
+  .put("/:sessionId/mode", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    const body = z.object({ mode: MODE }).safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "invalid" }, 400);
+    return setCodeSessionMode(owned.sessionId, body.data.mode, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
   })
 
   .put("/:sessionId/model", async (c) => {

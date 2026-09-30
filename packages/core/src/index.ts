@@ -23,6 +23,7 @@ export * from "./integrations";
 export * from "./mcp-env";
 export * from "./messages";
 export * from "./code-sessions";
+export * from "./rank";
 export * from "./server";
 export * from "./previews";
 export * from "./media";

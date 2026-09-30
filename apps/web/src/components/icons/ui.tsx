@@ -22,6 +22,9 @@ export const CheckCircleIcon = createIcon("check-circle", {
   cut: <path d="M8 12.5l2.7 2.7L16 9.5" />,
 });
 
+/** An empty ring: something still to do (a task not started). */
+export const CircleIcon = createIcon("circle", { line: <circle cx="12" cy="12" r="9" /> });
+
 export const CloseIcon = createIcon("close", { line: <path d="M18 6L6 18M6 6l12 12" /> });
 
 export const CloseCircleIcon = createIcon("close-circle", {

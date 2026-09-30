@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, CodeAccount, CodeGit, CodeSessionStatus, CodeStep, CodeUsage, CodeWorktree, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, CodeAccount, CodeCommand, CodeGit, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
@@ -365,9 +365,14 @@ export const codeSession = pgTable(
     account: jsonb("account").$type<CodeAccount>(),
     model: text("model"),
     result: text("result"),
-    /** Rules the owner allowed "for the session", passed again to each run. */
-    permissions: jsonb("permissions").$type<{ allowedTools: string[]; mode?: string; dirs: string[] }>().notNull(),
+    /** Rules the owner allowed "for the session", and its permission mode, passed again to each run. */
+    /** `mode`: its permission mode; `actMode`: the one to go back to once a plan is approved. */
+    permissions: jsonb("permissions").$type<{ allowedTools: string[]; mode?: string; actMode?: string; dirs: string[] }>().notNull(),
     steps: jsonb("steps").$type<CodeStep[]>().notNull(),
+    /** Claude Code's task list, as it last wrote it. */
+    todos: jsonb("todos").$type<CodeTodo[]>().notNull().default([]),
+    /** Slash commands and skills its last run offered. */
+    commands: jsonb("commands").$type<CodeCommand[]>().notNull().default([]),
     usage: jsonb("usage").$type<CodeUsage>(),
     ...timestamps,
   },

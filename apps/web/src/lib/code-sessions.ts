@@ -1,5 +1,5 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
-import type { CodeAccount, CodeApproval, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
+import type { CodeAccount, CodeApprovalAnswer, CodePermissionMode, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
 import { api, conversationPath } from "./api";
 
 /** Claude Code sessions of a conversation (apps/api/src/code-sessions.ts): list for the cards, detail with steps for the panel. */
@@ -41,7 +41,7 @@ export function applyCodeStep(qc: QueryClient, conversationId: string, sessionId
 }
 
 /** A session the owner starts without a bot: Claude Code names it from its first instruction. */
-export const startCodeSession = (conversationId: string, req: { task: string; repo?: string; model?: string }) =>
+export const startCodeSession = (conversationId: string, req: { task: string; repo?: string; model?: string; mode?: CodePermissionMode }) =>
   api<CodeSession>(path(conversationId), { method: "POST", body: JSON.stringify(req) });
 
 /** GitHub repositories a new session can clone (the instance's token reaches them), the latest pushed first. */
@@ -55,8 +55,13 @@ export const codeReposQuery = (conversationId: string) =>
 export const sendToCodeSession = (conversationId: string, id: string, text: string) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/messages`), { method: "POST", body: JSON.stringify({ text }) });
 
-export const answerCodeApproval = (conversationId: string, id: string, approvalId: string, choice: CodeApproval["choices"][number]) =>
-  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/approval`), { method: "POST", body: JSON.stringify({ approvalId, choice }) });
+/** An action allowed or denied, questions answered, a plan approved or sent back with what to change. */
+export const answerCodeApproval = (conversationId: string, id: string, approvalId: string, answer: CodeApprovalAnswer) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/approval`), { method: "POST", body: JSON.stringify({ approvalId, ...answer }) });
+
+/** Its permission mode: right away if it works, for the next run otherwise. */
+export const setCodeSessionMode = (conversationId: string, id: string, mode: CodePermissionMode) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/mode`), { method: "PUT", body: JSON.stringify({ mode }) });
 
 export type CodeGitRequest =
   /** An empty message: Claude Code writes it from the diff. */
