@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.34.0 — 2026-09-30
+
+### Features
+- a Claude Code session can ask the bot that started it a question
+
 ## v0.33.0 — 2026-09-30
 
 ### Features
