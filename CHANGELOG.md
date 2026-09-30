@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.33.0 — 2026-09-30
+
+### Features
+- plan mode, questions, tasks and skills in the Claude Code panel
+
 ## v0.32.1 — 2026-09-30
 
 ### Fixes
