@@ -18,7 +18,7 @@ export const codeSessions = defineMessages({
     recentRepos: "In this conversation",
     noRepos: "No repositories.",
     instructedBy: (name: string, text: string) => `${name}: ${text}`,
-    status: { running: "Working", waiting: "Waiting for approval", idle: "Done", stopped: "Stopped", failed: "Failed" } as Record<CodeSessionStatus, string>,
+    status: { running: "Working", waiting: "Waiting for approval", idle: "Waiting for instructions", done: "Done", stopped: "Stopped", failed: "Failed" } as Record<CodeSessionStatus, string>,
     follow: "Follow",
     open: "Open",
     asks: "Claude Code is asking to use",
@@ -93,6 +93,7 @@ export const codeSessions = defineMessages({
     },
     worktree: {
       done: "This session is done. Delete its worktree to free the space: its branch stays in the repository's clone.",
+      closed: "Its pull request was closed without being merged. Delete its worktree to free the space: its branch stays in the repository's clone.",
       remove: "Delete the worktree",
       removing: "Deleting…",
       confirmTitle: (title: string) => `Delete the worktree of “${title}”?`,
@@ -162,7 +163,7 @@ export const codeSessions = defineMessages({
     recentRepos: "Dans cette conversation",
     noRepos: "Aucun dépôt.",
     instructedBy: (name: string, text: string) => `${name} : ${text}`,
-    status: { running: "En cours", waiting: "Attend une autorisation", idle: "Terminé", stopped: "Arrêté", failed: "Échec" },
+    status: { running: "En cours", waiting: "Attend une autorisation", idle: "Attend une instruction", done: "Terminé", stopped: "Arrêté", failed: "Échec" },
     follow: "Suivre",
     open: "Ouvrir",
     asks: "Claude Code demande à utiliser",
@@ -238,6 +239,7 @@ export const codeSessions = defineMessages({
     },
     worktree: {
       done: "Cette session est terminée. Supprime son worktree pour libérer la place : sa branche reste dans le clone du dépôt.",
+      closed: "Sa PR a été fermée sans être mergée. Supprime son worktree pour libérer la place : sa branche reste dans le clone du dépôt.",
       remove: "Supprimer le worktree",
       removing: "Suppression…",
       confirmTitle: (title: string) => `Supprimer le worktree de « ${title} » ?`,

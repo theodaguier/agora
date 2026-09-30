@@ -377,23 +377,26 @@ function WorktreeBanner({ conversationId, session, worktree }: { conversationId:
     },
     onError: (e) => toast.failed(e),
   });
-  if (isActive(session.status)) return null;
   if (worktree.removedAt) {
+    if (isActive(session.status)) return null;
     return (
       <Typography type="body-xs" color="muted" className="px-1">
         {t.gone(worktree.branch)}
       </Typography>
     );
   }
+  // Its task is over: its PR merged, or closed without being merged.
+  const closed = session.status === "idle" && session.git?.pr?.state === "closed";
+  if (session.status !== "done" && !closed) return null;
   const confirm = async () => {
     const branch = session.git?.branch ?? worktree.branch;
     if (await confirmAction({ title: t.confirmTitle(session.title), description: t.confirmHelp(branch, session.git?.changes ?? 0), action: t.remove })) remove.mutate();
   };
   return (
-    <Alert status="default">
+    <Alert status="danger">
       <Alert.Content className="gap-2">
-        <Alert.Description>{t.done}</Alert.Description>
-        <Button size="sm" variant="danger-soft" className="self-start" isDisabled={remove.isPending} onPress={withTap(() => void confirm())}>
+        <Alert.Description>{closed ? t.closed : t.done}</Alert.Description>
+        <Button size="sm" variant="danger" className="self-start" isDisabled={remove.isPending} onPress={withTap(() => void confirm())}>
           {remove.isPending ? t.removing : t.remove}
         </Button>
       </Alert.Content>

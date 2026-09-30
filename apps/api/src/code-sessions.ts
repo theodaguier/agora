@@ -74,7 +74,7 @@ type Live = {
   limit: CodeSession["limit"];
   stopping: boolean;
   /** Worktree to make before the next run (the first one; again after a failed clone, or once deleted). */
-  prepare: { repo: string; branch: string } | null;
+  prepare: { repo: string; branch: string; clone: string | null } | null;
   /** Instructions of a run whose clone failed: they go with the next one. */
   held: Instruction[];
   /** A git action of the owner is under way. */
@@ -130,6 +130,12 @@ export class CodeSessionError extends Error {
 
 /* ---------- reading ---------- */
 
+/**
+ * A session is done once its pull request is merged, not when Claude Code stops talking: until
+ * then it only waits for the next instruction.
+ */
+const statusOf = (r: Row): CodeSessionStatus => (r.status === "idle" && r.git?.pr?.state === "merged" ? "done" : r.status);
+
 function summary(s: Live): CodeSession {
   const r = s.row;
   const a = s.approval;
@@ -139,7 +145,7 @@ function summary(s: Live): CodeSession {
     agentId: r.agentId,
     requestedBy: r.requestedBy,
     title: r.title,
-    status: r.status,
+    status: statusOf(r),
     cwd: r.cwd,
     repo: r.repo,
     git: r.git,
@@ -412,7 +418,10 @@ export async function startCodeSession(opts: {
   announce: boolean;
   title: string;
   task: string;
-  /** Sub-directory of the Claude Code workspace, shared by the sessions that name it; a session on a `repo` has a worktree of its own instead. */
+  /**
+   * Sub-directory of the Claude Code workspace, shared by the sessions that name it. Once it holds a
+   * clone of a GitHub repository, each session gets a worktree of that clone instead, as with `repo`.
+   */
   project?: string;
   model?: string;
   /** GitHub repository (owner/name or URL): the session works in a worktree of its clone, made before the first run. */
@@ -430,13 +439,23 @@ export async function startCodeSession(opts: {
   if (opts.repo?.trim() && !repo) throw new CodeSessionError("invalid", `Not a GitHub repository: ${opts.repo}. Expected owner/name or its URL.`);
   const id = crypto.randomUUID();
   const root = await workspace();
+  // A project an earlier session cloned a repository into: its sessions get worktrees of that clone,
+  // instead of all working in it at once.
+  const projectDir = project ? join(root, "projects", project) : null;
+  const projectRepo = projectDir ? await gitOps.cloneOf(projectDir) : null;
+  const shared =
+    projectDir && projectRepo && (!repo || projectRepo.toLowerCase() === repo.toLowerCase())
+      ? { repo: projectRepo, clone: projectDir }
+      : repo
+        ? { repo, clone: cloneDir(root, repo) }
+        : null;
   // A repository's worktree is made by git, before the first run.
-  const cwd = repo ? join(worktreesDir(root), `${repo.split("/")[1]}-${id.slice(0, 8)}`) : join(root, "projects", project || `session-${id.slice(0, 8)}`);
-  if (!repo) await mkdir(cwd, { recursive: true });
+  const cwd = shared ? join(worktreesDir(root), `${shared.repo.split("/")[1]}-${id.slice(0, 8)}`) : join(root, "projects", project || `session-${id.slice(0, 8)}`);
+  if (!shared) await mkdir(cwd, { recursive: true });
   // Untitled (started from the panel): Claude Code names it from the task, the first line otherwise.
-  const named = opts.title.trim() ? null : await nameTask(repo ? root : cwd, task);
+  const named = opts.title.trim() ? null : await nameTask(shared ? root : cwd, task);
   const title = opts.title.trim().slice(0, 200) || named?.title || task.split("\n")[0]!.slice(0, 120);
-  const branch = repo ? opts.branch?.trim() || sessionBranch(title, id) : null;
+  const branch = shared ? opts.branch?.trim() || sessionBranch(title, id) : null;
   const [row] = await db
     .insert(schema.codeSession)
     .values({
@@ -447,8 +466,8 @@ export async function startCodeSession(opts: {
       title,
       status: "running",
       cwd,
-      repo,
-      worktree: branch ? { branch, removedAt: null } : null,
+      repo: shared?.repo ?? null,
+      worktree: shared && branch ? { branch, removedAt: null, clone: shared.clone } : null,
       model,
       permissions: { allowedTools: [], dirs: [], ...(opts.mode && opts.mode !== DEFAULT_MODE && { mode: opts.mode }) },
       steps: [],
@@ -456,7 +475,7 @@ export async function startCodeSession(opts: {
     .returning();
   const s = fromRow(row!);
   if (named) recordQuickUsage(s.row, named.result);
-  if (repo && branch) s.prepare = { repo, branch };
+  if (shared && branch) s.prepare = { ...shared, branch };
   live.set(id, s);
   if (opts.announce) await announceCodeSession(opts.conversationId, id, title, opts.botName);
   instruct(s, { text: task, by: opts.by });
@@ -496,7 +515,7 @@ function instruct(s: Live, m: Instruction) {
   touch(s, [s.transcript.add({ id: crypto.randomUUID(), kind: "user", text: m.text, by: m.by })]);
   // Its worktree was deleted: the next run starts in a new one, on the same branch.
   const wt = s.row.worktree;
-  if (wt?.removedAt && s.row.repo && !s.prepare) s.prepare = { repo: s.row.repo, branch: wt.branch };
+  if (wt?.removedAt && s.row.repo && !s.prepare) s.prepare = { repo: s.row.repo, branch: wt.branch, clone: wt.clone ?? null };
   if (s.running && !s.stopping) {
     if (s.proc) deliver(s, m);
     else s.outbox.push(m);
@@ -712,10 +731,10 @@ export async function removeCodeSessionWorktree(id: string, by: string, conversa
     cool(s);
     proc?.kill();
     stopLeftovers((await sessionProcesses()).get(id) ?? []);
-    const { branch, text } = await removeWorktree(cloneDir(root, r.repo), r.cwd);
-    r.worktree = { branch: branch ?? wt.branch, removedAt: new Date().toISOString() };
+    const { branch, text } = await removeWorktree(wt.clone ?? cloneDir(root, r.repo), r.cwd);
+    r.worktree = { ...wt, branch: branch ?? wt.branch, removedAt: new Date().toISOString() };
     // An instruction written meanwhile starts in a new worktree.
-    s.prepare = s.outbox.length ? { repo: r.repo, branch: r.worktree.branch } : null;
+    s.prepare = s.outbox.length ? { repo: r.repo, branch: r.worktree.branch, clone: wt.clone ?? null } : null;
     // What was not committed is gone; its commits stay on the branch.
     if (r.git) r.git = { ...r.git, changes: 0, files: [] };
     gitStep(s, "worktree", true, text, by);
@@ -907,7 +926,8 @@ export async function codeSessionsContext(conversationId: string) {
   const status: Record<CodeSessionStatus, string> = {
     running: "en cours",
     waiting: "attend une autorisation de son propriétaire",
-    idle: "a terminé ce qu'on lui a demandé",
+    idle: "a répondu et attend la suite (sa PR n'est pas mergée)",
+    done: "terminée : sa PR est mergée",
     stopped: "arrêtée",
     failed: "en échec",
   };
@@ -916,7 +936,7 @@ export async function codeSessionsContext(conversationId: string) {
     const r = s.row;
     const steps = s.transcript.steps;
     const by = r.agentId ? (agentNames.get(r.agentId) ?? "un bot") : "son propriétaire";
-    const waitingFor = r.status === "waiting" && s.approval?.kind === "question" ? "attend la réponse de son propriétaire à une question" : r.status === "waiting" && s.approval?.kind === "plan" ? "attend que son propriétaire approuve son plan" : status[r.status];
+    const waitingFor = r.status === "waiting" && s.approval?.kind === "question" ? "attend la réponse de son propriétaire à une question" : r.status === "waiting" && s.approval?.kind === "plan" ? "attend que son propriétaire approuve son plan" : status[statusOf(r)];
     const lines = [`## « ${r.title} » (session_id ${r.id})`, `Lancée par ${by}. État : ${waitingFor}${r.model ? `, modèle ${r.model}` : ""}${modeOf(r) === "plan" ? ", en mode plan" : ""}.`];
     const git = gitLine(r.git);
     if (git) lines.push(`Dépôt : ${git}.`);
@@ -1130,13 +1150,13 @@ function cool(s: Live) {
 async function execute(s: Live, id: number): Promise<void> {
   const r = s.row;
   if (s.prepare) {
-    const { repo, branch } = s.prepare;
+    const { repo, branch, clone } = s.prepare;
     try {
-      const made = await prepareWorktree(cloneDir(await workspace(), repo), r.cwd, repo, { branch, author: await authorOf(r.requestedBy) });
+      const made = await prepareWorktree(clone ?? cloneDir(await workspace(), repo), r.cwd, repo, { branch, author: await authorOf(r.requestedBy) });
       const credentials = await writeCredentials(r.cwd, await repoEnv(repo));
       gitStep(s, "clone", true, [made, credentials].filter(Boolean).join(" "), null);
       s.prepare = null;
-      if (r.worktree) r.worktree = { branch, removedAt: null };
+      if (r.worktree) r.worktree = { ...r.worktree, branch, removedAt: null };
     } catch (err) {
       if (!(err instanceof GitError)) throw err;
       gitStep(s, "clone", false, err.message, null);

@@ -5,7 +5,7 @@ import { router, type Href } from "expo-router";
 import { Button, Card, ListGroup, Separator, Spinner } from "heroui-native";
 import { Fragment, useEffect, type ReactNode } from "react";
 import { View } from "react-native";
-import { CheckCircleIcon, CloseCircleIcon, CodeIcon, ShieldAlertIcon } from "@/components/icons";
+import { CheckCircleIcon, ClockIcon, CloseCircleIcon, CodeIcon, ShieldAlertIcon } from "@/components/icons";
 import { applyCodeSession, codeSessionsQuery, refreshCodeSessionGit } from "@/lib/code-sessions";
 import { dividerLabel } from "@/lib/dates";
 import { withTap } from "@/lib/haptics";
@@ -25,7 +25,8 @@ export const codeSessionHref = (conversationId: string, sessionId: string) => `/
 export function StatusIcon({ status, className }: { status: CodeSessionStatus; className?: string }) {
   if (status === "running") return <Spinner size="sm" className={className} />;
   if (status === "waiting") return <ShieldAlertIcon size={18} className={cn("text-warning", className)} />;
-  if (status === "idle") return <CheckCircleIcon size={18} className={cn("text-success", className)} />;
+  if (status === "idle") return <ClockIcon size={18} className={cn("text-muted", className)} />;
+  if (status === "done") return <CheckCircleIcon size={18} className={cn("text-success", className)} />;
   return <CloseCircleIcon size={18} className={cn(status === "failed" ? "text-danger" : "text-muted", className)} />;
 }
 

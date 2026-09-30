@@ -27,6 +27,7 @@ import {
   CheckCircleIcon,
   CircleIcon,
   ChevronDownIcon,
+  ClockIcon,
   ChevronRightIcon,
   ChevronsRightIcon,
   CloseCircleIcon,
@@ -100,7 +101,8 @@ const active = (s: CodeSessionStatus) => s === "running" || s === "waiting";
 function StatusIcon({ status, className }: { status: CodeSessionStatus; className?: string }) {
   if (status === "running") return <Spinner className={cn("size-4", className)} />;
   if (status === "waiting") return <ShieldAlertIcon className={cn("size-4 text-warning", className)} />;
-  if (status === "idle") return <CheckCircleIcon className={cn("size-4 text-success", className)} />;
+  if (status === "idle") return <ClockIcon className={cn("size-4 text-muted-foreground", className)} />;
+  if (status === "done") return <CheckCircleIcon className={cn("size-4 text-success", className)} />;
   return <CloseCircleIcon className={cn("size-4", status === "failed" ? "text-destructive" : "text-muted-foreground", className)} />;
 }
 
@@ -763,18 +765,20 @@ function WorktreeBanner({ conversationId, session, worktree }: { conversationId:
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { loading: t.removing, success: t.removed },
   });
-  if (active(session.status)) return null;
-  if (worktree.removedAt) return <p className="mb-2 px-1 text-[13px] text-muted-foreground">{t.gone(worktree.branch)}</p>;
+  if (worktree.removedAt) return active(session.status) ? null : <p className="mb-2 px-1 text-[13px] text-muted-foreground">{t.gone(worktree.branch)}</p>;
+  // Its task is over: its PR merged, or closed without being merged.
+  const closed = session.status === "idle" && session.git?.pr?.state === "closed";
+  if (session.status !== "done" && !closed) return null;
   const confirm = async () => {
     const branch = session.git?.branch ?? worktree.branch;
     if (await confirmAction({ title: t.confirmTitle(session.title), description: t.confirmHelp(branch, session.git?.changes ?? 0), action: t.remove })) remove.mutate();
   };
   return (
-    <Alert className="mb-2 rounded-2xl px-3.5 py-3">
+    <Alert variant="destructive" className="mb-2 rounded-2xl px-3.5 py-3">
       <AlertDescription>
-        <p>{t.done}</p>
+        <p>{closed ? t.closed : t.done}</p>
         <div className="mt-2">
-          <Button size="sm" variant="outline" disabled={remove.isPending} onClick={() => void confirm()}>
+          <Button size="sm" variant="destructive" disabled={remove.isPending} onClick={() => void confirm()}>
             {remove.isPending ? t.removing : t.remove}
           </Button>
         </div>
