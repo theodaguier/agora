@@ -1,5 +1,5 @@
 import { desc, eq, inArray } from "drizzle-orm";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
 import type { CodeApproval, CodeGitAction, CodeSession, CodeSessionDetail, CodeSessionStatus, CodeStep, CodeUsage } from "@agora/core";
@@ -685,7 +685,9 @@ const browserNote = (chromium: string) =>
     `Chromium est déjà installé sur cette machine, avec ses bibliothèques système : ${chromium}.`,
     "Ne lance jamais `playwright install` ni `npx playwright install-deps`, et n'installe aucun autre navigateur : le téléchargement bloque la session.",
     `Si la version de Playwright du projet réclame une autre révision, lance Chromium avec executablePath: "${chromium}" (Puppeteer le trouve déjà via PUPPETEER_EXECUTABLE_PATH).`,
-    "Les membres de la conversation voient en direct la page du navigateur que tu lances, tant qu'il est ouvert : pour leur montrer un rendu, garde-le ouvert sur cette page le temps de l'examiner.",
+    "Tout ce que tu lances (navigateur, serveur de dev) est arrêté à la fin de chacune de tes réponses.",
+    "Pour montrer une page aux membres de la conversation, qui la voient en direct et peuvent la piloter, utilise le navigateur durable de la session : la commande `agora-browser` affiche l'adresse DevTools d'un Chromium qui reste ouvert entre tes réponses, toujours le même. Connecte-toi avec `chromium.connectOverCDP(adresse)` (Playwright) ou `puppeteer.connect({ browserURL: adresse })`, travaille dans son contexte et son onglet existants (`browser.contexts()[0]` et sa première page), et termine ton script sans fermer ni le navigateur ni l'onglet. Ne lance pas d'autre navigateur pour montrer une page : il disparaîtrait avec ta réponse.",
+    "Un serveur dont cette page a besoin (serveur de dev, API de démonstration) doit survivre de la même façon : lance-le avec `setsid nohup <commande> > <fichier de log> 2>&1 &`. Ce qui reste ainsi ouvert est arrêté quand la session est inactive depuis deux heures.",
   ].join("\n");
 
 /**
@@ -795,6 +797,45 @@ export async function recoverCodeSessions() {
     notice(s, "restart");
     await settle(s, "stopped");
   }
+}
+
+/** How long what a session leaves running between its replies (its lasting browser, a dev server) outlives its last activity. */
+const LEFTOVER_MS = 2 * 60 * 60_000;
+const SWEEP_MS = 10 * 60_000;
+/** The environment every process a session starts inherits (screenEnv): `AGORA_SCREEN=<dir>/agora-<conversation>-code-<session>`. */
+const SESSION_ENV = /(?:^|\0)AGORA_SCREEN=[^\0]*-code-([0-9a-f-]{36})(?:\0|$)/;
+
+/**
+ * Stops what sessions idle for LEFTOVER_MS left running: the browser of agora-browser, servers started
+ * with setsid, found by their environment. Linux only (/proc); nothing to do elsewhere.
+ */
+async function sweepLeftovers() {
+  const bySession = new Map<string, number[]>();
+  for (const name of await readdir("/proc").catch(() => [] as string[])) {
+    if (!/^\d+$/.test(name) || Number(name) === process.pid) continue;
+    const id = SESSION_ENV.exec(await readFile(`/proc/${name}/environ`, "latin1").catch(() => ""))?.[1];
+    if (id) bySession.set(id, [...(bySession.get(id) ?? []), Number(name)]);
+  }
+  if (!bySession.size) return;
+  const rows = await db
+    .select({ id: schema.codeSession.id, updatedAt: schema.codeSession.updatedAt })
+    .from(schema.codeSession)
+    .where(inArray(schema.codeSession.id, [...bySession.keys()]));
+  const active = new Map(rows.map((r) => [r.id, r.updatedAt.getTime()]));
+  for (const [id, pids] of bySession) {
+    if (live.get(id)?.running || Date.now() - (active.get(id) ?? 0) < LEFTOVER_MS) continue;
+    for (const pid of pids) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // Already gone.
+      }
+    }
+  }
+}
+
+export function startCodeSessionSweep() {
+  setInterval(() => void sweepLeftovers().catch((err) => console.error("code sessions: leftovers", err)), SWEEP_MS);
 }
 
 /* ---------- the process ---------- */

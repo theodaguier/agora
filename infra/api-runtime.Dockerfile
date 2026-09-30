@@ -35,11 +35,13 @@ RUN npx -y "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium chrom
  && chromium --headless=new --no-sandbox --dump-dom about:blank > /dev/null
 COPY --from=app /app /app
 # Each of these browsers shows itself on its conversation's screen when a session launches it
-# (infra/chromium-screen.sh stands in for it, the binary becomes <name>.real).
+# (infra/chromium-screen.sh stands in for it, the binary becomes <name>.real), and agora-browser
+# gives a session a browser that outlives its replies.
 RUN browsers="$(find "$PLAYWRIGHT_BROWSERS_PATH" -mindepth 3 -maxdepth 3 -type f \( -name chrome -o -name chrome-headless-shell -o -name headless_shell \))" \
  && [ -n "$browsers" ] \
  && for b in $browsers; do mv "$b" "$b.real" && install -m 0755 /app/infra/chromium-screen.sh "$b"; done \
- && chromium --headless=new --no-sandbox --dump-dom about:blank > /dev/null
+ && chromium --headless=new --no-sandbox --dump-dom about:blank > /dev/null \
+ && install -m 0755 /app/infra/agora-browser.sh /usr/local/bin/agora-browser
 ENV NODE_ENV=production \
     HOME=/opt/data \
     HERMES_HOME=/opt/data \
