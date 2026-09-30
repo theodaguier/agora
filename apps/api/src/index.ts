@@ -31,7 +31,7 @@ import { setupMemory } from "./memory";
 import { setupScreen } from "./screen";
 import { setupSandbox } from "./sandbox";
 import { setupCodePlugin } from "./code-plugin";
-import { recoverCodeSessions } from "./code-sessions";
+import { recoverCodeSessions, startCodeSessionSweep } from "./code-sessions";
 import { setupSharedSkills } from "./skill-requests";
 import { ensureHermesInstance, shareMcpTokensWithAll } from "./hermes-admin";
 import { setup } from "./routes/setup";
@@ -121,6 +121,7 @@ startServerSampler();
 startDigest();
 recoverTurns().catch((err) => console.error("bot-runner: recovery", err));
 recoverCodeSessions().catch((err) => console.error("code sessions: recovery", err));
+startCodeSessionSweep();
 void syncSessionSearch();
 
 export default { port: env.PORT, fetch: app.fetch, idleTimeout: 255, maxRequestBodySize: 30 * 1024 * 1024 };

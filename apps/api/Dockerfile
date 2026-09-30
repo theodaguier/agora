@@ -19,7 +19,7 @@ COPY --from=deps /app ./
 COPY packages/core packages/core
 COPY apps/api apps/api
 COPY infra/hermes-plugins infra/hermes-plugins
-COPY infra/chromium-screen.sh infra/
+COPY infra/chromium-screen.sh infra/agora-browser.sh infra/
 # Read back by src/version.ts (ENV values don't survive the copy into the runtime image).
 RUN printf '{"app":"%s","commit":"%s","builtAt":"%s"}\n' "$APP_VERSION" "$GIT_COMMIT" "$BUILT_AT" > /app/build.json
 LABEL org.opencontainers.image.title="Agora app" org.opencontainers.image.version="${APP_VERSION}" org.opencontainers.image.revision="${GIT_COMMIT}"
