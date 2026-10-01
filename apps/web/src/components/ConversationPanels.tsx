@@ -3,6 +3,7 @@ import { ChevronsRightIcon, MoreIcon, FileTextIcon, PinIcon, SearchIcon } from "
 import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { AgentScreen } from "@/components/AgentScreen";
+import { BesideButton } from "@/components/BesideButton";
 import { ImageViewer } from "@/components/Attachments";
 import { isImage } from "@/lib/files";
 import { PersonAvatar } from "@/components/ConversationAvatar";
@@ -123,19 +124,23 @@ export function ConversationPanel({
   conversationId,
   onJump,
   onClose,
+  onDetach,
 }: {
   kind: PanelKind;
   conversationId: string;
   /** Brings a message into view in the thread. */
   onJump: (messageId: string) => void;
   onClose: () => void;
+  /** The screen only: moves it into a pane of its own, beside the conversation. */
+  onDetach?: () => void;
 }) {
   const labels = usePanelLabels();
   const c = useT(common);
   return (
-    <aside className={cn("flex h-full shrink-0 flex-col bg-sidebar", kind === "screen" ? "w-[min(560px,40vw)]" : "w-[320px]")}>
-      <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-3">
-        <span className="text-[13px] font-medium text-muted-foreground">{labels[kind]}</span>
+    <aside className="flex h-full w-full flex-col bg-sidebar">
+      <div className="flex h-12 shrink-0 items-center gap-1 px-3">
+        <span className="flex-1 text-[13px] font-medium text-muted-foreground">{labels[kind]}</span>
+        {onDetach && <BesideButton onClick={onDetach} />}
         <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="rounded-lg">
           <ChevronsRightIcon />
         </Button>

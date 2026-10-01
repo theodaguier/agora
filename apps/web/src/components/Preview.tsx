@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { previewFileName, readPreviews, type PreviewRef } from "@agora/core";
+import { previewFileName, readPreviews, SCREEN_DEVICES, type PreviewRef, type ScreenDevice } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useWide } from "@/components/CodeSession";
-import { ChevronsRightIcon, FileCodeIcon } from "@/components/icons";
+import { BesideButton } from "@/components/BesideButton";
+import { ChevronsRightIcon, CloseIcon, FileCodeIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
@@ -13,6 +14,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { defineMessages, useT } from "@/i18n";
 import { attachmentUrl, type ActiveTurn, type Message } from "@/lib/api";
+import { messagesQuery } from "@/lib/queries";
+import { useTurns } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 
 const messages = defineMessages({
@@ -26,8 +29,9 @@ const messages = defineMessages({
     download: "Download",
     enlarge: "Enlarge",
     width: "Preview width",
-    phone: "Phone",
-    computer: "Computer",
+    mobile: "Phone",
+    tablet: "Tablet",
+    desktop: "Computer",
     missing: "This mockup is no longer available.",
     sandboxed: "Rendered without scripts; links don't leave the preview.",
   },
@@ -41,8 +45,9 @@ const messages = defineMessages({
     download: "Télécharger",
     enlarge: "Agrandir",
     width: "Largeur de l'aperçu",
-    phone: "Mobile",
-    computer: "Ordinateur",
+    mobile: "Mobile",
+    tablet: "Tablette",
+    desktop: "Ordinateur",
     missing: "Cette maquette n'est plus disponible.",
     sandboxed: "Affichée sans scripts ; les liens ne quittent pas l'aperçu.",
   },
@@ -90,11 +95,11 @@ export function PreviewCards({ previews, onOpen }: { previews: PreviewRef[]; onO
   return previews.map((p) => <PreviewCard key={p.key} title={p.title} writing={false} onOpen={() => onOpen(p.key)} />);
 }
 
-/** Large screens show the mockup beside the thread; smaller ones in a sheet over it. */
-export function PreviewPanel({ source, onClose }: { source: PreviewSource | null; onClose: () => void }) {
+/** Large screens show the mockup beside the thread (`onDetach`: in a pane of its own); smaller ones in a sheet over it. */
+export function PreviewPanel({ source, onClose, onDetach }: { source: PreviewSource | null; onClose: () => void; onDetach?: () => void }) {
   const t = useT(messages);
   const wide = useWide();
-  const view = <PreviewView source={source} onClose={onClose} />;
+  const view = <PreviewView source={source} onClose={onClose} onDetach={wide ? onDetach : undefined} />;
   if (!wide) {
     return (
       <Sheet open onOpenChange={(open) => !open && onClose()}>
@@ -105,12 +110,41 @@ export function PreviewPanel({ source, onClose }: { source: PreviewSource | null
       </Sheet>
     );
   }
-  return <aside className="flex h-full w-[520px] shrink-0 flex-col bg-sidebar">{view}</aside>;
+  return <aside className="flex h-full w-full flex-col bg-sidebar">{view}</aside>;
 }
 
-type Device = "phone" | "computer";
-/** Layout width each device renders the page at; the frame is scaled down to the space it has. */
-const WIDTHS: Record<Device, number> = { phone: 390, computer: 1280 };
+/** A mockup as a workspace tab: the whole pane for the page. */
+export function PreviewPage({ conversationId, previewKey, onClose }: { conversationId: string; previewKey: string; onClose?: () => void }) {
+  const turns = useTurns(conversationId);
+  const { data: thread = [], isPending } = useQuery(messagesQuery(conversationId));
+  const source = findPreview(previewKey, turns, thread);
+  return (
+    <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      {isPending ? (
+        <div className="grid flex-1 place-items-center">
+          <Spinner className="size-5 text-muted-foreground" />
+        </div>
+      ) : (
+        <PreviewView source={source} onClose={onClose} page />
+      )}
+    </section>
+  );
+}
+
+const DEVICES = ["mobile", "tablet", "desktop"] as const satisfies readonly ScreenDevice[];
+
+function DeviceToggle({ value, onChange }: { value: ScreenDevice; onChange: (device: ScreenDevice) => void }) {
+  const t = useT(messages);
+  return (
+    <ToggleGroup aria-label={t.width} value={[value]} onValueChange={(v) => v[0] && onChange(v[0] as ScreenDevice)} variant="outline" size="sm">
+      {DEVICES.map((d) => (
+        <ToggleGroupItem key={d} value={d}>
+          {t[d]}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
 
 function download(html: string, title: string) {
   const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
@@ -121,10 +155,11 @@ function download(html: string, title: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function PreviewView({ source, onClose }: { source: PreviewSource | null; onClose: () => void }) {
+/** `page`: a tab of its own, the close button closes it. */
+function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSource | null; onClose?: () => void; onDetach?: () => void; page?: boolean }) {
   const t = useT(messages);
   const c = useT(common);
-  const [device, setDevice] = useState<Device>("phone");
+  const [device, setDevice] = useState<ScreenDevice>("mobile");
   const [enlarged, setEnlarged] = useState(false);
   const id = source && "id" in source ? source.id : null;
   const saved = useQuery({
@@ -154,19 +189,21 @@ function PreviewView({ source, onClose }: { source: PreviewSource | null; onClos
             {t.mockup} · {writing ? t.writing : t.ready}
           </p>
         </div>
-        <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
-          <ChevronsRightIcon />
-        </Button>
+        {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
+        {onClose && (
+          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
+            {page ? <CloseIcon /> : <ChevronsRightIcon />}
+          </Button>
+        )}
       </header>
-      <div className="flex shrink-0 items-center gap-2 px-4 pb-3">
-        <ToggleGroup aria-label={t.width} value={[device]} onValueChange={(v) => v[0] && setDevice(v[0] as Device)} variant="outline" size="sm">
-          <ToggleGroupItem value="phone">{t.phone}</ToggleGroupItem>
-          <ToggleGroupItem value="computer">{t.computer}</ToggleGroupItem>
-        </ToggleGroup>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-3">
+        <DeviceToggle value={device} onChange={setDevice} />
         <div className="flex-1" />
-        <Button variant="outline" size="sm" disabled={!kept} onClick={() => setEnlarged(true)}>
-          {t.enlarge}
-        </Button>
+        {!page && (
+          <Button variant="outline" size="sm" disabled={!kept} onClick={() => setEnlarged(true)}>
+            {t.enlarge}
+          </Button>
+        )}
         <Button variant="outline" size="sm" disabled={!kept} onClick={() => kept && download(kept.html, kept.title)}>
           {t.download}
         </Button>
@@ -187,12 +224,14 @@ function PreviewView({ source, onClose }: { source: PreviewSource | null; onClos
         )}
       </div>
 
+      {/* The whole window, at the size chosen. */}
       <Dialog open={enlarged && !!kept} onOpenChange={setEnlarged}>
-        <DialogContent className="flex h-[88vh] flex-col sm:max-w-6xl">
-          <DialogHeader>
+        <DialogContent className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col gap-3 sm:max-w-none">
+          <DialogHeader className="pr-8">
             <DialogTitle className="truncate">{title}</DialogTitle>
             <DialogDescription>{t.sandboxed}</DialogDescription>
           </DialogHeader>
+          <DeviceToggle value={device} onChange={setDevice} />
           {kept && (
             <div className="min-h-0 flex-1">
               <ScaledFrame html={kept.html} done={!writing} device={device} />
@@ -204,8 +243,11 @@ function PreviewView({ source, onClose }: { source: PreviewSource | null; onClos
   );
 }
 
-/** The page at the device's width, scaled down to fit the box and centered in it. */
-function ScaledFrame({ html, done, device }: { html: string; done: boolean; device: Device }) {
+/**
+ * The page at the device's width, scaled down to fit the box and centered in it. A phone or a
+ * tablet keeps its screen's proportions; a computer takes the box's whole height.
+ */
+function ScaledFrame({ html, done, device }: { html: string; done: boolean; device: ScreenDevice }) {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {
@@ -215,15 +257,21 @@ function ScaledFrame({ html, done, device }: { html: string; done: boolean; devi
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  const base = WIDTHS[device];
-  const scale = size.width ? Math.min(1, size.width / base) : 1;
+  const { width: base, height: baseHeight, mobile } = SCREEN_DEVICES[device];
+  const scale = !size.width ? 1 : mobile ? Math.min(1, size.width / base, size.height / baseHeight) : Math.min(1, size.width / base);
+  // One box for every device: the observer keeps measuring it.
   return (
-    <div ref={box} className="flex h-full justify-center overflow-hidden rounded-lg border border-border bg-background">
-      {size.width > 0 && (
-        <div style={{ width: base * scale, height: size.height }} className="shrink-0">
-          <HtmlFrame html={html} done={done} style={{ width: base, height: size.height / scale, transform: `scale(${scale})`, transformOrigin: "top left" }} />
-        </div>
-      )}
+    <div ref={box} className={cn("flex h-full justify-center overflow-hidden", mobile ? "items-center" : "rounded-lg border border-border bg-background")}>
+      {size.width > 0 &&
+        (mobile ? (
+          <div style={{ width: base * scale, height: baseHeight * scale }} className="shrink-0 overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+            <HtmlFrame html={html} done={done} style={{ width: base, height: baseHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} />
+          </div>
+        ) : (
+          <div style={{ width: base * scale, height: size.height }} className="shrink-0">
+            <HtmlFrame html={html} done={done} style={{ width: base, height: size.height / scale, transform: `scale(${scale})`, transformOrigin: "top left" }} />
+          </div>
+        ))}
     </div>
   );
 }

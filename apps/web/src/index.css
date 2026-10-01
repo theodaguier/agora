@@ -180,6 +180,15 @@
   ::selection {
     background: oklch(from var(--brand) l c h / 0.4);
   }
+  /* The sidebar's edge being dragged: it follows the pointer without easing, nothing gets selected. */
+  body[data-resizing] {
+    cursor: col-resize;
+    user-select: none;
+  }
+  body[data-resizing] [data-slot="sidebar-gap"],
+  body[data-resizing] [data-slot="sidebar-container"] {
+    transition: none;
+  }
 }
 
 /* A message arriving while the conversation is open: rises into place. */

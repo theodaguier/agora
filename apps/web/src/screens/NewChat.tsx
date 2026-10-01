@@ -6,6 +6,7 @@ import { useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { PersonAvatar, StatusAvatar } from "@/components/ConversationAvatar";
 import { type Participant } from "@/lib/participants";
+import { closeOrGoHome } from "@/lib/workspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
@@ -224,7 +225,7 @@ export function NewChat() {
                   setGroupMode(false);
                   setPicked([]);
                   setQ("");
-                } else navigate({ to: "/" });
+                } else closeOrGoHome("/new", () => navigate({ to: "/" }));
               }
             }}
             placeholder={groupMode ? (picked.length ? t.addSomeone : t.groupMembers) : t.searchOrCreate}

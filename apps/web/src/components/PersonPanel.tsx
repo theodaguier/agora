@@ -32,7 +32,7 @@ export function PersonPanel({ userId, onClose }: { userId: string; onClose: () =
   const t = useT(messages);
   const { data: person, error } = useQuery(userProfileQuery(userId));
   return (
-    <aside className="flex h-full w-[320px] shrink-0 flex-col bg-sidebar">
+    <aside className="flex h-full w-full flex-col bg-sidebar">
       <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-3">
         <span className="text-[13px] font-medium text-muted-foreground">{t.profile}</span>
         <ShortcutTooltip label={t.hidePanel} shortcut={shortcuts.togglePanel}>

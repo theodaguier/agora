@@ -26,6 +26,7 @@ import {
   BranchIcon,
   CheckCircleIcon,
   CircleIcon,
+  CloseIcon,
   ChevronDownIcon,
   ClockIcon,
   ChevronRightIcon,
@@ -34,6 +35,7 @@ import {
   CodeIcon,
   ExternalLinkIcon,
   FolderIcon,
+  PlusIcon,
   ShieldAlertIcon,
   SparklesIcon,
   StopIcon,
@@ -42,6 +44,8 @@ import {
   UserIcon,
   WarningIcon,
 } from "@/components/icons";
+import { BesideButton } from "@/components/BesideButton";
+import { TabChip } from "@/components/TabChip";
 import { MessageText } from "@/components/MessageText";
 import { GroupHeading, ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
@@ -196,7 +200,18 @@ export function ReplyWithSessions({
  * whose first instruction starts it); for everyone else it is hidden while there are none. It hops
  * while one works.
  */
-export function CodeSessionsButton({ conversationId, current, onOpen }: { conversationId: string; current: string | null; onOpen: (sessionId: string) => void }) {
+export function CodeSessionsButton({
+  conversationId,
+  current,
+  onOpen,
+  onOpenBeside,
+}: {
+  conversationId: string;
+  current: string | null;
+  onOpen: (sessionId: string) => void;
+  /** Opens a session in a pane of its own, beside the conversation. */
+  onOpenBeside?: (sessionId: string) => void;
+}) {
   const t = useT(messages);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -239,31 +254,44 @@ export function CodeSessionsButton({ conversationId, current, onOpen }: { conver
         {!sorted.length && <p className="px-2 pb-2 text-sm text-muted-foreground">{t.none}</p>}
         <div className="flex max-h-96 flex-col overflow-y-auto">
           {sorted.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-current={s.id === current || undefined}
-              onClick={() => {
-                setOpen(false);
-                onOpen(s.id);
-              }}
-              className="flex items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted aria-[current]:bg-muted"
-            >
-              <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm">{s.title}</span>
-                <span className="block truncate text-[12px] text-muted-foreground">
-                  {codeStatusText(t, s)}
-                  {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
-                  {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
-                </span>
-                {s.instruction && (
-                  <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
-                    {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
-                  </span>
+            <div key={s.id} className="group/session relative">
+              <button
+                type="button"
+                aria-current={s.id === current || undefined}
+                onClick={() => {
+                  setOpen(false);
+                  onOpen(s.id);
+                }}
+                className={cn(
+                  "flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted aria-[current]:bg-muted",
+                  onOpenBeside && "pr-10",
                 )}
-              </span>
-            </button>
+              >
+                <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">{s.title}</span>
+                  <span className="block truncate text-[12px] text-muted-foreground">
+                    {codeStatusText(t, s)}
+                    {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
+                    {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
+                  </span>
+                  {s.instruction && (
+                    <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
+                      {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
+                    </span>
+                  )}
+                </span>
+              </button>
+              {onOpenBeside && (
+                <BesideButton
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenBeside(s.id);
+                  }}
+                  className="absolute right-1 top-1 opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100"
+                />
+              )}
+            </div>
           ))}
         </div>
         {canStart && (
@@ -278,6 +306,7 @@ export function CodeSessionsButton({ conversationId, current, onOpen }: { conver
             >
               {t.newSession}
             </Button>
+
           </div>
         )}
       </PopoverContent>
@@ -298,27 +327,57 @@ export const useWide = () => useSyncExternalStore(subscribeWide, () => window.ma
 
 /** The panel's id for a session not started yet: the owner's first instruction starts it. */
 export const NEW_CODE_SESSION = "new";
+/** Sessions not started yet, each in a tab of its own: `new-<random>`, so several can wait side by side. */
+export const newCodeSessionId = () => `${NEW_CODE_SESSION}-${crypto.randomUUID().slice(0, 8)}`;
+export const isNewCodeSession = (id: string) => id === NEW_CODE_SESSION || id.startsWith(`${NEW_CODE_SESSION}-`);
 
+/**
+ * The Claude Code panel: the sessions opened in it, as tabs (the "+" adds a new one), each kept
+ * as it was while another is in front. Large screens show it beside the thread; smaller ones in a sheet over it.
+ */
 export function CodeSessionPanel({
   conversationId,
-  sessionId,
-  onOpen,
+  tabs,
+  active,
+  onSelect,
+  onAdd,
+  onCloseTab,
+  onStarted,
   onClose,
+  onDetach,
 }: {
   conversationId: string;
-  sessionId: string;
-  /** The session the first instruction of a new one started. */
-  onOpen: (sessionId: string) => void;
+  /** Session ids, and `new-…` ones not started yet. */
+  tabs: string[];
+  active: string;
+  onSelect: (sessionId: string) => void;
+  onAdd: () => void;
+  onCloseTab: (sessionId: string) => void;
+  /** A new tab's first instruction started this session. */
+  onStarted: (tab: string, sessionId: string) => void;
   onClose: () => void;
+  /** Moves a tab into a pane of its own, beside the conversation. */
+  onDetach?: (sessionId: string) => void;
 }) {
   const t = useT(messages);
   const wide = useWide();
-  const view =
-    sessionId === NEW_CODE_SESSION ? (
-      <NewSessionView conversationId={conversationId} onStarted={onOpen} onClose={onClose} />
-    ) : (
-      <CodeSessionView conversationId={conversationId} sessionId={sessionId} onClose={onClose} />
-    );
+  const view = (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <CodeSessionTabs conversationId={conversationId} tabs={tabs} active={active} onSelect={onSelect} onAdd={onAdd} onCloseTab={onCloseTab} />
+      {tabs.map((id) => {
+        const detach = wide && onDetach ? () => onDetach(id) : undefined;
+        return (
+          <div key={id} className={cn("flex min-h-0 flex-1 flex-col", id !== active && "hidden")}>
+            {isNewCodeSession(id) ? (
+              <NewSessionView conversationId={conversationId} onStarted={(sessionId) => onStarted(id, sessionId)} onClose={onClose} onDetach={detach} />
+            ) : (
+              <CodeSessionView conversationId={conversationId} sessionId={id} onClose={onClose} onDetach={detach} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
   if (!wide) {
     return (
       <Sheet open onOpenChange={(open) => !open && onClose()}>
@@ -329,14 +388,99 @@ export function CodeSessionPanel({
       </Sheet>
     );
   }
-  return <aside className="flex h-full w-[520px] shrink-0 flex-col bg-sidebar">{view}</aside>;
+  return <aside className="flex h-full w-full flex-col bg-sidebar">{view}</aside>;
+}
+
+/** The panel's tabs: one per session opened in it, and "+" for a new one (its owner only). */
+function CodeSessionTabs({
+  conversationId,
+  tabs,
+  active,
+  onSelect,
+  onAdd,
+  onCloseTab,
+}: {
+  conversationId: string;
+  tabs: string[];
+  active: string;
+  onSelect: (sessionId: string) => void;
+  onAdd: () => void;
+  onCloseTab: (sessionId: string) => void;
+}) {
+  const t = useT(messages);
+  const c = useT(common);
+  const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
+  const { isSuccess: canStart } = useQuery({ ...codeModelsQuery(conversationId), retry: false });
+  return (
+    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-1.5">
+      {tabs.map((id) => {
+        const session = sessions.find((s) => s.id === id);
+        const title = session?.title ?? t.newSession;
+        return (
+          <TabChip
+            key={id}
+            title={title}
+            icon={session ? <StatusIcon status={session.status} /> : <ModelLogo provider="claude-code" />}
+            active={id === active}
+            closeLabel={`${c.close} ${title}`}
+            onSelect={() => onSelect(id)}
+            onClose={() => onCloseTab(id)}
+          />
+        );
+      })}
+      {canStart && (
+        <Tooltip>
+          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.newSession} onClick={onAdd} className="shrink-0 rounded-lg" />}>
+            <PlusIcon />
+          </TooltipTrigger>
+          <TooltipContent>{t.newSession}</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+/** A session as a workspace tab: the whole pane for its steps. A new one becomes the session its first instruction starts (`onStarted`). */
+export function CodeSessionPage({
+  conversationId,
+  sessionId,
+  onClose,
+  onStarted,
+}: {
+  conversationId: string;
+  sessionId: string;
+  onClose?: () => void;
+  onStarted: (sessionId: string) => void;
+}) {
+  return (
+    <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      {isNewCodeSession(sessionId) ? (
+        <NewSessionView conversationId={conversationId} onStarted={onStarted} onClose={onClose} page />
+      ) : (
+        <CodeSessionView conversationId={conversationId} sessionId={sessionId} onClose={onClose} page />
+      )}
+    </section>
+  );
 }
 
 /**
  * A session not started yet: the same panel, empty, with the field. Its first instruction starts it,
  * in the repository and with the model chosen beside the field, and Claude Code names it from there.
  */
-function NewSessionView({ conversationId, onStarted, onClose }: { conversationId: string; onStarted: (sessionId: string) => void; onClose: () => void }) {
+function NewSessionView({
+  conversationId,
+  onStarted,
+  onClose,
+  onDetach,
+  page,
+}: {
+  conversationId: string;
+  onStarted: (sessionId: string) => void;
+  onClose?: () => void;
+  onDetach?: () => void;
+  /** A tab of its own: the close button closes it. */
+  page?: boolean;
+}) {
   const t = useT(messages);
   const c = useT(common);
   const qc = useQueryClient();
@@ -365,9 +509,12 @@ function NewSessionView({ conversationId, onStarted, onClose }: { conversationId
           <p className="truncate text-[15px] font-medium leading-snug">{t.newSession}</p>
           <p className="mt-0.5 text-[13px] text-muted-foreground">{start.isPending ? t.empty : t.newHint}</p>
         </div>
-        <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
-          <ChevronsRightIcon />
-        </Button>
+        {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
+        {onClose && (
+          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
+            {page ? <CloseIcon /> : <ChevronsRightIcon />}
+          </Button>
+        )}
       </header>
       <div className="min-h-0 flex-1 border-t border-border/60" />
       <div className="shrink-0 px-3 pb-3 pt-2">
@@ -557,7 +704,20 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
 }
 
 /** Everything the session did, live; its pending approval and the owner's field stay in view at the bottom. */
-function CodeSessionView({ conversationId, sessionId, onClose }: { conversationId: string; sessionId: string; onClose: () => void }) {
+/** `page`: a tab of its own, the close button closes it. */
+function CodeSessionView({
+  conversationId,
+  sessionId,
+  onClose,
+  onDetach,
+  page,
+}: {
+  conversationId: string;
+  sessionId: string;
+  onClose?: () => void;
+  onDetach?: () => void;
+  page?: boolean;
+}) {
   const t = useT(messages);
   const c = useT(common);
   const { user } = useRouteContext({ from: "/app" });
@@ -586,9 +746,12 @@ function CodeSessionView({ conversationId, sessionId, onClose }: { conversationI
             </p>
           )}
         </div>
-        <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
-          <ChevronsRightIcon />
-        </Button>
+        {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
+        {onClose && (
+          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
+            {page ? <CloseIcon /> : <ChevronsRightIcon />}
+          </Button>
+        )}
       </header>
 
       {!session ? (

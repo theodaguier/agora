@@ -9,6 +9,7 @@ import { Login } from "./screens/Login";
 import { ResetPassword } from "./screens/ResetPassword";
 import { NewChat } from "./screens/NewChat";
 import { Conversation } from "./screens/Conversation";
+import { CodeSessionRoute, PreviewRoute, ScreenRoute } from "./screens/ConversationTabs";
 import { Welcome } from "./screens/Welcome";
 import { Setup } from "./screens/Setup";
 import { Tasks } from "./screens/Tasks";
@@ -100,6 +101,10 @@ const conversationRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { m?: string } => (typeof search.m === "string" ? { m: search.m } : {}),
   component: Conversation,
 });
+/** A conversation's screen, Claude Code session and HTML mockup, each at a URL of its own (a workspace tab on desktop). */
+const screenRoute = createRoute({ getParentRoute: () => appRoute, path: "/c/$conversationId/screen", component: ScreenRoute });
+const codeSessionRoute = createRoute({ getParentRoute: () => appRoute, path: "/c/$conversationId/code/$sessionId", component: CodeSessionRoute });
+const previewRoute = createRoute({ getParentRoute: () => appRoute, path: "/c/$conversationId/preview/$previewKey", component: PreviewRoute });
 /** Legacy URL of a thread with a bot: opens (or creates) the direct conversation. */
 const agentRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -109,7 +114,7 @@ const agentRoute = createRoute({
     throw redirect({ to: "/c/$conversationId", params: { conversationId: id }, replace: true });
   },
 });
-const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, inboxRoute, conversationRoute, agentRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, inboxRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
 
 export const router = createRouter({ routeTree });
 
