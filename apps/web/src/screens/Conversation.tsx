@@ -654,7 +654,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
         tabs={codeTabs}
         active={codeSession}
         onSelect={setCodeSession}
-        onAdd={() => openCodeSession(NEW_CODE_SESSION)}
+        onOpen={openCodeSession}
         onCloseTab={closeCodeTab}
         onStarted={(tab, id) => {
           setCodeTabs((tabs) => tabs.map((t) => (t === tab ? id : t)));
