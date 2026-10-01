@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.36.0 — 2026-10-01
+
+### Features
+- the Claude Code panel's "+" opens an existing session too
+
+### Fixes
+- show a session's question to its bot in the Claude Code panel
+- duplicated imports after merging main
+- keep the pane rule for dropped files after merging main
+
 ## v0.35.0 — 2026-10-01
 
 ### Features
