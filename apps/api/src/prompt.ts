@@ -5,8 +5,8 @@ import { agentMcpServers } from "./hermes-admin";
 import { listRoutines, routineBrief } from "./routines";
 
 /** The Hermes API server caps a request at 10 MB: beyond that, the image is passed by its path. */
-const MAX_INLINE_IMAGES = 6 * 1024 * 1024;
-const INLINE_IMAGE = /^image\/(png|jpe?g|webp|gif)$/;
+export const MAX_INLINE_IMAGES = 6 * 1024 * 1024;
+export const INLINE_IMAGE = /^image\/(png|jpe?g|webp|gif)$/;
 
 export type AttachmentRow = typeof schema.attachment.$inferSelect;
 

@@ -8,9 +8,9 @@ import { router } from "expo-router";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { subscribeMentions } from "@/components/agents/routine-mention";
 import { AwayNotice } from "@/components/away-notice";
-import { AttachMenu, type LocalFile } from "@/components/composer/attach-menu";
+import { AttachMenu } from "@/components/composer/attach-menu";
 import { isImage } from "@/components/attachment-files";
-import { PendingFiles, type PendingFile } from "@/components/composer/pending-files";
+import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
 import { ReplyStrip } from "@/components/composer/reply-strip";
 import { useDictation } from "@/components/composer/dictation";
 import { confirmAction } from "@/components/confirm-action";
@@ -21,8 +21,8 @@ import { MentionText } from "@/components/mention";
 import { ModelButton, ModelMenu } from "@/components/model-picker";
 import { useMe } from "@/components/server-scope";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
-import { retryLast, sessionCommand, uploadAttachment } from "@/lib/api";
-import { haptic, withTap } from "@/lib/haptics";
+import { retryLast, sessionCommand } from "@/lib/api";
+import { withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
 import { useMentionables, usePeople } from "@/lib/people";
 import { commandsQuery, routinesQuery } from "@/lib/queries";
@@ -91,7 +91,6 @@ export type ComposerHandle = {
   focus: () => void;
 };
 
-const MAX_FILE = 25 * 1024 * 1024;
 const MAX_INVOCATIONS = 5;
 
 type Props = {
@@ -111,8 +110,6 @@ type Props = {
   ref?: Ref<ComposerHandle>;
 };
 
-const newKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-
 const mentionPattern = (name: string) => new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`, "iu");
 
 type Token = { trigger: "/" | "@"; query: string; start: number; end: number };
@@ -131,7 +128,6 @@ function currentToken(text: string, caret: number, withSlash: boolean, withMenti
 export function Composer({ conversationId, placeholder, botTools, mentionables = [], onSend, onTyping, replyTo, onCancelReply, recipientId, ref }: Props) {
   const [text, setText] = useState("");
   const [attachOpen, setAttachOpen] = useState(false);
-  const [files, setFiles] = useState<PendingFile[]>([]);
   const [invocations, setInvocations] = useState<Invocation[]>([]);
   const [caret, setCaret] = useState(0);
   const [modelOpen, setModelOpen] = useState(false);
@@ -158,25 +154,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
   const { data: commands } = useQuery({ ...commandsQuery(conversationId), enabled: slash });
   const { data: routines } = useQuery({ ...routinesQuery(conversationId), enabled: botTools });
 
-  const addFiles = (list: LocalFile[]) => {
-    for (const file of list.slice(0, 10)) {
-      const key = newKey();
-      const pending = { key, name: file.name, mime: file.mime, size: file.size ?? 0, uri: file.uri };
-      if (file.size && file.size > MAX_FILE) {
-        haptic.error();
-        setFiles((xs) => [...xs, { ...pending, status: "error", error: t.tooLarge }]);
-        continue;
-      }
-      setFiles((xs) => [...xs, { ...pending, status: "uploading" }]);
-      uploadAttachment(conversationId, file).then(
-        (attachment) => setFiles((xs) => xs.map((x) => (x.key === key ? { ...x, status: "ready", attachment } : x))),
-        () => {
-          haptic.error();
-          setFiles((xs) => xs.map((x) => (x.key === key ? { ...x, status: "error", error: t.uploadFailed } : x)));
-        },
-      );
-    }
-  };
+  const { files, setFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
 
   const addInvocation = (inv: Invocation) =>
     setInvocations((xs) => (xs.length >= MAX_INVOCATIONS || xs.some((x) => invocationKey(x) === invocationKey(inv)) ? xs : [...xs, inv]));
@@ -353,7 +331,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
        */}
       <Surface variant="secondary" className="gap-1 p-2">
         {replyTo && <ReplyStrip quote={replyTo} onCancel={onCancelReply} />}
-        <PendingFiles items={files} onRemove={(key) => setFiles((xs) => xs.filter((x) => x.key !== key))} />
+        <PendingFiles items={files} onRemove={removeFile} />
         {/*
          * The web lays a colored copy under a transparent field; a native field takes styled
          * text as children instead (no `value`), so mentions are colored in the field itself.

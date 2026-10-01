@@ -382,6 +382,8 @@ function useWindowFileDrop(onDrop: (files: FileList) => void) {
       e.preventDefault();
       dragDepth.current = 0;
       setDragging(false);
+      // Dropped on a field of its own (the Claude Code panel's), which takes them.
+      if (e.target instanceof Element && e.target.closest("[data-file-drop]")) return;
       if (e.dataTransfer!.files.length) onFiles.current(e.dataTransfer!.files);
     };
     window.addEventListener("dragenter", enter);

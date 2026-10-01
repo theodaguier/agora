@@ -154,8 +154,8 @@ function mentionItems(q: string, mentionables: AgentSummary[], people: ReturnTyp
   return [...bots, ...colleagues];
 }
 
-/** Files attached to the message being written, uploaded as soon as they're added. */
-function usePendingFiles(conversationId: string, t: { tooLarge: string; uploadFailed: string }) {
+/** Files attached to the message being written, uploaded as soon as they're added (the Claude Code panel's field too). */
+export function usePendingFiles(conversationId: string, t: { tooLarge: string; uploadFailed: string }) {
   const [files, setFiles] = useState<PendingFile[]>([]);
   const addFiles = (list: FileList | File[]) => {
     for (const file of Array.from(list).slice(0, 10)) {
