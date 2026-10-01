@@ -46,7 +46,9 @@ import {
 } from "@/components/icons";
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
 import { usePendingFiles } from "@/components/Composer";
+import { BesideButton } from "@/components/BesideButton";
 import { MessageText } from "@/components/MessageText";
+import { TabChip } from "@/components/TabChip";
 import { GroupHeading, ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
 import { Alert, AlertDescription } from "@/components/ui/alert";

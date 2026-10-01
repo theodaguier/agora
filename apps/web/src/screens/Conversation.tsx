@@ -369,6 +369,8 @@ function useWindowFileDrop(root: RefObject<HTMLElement | null>, place: TabPlace,
   useEffect(() => {
     const mine = (e: DragEvent) => {
       const target = e.target instanceof Element ? e.target : e.target instanceof Node ? e.target.parentElement : null;
+      // Over a field of its own (the Claude Code panel's), which takes them.
+      if (target?.closest("[data-file-drop]")) return false;
       const pane = target?.closest("[data-pane]");
       if (pane) return where.current.visible && pane === root.current?.closest("[data-pane]");
       return where.current.current;
@@ -395,9 +397,7 @@ function useWindowFileDrop(root: RefObject<HTMLElement | null>, place: TabPlace,
       e.preventDefault();
       dragDepth.current = 0;
       setDragging(false);
-      // Dropped on a field of its own (the Claude Code panel's), which takes them.
-      if (e.target instanceof Element && e.target.closest("[data-file-drop]")) return;
-      if (e.dataTransfer!.files.length) onFiles.current(e.dataTransfer!.files);
+      if (mine(e) && e.dataTransfer!.files.length) onFiles.current(e.dataTransfer!.files);
     };
     window.addEventListener("dragenter", enter);
     window.addEventListener("dragover", over);
