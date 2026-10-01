@@ -45,6 +45,8 @@ import {
   WarningIcon,
 } from "@/components/icons";
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
+import { BesideButton } from "@/components/BesideButton";
+import { TabChip } from "@/components/TabChip";
 import { usePendingFiles } from "@/components/Composer";
 import { BesideButton } from "@/components/BesideButton";
 import { MessageText } from "@/components/MessageText";

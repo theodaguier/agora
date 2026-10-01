@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.35.0 — 2026-10-01
+
+### Features
+- tabs, split view and resizable panels on desktop
+- files and images in Claude Code sessions
+
+### Fixes
+- restore the tab imports of the Claude Code panel lost in a merge
+
 ## v0.34.1 — 2026-10-01
 
 ### Fixes
