@@ -27,6 +27,7 @@ export const codeSessions = defineMessages({
     waitingOwner: "Waiting for the person who started it.",
     placeholderRunning: "Write to Claude Code, it reads it at its next step",
     placeholderIdle: "Give it a new instruction",
+    placeholderAnswer: "Answer its question",
     send: "Send",
     attachFiles: "Attach files",
     tooLarge: "File too large (25 MB max)",
@@ -76,6 +77,11 @@ export const codeSessions = defineMessages({
       answer: "Answer",
       skip: "Skip",
       answered: "Answer sent.",
+    },
+    botQuestion: {
+      title: (bot: string) => `Claude Code asks ${bot}`,
+      help: (bot: string) => `Your next message answers it, in place of ${bot}. Without an answer within 15 minutes, it goes on with its best judgment.`,
+      waiting: (bot: string) => `Waiting for ${bot}'s answer, or the answer of the person who started it.`,
     },
     plan: {
       title: "Claude Code's plan",
@@ -176,6 +182,7 @@ export const codeSessions = defineMessages({
     waitingOwner: "En attente de la personne qui l'a lancée.",
     placeholderRunning: "Écris à Claude Code, il le lira à sa prochaine étape",
     placeholderIdle: "Donne-lui une nouvelle instruction",
+    placeholderAnswer: "Réponds à sa question",
     send: "Envoyer",
     attachFiles: "Joindre des fichiers",
     tooLarge: "Fichier trop lourd (25 Mo max)",
@@ -226,6 +233,11 @@ export const codeSessions = defineMessages({
       answer: "Répondre",
       skip: "Ignorer",
       answered: "Réponse envoyée.",
+    },
+    botQuestion: {
+      title: (bot: string) => `Claude Code demande à ${bot}`,
+      help: (bot: string) => `Ton prochain message y répond, à la place de ${bot}. Sans réponse dans les 15 minutes, il continue avec son meilleur jugement.`,
+      waiting: (bot: string) => `En attente de la réponse de ${bot}, ou de la personne qui l'a lancée.`,
     },
     plan: {
       title: "Plan de Claude Code",

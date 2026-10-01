@@ -5,7 +5,7 @@
  */
 
 /**
- * running: working; waiting: an action is waiting for approval; idle: it answered, and waits for the
+ * running: working; waiting: an action is waiting for approval, or its question to its bot for an answer; idle: it answered, and waits for the
  * next instruction; done: its pull request is merged, the task is over (never stored: an idle session
  * whose PR is merged); stopped: interrupted by someone; failed: the CLI ended on an error.
  */
@@ -135,6 +135,17 @@ export type CodeApproval = {
   plan?: string;
 };
 
+/**
+ * Its question to the bot that started it (ask_bot), waiting for an answer: the bot's claude_code_send
+ * answers it, or the owner's next message from the panel.
+ */
+export type CodeBotQuestion = {
+  /** The bot's name. */
+  bot: string;
+  text: string;
+  askedAt: string;
+};
+
 /** The owner's answer to an approval: `answers` for a question, `feedback` when a plan goes back to planning. */
 export type CodeApprovalAnswer = {
   choice: CodeApproval["choices"][number];
@@ -148,8 +159,9 @@ export const nextCodeMode = (mode: CodePermissionMode) => CODE_PERMISSION_MODES[
 /** A session's status in words (the codeSessions messages): what it waits for, when it waits. */
 export function codeStatusText(
   t: { waitingQuestion: string; waitingPlan: string; status: Record<CodeSessionStatus, string> },
-  session: { status: CodeSessionStatus; approval: CodeApproval | null },
+  session: { status: CodeSessionStatus; approval: CodeApproval | null; question?: CodeBotQuestion | null },
 ) {
+  if (session.question) return t.waitingQuestion;
   if (session.status === "waiting" && session.approval?.kind === "question") return t.waitingQuestion;
   if (session.status === "waiting" && session.approval?.kind === "plan") return t.waitingPlan;
   return t.status[session.status];
@@ -157,6 +169,13 @@ export function codeStatusText(
 
 /** What it waits for, in one line: the action and its target, or the question, or the plan's title. */
 export const codeApprovalLine = (a: CodeApproval) => (a.kind === "question" || a.kind === "plan" ? a.title : `${a.tool} · ${a.title}`);
+
+/** Its line under its title: what it waits for, or what it is doing while it works. */
+export function codeDetailLine(session: { status: CodeSessionStatus; approval: CodeApproval | null; question?: CodeBotQuestion | null; activity: string | null }) {
+  if (session.approval) return codeApprovalLine(session.approval);
+  if (session.question) return session.question.text.split("\n", 1)[0]!;
+  return session.status === "running" || session.status === "waiting" ? session.activity : null;
+}
 
 /** The value of "Other" among a question's picked options: the owner's own words. */
 export const OTHER_ANSWER = "\u0000other";
@@ -245,6 +264,8 @@ export type CodeSession = {
   /** Subscription usage warning, as Claude Code reports it. */
   limit: CodeLimit | null;
   approval: CodeApproval | null;
+  /** Its question to its bot, waiting for an answer (status waiting meanwhile). */
+  question: CodeBotQuestion | null;
   /** Last answer, once idle. */
   result: string | null;
   usage: CodeUsage | null;

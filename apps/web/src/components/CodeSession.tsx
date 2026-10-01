@@ -3,7 +3,7 @@ import { useRouteContext } from "@tanstack/react-router";
 import { Fragment, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
 import {
   CODE_PERMISSION_MODES,
-  codeApprovalLine,
+  codeDetailLine,
   codeStatusText,
   nextCodeMode,
   OTHER_ANSWER,
@@ -11,6 +11,7 @@ import {
   questionAnswer,
   rankByQuery,
   type CodeApproval,
+  type CodeBotQuestion,
   type CodeGit,
   type CodePermissionMode,
   type CodeQuestion,
@@ -24,6 +25,7 @@ import { codeSessions, common } from "@agora/core/i18n";
 import {
   ArrowUpIcon,
   BranchIcon,
+  ChatQuestionIcon,
   CheckCircleIcon,
   CircleIcon,
   CloseIcon,
@@ -114,8 +116,10 @@ const messages = codeSessions;
 
 const active = (s: CodeSessionStatus) => s === "running" || s === "waiting";
 
-function StatusIcon({ status, className }: { status: CodeSessionStatus; className?: string }) {
+/** `asking`: it waits on its question to its bot, not on an approval. */
+function StatusIcon({ status, asking, className }: { status: CodeSessionStatus; asking?: boolean; className?: string }) {
   if (status === "running") return <Spinner className={cn("size-4", className)} />;
+  if (status === "waiting" && asking) return <ChatQuestionIcon className={cn("size-4 text-warning", className)} />;
   if (status === "waiting") return <ShieldAlertIcon className={cn("size-4 text-warning", className)} />;
   if (status === "idle") return <ClockIcon className={cn("size-4 text-muted-foreground", className)} />;
   if (status === "done") return <CheckCircleIcon className={cn("size-4 text-success", className)} />;
@@ -142,10 +146,10 @@ export function CodeSessionCard({
   const { data } = useQuery(codeSessionsQuery(conversationId));
   const session = data?.find((s) => s.id === sessionId);
   const status = session?.status ?? "running";
-  const detail = session?.approval ? codeApprovalLine(session.approval) : active(status) ? session?.activity : null;
+  const detail = session && codeDetailLine(session);
   return (
     <Item variant="outline" className={cn("my-1 w-full max-w-[min(680px,88%)]", className)}>
-      <ItemMedia variant="icon">{session ? <StatusIcon status={status} /> : <CodeIcon />}</ItemMedia>
+      <ItemMedia variant="icon">{session ? <StatusIcon status={status} asking={!!session.question} /> : <CodeIcon />}</ItemMedia>
       <ItemContent className="min-w-0">
         <ItemTitle className="w-full truncate">{session?.title ?? title}</ItemTitle>
         <ItemDescription className="truncate">
@@ -279,7 +283,7 @@ export function CodeSessionsButton({
                   onOpenBeside && "pr-10",
                 )}
               >
-                <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
+                <StatusIcon status={s.status} asking={!!s.question} className="mt-0.5 shrink-0" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{s.title}</span>
                   <span className="block truncate text-[12px] text-muted-foreground">
@@ -844,7 +848,7 @@ function CodeSessionView({
   return (
     <div {...(owner && fileDrop((files) => composer.current?.addFiles(files)))} className="flex min-h-0 flex-1 flex-col">
       <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
-        {session && <StatusIcon status={session.status} className="mt-1 shrink-0" />}
+        {session && <StatusIcon status={session.status} asking={!!session.question} className="mt-1 shrink-0" />}
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium leading-snug">{session?.title ?? t.claudeCode}</p>
           {session && (
@@ -913,6 +917,7 @@ function CodeSessionView({
             ) : (
               session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
             )}
+            {session.question && <BotQuestionBlock question={session.question} canAnswer={owner} />}
             {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
             {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
             {owner ? (
@@ -1527,6 +1532,28 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
   );
 }
 
+/**
+ * Its question to the bot that started it (ask_bot): the bot answers it, or its owner with the next
+ * message of the field below, which goes to it as the answer.
+ */
+function BotQuestionBlock({ question, canAnswer }: { question: CodeBotQuestion; canAnswer: boolean }) {
+  const t = useT(messages);
+  return (
+    <section aria-label={t.botQuestion.title(question.bot)} className="mb-2 rounded-2xl border border-warning/30 bg-secondary p-3.5">
+      <div className="flex items-start gap-2.5">
+        <ChatQuestionIcon className="mt-0.5 size-4 shrink-0 text-warning" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium leading-snug">{t.botQuestion.title(question.bot)}</p>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{canAnswer ? t.botQuestion.help(question.bot) : t.botQuestion.waiting(question.bot)}</p>
+        </div>
+      </div>
+      <div className="mt-3 max-h-[40vh] overflow-y-auto rounded-lg bg-background px-3.5 py-2.5">
+        <MessageText text={question.text} className="text-sm" />
+      </div>
+    </section>
+  );
+}
+
 type Choice = { picked: string[]; other: string };
 
 const answerOf = (c: Choice | undefined) => (c ? questionAnswer(c.picked, c.other) : "");
@@ -1778,7 +1805,15 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
           autoFocus
           aria-expanded={query !== null && items.length > 0}
           aria-autocomplete="list"
-          placeholder={active(session.status) ? t.placeholderRunning : session.commands.length ? `${t.placeholderIdle} · ${t.commands.hint}` : t.placeholderIdle}
+          placeholder={
+            session.question
+              ? t.placeholderAnswer
+              : active(session.status)
+                ? t.placeholderRunning
+                : session.commands.length
+                  ? `${t.placeholderIdle} · ${t.commands.hint}`
+                  : t.placeholderIdle
+          }
           onChange={(e) => {
             setText(e.target.value);
             setCaret(e.target.selectionStart);
