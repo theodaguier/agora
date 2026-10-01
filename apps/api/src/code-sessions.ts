@@ -1,8 +1,8 @@
 import { desc, eq, inArray } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { basename, join, sep } from "node:path";
 import type { Subprocess } from "bun";
-import type { CodeApproval, CodeApprovalAnswer, CodeCommand, CodeGitAction, CodePermissionMode, CodeQuestion, CodeSession, CodeSessionDetail, CodeSessionStatus, CodeStep, CodeUsage } from "@agora/core";
+import { codeInstructionText, type CodeApproval, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
 import { activateClaudeAccount, activeClaudeAccountId, claudeCodeEnv, claudeProfiles } from "./claude-accounts";
 import { resultUsage, sessionExists, workspace, type ClaudeResult } from "./claude-code";
 import * as gitOps from "./code-git";
@@ -13,6 +13,7 @@ import { env } from "./env";
 import { publishToConversation } from "./events";
 import { readLines } from "./lines";
 import { postEvent } from "./messages";
+import { INLINE_IMAGE, MAX_INLINE_IMAGES, type AttachmentRow } from "./prompt";
 import { repoEnv } from "./repo-env";
 import { screenEnv } from "./screen";
 import { recordEngineUsage } from "./usage";
@@ -46,7 +47,11 @@ import { recordEngineUsage } from "./usage";
 type Row = typeof schema.codeSession.$inferSelect;
 type Permissions = Row["permissions"];
 type Json = Record<string, any>;
-type Instruction = { text: string; by: string | null };
+/**
+ * `files`: joined to it, shown under it; `prompt`: its text with where they are on the server, and
+ * `images` the images among them, shown to Claude Code (what is written on its stdin).
+ */
+type Instruction = { text: string; by: string | null; files?: CodeFile[]; prompt?: string; images?: Json[] };
 
 type PendingApproval = CodeApproval & { requestId: string; toolUseId?: string; input: Json; suggestions: Json[] };
 
@@ -189,7 +194,7 @@ const INSTRUCTION_MAX = 200;
 function lastInstruction(steps: CodeStep[]): CodeSession["instruction"] {
   const last = steps.findLast((st) => st.kind === "user");
   if (last?.kind !== "user") return null;
-  const text = last.text.replace(/\s+/g, " ").trim();
+  const text = codeInstructionText(last).replace(/\s+/g, " ").trim();
   return { by: last.by, text: text.length > INSTRUCTION_MAX ? `${text.slice(0, INSTRUCTION_MAX - 1)}…` : text };
 }
 
@@ -266,7 +271,7 @@ export async function codeSessionReport(id: string) {
   const history = steps
     .filter((st) => st.kind === "user" || st.kind === "git")
     .slice(-10)
-    .map((st) => (st.kind === "user" ? `${st.by ?? "?"}: ${clipLine(st.text, 400)}` : `[git ${st.action}${st.ok ? "" : " failed"}${st.by ? ` by ${st.by}` : ""}] ${st.text}`));
+    .map((st) => (st.kind === "user" ? `${st.by ?? "?"}: ${clipLine(codeInstructionText(st), 400)}` : `[git ${st.action}${st.ok ? "" : " failed"}${st.by ? ` by ${st.by}` : ""}] ${st.text}`));
   const { id: _, conversationId: __, agentId: ___, requestedBy: ____, commands: _____, ...rest } = summary(s);
   // Its question to the bot: claude_code_wait returns on it, and claude_code_send answers it.
   const question = s.question && { text: s.question.text, asked_at: s.question.askedAt.toISOString() };
@@ -441,11 +446,14 @@ export async function startCodeSession(opts: {
   branch?: string;
   /** Its permission mode (default: it acts on its own); plan: it starts by writing a plan to approve. */
   mode?: CodePermissionMode;
+  /** Attachments of the conversation joined to the task (checked by the caller). */
+  files?: AttachmentRow[];
 }): Promise<CodeSession> {
   const task = opts.task.trim();
+  const files = opts.files ?? [];
   const project = opts.project?.trim();
   const model = opts.model?.trim() || null;
-  if (!task || (project && !PROJECT.test(project)) || (model && !MODEL.test(model))) throw new CodeSessionError("invalid");
+  if ((!task && !files.length) || (project && !PROJECT.test(project)) || (model && !MODEL.test(model))) throw new CodeSessionError("invalid");
   const repo = opts.repo?.trim() ? parseRepo(opts.repo) : null;
   if (opts.repo?.trim() && !repo) throw new CodeSessionError("invalid", `Not a GitHub repository: ${opts.repo}. Expected owner/name or its URL.`);
   const id = crypto.randomUUID();
@@ -464,8 +472,8 @@ export async function startCodeSession(opts: {
   const cwd = shared ? join(worktreesDir(root), `${shared.repo.split("/")[1]}-${id.slice(0, 8)}`) : join(root, "projects", project || `session-${id.slice(0, 8)}`);
   if (!shared) await mkdir(cwd, { recursive: true });
   // Untitled (started from the panel): Claude Code names it from the task, the first line otherwise.
-  const named = opts.title.trim() ? null : await nameTask(shared ? root : cwd, task);
-  const title = opts.title.trim().slice(0, 200) || named?.title || task.split("\n")[0]!.slice(0, 120);
+  const named = opts.title.trim() ? null : await nameTask(shared ? root : cwd, task || files.map((f) => f.name).join(", "));
+  const title = opts.title.trim().slice(0, 200) || named?.title || (task.split("\n")[0] || files.map((f) => f.name).join(", ")).slice(0, 120);
   const branch = shared ? opts.branch?.trim() || sessionBranch(title, id) : null;
   const [row] = await db
     .insert(schema.codeSession)
@@ -489,7 +497,7 @@ export async function startCodeSession(opts: {
   if (shared && branch) s.prepare = { ...shared, branch };
   live.set(id, s);
   if (opts.announce) await announceCodeSession(opts.conversationId, id, title, opts.botName);
-  instruct(s, { text: task, by: opts.by });
+  instruct(s, await withFiles(root, id, { text: task, by: opts.by }, files));
   return summary(s);
 }
 
@@ -515,21 +523,48 @@ export const announceCodeSession = (conversationId: string, sessionId: string, t
  * An instruction for the session: written to Claude Code while it works (it reads it at its next
  * tool call), or the start of a new run that resumes the session.
  */
-export async function sendToCodeSession(id: string, text: string, by: string, conversationId?: string) {
+export async function sendToCodeSession(id: string, text: string, by: string, conversationId?: string, files: AttachmentRow[] = []) {
   const s = await load(id, conversationId);
-  if (!text.trim()) throw new CodeSessionError("invalid");
-  instruct(s, { text: text.trim(), by });
+  if (!text.trim() && !files.length) throw new CodeSessionError("invalid");
+  instruct(s, await withFiles(await workspace(), s.row.id, { text: text.trim(), by }, files));
   return summary(s);
 }
 
+/** Where the files joined to a session's instructions are copied: out of its clone (nothing to commit), readable by it (--add-dir). */
+const uploadsDir = (root: string, sessionId: string) => join(root, "uploads", sessionId);
+
+/**
+ * The files joined to an instruction, copied into the session's uploads: Claude Code gets their paths
+ * (to read them, or to put them into the project), and sees the images among them while they fit.
+ */
+async function withFiles(root: string, sessionId: string, m: Instruction, files: AttachmentRow[]): Promise<Instruction> {
+  if (!files.length) return m;
+  const dir = uploadsDir(root, sessionId);
+  await mkdir(dir, { recursive: true });
+  const images: Json[] = [];
+  const lines: string[] = [];
+  let budget = MAX_INLINE_IMAGES;
+  for (const f of files) {
+    const path = join(dir, basename(f.path));
+    await Bun.write(path, Bun.file(f.path));
+    lines.push(`- ${f.name} (${f.mime}, ${Math.ceil(f.size / 1024)} KB): ${path}`);
+    if (INLINE_IMAGE.test(f.mime) && f.size <= budget) {
+      budget -= f.size;
+      images.push({ type: "image", source: { type: "base64", media_type: f.mime, data: Buffer.from(await Bun.file(path).arrayBuffer()).toString("base64") } });
+    }
+  }
+  const note = `[Files ${m.by ?? "the user"} joined to this message${images.length ? " (the images are shown above)" : ""}:]\n${lines.join("\n")}`;
+  return { ...m, files: files.map(({ id, name, mime, size }) => ({ id, name, mime, size })), prompt: m.text ? `${m.text}\n\n${note}` : note, images };
+}
+
 function instruct(s: Live, m: Instruction) {
-  touch(s, [s.transcript.add({ id: crypto.randomUUID(), kind: "user", text: m.text, by: m.by })]);
+  touch(s, [s.transcript.add({ id: crypto.randomUUID(), kind: "user", text: m.text, by: m.by, ...(m.files?.length && { files: m.files }) })]);
   // Its worktree was deleted: the next run starts in a new one, on the same branch.
   const wt = s.row.worktree;
   if (wt?.removedAt && s.row.repo && !s.prepare) s.prepare = { repo: s.row.repo, branch: wt.branch, clone: wt.clone ?? null };
   if (s.running && !s.stopping) {
     // It waits on its question: whoever writes to it (the bot, or its owner from the panel) answers it.
-    if (s.question) answerQuestion(s, `Réponse de ${m.by ?? "son propriétaire"} :\n${m.text}`);
+    if (s.question) answerQuestion(s, `Réponse de ${m.by ?? "son propriétaire"} :\n${m.prompt ?? m.text}`);
     else if (s.proc) deliver(s, m);
     else s.outbox.push(m);
     return;
@@ -541,7 +576,7 @@ function instruct(s: Live, m: Instruction) {
 
 function deliver(s: Live, m: Instruction) {
   s.unread.push(m);
-  write(s, { type: "user", message: { role: "user", content: [{ type: "text", text: m.text }] } });
+  write(s, { type: "user", message: { role: "user", content: [...(m.images ?? []), { type: "text", text: m.prompt ?? m.text }] } });
 }
 
 export async function answerCodeApproval(id: string, approvalId: string, answer: CodeApprovalAnswer, conversationId?: string) {
@@ -969,7 +1004,7 @@ export async function codeSessionsContext(conversationId: string) {
     if (events.length) {
       lines.push("Dernières instructions et actions :");
       for (const st of events) {
-        if (st.kind === "user") lines.push(`- ${st.by ?? "?"} a écrit à Claude Code : ${clipLine(st.text, 300)}`);
+        if (st.kind === "user") lines.push(`- ${st.by ?? "?"} a écrit à Claude Code : ${clipLine(codeInstructionText(st), 300)}`);
         else if (st.kind === "git") lines.push(`- ${st.ok ? "" : "ÉCHEC "}${st.action}${st.by ? ` par ${st.by}` : ""} : ${clipLine(st.text, 300)}`);
         else if (st.kind === "notice") lines.push(`- ${{ stopped: "Arrêtée", restart: "Interrompue par un redémarrage", error: "Erreur" }[st.code]}${st.text ? ` : ${clipLine(st.text, 300)}` : ""}`);
       }
@@ -1195,6 +1230,9 @@ async function execute(s: Live, id: number): Promise<void> {
     .filter(Boolean)
     .join("\n\n");
   const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools, ...(s.bot ? [ASK_TOOL] : [])];
+  // The files joined to its instructions, including the ones sent while this process stays warm.
+  const uploads = uploadsDir(await workspace(), r.id);
+  await mkdir(uploads, { recursive: true });
   const args = [
     env.CLAUDE_CODE_BIN,
     "-p",
@@ -1216,7 +1254,7 @@ async function execute(s: Live, id: number): Promise<void> {
     ...((await sessionExists(r.id)) ? ["--resume", r.id] : ["--session-id", r.id]),
     ...(r.model ? ["--model", r.model] : []),
     ...(allowed.length ? ["--allowedTools", ...allowed] : []),
-    ...r.permissions.dirs.flatMap((d) => ["--add-dir", d]),
+    ...[uploads, ...r.permissions.dirs].flatMap((d) => ["--add-dir", d]),
     ...(appended ? ["--append-system-prompt", appended] : []),
     ...(s.bot ? ["--mcp-config", JSON.stringify({ mcpServers: { [MCP_SERVER]: { type: "sdk", name: MCP_SERVER } } })] : []),
   ];

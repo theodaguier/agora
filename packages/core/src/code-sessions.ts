@@ -31,12 +31,18 @@ export type CodeStep =
       /** A subagent's step: the Task/Agent call it belongs to. */
       parentId?: string;
     }
-  /** An instruction sent to the session: the initial task, then each follow-up; `by` is the sender's name. */
-  | { id: string; kind: "user"; text: string; by: string | null }
+  /** An instruction sent to the session: the initial task, then each follow-up; `by` is the sender's name, `files` the ones it joined. */
+  | { id: string; kind: "user"; text: string; by: string | null; files?: CodeFile[] }
   /** stopped: by its owner; restart: the server restarted during a run; error: the CLI failed (`text`). */
   | { id: string; kind: "notice"; code: "stopped" | "restart" | "error"; text?: string }
   /** A git or GitHub action Agora ran for the session (clone, or the owner's from the panel); `text`: its outcome in one line. */
   | { id: string; kind: "git"; action: CodeGitAction; ok: boolean; text: string; by: string | null; detail?: string };
+
+/** A file joined to an instruction: an attachment of the conversation (served by /api/attachments/:id), copied where Claude Code reads it. */
+export type CodeFile = { id: string; name: string; mime: string; size: number };
+
+/** An instruction's text, or the names of its files when it was sent without one. */
+export const codeInstructionText = (step: { text: string; files?: CodeFile[] }) => step.text || (step.files ?? []).map((f) => f.name).join(", ");
 
 /** clone: the session's worktree prepared (the repository's clone fetched, the project's credentials written); worktree: its worktree deleted. */
 export type CodeGitAction = "clone" | "commit" | "push" | "pr" | "merge" | "pull" | "worktree";

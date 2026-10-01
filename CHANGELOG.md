@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.34.1 — 2026-10-01
+
+### Fixes
+- the updater reclaims disk space after each update
+
 ## v0.34.0 — 2026-09-30
 
 ### Features

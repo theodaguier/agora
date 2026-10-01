@@ -41,7 +41,7 @@ export function applyCodeStep(qc: QueryClient, conversationId: string, sessionId
 }
 
 /** A session the owner starts without a bot: Claude Code names it from its first instruction. */
-export const startCodeSession = (conversationId: string, req: { task: string; repo?: string; model?: string; mode?: CodePermissionMode }) =>
+export const startCodeSession = (conversationId: string, req: { task: string; attachmentIds?: string[]; repo?: string; model?: string; mode?: CodePermissionMode }) =>
   api<CodeSession>(path(conversationId), { method: "POST", body: JSON.stringify(req) });
 
 /** GitHub repositories a new session can clone (the instance's token reaches them), the latest pushed first. */
@@ -52,8 +52,9 @@ export const codeReposQuery = (conversationId: string) =>
     staleTime: 5 * 60_000,
   });
 
-export const sendToCodeSession = (conversationId: string, id: string, text: string) =>
-  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/messages`), { method: "POST", body: JSON.stringify({ text }) });
+/** An instruction, with files uploaded to the conversation (uploadAttachment): Claude Code gets their paths and sees the images. */
+export const sendToCodeSession = (conversationId: string, id: string, text: string, attachmentIds: string[] = []) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/messages`), { method: "POST", body: JSON.stringify({ text, attachmentIds }) });
 
 /** An action allowed or denied, questions answered, a plan approved or sent back with what to change. */
 export const answerCodeApproval = (conversationId: string, id: string, approvalId: string, answer: CodeApprovalAnswer) =>
