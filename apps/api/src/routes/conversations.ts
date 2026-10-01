@@ -33,7 +33,7 @@ import { defineMessages, tr } from "../i18n";
 import { allowedInvocations, type AttachmentRow, type Invocation } from "../prompt";
 import { sessionContext } from "../session-context";
 import { parseDraft } from "../views";
-import type { ViewAction, ViewBlock } from "@agora/core";
+import { SCREEN_VIEWPORTS, type ViewAction, type ViewBlock } from "@agora/core";
 
 const messages = defineMessages({
   en: {
@@ -610,7 +610,7 @@ export const conversations = new Hono<AppEnv>()
       };
       const stop = watchScreen(conv.conversation.id, {
         frame: (f) => send("frame", f),
-        state: (live) => send("state", { live }),
+        state: (s) => send("state", s),
       });
       const ping = setInterval(() => !writing && !next && send("ping", {}), 25_000);
       await new Promise<void>((resolve) => stream.onAbort(resolve));
@@ -620,7 +620,7 @@ export const conversations = new Hono<AppEnv>()
   })
 
   /**
-   * Takes control of the screen: a click, a scroll, a key, pasted text or navigation, forwarded to the
+   * Takes control of the screen: a click, a scroll, a key, pasted text, navigation or its size, forwarded to the
    * browser on display. Admins only: that browser reaches the server's own network (dev servers, services).
    */
   .post("/:id/screen/input", async (c) => {
@@ -633,6 +633,7 @@ export const conversations = new Hono<AppEnv>()
         z.object({ type: z.literal("text"), text: z.string().min(1).max(10_000) }),
         z.object({ type: z.literal("navigate"), url: z.string().url().max(2_000).refine((u) => /^https?:\/\//i.test(u)) }),
         z.object({ type: z.enum(["back", "forward", "reload"]) }),
+        z.object({ type: z.literal("viewport"), viewport: z.enum(SCREEN_VIEWPORTS) }),
       ])
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid_body" }, 400);

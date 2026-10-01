@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { useRouteContext } from "@tanstack/react-router";
-import { ChevronLeftIcon, ChevronRightIcon, RefreshIcon } from "@/components/icons";
+import { SCREEN_VIEWPORTS, type ScreenViewport } from "@agora/core";
+import { common } from "@agora/core/i18n";
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, RefreshIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, conversationPath } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useTabPlace } from "@/lib/workspace";
 import { defineMessages, useT } from "@/i18n";
 
 const messages = defineMessages({
@@ -23,6 +27,11 @@ const messages = defineMessages({
     forward: "Forward",
     reload: "Reload",
     address: "Address",
+    size: "Screen size",
+    auto: "Auto",
+    mobile: "Phone",
+    tablet: "Tablet",
+    desktop: "Computer",
   },
   fr: {
     noScreen: "L'agent n'utilise pas d'écran pour le moment",
@@ -36,6 +45,11 @@ const messages = defineMessages({
     forward: "Suivante",
     reload: "Recharger",
     address: "Adresse",
+    size: "Taille de l'écran",
+    auto: "Auto",
+    mobile: "Mobile",
+    tablet: "Tablette",
+    desktop: "Ordinateur",
   },
 });
 
@@ -47,7 +61,8 @@ type ScreenInput =
   | { type: "key"; key: string; code: string; keyCode: number; modifiers: number }
   | { type: "text"; text: string }
   | { type: "navigate"; url: string }
-  | { type: "back" | "forward" | "reload" };
+  | { type: "back" | "forward" | "reload" }
+  | { type: "viewport"; viewport: ScreenViewport };
 
 const visible = () => document.visibilityState === "visible";
 
@@ -56,12 +71,16 @@ const act = (conversationId: string, input: ScreenInput) =>
   void api(conversationPath(conversationId, "/screen/input"), { method: "POST", body: JSON.stringify(input) }).catch(() => {});
 
 /**
- * The agent's browser, live. The stream is only open while this component is
- * mounted and the tab is visible: that is what makes the API watch the browser.
+ * The agent's browser, live, and the size its viewers chose. The stream is only open while this
+ * component is on screen (its workspace tab in front, the browser tab visible): that is what makes
+ * the API watch the browser.
  */
 function useAgentScreen(conversationId: string) {
   const [frame, setFrame] = useState<Frame | null>(null);
-  const [shown, setShown] = useState(visible);
+  const [viewport, setViewport] = useState<ScreenViewport>("auto");
+  const [pageShown, setShown] = useState(visible);
+  const place = useTabPlace();
+  const shown = pageShown && place.visible;
 
   useEffect(() => {
     const onChange = () => setShown(visible());
@@ -84,7 +103,9 @@ function useAgentScreen(conversationId: string) {
       if (frame) setFrame(frame);
     });
     source.addEventListener("state", (e) => {
-      if (!read(e)?.live) setFrame(null);
+      const state = read(e);
+      if (!state?.live) setFrame(null);
+      if (state?.viewport) setViewport(state.viewport);
     });
     return () => {
       source.close();
@@ -92,7 +113,7 @@ function useAgentScreen(conversationId: string) {
     };
   }, [conversationId, shown]);
 
-  return frame;
+  return { frame, viewport };
 }
 
 const host = (url: string) => {
@@ -141,12 +162,14 @@ function IconAction({ label, onClick, children }: { label: string; onClick: () =
 function ScreenView({
   conversationId,
   frame,
+  viewport,
   canControl,
   fill,
   onEnlarge,
 }: {
   conversationId: string;
   frame: Frame;
+  viewport: ScreenViewport;
   canControl: boolean;
   fill?: boolean;
   onEnlarge?: () => void;
@@ -278,12 +301,26 @@ function ScreenView({
           draggable={false}
           width={frame.width || undefined}
           height={frame.height || undefined}
-          className={cn("block select-none", fill ? "absolute inset-0 size-full object-contain" : "h-auto w-full")}
+          className={cn("block select-none", fill ? "absolute inset-0 size-full object-contain" : "mx-auto h-auto max-h-[70vh] w-auto max-w-full")}
         />
       </div>
 
       {canControl ? (
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ToggleGroup
+            aria-label={t.size}
+            value={[viewport]}
+            onValueChange={(v) => v[0] && v[0] !== viewport && send({ type: "viewport", viewport: v[0] as ScreenViewport })}
+            variant="outline"
+            size="sm"
+            className="mr-auto"
+          >
+            {SCREEN_VIEWPORTS.map((v) => (
+              <ToggleGroupItem key={v} value={v}>
+                {t[v]}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
           {onEnlarge && (
             <Button variant="outline" size="sm" onClick={onEnlarge}>
               {t.enlarge}
@@ -310,7 +347,7 @@ export function AgentScreen({ conversationId, agentName }: { conversationId: str
   const { user } = useRouteContext({ from: "/app" });
   // The browser reaches the server's own network: only admins drive it (as the API checks).
   const canControl = user.role === "admin";
-  const frame = useAgentScreen(conversationId);
+  const { frame, viewport } = useAgentScreen(conversationId);
   const [enlarged, setEnlarged] = useState(false);
   // The browser closed while enlarged: don't reopen on the next session.
   if (!frame && enlarged) setEnlarged(false);
@@ -318,7 +355,7 @@ export function AgentScreen({ conversationId, agentName }: { conversationId: str
   return (
     <>
       {frame ? (
-        <ScreenView conversationId={conversationId} frame={frame} canControl={canControl} onEnlarge={() => setEnlarged(true)} />
+        <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={canControl} onEnlarge={() => setEnlarged(true)} />
       ) : (
         <>
           <Empty className="aspect-[16/10] gap-2 rounded-lg border border-solid border-border bg-background/60 p-4">
@@ -337,9 +374,43 @@ export function AgentScreen({ conversationId, agentName }: { conversationId: str
             <DialogTitle>{agentName ? t.screenOf(agentName) : t.screen}</DialogTitle>
             <DialogDescription className="truncate">{canControl ? t.live : frame?.url || t.live}</DialogDescription>
           </DialogHeader>
-          {frame && <ScreenView conversationId={conversationId} frame={frame} canControl={canControl} fill />}
+          {frame && <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={canControl} fill />}
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** The screen as a workspace tab: the whole pane for the page, at the size chosen. */
+export function ScreenPage({ conversationId, title, onClose }: { conversationId: string; title: string; onClose?: () => void }) {
+  const t = useT(messages);
+  const c = useT(common);
+  const { user } = useRouteContext({ from: "/app" });
+  const { frame, viewport } = useAgentScreen(conversationId);
+  return (
+    <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+        <p className="min-w-0 flex-1 truncate text-[15px] font-medium">
+          {t.screen}
+          {title && <span className="font-normal text-muted-foreground"> · {title}</span>}
+        </p>
+        {onClose && (
+          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="rounded-lg">
+            <CloseIcon />
+          </Button>
+        )}
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col p-3">
+        {frame ? (
+          <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={user.role === "admin"} fill />
+        ) : (
+          <Empty className="flex-1 rounded-lg border border-solid border-border bg-muted/30">
+            <EmptyHeader>
+              <EmptyDescription>{t.noScreen}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+      </div>
+    </section>
   );
 }

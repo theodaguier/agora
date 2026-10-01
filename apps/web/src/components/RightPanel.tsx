@@ -59,7 +59,7 @@ export function RightPanel({
   const [editing, setEditing] = useState(false);
   const t = useT(messages);
   return (
-    <aside className="flex h-full w-[320px] shrink-0 flex-col bg-sidebar">
+    <aside className="flex h-full w-full flex-col bg-sidebar">
       <div className="flex h-12 shrink-0 items-center justify-end gap-1 px-3">
         {user.role === "admin" && (
           <>

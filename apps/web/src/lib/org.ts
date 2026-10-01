@@ -1,6 +1,7 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { api } from "./api";
+import { useTabPlace } from "./workspace";
 import { hasStoredLocale, isLocale, setLocale } from "@/i18n";
 
 export type SetupStatus = { needed: boolean; completed: boolean; org: { name: string; locale: "fr" | "en"; timezone: string } };
@@ -24,11 +25,13 @@ export function useOrgName() {
 }
 
 /** Browser tab: the page's name then the organization's ("Design · Acme"), or the organization alone. */
+/** With several tabs mounted, only the one the URL shows names the window. */
 export function useOrgTitle(page?: string) {
   const org = useOrgName();
+  const { current } = useTabPlace();
   useEffect(() => {
-    document.title = page ? `${page} · ${org}` : org;
-  }, [page, org]);
+    if (current) document.title = page ? `${page} · ${org}` : org;
+  }, [page, org, current]);
   return org;
 }
 

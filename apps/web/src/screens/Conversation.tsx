@@ -3,7 +3,7 @@ import { useEventText } from "@/i18n/events";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
 import { BrowserIcon, ChevronLeftIcon, ChevronsLeftIcon, FilesIcon, PinIcon, SearchIcon } from "@/components/icons";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { AuthorLine, BotBubble, DateDivider, ToolLine, TypingBubble } from "@/components/Bubbles";
 import { ApprovalCard, ApprovalLog } from "@/components/ApprovalCard";
@@ -24,9 +24,10 @@ import { PersonPanel } from "@/components/PersonPanel";
 import { SentAttachments } from "@/components/Attachments";
 import { ChatMessage, MessageRow, PendingRow, useDeleteMessage } from "@/components/MessageParts";
 import { RightPanel } from "@/components/RightPanel";
-import { CodeSessionCard, CodeSessionPanel, CodeSessionsButton, ReplyWithSessions, useWide } from "@/components/CodeSession";
+import { CodeSessionCard, CodeSessionPanel, CodeSessionsButton, NEW_CODE_SESSION, newCodeSessionId, ReplyWithSessions, useWide } from "@/components/CodeSession";
 import { findPreview, PreviewCard, PreviewCards, PreviewPanel } from "@/components/Preview";
 import { Button } from "@/components/ui/button";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Spinner } from "@/components/ui/spinner";
 import { ShortcutTooltip } from "@/components/Shortcuts";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -56,6 +57,7 @@ import type { Mentionable } from "@/lib/mentions";
 import { useMentionables } from "@/lib/people";
 import { shortcuts, useShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
+import { openBeside, readSize, tabPath, useTabPlace, writeSize, type TabPlace } from "@/lib/workspace";
 
 /** Distance from the bottom under which the conversation still follows new messages. */
 const STICK_PX = 80;
@@ -352,25 +354,36 @@ function PanelButtons({
 /**
  * Files can be dropped anywhere in the window, not only on the thread:
  * a drop elsewhere would otherwise make the browser open the file. True while files are dragged over it.
+ * With several panes, the files go to the conversation in front in the pane they are dropped on;
+ * dropped outside every pane (the sidebar), to the one the URL shows.
  */
-function useWindowFileDrop(onDrop: (files: FileList) => void) {
+function useWindowFileDrop(root: RefObject<HTMLElement | null>, place: TabPlace, onDrop: (files: FileList) => void) {
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
   const onFiles = useRef(onDrop);
+  const where = useRef(place);
   useLayoutEffect(() => {
     onFiles.current = onDrop;
+    where.current = place;
   });
   useEffect(() => {
+    const mine = (e: DragEvent) => {
+      const target = e.target instanceof Element ? e.target : e.target instanceof Node ? e.target.parentElement : null;
+      const pane = target?.closest("[data-pane]");
+      if (pane) return where.current.visible && pane === root.current?.closest("[data-pane]");
+      return where.current.current;
+    };
     const enter = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       dragDepth.current += 1;
-      setDragging(true);
+      setDragging(mine(e));
     };
     const over = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
       e.dataTransfer!.dropEffect = "copy";
+      setDragging(mine(e));
     };
     const leave = (e: DragEvent) => {
       if (!hasFiles(e)) return;
@@ -400,10 +413,21 @@ function useWindowFileDrop(onDrop: (files: FileList) => void) {
   return dragging;
 }
 
+/** Side panels' widths when first opened (then as last resized, per kind). */
+const SIDE_WIDTHS = { info: 320, search: 320, files: 320, pins: 320, screen: 560, code: 520, preview: 520 } as const;
+type SideKind = keyof typeof SIDE_WIDTHS;
+
+/** The conversation route (mobile: one screen at a time; on desktop, the workspace shows it in a tab). */
 export function Conversation() {
   const { conversationId } = useParams({ from: "/app/c/$conversationId" });
   const { m: focus } = useSearch({ from: "/app/c/$conversationId" });
+  return <ConversationView conversationId={conversationId} focus={focus} />;
+}
+
+/** A conversation: its thread, and beside it a side panel whose width can be dragged. `focus`: a message to bring into view. */
+export function ConversationView({ conversationId, focus }: { conversationId: string; focus?: string }) {
   const navigate = useNavigate();
+  const place = useTabPlace();
   const { user } = useRouteContext({ from: "/app" });
   const qc = useQueryClient();
   const eventText = useEventText();
@@ -428,8 +452,12 @@ export function Conversation() {
   const arrived = useArrivals(conversationId, messages, isPending);
   /** Side panel: the bot's or the group's (`info`), search, files or pins; closed by default. */
   const [panel, setPanel] = useState<PanelKind | "info" | null>(null);
-  /** Claude Code session opened beside the thread (it takes the side panel's place). */
+  /**
+   * Claude Code panel beside the thread (it takes the side panel's place): the session in front, and the
+   * sessions opened in it as tabs. Closed, it keeps its tabs for the next time it opens.
+   */
   const [codeSession, setCodeSession] = useState<string | null>(null);
+  const [codeTabs, setCodeTabs] = useState<string[]>([]);
   useEffect(() => {
     if (panel) setCodeSession(null);
   }, [panel]);
@@ -438,10 +466,19 @@ export function Conversation() {
   useEffect(() => {
     if (panel) setPreviewKey(null);
   }, [panel]);
+  /** Brings a session to the front of the panel, in a tab of its own (a new one each time for `new`). */
   const openCodeSession = (id: string) => {
+    const tab = id === NEW_CODE_SESSION ? newCodeSessionId() : id;
     setPanel(null);
     setPreviewKey(null);
-    setCodeSession(id);
+    setCodeTabs((tabs) => (tabs.includes(tab) ? tabs : [...tabs, tab]));
+    setCodeSession(tab);
+  };
+  const closeCodeTab = (id: string) => {
+    const i = codeTabs.indexOf(id);
+    const rest = codeTabs.filter((t) => t !== id);
+    setCodeTabs(rest);
+    if (codeSession === id) setCodeSession(rest[Math.min(i, rest.length - 1)] ?? null);
   };
   const openPreview = (key: string) => {
     setPanel(null);
@@ -470,23 +507,30 @@ export function Conversation() {
   const [scrolledUp, setScrolledUp] = useState(false);
   const lastTyping = useRef(0);
 
-  const dragging = useWindowFileDrop((files) => composer.current?.addFiles(files));
+  const root = useRef<HTMLDivElement>(null);
+  const dragging = useWindowFileDrop(root, place, (files) => composer.current?.addFiles(files));
   const { isPinned, toggle: togglePin } = usePins(conversationId);
   const deleteMessage = useDeleteMessage(conversationId);
   /** Every conversation has one: the bot, the group's members, or the colleague's profile. */
   const hasInfo = !!conv;
 
-  useShortcut(shortcuts.togglePanel, () => setPanel((p) => (p ? null : hasInfo ? "info" : "files")));
-  useShortcut(shortcuts.searchConversation, () => {
-    // Reopening remounts the field so it takes the focus again.
-    setPanel(null);
-    requestAnimationFrame(() => setPanel("search"));
-  });
+  // Beside another pane, only the conversation the URL shows answers the keyboard.
+  useShortcut(shortcuts.togglePanel, () => setPanel((p) => (p ? null : hasInfo ? "info" : "files")), place.current);
+  useShortcut(
+    shortcuts.searchConversation,
+    () => {
+      // Reopening remounts the field so it takes the focus again.
+      setPanel(null);
+      requestAnimationFrame(() => setPanel("search"));
+    },
+    place.current,
+  );
 
   useEffect(() => {
     setSending([]);
     setReplyTo(null);
     setCodeSession(null);
+    setCodeTabs([]);
     setPreviewKey(null);
   }, [conversationId]);
 
@@ -501,11 +545,12 @@ export function Conversation() {
     if (conv) seedTurns(conv.id, conv.turns);
   }, [conv, detail.dataUpdatedAt]);
 
+  // Read once on screen: a tab left behind another stays unread.
   const unread = summaries?.find((s) => s.id === conversationId)?.unread;
   useEffect(() => {
-    if (!unread) return;
+    if (!unread || !place.visible) return;
     api(conversationPath(conversationId, "/read"), { method: "POST" }).then(() => qc.invalidateQueries({ queryKey: conversationsQuery.queryKey }));
-  }, [conversationId, unread, qc]);
+  }, [conversationId, unread, qc, place.visible]);
 
   // Follows the conversation only while it is read at the bottom: scrolled up, new messages don't pull the reader down.
   useLayoutEffect(() => {
@@ -532,6 +577,14 @@ export function Conversation() {
   const directPerson = conv?.kind === "direct" && !conv.agents.length ? (conv.members.find((m) => m.id !== user.id) ?? null) : null;
   const title = conv ? conversationTitle(conv, user.id) : "";
   useOrgTitle(title || undefined);
+
+  /** Takes a side panel's content out of the conversation, into a pane beside it (workspace only). */
+  const beside = place.paneId
+    ? (path: string, close: () => void) => () => {
+        close();
+        openBeside(path, place.paneId!);
+      }
+    : null;
 
   const send = async (text: string, attachments: Sending["attachments"], invocations: Invocation[], mentions: string[], reply?: ReplyTo, viewAction?: ViewAction) => {
     const key = crypto.randomUUID();
@@ -595,291 +648,341 @@ export function Conversation() {
   const mine = turns.filter((t) => t.requestedBy === user.id);
   const placeholder = directBot ? t.messageTo(directBot.name) : group ? (conv.agents.length ? t.writeGroupMention : t.writeGroup) : t.messageTo(title);
 
-  return (
-    <ConversationFilesProvider messages={messages}>
-      <div className="flex h-full min-w-0 flex-1">
-        <section className="relative flex min-w-0 flex-1 flex-col bg-background">
-          {dragging && conv && (
-            <div className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-brand bg-background/80 text-sm font-medium">
-              {directBot ? t.dropTo(directBot.name) : group ? t.dropToGroup : t.dropTo(title)}
-            </div>
-          )}
-          <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <HeaderTitle conv={conv} me={user.id} title={title} directBot={directBot} directPerson={directPerson} onOpenInfo={() => setPanel("info")} />
-            </div>
-            <PanelButtons
-              panel={panel}
-              setPanel={setPanel}
-              hasPanels={!!conv}
-              hasInfo={hasInfo}
-              sessions={conv && <CodeSessionsButton conversationId={conversationId} current={codeSession} onOpen={openCodeSession} />}
-            />
-          </header>
-          {conv && <PinnedBar conversationId={conversationId} onJump={jumpTo} onSeeAll={() => setPanel("pins")} />}
+  const sideKind: SideKind | null = codeSession ? "code" : previewKey ? "preview" : panel && conv ? panel : null;
+  const sideView =
+    codeSession ? (
+      <CodeSessionPanel
+        conversationId={conversationId}
+        tabs={codeTabs}
+        active={codeSession}
+        onSelect={setCodeSession}
+        onAdd={() => openCodeSession(NEW_CODE_SESSION)}
+        onCloseTab={closeCodeTab}
+        onStarted={(tab, id) => {
+          setCodeTabs((tabs) => tabs.map((t) => (t === tab ? id : t)));
+          setCodeSession((current) => (current === tab ? id : current));
+        }}
+        onClose={() => setCodeSession(null)}
+        onDetach={beside ? (id) => beside(tabPath.code(conversationId, id), () => closeCodeTab(id))() : undefined}
+      />
+    ) : previewKey ? (
+      <PreviewPanel
+        key={previewKey}
+        source={preview}
+        onClose={() => setPreviewKey(null)}
+        onDetach={beside?.(tabPath.preview(conversationId, previewKey), () => setPreviewKey(null))}
+      />
+    ) : panel === "info" && directBot ? (
+      <RightPanel
+        conversationId={conversationId}
+        agentId={directBot.id}
+        agentName={directBot.name}
+        onMention={(r) =>
+          composer.current?.addInvocation({
+            kind: "routine",
+            id: r.id,
+            name: r.name,
+          })
+        }
+        onClose={() => setPanel(null)}
+      />
+    ) : panel === "info" && directPerson ? (
+      <PersonPanel userId={directPerson.id} onClose={() => setPanel(null)} />
+    ) : panel === "info" && group && conv ? (
+      <MembersPanel conversation={conv} onClose={() => setPanel(null)} />
+    ) : panel && panel !== "info" && conv ? (
+      <ConversationPanel
+        key={`${conversationId}:${panel}`}
+        kind={panel}
+        conversationId={conversationId}
+        onJump={jumpTo}
+        onClose={() => setPanel(null)}
+        onDetach={panel === "screen" ? (beside?.(tabPath.screen(conversationId), () => setPanel(null)) ?? undefined) : undefined}
+      />
+    ) : null;
 
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            <div
-              ref={scroller}
-              onScroll={(e) => {
-                const el = e.currentTarget;
-                atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
-                setScrolledUp(!atBottom.current);
-              }}
-              className="min-h-0 flex-1 overflow-y-auto"
-            >
-              <div className="flex flex-col gap-1.5 px-4 pb-6 pt-4">
-                {isPending && <Spinner className="chat-loading mx-auto mt-[20vh] size-5 text-muted-foreground" />}
-                {!isPending && messages.length === 0 && !sending.length && (
-                  <Empty className="mx-auto mt-[20vh] max-w-sm flex-none p-0">
-                    <EmptyHeader className="gap-1">
-                      <EmptyTitle className="text-[15px] tracking-normal">{title}</EmptyTitle>
-                      <EmptyDescription>{t.emptyHint}</EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                )}
-                {messages.map((m, i) => {
-                  const at = new Date(m.createdAt);
-                  const prev = messages[i - 1];
-                  const divider = needsDivider(prev && new Date(prev.createdAt), at);
-                  const newAuthor = divider || !prev || authorKey(prev.author) !== authorKey(m.author);
-                  const fromMe = m.kind === "user" && m.author?.kind === "user" && m.author.id === user.id;
-                  const showAuthor = newAuthor && !fromMe && m.kind !== "event" && (group || (m.kind === "user" && !directBot)) && !!m.author;
-                  // A bot's reply takes the place of its live turn and ours of its pending copy: only others' messages arrive.
-                  const arriving = m.kind === "user" && !fromMe && arrived(m.id);
-                  /** A Claude Code session started here: its card instead of the event line. */
-                  const codeStarted = m.kind === "event" && m.data?.event?.type === "code.started" ? m.data.event : null;
-                  return (
-                    <Fragment key={m.id}>
-                      {divider && <DateDivider label={dividerLabel(at)} />}
-                      {showAuthor && m.author && group && (
-                        <AuthorLine
-                          className={arriving ? "chat-arrive" : undefined}
-                          name={m.author.name}
-                          avatar={
-                            m.author.kind === "agent" ? (
-                              <AgentAvatar agent={m.author} className="size-5" />
-                            ) : (
-                              <PersonAvatar person={m.author} className="size-5" />
-                            )
-                          }
-                        />
-                      )}
-                      {m.kind === "user" && (
+  const thread = (
+    <section ref={root} className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
+      {dragging && conv && (
+        <div className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-brand bg-background/80 text-sm font-medium">
+          {directBot ? t.dropTo(directBot.name) : group ? t.dropToGroup : t.dropTo(title)}
+        </div>
+      )}
+      <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <HeaderTitle conv={conv} me={user.id} title={title} directBot={directBot} directPerson={directPerson} onOpenInfo={() => setPanel("info")} />
+        </div>
+        <PanelButtons
+          panel={panel}
+          setPanel={setPanel}
+          hasPanels={!!conv}
+          hasInfo={hasInfo}
+          sessions={
+            conv && (
+              <CodeSessionsButton
+                conversationId={conversationId}
+                current={codeSession}
+                onOpen={openCodeSession}
+                onOpenBeside={place.paneId ? (id) => openBeside(tabPath.code(conversationId, id), place.paneId!) : undefined}
+              />
+            )
+          }
+        />
+      </header>
+      {conv && <PinnedBar conversationId={conversationId} onJump={jumpTo} onSeeAll={() => setPanel("pins")} />}
+
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={scroller}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+            setScrolledUp(!atBottom.current);
+          }}
+          className="min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="flex flex-col gap-1.5 px-4 pb-6 pt-4">
+            {isPending && <Spinner className="chat-loading mx-auto mt-[20vh] size-5 text-muted-foreground" />}
+            {!isPending && messages.length === 0 && !sending.length && (
+              <Empty className="mx-auto mt-[20vh] max-w-sm flex-none p-0">
+                <EmptyHeader className="gap-1">
+                  <EmptyTitle className="text-[15px] tracking-normal">{title}</EmptyTitle>
+                  <EmptyDescription>{t.emptyHint}</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+            {messages.map((m, i) => {
+              const at = new Date(m.createdAt);
+              const prev = messages[i - 1];
+              const divider = needsDivider(prev && new Date(prev.createdAt), at);
+              const newAuthor = divider || !prev || authorKey(prev.author) !== authorKey(m.author);
+              const fromMe = m.kind === "user" && m.author?.kind === "user" && m.author.id === user.id;
+              const showAuthor = newAuthor && !fromMe && m.kind !== "event" && (group || (m.kind === "user" && !directBot)) && !!m.author;
+              // A bot's reply takes the place of its live turn and ours of its pending copy: only others' messages arrive.
+              const arriving = m.kind === "user" && !fromMe && arrived(m.id);
+              /** A Claude Code session started here: its card instead of the event line. */
+              const codeStarted = m.kind === "event" && m.data?.event?.type === "code.started" ? m.data.event : null;
+              return (
+                <Fragment key={m.id}>
+                  {divider && <DateDivider label={dividerLabel(at)} />}
+                  {showAuthor && m.author && group && (
+                    <AuthorLine
+                      className={arriving ? "chat-arrive" : undefined}
+                      name={m.author.name}
+                      avatar={
+                        m.author.kind === "agent" ? (
+                          <AgentAvatar agent={m.author} className="size-5" />
+                        ) : (
+                          <PersonAvatar person={m.author} className="size-5" />
+                        )
+                      }
+                    />
+                  )}
+                  {m.kind === "user" && (
+                    <MessageRow
+                      id={m.id}
+                      mine={fromMe}
+                      arriving={arriving}
+                      highlighted={highlight === m.id}
+                      text={m.text}
+                      attachments={m.data?.attachments}
+                      onReply={() => setReplyTo(quoteOf(m))}
+                      onForward={() => setForwarding(m)}
+                      pinned={isPinned({ messageId: m.id })}
+                      onTogglePin={() => togglePin({ messageId: m.id })}
+                      onDelete={fromMe ? () => deleteMessage(m.id) : undefined}
+                    >
+                      <ChatMessage
+                        mine={fromMe}
+                        text={m.text}
+                        attachments={m.data?.attachments}
+                        invocations={fromMe ? m.data?.invocations : undefined}
+                        replyTo={m.data?.replyTo}
+                        forwarded={m.data?.forwarded}
+                        mentionables={mentions}
+                        onQuote={jumpTo}
+                      />
+                    </MessageRow>
+                  )}
+                  {m.kind === "bot" && (
+                    <>
+                      {m.data?.tools && <ToolLine tools={m.data.tools} />}
+                      {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
+                      {(m.text || !!m.data?.codeSessions?.length) && (
                         <MessageRow
                           id={m.id}
-                          mine={fromMe}
-                          arriving={arriving}
+                          wide
                           highlighted={highlight === m.id}
                           text={m.text}
-                          attachments={m.data?.attachments}
                           onReply={() => setReplyTo(quoteOf(m))}
                           onForward={() => setForwarding(m)}
                           pinned={isPinned({ messageId: m.id })}
                           onTogglePin={() => togglePin({ messageId: m.id })}
-                          onDelete={fromMe ? () => deleteMessage(m.id) : undefined}
+                          onDelete={() => deleteMessage(m.id)}
                         >
-                          <ChatMessage
-                            mine={fromMe}
-                            text={m.text}
-                            attachments={m.data?.attachments}
-                            invocations={fromMe ? m.data?.invocations : undefined}
-                            replyTo={m.data?.replyTo}
-                            forwarded={m.data?.forwarded}
-                            mentionables={mentions}
-                            onQuote={jumpTo}
-                          />
+                          {m.data?.codeSessions?.length ? (
+                            <ReplyWithSessions
+                              conversationId={conversationId}
+                              text={m.text}
+                              sessions={m.data.codeSessions}
+                              onOpen={openCodeSession}
+                              bubble={(text) => <BotBubble text={text} mentionables={mentions} className="max-w-full" />}
+                            />
+                          ) : (
+                            <BotBubble text={m.text} mentionables={mentions} className="max-w-full" />
+                          )}
                         </MessageRow>
                       )}
-                      {m.kind === "bot" && (
-                        <>
-                          {m.data?.tools && <ToolLine tools={m.data.tools} />}
-                          {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
-                          {(m.text || !!m.data?.codeSessions?.length) && (
-                            <MessageRow
-                              id={m.id}
-                              wide
-                              highlighted={highlight === m.id}
-                              text={m.text}
-                              onReply={() => setReplyTo(quoteOf(m))}
-                              onForward={() => setForwarding(m)}
-                              pinned={isPinned({ messageId: m.id })}
-                              onTogglePin={() => togglePin({ messageId: m.id })}
-                              onDelete={() => deleteMessage(m.id)}
-                            >
-                              {m.data?.codeSessions?.length ? (
-                                <ReplyWithSessions
-                                  conversationId={conversationId}
-                                  text={m.text}
-                                  sessions={m.data.codeSessions}
-                                  onOpen={openCodeSession}
-                                  bubble={(text) => <BotBubble text={text} mentionables={mentions} className="max-w-full" />}
-                                />
-                              ) : (
-                                <BotBubble text={m.text} mentionables={mentions} className="max-w-full" />
-                              )}
-                            </MessageRow>
-                          )}
-                          {m.data?.views && <BotViews message={m} views={m.data.views} answers={viewAnswers} send={send} />}
-                          {m.data?.previews && <PreviewCards previews={m.data.previews} onOpen={openPreview} />}
-                          <BotFiles message={m} />
-                          {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
-                          {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
-                        </>
-                      )}
-                      {codeStarted && (
-                        <CodeSessionCard
-                          conversationId={conversationId}
-                          sessionId={codeStarted.sessionId}
-                          title={codeStarted.title}
-                          onOpen={() => openCodeSession(codeStarted.sessionId)}
-                        />
-                      )}
-                      {m.kind === "event" && !codeStarted && (
-                        <DateDivider
-                          label={eventText(m.text, m.data?.event)}
-                          conversationId={m.data?.event?.type === "relay.group" ? m.data.event.conversationId : undefined}
-                        />
-                      )}
-                    </Fragment>
-                  );
-                })}
-                {question?.data?.questions && (
-                  <QuestionsCard
-                    key={question.id}
-                    questions={question.data.questions}
-                    onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
-                    onDismiss={() => setDismissed(question.id)}
-                  />
-                )}
-                {question?.data?.choices && (
-                  <ChoiceCard
-                    key={question.id}
-                    choices={question.data.choices}
-                    onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
-                    onDismiss={() => setDismissed(question.id)}
-                  />
-                )}
-                {sending.map((s) => (
-                  <Fragment key={s.key}>
-                    <PendingRow failed={s.failed}>
-                      <ChatMessage mine text={s.text} attachments={s.attachments} invocations={s.invocations} replyTo={s.replyTo} mentionables={mentions} onQuote={jumpTo} />
-                    </PendingRow>
-                    {s.failed && (
-                      <p role="alert" className="text-right text-[13px] text-destructive">
-                        {t.sendFailed}
-                      </p>
-                    )}
-                  </Fragment>
-                ))}
-                {turns.map((turn) => (
-                  <LiveTurn
-                    key={turn.turnId}
-                    turn={turn}
-                    bot={agentById(turn.agentId)}
-                    conversationId={conversationId}
-                    group={group}
-                    mentionables={mentions}
-                    onOpenCode={openCodeSession}
-                    onOpenPreview={openPreview}
-                  />
-                ))}
-                {typing.length > 0 && (
-                  <p className="chat-arrive mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
-                    <TypingBubble label="" />
-                    {t.peopleTyping(typing.map((p) => p.name.split(" ")[0]).join(", "), typing.length)}
-                  </p>
-                )}
-              </div>
-            </div>
-            {scrolledUp && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-md"
-                onClick={() => {
-                  atBottom.current = true;
-                  scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
-                }}
-              >
-                {t.latest}
-              </Button>
-            )}
-          </div>
-
-          <div className="shrink-0 px-4 pb-3">
-            {mine.length > 0 && (
-              <div className="mb-2 flex justify-center">
-                <Button variant="outline" size="sm" onClick={() => mine.forEach((t) => stop(t.turnId))} className="text-muted-foreground hover:text-foreground">
-                  {t.stop}
-                </Button>
-              </div>
-            )}
-            {conv && (
-              <Composer
-                key={conversationId}
-                ref={composer}
-                conversationId={conversationId}
-                placeholder={placeholder}
-                botTools={!!directBot}
-                mentionables={group ? conv.agents : []}
-                recipientId={directPerson?.id}
-                onSend={(text, attachments, invocations, mentions) => {
-                  send(text, attachments, invocations, mentions, replyTo ?? undefined);
-                  setReplyTo(null);
-                }}
-                onTyping={onTyping}
-                replyTo={replyTo}
-                onCancelReply={() => setReplyTo(null)}
+                      {m.data?.views && <BotViews message={m} views={m.data.views} answers={viewAnswers} send={send} />}
+                      {m.data?.previews && <PreviewCards previews={m.data.previews} onOpen={openPreview} />}
+                      <BotFiles message={m} />
+                      {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
+                      {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
+                    </>
+                  )}
+                  {codeStarted && (
+                    <CodeSessionCard
+                      conversationId={conversationId}
+                      sessionId={codeStarted.sessionId}
+                      title={codeStarted.title}
+                      onOpen={() => openCodeSession(codeStarted.sessionId)}
+                    />
+                  )}
+                  {m.kind === "event" && !codeStarted && (
+                    <DateDivider
+                      label={eventText(m.text, m.data?.event)}
+                      conversationId={m.data?.event?.type === "relay.group" ? m.data.event.conversationId : undefined}
+                    />
+                  )}
+                </Fragment>
+              );
+            })}
+            {question?.data?.questions && (
+              <QuestionsCard
+                key={question.id}
+                questions={question.data.questions}
+                onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
+                onDismiss={() => setDismissed(question.id)}
               />
             )}
-            <ForwardDialog conversationId={conversationId} message={forwarding} onClose={() => setForwarding(null)} />
+            {question?.data?.choices && (
+              <ChoiceCard
+                key={question.id}
+                choices={question.data.choices}
+                onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
+                onDismiss={() => setDismissed(question.id)}
+              />
+            )}
+            {sending.map((s) => (
+              <Fragment key={s.key}>
+                <PendingRow failed={s.failed}>
+                  <ChatMessage mine text={s.text} attachments={s.attachments} invocations={s.invocations} replyTo={s.replyTo} mentionables={mentions} onQuote={jumpTo} />
+                </PendingRow>
+                {s.failed && (
+                  <p role="alert" className="text-right text-[13px] text-destructive">
+                    {t.sendFailed}
+                  </p>
+                )}
+              </Fragment>
+            ))}
+            {turns.map((turn) => (
+              <LiveTurn
+                key={turn.turnId}
+                turn={turn}
+                bot={agentById(turn.agentId)}
+                conversationId={conversationId}
+                group={group}
+                mentionables={mentions}
+                onOpenCode={openCodeSession}
+                onOpenPreview={openPreview}
+              />
+            ))}
+            {typing.length > 0 && (
+              <p className="chat-arrive mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
+                <TypingBubble label="" />
+                {t.peopleTyping(typing.map((p) => p.name.split(" ")[0]).join(", "), typing.length)}
+              </p>
+            )}
           </div>
-        </section>
-
-        {panel === "info" && directBot && (
-          <div className="hidden border-l border-border/60 lg:block">
-            <RightPanel
-              conversationId={conversationId}
-              agentId={directBot.id}
-              agentName={directBot.name}
-              onMention={(r) =>
-                composer.current?.addInvocation({
-                  kind: "routine",
-                  id: r.id,
-                  name: r.name,
-                })
-              }
-              onClose={() => setPanel(null)}
-            />
-          </div>
-        )}
-        {panel === "info" && directPerson && (
-          <div className="hidden border-l border-border/60 lg:block">
-            <PersonPanel userId={directPerson.id} onClose={() => setPanel(null)} />
-          </div>
-        )}
-        {panel === "info" && group && conv && (
-          <div className="hidden border-l border-border/60 lg:block">
-            <MembersPanel conversation={conv} onClose={() => setPanel(null)} />
-          </div>
-        )}
-        {codeSession && (
-          <div className="border-l border-border/60 max-lg:contents">
-            <CodeSessionPanel key={codeSession} conversationId={conversationId} sessionId={codeSession} onOpen={openCodeSession} onClose={() => setCodeSession(null)} />
-          </div>
-        )}
-        {previewKey && (
-          <div className="border-l border-border/60 max-lg:contents">
-            <PreviewPanel key={previewKey} source={preview} onClose={() => setPreviewKey(null)} />
-          </div>
-        )}
-        {panel && panel !== "info" && conv && (
-          <div className="hidden border-l border-border/60 lg:block">
-            <ConversationPanel key={`${conversationId}:${panel}`} kind={panel} conversationId={conversationId} onJump={jumpTo} onClose={() => setPanel(null)} />
-          </div>
+        </div>
+        {scrolledUp && (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-md"
+            onClick={() => {
+              atBottom.current = true;
+              scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+            }}
+          >
+            {t.latest}
+          </Button>
         )}
       </div>
+
+      <div className="shrink-0 px-4 pb-3">
+        {mine.length > 0 && (
+          <div className="mb-2 flex justify-center">
+            <Button variant="outline" size="sm" onClick={() => mine.forEach((t) => stop(t.turnId))} className="text-muted-foreground hover:text-foreground">
+              {t.stop}
+            </Button>
+          </div>
+        )}
+        {conv && (
+          <Composer
+            key={conversationId}
+            ref={composer}
+            conversationId={conversationId}
+            placeholder={placeholder}
+            botTools={!!directBot}
+            mentionables={group ? conv.agents : []}
+            recipientId={directPerson?.id}
+            onSend={(text, attachments, invocations, mentions) => {
+              send(text, attachments, invocations, mentions, replyTo ?? undefined);
+              setReplyTo(null);
+            }}
+            onTyping={onTyping}
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+          />
+        )}
+        <ForwardDialog conversationId={conversationId} message={forwarding} onClose={() => setForwarding(null)} />
+      </div>
+    </section>
+  );
+
+  return (
+    <ConversationFilesProvider messages={messages}>
+      {wide ? (
+        // The thread and its side panel, the line between them dragged to share the width.
+        <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">
+          <ResizablePanel id={`thread-${conversationId}`} minSize={320}>
+            {thread}
+          </ResizablePanel>
+          {sideKind && sideView && (
+            <>
+              <ResizableHandle className="bg-border/60" />
+              <ResizablePanel
+                key={sideKind}
+                id={`${sideKind}-${conversationId}`}
+                defaultSize={readSize(`side.${sideKind}`, SIDE_WIDTHS[sideKind])}
+                minSize={260}
+                maxSize="75%"
+                groupResizeBehavior="preserve-pixel-size"
+                onResize={(size, _, prev) => prev && writeSize(`side.${sideKind}`, size.inPixels)}
+              >
+                {sideView}
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
+      ) : (
+        // Narrower: the session and the mockup open in a sheet over the thread; the other panels wait for the room.
+        <div className="flex h-full min-w-0 flex-1">
+          {thread}
+          {(codeSession || previewKey) && sideView}
+        </div>
+      )}
     </ConversationFilesProvider>
   );
 }

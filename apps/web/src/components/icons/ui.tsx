@@ -383,6 +383,12 @@ export const PanelLeftIcon = createIcon("panel-left", {
   cut: <path d="M9 3v18" />,
 });
 
+/** Two panes side by side: split view, opening beside. */
+export const SplitIcon = createIcon("split", {
+  fill: <rect x="2" y="3" width="20" height="18" rx="4.5" />,
+  cut: <path d="M12 3v18" />,
+});
+
 export const SettingsIcon = createIcon("settings", {
   fill: <path d={gear} />,
   cut: <Hole d={circle(12, 12, 3.25)} />,

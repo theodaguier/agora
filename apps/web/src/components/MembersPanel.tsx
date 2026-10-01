@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Spinner } from "@/components/ui/spinner";
 import { api, conversationPath, type ConversationDetail } from "@/lib/api";
 import { openAgentProfile, openProfile } from "@/lib/profile";
+import { closeOrGoHome, tabPath } from "@/lib/workspace";
 import { agentsQuery, conversationQuery, conversationsQuery, usersQuery } from "@/lib/queries";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -126,7 +127,7 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
     onSuccess: async (_, m) => {
       if (m.kind === "user" && m.id === user.id) {
         await qc.invalidateQueries({ queryKey: conversationsQuery.queryKey });
-        navigate({ to: "/" });
+        closeOrGoHome(tabPath.conversation(conv.id), () => navigate({ to: "/" }));
         return;
       }
       await refresh();
@@ -138,7 +139,7 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
   });
 
   return (
-    <aside className="flex h-full w-[320px] shrink-0 flex-col bg-sidebar">
+    <aside className="flex h-full w-full flex-col bg-sidebar">
       <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-3">
         <span className="text-[13px] font-medium text-muted-foreground">{t.group}</span>
         <ShortcutTooltip label={t.hidePanel} shortcut={shortcuts.togglePanel}>

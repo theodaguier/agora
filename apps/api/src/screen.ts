@@ -1,5 +1,6 @@
 import { mkdir, readdir, readFile, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { SCREEN_DEVICES, type ScreenViewport } from "@agora/core";
 import { env } from "./env";
 import { installHermesPlugin, restartGateway } from "./hermes-admin";
 
@@ -19,11 +20,14 @@ import { installHermesPlugin, restartGateway } from "./hermes-admin";
  * one frame per FRAME_MS: the last one. The browser itself is never
  * started here: Hermes closes it when idle, and the stream ends with it.
  * A member can also take control of it (`screenInput`): clicks, scrolling,
- * keys, navigation.
+ * keys, navigation, and the size it renders at (a phone, a tablet, a computer).
+ * That size is an override of this API's DevTools session: it lasts while the
+ * screen is watched, and the browser gets its own window back when nobody is.
  */
 
 export type ScreenFrame = { data: string; url: string; width: number; height: number };
-export type ScreenViewer = { frame: (f: ScreenFrame) => void; state: (live: boolean) => void };
+export type ScreenState = { live: boolean; viewport: ScreenViewport };
+export type ScreenViewer = { frame: (f: ScreenFrame) => void; state: (s: ScreenState) => void };
 /** What a member does on the screen; x and y are fractions of the frame (0 to 1). */
 export type ScreenInput =
   | { type: "click"; x: number; y: number }
@@ -31,7 +35,8 @@ export type ScreenInput =
   | { type: "key"; key: string; code: string; keyCode: number; modifiers: number }
   | { type: "text"; text: string }
   | { type: "navigate"; url: string }
-  | { type: "back" | "forward" | "reload" };
+  | { type: "back" | "forward" | "reload" }
+  | { type: "viewport"; viewport: ScreenViewport };
 type Control = (input: ScreenInput) => Promise<void>;
 
 const FRAME_MS = 200;
@@ -84,6 +89,23 @@ async function findBrowser(conversationId: string): Promise<number | null> {
 const typed = (key: string) => (key === "Enter" ? "\r" : key.length === 1 ? key : undefined);
 
 type Target = { targetId: string; type: string; url: string };
+type Send = (method: string, params?: object, sessionId?: string) => Promise<any>;
+
+/** Renders the page at a device's size (touch included for the phone and the tablet), or in the browser's own window. */
+async function applyViewport(send: Send, sessionId: string, viewport: ScreenViewport) {
+  if (viewport === "auto") {
+    await send("Emulation.clearDeviceMetricsOverride", {}, sessionId);
+    await send("Emulation.setTouchEmulationEnabled", { enabled: false }, sessionId);
+    return;
+  }
+  const d = SCREEN_DEVICES[viewport];
+  await send(
+    "Emulation.setDeviceMetricsOverride",
+    { width: d.width, height: d.height, deviceScaleFactor: d.scale, mobile: d.mobile, screenWidth: d.width, screenHeight: d.height },
+    sessionId,
+  );
+  await send("Emulation.setTouchEmulationEnabled", { enabled: d.mobile, ...(d.mobile && { maxTouchPoints: 5 }) }, sessionId);
+}
 
 const isPage = (t: Target) => t.type === "page" && !t.url.startsWith("devtools://");
 const isBlank = (t: Target) => t.url === "about:blank" || t.url === "";
@@ -92,7 +114,13 @@ const isBlank = (t: Target) => t.url === "about:blank" || t.url === "";
  * One screencast of one browser, for as long as the socket lives. Resolves
  * when the browser goes away (closed by Hermes, or `close()`).
  */
-async function cast(port: number, onFrame: (f: ScreenFrame) => void, onControl: (control: Control) => void, signal: AbortSignal) {
+async function cast(
+  port: number,
+  viewport: () => ScreenViewport,
+  onFrame: (f: ScreenFrame) => void,
+  onControl: (control: Control) => void,
+  signal: AbortSignal,
+) {
   const cdp = (path: string) => fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(2_000) }).then((r) => r.json());
   const version = await cdp("/json/version");
   // Most recently active first: seeded oldest → newest, the order the Map keeps.
@@ -101,7 +129,7 @@ async function cast(port: number, onFrame: (f: ScreenFrame) => void, onControl: 
   const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`);
   let nextId = 1;
   const pending = new Map<number, (result: any) => void>();
-  const send = (method: string, params: object = {}, sessionId?: string) =>
+  const send: Send = (method, params = {}, sessionId) =>
     new Promise<any>((resolve) => {
       const id = nextId++;
       pending.set(id, resolve);
@@ -125,6 +153,7 @@ async function cast(port: number, onFrame: (f: ScreenFrame) => void, onControl: 
       const { sessionId } = await send("Target.attachToTarget", { targetId: pick.targetId, flatten: true });
       if (!sessionId) return;
       current = { targetId: pick.targetId, sessionId };
+      await applyViewport(send, sessionId, viewport());
       await send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 1920, maxHeight: 1200 }, sessionId);
     }).catch(() => {}));
 
@@ -211,6 +240,9 @@ async function cast(port: number, onFrame: (f: ScreenFrame) => void, onControl: 
       case "reload":
         await on("Page.reload");
         break;
+      case "viewport":
+        await applyViewport(send, session, input.viewport);
+        break;
       case "back":
       case "forward": {
         const { currentIndex, entries } = await on("Page.getNavigationHistory");
@@ -235,6 +267,8 @@ class Screen {
   viewers = new Set<ScreenViewer>();
   last: ScreenFrame | null = null;
   live = false;
+  /** The size its viewers chose; applied to every page it shows. */
+  viewport: ScreenViewport = "auto";
   /** Drives the browser on display, while there is one. */
   control: Control | null = null;
   private controller = new AbortController();
@@ -243,11 +277,22 @@ class Screen {
     void this.run();
   }
 
+  get state(): ScreenState {
+    return { live: this.live, viewport: this.viewport };
+  }
+
   private setLive(live: boolean) {
     if (live === this.live) return;
     this.live = live;
     if (!live) this.last = null;
-    for (const v of this.viewers) v.state(live);
+    for (const v of this.viewers) v.state(this.state);
+  }
+
+  async setViewport(viewport: ScreenViewport) {
+    if (viewport === this.viewport) return;
+    this.viewport = viewport;
+    for (const v of this.viewers) v.state(this.state);
+    await this.control?.({ type: "viewport", viewport });
   }
 
   private async run() {
@@ -274,6 +319,7 @@ class Screen {
         try {
           await cast(
             port,
+            () => this.viewport,
             (f) => {
               this.last = f;
               this.setLive(true);
@@ -309,7 +355,7 @@ export function watchScreen(conversationId: string, viewer: ScreenViewer) {
   let screen = screens.get(conversationId);
   if (!screen) screens.set(conversationId, (screen = new Screen(conversationId)));
   screen.viewers.add(viewer);
-  viewer.state(screen.live);
+  viewer.state(screen.state);
   if (screen.last) viewer.frame(screen.last);
   return () => {
     screen.viewers.delete(viewer);
@@ -319,9 +365,14 @@ export function watchScreen(conversationId: string, viewer: ScreenViewer) {
   };
 }
 
-/** Acts on the conversation's screen for a member; false when no browser is on display. */
+/** Acts on the conversation's screen for a member; false when no browser is on display (its size can be chosen beforehand). */
 export async function screenInput(conversationId: string, input: ScreenInput) {
-  const control = screens.get(conversationId)?.control;
+  const screen = screens.get(conversationId);
+  if (input.type === "viewport" && screen) {
+    await screen.setViewport(input.viewport);
+    return true;
+  }
+  const control = screen?.control;
   if (!control) return false;
   await control(input);
   return true;
