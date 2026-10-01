@@ -1,9 +1,12 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { Chip, CloseButton, ScrollShadow, Spinner, Surface, Typography, useThemeColor } from "heroui-native";
+import { useState } from "react";
 import { ScrollView, View } from "react-native";
+import type { LocalFile } from "@/components/composer/attach-menu";
 import { FileTextIcon, WarningIcon } from "@/components/icons";
+import { uploadAttachment } from "@/lib/api";
 import { formatSize } from "@/lib/format";
-import { withTap } from "@/lib/haptics";
+import { haptic, withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
 import type { Attachment } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -27,6 +30,36 @@ export type PendingFile = {
   attachment?: Attachment;
   error?: string;
 };
+
+const MAX_FILE = 25 * 1024 * 1024;
+
+const newKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+/** Files attached to the message being written, uploaded as soon as they're added (the Claude Code session's field too). */
+export function usePendingFiles(conversationId: string, t: { tooLarge: string; uploadFailed: string }) {
+  const [files, setFiles] = useState<PendingFile[]>([]);
+  const addFiles = (list: LocalFile[]) => {
+    for (const file of list.slice(0, 10)) {
+      const key = newKey();
+      const pending = { key, name: file.name, mime: file.mime, size: file.size ?? 0, uri: file.uri };
+      if (file.size && file.size > MAX_FILE) {
+        haptic.error();
+        setFiles((xs) => [...xs, { ...pending, status: "error", error: t.tooLarge }]);
+        continue;
+      }
+      setFiles((xs) => [...xs, { ...pending, status: "uploading" }]);
+      uploadAttachment(conversationId, file).then(
+        (attachment) => setFiles((xs) => xs.map((x) => (x.key === key ? { ...x, status: "ready", attachment } : x))),
+        () => {
+          haptic.error();
+          setFiles((xs) => xs.map((x) => (x.key === key ? { ...x, status: "error", error: t.uploadFailed } : x)));
+        },
+      );
+    }
+  };
+  const removeFile = (key: string) => setFiles((xs) => xs.filter((x) => x.key !== key));
+  return { files, setFiles, addFiles, removeFile };
+}
 
 /** Images as thumbnails, other files as chips; a spinner while uploading, the reason when it failed. */
 export function PendingFiles({ items, onRemove }: { items: PendingFile[]; onRemove: (key: string) => void }) {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Fragment, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
 import {
   CODE_PERMISSION_MODES,
   codeApprovalLine,
@@ -44,8 +44,8 @@ import {
   UserIcon,
   WarningIcon,
 } from "@/components/icons";
-import { BesideButton } from "@/components/BesideButton";
-import { TabChip } from "@/components/TabChip";
+import { PendingFiles, SentAttachments } from "@/components/Attachments";
+import { usePendingFiles } from "@/components/Composer";
 import { MessageText } from "@/components/MessageText";
 import { GroupHeading, ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
@@ -491,19 +491,22 @@ function NewSessionView({
   const [model, setModel] = useState<string | null>(null);
   const [mode, setMode] = useState<CodePermissionMode>("bypassPermissions");
   const [text, setText] = useState("");
+  const files = useInstructionFiles(conversationId);
   const start = useMutation({
-    mutationFn: (task: string) => startCodeSession(conversationId, { task, mode, ...(repo && { repo }), ...(model && { model }) }),
+    mutationFn: ({ task, attachmentIds }: { task: string; attachmentIds: string[] }) =>
+      startCodeSession(conversationId, { task, attachmentIds, mode, ...(repo && { repo }), ...(model && { model }) }),
     onSuccess: (s) => {
+      files.clear();
       applyCodeSession(qc, s);
       onStarted(s.id);
     },
   });
+  const canSend = !files.uploading && !start.isPending && (!!text.trim() || files.ids.length > 0);
   const submit = () => {
-    const value = text.trim();
-    if (value && !start.isPending) start.mutate(value);
+    if (canSend) start.mutate({ task: text.trim(), attachmentIds: files.ids });
   };
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div {...fileDrop(files.add)} className="flex min-h-0 flex-1 flex-col">
       <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium leading-snug">{t.newSession}</p>
@@ -525,6 +528,7 @@ function NewSessionView({
           }}
           className="rounded-[22px] bg-secondary p-1.5"
         >
+          <PendingFiles items={files.files} onRemove={files.remove} />
           <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent">
             <InputGroupTextarea
               rows={2}
@@ -533,6 +537,7 @@ function NewSessionView({
               readOnly={start.isPending}
               placeholder={t.placeholderNew}
               onChange={(e) => setText(e.target.value)}
+              onPaste={files.onPaste}
               onKeyDown={(e) => {
                 if (e.key === "Tab" && e.shiftKey) {
                   e.preventDefault();
@@ -547,11 +552,12 @@ function NewSessionView({
               className="max-h-60 min-h-0 min-w-0 px-2 py-1 text-[15px] leading-6 md:text-[15px]"
             />
             <InputGroupAddon align="block-end" className="cursor-default gap-1 px-0 pb-0">
+              <AttachButton onFiles={files.add} disabled={start.isPending} />
               <RepoPicker conversationId={conversationId} recent={recent} value={repo} onSelect={setRepo} />
               <ModePicker value={mode} onSelect={setMode} />
               <span className="flex-1" />
               <CodeModelPicker conversationId={conversationId} value={model} onSelect={setModel} />
-              <Button type="submit" size="icon" aria-label={t.send} disabled={!text.trim() || start.isPending} className="disabled:opacity-40">
+              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="disabled:opacity-40">
                 {start.isPending ? <Spinner /> : <ArrowUpIcon strokeWidth={2.25} />}
               </Button>
             </InputGroupAddon>
@@ -559,6 +565,67 @@ function NewSessionView({
         </form>
       </div>
     </div>
+  );
+}
+
+/** The files of an instruction: uploaded to the conversation as they are added, their ids sent with it. */
+function useInstructionFiles(conversationId: string) {
+  const t = useT(messages);
+  const { files, setFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
+  return {
+    files,
+    add: addFiles,
+    remove: removeFile,
+    uploading: files.some((f) => f.status === "uploading"),
+    ids: files.flatMap((f) => (f.status === "done" && f.attachment ? [f.attachment.id] : [])),
+    /** Sent: the instruction shows them from the server from now on. */
+    clear: () => {
+      for (const f of files) if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+      setFiles([]);
+    },
+    onPaste: (e: ClipboardEvent) => {
+      if (!e.clipboardData.files.length) return;
+      e.preventDefault();
+      addFiles(e.clipboardData.files);
+    },
+  };
+}
+
+/** Files dropped anywhere on the panel go to its field; the conversation's own drop leaves them (data-file-drop). */
+const fileDrop = (onFiles: (files: FileList) => void) => ({
+  "data-file-drop": true,
+  onDragOver: (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  },
+  onDrop: (e: DragEvent) => {
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    onFiles(e.dataTransfer.files);
+  },
+});
+
+/** "+" beside the field, as in the conversation's: images, screenshots, any file for Claude Code. */
+function AttachButton({ onFiles, disabled }: { onFiles: (files: FileList) => void; disabled?: boolean }) {
+  const t = useT(messages);
+  const picker = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input
+        ref={picker}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files) onFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <InputGroupButton size="icon-sm" aria-label={t.attachFiles} disabled={disabled} onClick={() => picker.current?.click()}>
+        <PlusIcon className="size-5" strokeWidth={1.75} />
+      </InputGroupButton>
+    </>
   );
 }
 
@@ -731,9 +798,10 @@ function CodeSessionView({
   }, [session?.steps]);
 
   const owner = !!session && session.requestedBy === user.id;
+  const composer = useRef<{ addFiles: (files: FileList) => void }>(null);
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div {...(owner && fileDrop((files) => composer.current?.addFiles(files)))} className="flex min-h-0 flex-1 flex-col">
       <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
         {session && <StatusIcon status={session.status} className="mt-1 shrink-0" />}
         <div className="min-w-0 flex-1">
@@ -807,7 +875,7 @@ function CodeSessionView({
             {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
             {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
             {owner ? (
-              <SessionComposer conversationId={conversationId} session={session} />
+              <SessionComposer ref={composer} conversationId={conversationId} session={session} />
             ) : (
               <p className="px-1 text-[13px] text-muted-foreground">{t.readOnly}</p>
             )}
@@ -1295,7 +1363,8 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
       return (
         <div className="flex flex-col items-end gap-1">
           {step.by && <span className="px-1 text-[12px] text-muted-foreground">{step.by}</span>}
-          <p className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3.5 py-2 text-sm">{step.text}</p>
+          {!!step.files?.length && <SentAttachments items={step.files} className="max-w-[88%]" />}
+          {step.text && <p className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3.5 py-2 text-sm">{step.text}</p>}
         </div>
       );
     case "text":
@@ -1606,7 +1675,7 @@ function slashQuery(text: string, caret: number) {
  * Same field as the conversation's: the instruction, the session's mode and model, send. "/" at its
  * start lists Claude Code's skills and slash commands, as in its terminal; Shift+Tab switches the mode.
  */
-function SessionComposer({ conversationId, session }: { conversationId: string; session: CodeSession }) {
+function SessionComposer({ conversationId, session, ref }: { conversationId: string; session: CodeSession; ref?: Ref<{ addFiles: (files: FileList) => void }> }) {
   const t = useT(messages);
   const qc = useQueryClient();
   const area = useRef<HTMLTextAreaElement>(null);
@@ -1614,11 +1683,14 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [dismissed, setDismissed] = useState(false);
+  const files = useInstructionFiles(conversationId);
+  useImperativeHandle(ref, () => ({ addFiles: files.add }));
   const send = useMutation({
-    mutationFn: (value: string) => sendToCodeSession(conversationId, session.id, value),
+    mutationFn: ({ value, attachmentIds }: { value: string; attachmentIds: string[] }) => sendToCodeSession(conversationId, session.id, value, attachmentIds),
     onSuccess: (s) => {
       applyCodeSession(qc, s);
       setText("");
+      files.clear();
     },
   });
   const stop = useMutation({
@@ -1634,10 +1706,10 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
   const query = dismissed ? null : slashQuery(text, caret);
   const items = query === null ? [] : commandItems(session, query);
   // While Claude Code works, the send button stops it; typing turns it back into send (an instruction mid-run).
-  const stoppable = active(session.status) && !text.trim();
+  const stoppable = active(session.status) && !text.trim() && !files.files.length;
+  const canSend = !files.uploading && !send.isPending && (!!text.trim() || files.ids.length > 0);
   const submit = () => {
-    const value = text.trim();
-    if (value && !send.isPending) send.mutate(value);
+    if (canSend) send.mutate({ value: text.trim(), attachmentIds: files.ids });
   };
   const pick = (item: SlashItem) => {
     const next = `/${item.name} ${text.slice(caret).trimStart()}`;
@@ -1656,6 +1728,7 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
       className="relative rounded-[22px] bg-secondary p-1.5"
     >
       {query !== null && items.length > 0 && <SlashMenu items={items} active={Math.min(highlight, items.length - 1)} onHover={setHighlight} onPick={pick} />}
+      <PendingFiles items={files.files} onRemove={files.remove} />
       <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent">
         <InputGroupTextarea
           ref={area}
@@ -1672,6 +1745,7 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
             setDismissed(false);
           }}
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+          onPaste={files.onPaste}
           onKeyDown={(e) => {
             if (query !== null && items.length) {
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -1704,6 +1778,7 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
           className="max-h-40 min-h-0 min-w-0 px-2 py-1 text-[15px] leading-6 md:text-[15px]"
         />
         <InputGroupAddon align="block-end" className="cursor-default gap-1 px-0 pb-0">
+          <AttachButton onFiles={files.add} />
           <ModePicker value={session.mode} disabled={mode.isPending} onSelect={(value) => value !== session.mode && mode.mutate(value)} />
           <span className="flex-1" />
           <SessionModelPicker conversationId={conversationId} session={session} />
@@ -1712,7 +1787,7 @@ function SessionComposer({ conversationId, session }: { conversationId: string; 
               {stop.isPending ? <Spinner /> : <StopIcon className="size-5" />}
             </Button>
           ) : (
-            <Button type="submit" size="icon" aria-label={t.send} disabled={!text.trim() || send.isPending} className="disabled:opacity-40">
+            <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="disabled:opacity-40">
               <ArrowUpIcon strokeWidth={2.25} />
             </Button>
           )}

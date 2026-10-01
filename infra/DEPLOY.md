@@ -70,6 +70,11 @@ line, `docker compose -p agora exec -it --user hermes hermes hermes model`.
     checks, otherwise rollback with database restore.
   - A rejected version is no longer retried automatically ("Allow a new
     attempt" button in the admin).
+  - **Disk**: after each update (and when it starts), the updater removes the
+    app and Hermes images of every version but the running one and the one
+    before it, and the build cache unused for 3 days. Every hour, past 85% of
+    the disk used, it drops the whole build cache too. Without it each update
+    left a few GB behind until the disk filled up and Postgres stopped writing.
 - **The server's checkout follows**: on each app update (and rollback), the
   updater moves the git checkout to the version's tag (`vX.Y.Z`), since
   `docker-compose.yml`, the api image's Dockerfile, the Hermes plugins and the

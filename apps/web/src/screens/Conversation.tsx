@@ -395,7 +395,9 @@ function useWindowFileDrop(root: RefObject<HTMLElement | null>, place: TabPlace,
       e.preventDefault();
       dragDepth.current = 0;
       setDragging(false);
-      if (mine(e) && e.dataTransfer!.files.length) onFiles.current(e.dataTransfer!.files);
+      // Dropped on a field of its own (the Claude Code panel's), which takes them.
+      if (e.target instanceof Element && e.target.closest("[data-file-drop]")) return;
+      if (e.dataTransfer!.files.length) onFiles.current(e.dataTransfer!.files);
     };
     window.addEventListener("dragenter", enter);
     window.addEventListener("dragover", over);
