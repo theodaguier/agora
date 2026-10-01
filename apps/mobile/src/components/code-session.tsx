@@ -1,11 +1,11 @@
-import { codeApprovalLine, codeStatusText, placeCodeSessions, type CodeSession, type CodeSessionRef, type CodeSessionStatus } from "@agora/core";
+import { codeDetailLine, codeStatusText, placeCodeSessions, type CodeSession, type CodeSessionRef, type CodeSessionStatus } from "@agora/core";
 import { codeSessions } from "@agora/core/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, type Href } from "expo-router";
 import { Button, Card, ListGroup, Separator, Spinner } from "heroui-native";
 import { Fragment, useEffect, type ReactNode } from "react";
 import { View } from "react-native";
-import { CheckCircleIcon, ClockIcon, CloseCircleIcon, CodeIcon, ShieldAlertIcon } from "@/components/icons";
+import { ChatQuestionIcon, CheckCircleIcon, ClockIcon, CloseCircleIcon, CodeIcon, ShieldAlertIcon } from "@/components/icons";
 import { applyCodeSession, codeSessionsQuery, refreshCodeSessionGit } from "@/lib/code-sessions";
 import { dividerLabel } from "@/lib/dates";
 import { withTap } from "@/lib/haptics";
@@ -22,8 +22,10 @@ export const isActive = (s: CodeSessionStatus) => s === "running" || s === "wait
 
 export const codeSessionHref = (conversationId: string, sessionId: string) => `/code/${conversationId}/${sessionId}` as Href;
 
-export function StatusIcon({ status, className }: { status: CodeSessionStatus; className?: string }) {
+/** `asking`: it waits on its question to its bot, not on an approval. */
+export function StatusIcon({ status, asking, className }: { status: CodeSessionStatus; asking?: boolean; className?: string }) {
   if (status === "running") return <Spinner size="sm" className={className} />;
+  if (status === "waiting" && asking) return <ChatQuestionIcon size={18} className={cn("text-warning", className)} />;
   if (status === "waiting") return <ShieldAlertIcon size={18} className={cn("text-warning", className)} />;
   if (status === "idle") return <ClockIcon size={18} className={cn("text-muted", className)} />;
   if (status === "done") return <CheckCircleIcon size={18} className={cn("text-success", className)} />;
@@ -36,11 +38,11 @@ export function CodeSessionCard({ conversationId, sessionId, title }: { conversa
   const { data } = useQuery(codeSessionsQuery(conversationId));
   const session = data?.find((s) => s.id === sessionId);
   const status = session?.status ?? "running";
-  const detail = session?.approval ? codeApprovalLine(session.approval) : isActive(status) ? session?.activity : null;
+  const detail = session && codeDetailLine(session);
   return (
     <Card className="w-full max-w-[92%] self-start">
       <View className="flex-row items-center gap-3">
-        {session ? <StatusIcon status={status} /> : <CodeIcon size={18} className="text-muted" />}
+        {session ? <StatusIcon status={status} asking={!!session.question} /> : <CodeIcon size={18} className="text-muted" />}
         <View className="min-w-0 flex-1 gap-0.5">
           <Card.Title numberOfLines={1}>{session?.title ?? title}</Card.Title>
           <Card.Description numberOfLines={1}>
@@ -121,7 +123,7 @@ export function CodeSessionList({ conversationId, onOpen }: { conversationId: st
           {i > 0 && <Separator className="ml-12" />}
           <ListGroup.Item onPress={withTap(() => onOpen(s.id))} className="items-start">
             <ListGroup.ItemPrefix className="pt-0.5">
-              <StatusIcon status={s.status} />
+              <StatusIcon status={s.status} asking={!!s.question} />
             </ListGroup.ItemPrefix>
             <ListGroup.ItemContent className="gap-0.5">
               <ListGroup.ItemTitle numberOfLines={2}>{s.title}</ListGroup.ItemTitle>

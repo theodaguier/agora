@@ -157,7 +157,8 @@ function summary(s: Live): CodeSession {
     agentId: r.agentId,
     requestedBy: r.requestedBy,
     title: r.title,
-    status: statusOf(r),
+    // Its question to its bot holds the run as an approval does.
+    status: s.question && r.status === "running" ? "waiting" : statusOf(r),
     cwd: r.cwd,
     repo: r.repo,
     git: r.git,
@@ -179,6 +180,7 @@ function summary(s: Live): CodeSession {
       ...(a.questions && { questions: a.questions }),
       ...(a.plan !== undefined && { plan: a.plan }),
     },
+    question: s.question && { bot: s.bot ?? "", text: s.question.text, askedAt: s.question.askedAt.toISOString() },
     result: r.result,
     usage: r.usage,
     stepCount: s.transcript.steps.length,
@@ -274,8 +276,9 @@ export async function codeSessionReport(id: string) {
     .map((st) => (st.kind === "user" ? `${st.by ?? "?"}: ${clipLine(codeInstructionText(st), 400)}` : `[git ${st.action}${st.ok ? "" : " failed"}${st.by ? ` by ${st.by}` : ""}] ${st.text}`));
   const { id: _, conversationId: __, agentId: ___, requestedBy: ____, commands: _____, ...rest } = summary(s);
   // Its question to the bot: claude_code_wait returns on it, and claude_code_send answers it.
+  const { question: _q, ...report } = rest;
   const question = s.question && { text: s.question.text, asked_at: s.question.askedAt.toISOString() };
-  return { session_id: id, ...rest, ...(question && { question }), actions, history };
+  return { session_id: id, ...report, ...(question && { question }), actions, history };
 }
 
 /* ---------- broadcasting and saving ---------- */

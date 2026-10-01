@@ -5,6 +5,7 @@ import {
   questionAnswer,
   rankByQuery,
   type CodeApproval,
+  type CodeBotQuestion,
   type CodeGit,
   type CodeQuestion,
   type CodeSession,
@@ -51,7 +52,7 @@ import { PendingFiles, usePendingFiles } from "@/components/composer/pending-fil
 import { UserBubble } from "@/components/bubbles";
 import { isActive, StatusIcon } from "@/components/code-session";
 import { confirmAction } from "@/components/confirm-action";
-import { ArrowUpIcon, BranchIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, FolderIcon, ShieldAlertIcon, StopIcon, TaskListIcon, ToolIcon, UserIcon } from "@/components/icons";
+import { ArrowUpIcon, BranchIcon, ChatQuestionIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, FolderIcon, ShieldAlertIcon, StopIcon, TaskListIcon, ToolIcon, UserIcon } from "@/components/icons";
 import { MenuButton, MenuContent } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
@@ -162,7 +163,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               }}
             >
               <View className="flex-row items-start gap-2.5">
-                <StatusIcon status={session.status} className="mt-0.5" />
+                <StatusIcon status={session.status} asking={!!session.question} className="mt-0.5" />
                 <View className="min-w-0 flex-1 gap-1.5">
                   <Typography type="body-sm" color="muted">
                     {codeStatusText(t, session)}
@@ -202,6 +203,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 ) : (
                   session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
                 )}
+                {session.question && <BotQuestionBlock question={session.question} canAnswer={owner} />}
                 {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
                 {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
                 {owner ? (
@@ -835,6 +837,35 @@ function TodoMark({ status, running }: { status: CodeTodo["status"]; running: bo
   return <CircleIcon size={14} className={status === "in_progress" ? "text-foreground" : "text-muted"} />;
 }
 
+/**
+ * Its question to the bot that started it (ask_bot): the bot answers it, or its owner with the next
+ * message of the field below, which goes to it as the answer.
+ */
+function BotQuestionBlock({ question, canAnswer }: { question: CodeBotQuestion; canAnswer: boolean }) {
+  const t = tr(codeSessions);
+  const warning = useThemeColor("warning-soft-foreground");
+  return (
+    <Card role="alert" accessibilityLabel={t.botQuestion.title(question.bot)} className="gap-3">
+      <Card.Header className="flex-row items-start gap-3">
+        <Avatar alt="" size="sm" variant="soft" color="warning">
+          <Avatar.Fallback>
+            <ChatQuestionIcon size={16} color={warning} />
+          </Avatar.Fallback>
+        </Avatar>
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Card.Title>{t.botQuestion.title(question.bot)}</Card.Title>
+          <Card.Description>{canAnswer ? t.botQuestion.help(question.bot) : t.botQuestion.waiting(question.bot)}</Card.Description>
+        </View>
+      </Card.Header>
+      <Surface variant="secondary" className="p-0">
+        <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }} contentContainerClassName="px-3 py-2">
+          <MessageText text={question.text} />
+        </ScrollView>
+      </Surface>
+    </Card>
+  );
+}
+
 type Choice = { picked: string[]; other: string };
 
 const answerOf = (c: Choice | undefined) => (c ? questionAnswer(c.picked, c.other) : "");
@@ -1090,7 +1121,7 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
           multiline
           value={text}
           onChangeText={setText}
-          placeholder={isActive(session.status) ? t.placeholderRunning : session.commands.length ? t.commands.hint : t.placeholderIdle}
+          placeholder={session.question ? t.placeholderAnswer : isActive(session.status) ? t.placeholderRunning : session.commands.length ? t.commands.hint : t.placeholderIdle}
           className="max-h-[152px] bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
         />
         <View className="flex-row items-center gap-2">
