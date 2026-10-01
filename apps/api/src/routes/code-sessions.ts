@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { attachCodeSession, turnOfHermesSession } from "../bot-runner";
@@ -32,6 +32,15 @@ import { repoEnv, RepoEnvError, saveRepoEnv } from "../repo-env";
 
 const TEXT_MAX = 20_000;
 const MODE = z.enum(["default", "acceptEdits", "plan", "bypassPermissions"]);
+/** Files uploaded to the conversation (POST /conversations/:id/attachments), joined to an instruction. */
+const ATTACHMENTS = z.array(z.string().uuid()).max(10).default([]);
+
+/** The conversation's attachments named, all of them or null. */
+async function attachmentsOf(conversationId: string, ids: string[]) {
+  if (!ids.length) return [];
+  const rows = await db.select().from(schema.attachment).where(and(eq(schema.attachment.conversationId, conversationId), inArray(schema.attachment.id, ids)));
+  return rows.length === new Set(ids).size ? ids.map((id) => rows.find((r) => r.id === id)!) : null;
+}
 
 function failure(c: Context, err: unknown) {
   if (err instanceof CodeSessionError) {
@@ -61,9 +70,12 @@ export const codeSessions = new Hono<AppEnv>()
     if (!conv) return c.json({ error: "not_found" }, 404);
     if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
     const body = z
-      .object({ task: z.string().trim().min(1).max(TEXT_MAX), repo: z.string().trim().max(300).optional(), model: z.string().max(100).optional(), mode: MODE.optional() })
+      .object({ task: z.string().trim().max(TEXT_MAX).default(""), attachmentIds: ATTACHMENTS, repo: z.string().trim().max(300).optional(), model: z.string().max(100).optional(), mode: MODE.optional() })
+      .refine((b) => b.task || b.attachmentIds.length)
       .safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid" }, 400);
+    const files = await attachmentsOf(conv.conversation.id, body.data.attachmentIds);
+    if (!files) return c.json({ error: "unknown_attachment" }, 400);
     if (body.data.model && !(await allowedClaudeCodeModels(me.id).catch(() => [])).some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
     return startCodeSession({
       conversationId: conv.conversation.id,
@@ -77,6 +89,7 @@ export const codeSessions = new Hono<AppEnv>()
       model: body.data.model,
       repo: body.data.repo,
       mode: body.data.mode,
+      files,
     }).then((s) => c.json(s), (err) => failure(c, err));
   })
 
@@ -146,9 +159,14 @@ export const codeSessions = new Hono<AppEnv>()
   .post("/:sessionId/messages", async (c) => {
     const owned = await ownerOnly(c);
     if (owned instanceof Response) return owned;
-    const body = z.object({ text: z.string().trim().min(1).max(TEXT_MAX) }).safeParse(await c.req.json().catch(() => ({})));
+    const body = z
+      .object({ text: z.string().trim().max(TEXT_MAX).default(""), attachmentIds: ATTACHMENTS })
+      .refine((b) => b.text || b.attachmentIds.length)
+      .safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid" }, 400);
-    return sendToCodeSession(owned.sessionId, body.data.text, c.get("user").name, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+    const files = await attachmentsOf(owned.conversationId, body.data.attachmentIds);
+    if (!files) return c.json({ error: "unknown_attachment" }, 400);
+    return sendToCodeSession(owned.sessionId, body.data.text, c.get("user").name, owned.conversationId, files).then((s) => c.json(s), (err) => failure(c, err));
   })
 
   .post("/:sessionId/approval", async (c) => {

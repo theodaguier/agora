@@ -41,8 +41,9 @@ export function applyCodeStep(qc: QueryClient, conversationId: string, sessionId
   qc.setQueryData<CodeSessionDetail>(codeSessionQuery(conversationId, sessionId).queryKey, (old) => old && { ...old, steps: upsert(old.steps, step) });
 }
 
-export const sendToCodeSession = (conversationId: string, id: string, text: string) =>
-  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/messages`), { method: "POST", body: JSON.stringify({ text }) });
+/** An instruction, with files uploaded to the conversation (uploadAttachment): Claude Code gets their paths and sees the images. */
+export const sendToCodeSession = (conversationId: string, id: string, text: string, attachmentIds: string[] = []) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/messages`), { method: "POST", body: JSON.stringify({ text, attachmentIds }) });
 
 /** An action allowed or denied, questions answered, a plan approved or sent back with what to change. */
 export const answerCodeApproval = (conversationId: string, id: string, approvalId: string, answer: CodeApprovalAnswer) =>

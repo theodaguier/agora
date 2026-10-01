@@ -45,6 +45,9 @@ import { AppState, ScrollView, View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAdminToast } from "@/components/admin/ui";
+import { SentAttachments } from "@/components/attachments";
+import { AttachMenu } from "@/components/composer/attach-menu";
+import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
 import { UserBubble } from "@/components/bubbles";
 import { isActive, StatusIcon } from "@/components/code-session";
 import { confirmAction } from "@/components/confirm-action";
@@ -630,7 +633,8 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
               {step.by}
             </Typography>
           )}
-          <UserBubble text={step.text} className="max-w-[88%]" />
+          {!!step.files?.length && <SentAttachments items={step.files} className="max-w-[88%]" />}
+          {!!step.text && <UserBubble text={step.text} className="max-w-[88%]" />}
         </View>
       );
     case "text":
@@ -1022,11 +1026,15 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
   const qc = useQueryClient();
   const toast = useAdminToast();
   const [text, setText] = useState("");
+  const [attachOpen, setAttachOpen] = useState(false);
+  const { files, setFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
+  const ids = files.flatMap((f) => (f.status === "ready" && f.attachment ? [f.attachment.id] : []));
   const send = useMutation({
-    mutationFn: (value: string) => sendToCodeSession(conversationId, session.id, value),
+    mutationFn: ({ value, attachmentIds }: { value: string; attachmentIds: string[] }) => sendToCodeSession(conversationId, session.id, value, attachmentIds),
     onSuccess: (s) => {
       applyCodeSession(qc, s);
       setText("");
+      setFiles([]);
       onSent();
     },
     onError: (e) => toast.failed(e),
@@ -1064,10 +1072,10 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
           query,
         );
   // While Claude Code works, the send button stops it; typing turns it back into send (an instruction mid-run).
-  const stoppable = isActive(session.status) && !text.trim();
+  const stoppable = isActive(session.status) && !text.trim() && !files.length;
+  const canSend = !send.isPending && !files.some((f) => f.status === "uploading") && (!!text.trim() || ids.length > 0);
   const submit = () => {
-    const value = text.trim();
-    if (value && !send.isPending) send.mutate(value);
+    if (canSend) send.mutate({ value: text.trim(), attachmentIds: ids });
   };
   return (
     <View>
@@ -1077,6 +1085,7 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
         </View>
       )}
       <Surface variant="secondary" className="gap-1 p-2">
+        <PendingFiles items={files} onRemove={removeFile} />
         <Input
           multiline
           value={text}
@@ -1085,6 +1094,7 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
           className="max-h-[152px] bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
         />
         <View className="flex-row items-center gap-2">
+          <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
           <Menu>
             <Menu.Trigger asChild>
               <Button variant="outline" size="sm" accessibilityLabel={`${t.mode}: ${t.modes[session.mode]}`} isDisabled={mode.isPending} className="max-w-[150px]">
@@ -1108,7 +1118,7 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
               {stop.isPending ? <Spinner size="sm" /> : <StopIcon className="size-[18px] text-accent-foreground" />}
             </Button>
           ) : (
-            <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.send} isDisabled={!text.trim() || send.isPending} onPress={withTap(submit)}>
+            <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.send} isDisabled={!canSend} onPress={withTap(submit)}>
               <ArrowUpIcon className="size-[18px] text-accent-foreground" strokeWidth={2.25} />
             </Button>
           )}
