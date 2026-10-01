@@ -56,7 +56,17 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -334,15 +344,15 @@ export const newCodeSessionId = () => `${NEW_CODE_SESSION}-${crypto.randomUUID()
 export const isNewCodeSession = (id: string) => id === NEW_CODE_SESSION || id.startsWith(`${NEW_CODE_SESSION}-`);
 
 /**
- * The Claude Code panel: the sessions opened in it, as tabs (the "+" adds a new one), each kept
- * as it was while another is in front. Large screens show it beside the thread; smaller ones in a sheet over it.
+ * The Claude Code panel: the sessions opened in it, as tabs (the "+" opens another one, new or
+ * existing), each kept as it was while another is in front. Large screens show it beside the thread; smaller ones in a sheet over it.
  */
 export function CodeSessionPanel({
   conversationId,
   tabs,
   active,
   onSelect,
-  onAdd,
+  onOpen,
   onCloseTab,
   onStarted,
   onClose,
@@ -353,7 +363,8 @@ export function CodeSessionPanel({
   tabs: string[];
   active: string;
   onSelect: (sessionId: string) => void;
-  onAdd: () => void;
+  /** Opens a session in a new tab: an existing one, or NEW_CODE_SESSION. */
+  onOpen: (sessionId: string) => void;
   onCloseTab: (sessionId: string) => void;
   /** A new tab's first instruction started this session. */
   onStarted: (tab: string, sessionId: string) => void;
@@ -365,7 +376,7 @@ export function CodeSessionPanel({
   const wide = useWide();
   const view = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <CodeSessionTabs conversationId={conversationId} tabs={tabs} active={active} onSelect={onSelect} onAdd={onAdd} onCloseTab={onCloseTab} />
+      <CodeSessionTabs conversationId={conversationId} tabs={tabs} active={active} onSelect={onSelect} onOpen={onOpen} onCloseTab={onCloseTab} />
       {tabs.map((id) => {
         const detach = wide && onDetach ? () => onDetach(id) : undefined;
         return (
@@ -393,26 +404,30 @@ export function CodeSessionPanel({
   return <aside className="flex h-full w-full flex-col bg-sidebar">{view}</aside>;
 }
 
-/** The panel's tabs: one per session opened in it, and "+" for a new one (its owner only). */
+/**
+ * The panel's tabs: one per session opened in it. "+" opens another: a new session (its owner only)
+ * or one of the conversation's sessions not in a tab yet, the latest first.
+ */
 function CodeSessionTabs({
   conversationId,
   tabs,
   active,
   onSelect,
-  onAdd,
+  onOpen,
   onCloseTab,
 }: {
   conversationId: string;
   tabs: string[];
   active: string;
   onSelect: (sessionId: string) => void;
-  onAdd: () => void;
+  onOpen: (sessionId: string) => void;
   onCloseTab: (sessionId: string) => void;
 }) {
   const t = useT(messages);
   const c = useT(common);
   const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
   const { isSuccess: canStart } = useQuery({ ...codeModelsQuery(conversationId), retry: false });
+  const others = sessions.filter((s) => !tabs.includes(s.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return (
     <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-1.5">
       {tabs.map((id) => {
@@ -430,13 +445,37 @@ function CodeSessionTabs({
           />
         );
       })}
-      {canStart && (
-        <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.newSession} onClick={onAdd} className="shrink-0 rounded-lg" />}>
-            <PlusIcon />
-          </TooltipTrigger>
-          <TooltipContent>{t.newSession}</TooltipContent>
-        </Tooltip>
+      {(canStart || others.length > 0) && (
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger
+              render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.openSession} className="shrink-0 rounded-lg" />} />}
+            >
+              <PlusIcon />
+            </TooltipTrigger>
+            <TooltipContent>{t.openSession}</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="start" className="w-80">
+            {canStart && <DropdownMenuItem onClick={() => onOpen(NEW_CODE_SESSION)}>{t.newSession}</DropdownMenuItem>}
+            {canStart && others.length > 0 && <DropdownMenuSeparator />}
+            {others.length > 0 && (
+              <DropdownMenuGroup className="max-h-80 overflow-y-auto">
+                <DropdownMenuLabel>{t.sessions}</DropdownMenuLabel>
+                {others.map((s) => (
+                  <DropdownMenuItem key={s.id} onClick={() => onOpen(s.id)} className="items-start">
+                    <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{s.title}</span>
+                      <span className="block truncate text-[12px] text-muted-foreground">
+                        {codeStatusText(t, s)} · {dividerLabel(new Date(s.updatedAt))}
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   );
