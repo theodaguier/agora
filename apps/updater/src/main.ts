@@ -7,6 +7,7 @@
  */
 import { updateApp } from "./app-update";
 import { listBackups } from "./backup";
+import { DISK_ALERT, diskUsage, reclaimDisk } from "./cleanup";
 import { config, usesRegistry } from "./config";
 import { compose, run } from "./exec";
 import { readEnv } from "./envfile";
@@ -26,6 +27,20 @@ if (usesRegistry() && config.registryToken) {
 }
 
 let running: { target: "hermes" | "app"; to: string } | null = null;
+let reclaiming = false;
+
+/** Old images and build cache (cleanup.ts), never alongside an update. */
+async function reclaim(opts?: Parameters<typeof reclaimDisk>[0]) {
+  if (running || reclaiming) return;
+  reclaiming = true;
+  try {
+    await reclaimDisk(opts);
+  } catch (e) {
+    console.error("disk cleanup", e);
+  } finally {
+    reclaiming = false;
+  }
+}
 
 async function current() {
   const env = await readEnv();
@@ -48,6 +63,7 @@ async function check() {
 
 async function apply(target: "hermes" | "app", to: string, trigger: "auto" | "manual") {
   if (running) throw new Error(`Mise à jour déjà en cours (${running.target} → ${running.to})`);
+  if (reclaiming) throw new Error("Nettoyage du disque en cours, réessaie dans quelques minutes");
   if (!parseVersion(to)) throw new Error("Version invalide");
   // Only forward: a downgrade (to a version with a known flaw) goes through the automatic rollback, never through the API.
   if (compare(to, (await current())[target]) <= 0) throw new Error("Version antérieure ou identique à la version en place");
@@ -57,6 +73,7 @@ async function apply(target: "hermes" | "app", to: string, trigger: "auto" | "ma
   } finally {
     running = null;
     await check().catch(() => {});
+    await reclaim();
   }
 }
 
@@ -68,6 +85,7 @@ function inWindow(s: Settings) {
 /** Automatic round: Hermes first, then the app (excluding majors), one version at a time. */
 async function tick() {
   if (running) return;
+  if ((await diskUsage().catch(() => 0)) >= DISK_ALERT) await reclaim({ allBuildCache: true });
   await check().catch((e) => console.error("check", e));
   const state = await loadState();
   if (!inWindow(state.settings)) return;
@@ -169,4 +187,6 @@ Bun.serve({
 
 console.log(`updater ready on :${config.port} (checking every ${config.checkEveryMinutes} min, timezone ${config.tz})`);
 await check().catch((e) => console.error("initial check", e));
+// After an app update, this container is the new updater: the previous one's image is free now.
+await reclaim();
 setInterval(() => void tick(), config.checkEveryMinutes * 60_000);
