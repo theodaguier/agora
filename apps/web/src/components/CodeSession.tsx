@@ -56,6 +56,7 @@ import { ModelLogo } from "@/components/ProviderLogo";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -95,6 +96,8 @@ import {
   type CodeGitRequest,
   codeSessionQuery,
   codeSessionsQuery,
+  deleteCodeSession,
+  dropCodeSession,
   sendToCodeSession,
   setCodeSessionMode,
   setCodeSessionModel,
@@ -116,15 +119,29 @@ const messages = codeSessions;
 
 const active = (s: CodeSessionStatus) => s === "running" || s === "waiting";
 
+/** A status's color, for its icon and its name: working in blue, waiting on someone in amber, done in green, failed in red. */
+const statusTone: Record<CodeSessionStatus, string> = {
+  running: "text-brand",
+  waiting: "text-warning",
+  idle: "text-foreground",
+  done: "text-success",
+  stopped: "text-muted-foreground",
+  failed: "text-destructive",
+};
+
 /** `asking`: it waits on its question to its bot, not on an approval. */
 function StatusIcon({ status, asking, className }: { status: CodeSessionStatus; asking?: boolean; className?: string }) {
-  if (status === "running") return <Spinner className={cn("size-4", className)} />;
-  if (status === "waiting" && asking) return <ChatQuestionIcon className={cn("size-4 text-warning", className)} />;
-  if (status === "waiting") return <ShieldAlertIcon className={cn("size-4 text-warning", className)} />;
-  if (status === "idle") return <ClockIcon className={cn("size-4 text-muted-foreground", className)} />;
-  if (status === "done") return <CheckCircleIcon className={cn("size-4 text-success", className)} />;
-  return <CloseCircleIcon className={cn("size-4", status === "failed" ? "text-destructive" : "text-muted-foreground", className)} />;
+  const tone = cn("size-4", statusTone[status], className);
+  if (status === "running") return <Spinner className={tone} />;
+  if (status === "waiting" && asking) return <ChatQuestionIcon className={tone} />;
+  if (status === "waiting") return <ShieldAlertIcon className={tone} />;
+  if (status === "idle") return <ClockIcon className={tone} />;
+  if (status === "done") return <CheckCircleIcon className={tone} />;
+  return <CloseCircleIcon className={tone} />;
 }
+
+/** Its status in words, in its color. */
+const StatusText = ({ session }: { session: CodeSession }) => <span className={cn(session.status !== "idle" && statusTone[session.status])}>{codeStatusText(useT(messages), session)}</span>;
 
 /* ---------- in the thread ---------- */
 
@@ -145,6 +162,8 @@ export function CodeSessionCard({
   const t = useT(messages);
   const { data } = useQuery(codeSessionsQuery(conversationId));
   const session = data?.find((s) => s.id === sessionId);
+  // Deleted by its owner: the card stays, without the way into it.
+  const gone = !!data && !session;
   const status = session?.status ?? "running";
   const detail = session && codeDetailLine(session);
   return (
@@ -153,15 +172,17 @@ export function CodeSessionCard({
       <ItemContent className="min-w-0">
         <ItemTitle className="w-full truncate">{session?.title ?? title}</ItemTitle>
         <ItemDescription className="truncate">
-          {t.claudeCode} · {session ? codeStatusText(t, session) : t.status[status]}
+          {t.claudeCode} · {session ? <StatusText session={session} /> : gone ? t.gone : t.status[status]}
           {detail ? ` · ${detail}` : ""}
         </ItemDescription>
       </ItemContent>
-      <ItemActions>
-        <Button variant="outline" size="sm" onClick={onOpen}>
-          {active(status) ? t.follow : t.open}
-        </Button>
-      </ItemActions>
+      {!gone && (
+        <ItemActions>
+          <Button variant="outline" size="sm" onClick={onOpen}>
+            {active(status) ? t.follow : t.open}
+          </Button>
+        </ItemActions>
+      )}
     </Item>
   );
 }
@@ -221,16 +242,31 @@ export function CodeSessionsButton({
   current,
   onOpen,
   onOpenBeside,
+  onDeleted,
 }: {
   conversationId: string;
   current: string | null;
   onOpen: (sessionId: string) => void;
   /** Opens a session in a pane of its own, beside the conversation. */
   onOpenBeside?: (sessionId: string) => void;
+  /** Its owner deleted it: its tab closes. */
+  onDeleted?: (sessionId: string) => void;
 }) {
   const t = useT(messages);
   const qc = useQueryClient();
+  const { user } = useRouteContext({ from: "/app" });
   const [open, setOpen] = useState(false);
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteCodeSession(conversationId, id),
+    onSuccess: (_, id) => {
+      dropCodeSession(qc, conversationId, id);
+      onDeleted?.(id);
+    },
+    meta: { loading: t.deleting, success: t.deleted },
+  });
+  const confirmDelete = async (s: CodeSession) => {
+    if (await confirmAction({ title: t.deleteTitle(s.title), description: t.deleteHelp, action: t.deleteSession })) remove.mutate(s.id);
+  };
   const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
   // Its models answer only the owner (403 otherwise): the sign they may start a session.
   const { isSuccess: canStart } = useQuery({ ...codeModelsQuery(conversationId), retry: false });
@@ -269,7 +305,8 @@ export function CodeSessionsButton({
         <p className="px-2 pb-1.5 pt-1 text-[12px] font-medium text-muted-foreground">{t.sessions}</p>
         {!sorted.length && <p className="px-2 pb-2 text-sm text-muted-foreground">{t.none}</p>}
         <div className="flex max-h-96 flex-col overflow-y-auto">
-          {sorted.map((s) => (
+          {sorted.map((s) => {
+            const row = (
             <div key={s.id} className="group/session relative">
               <button
                 type="button"
@@ -287,7 +324,7 @@ export function CodeSessionsButton({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{s.title}</span>
                   <span className="block truncate text-[12px] text-muted-foreground">
-                    {codeStatusText(t, s)}
+                    <StatusText session={s} />
                     {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
                     {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
                   </span>
@@ -308,7 +345,20 @@ export function CodeSessionsButton({
                 />
               )}
             </div>
-          ))}
+            );
+            // Its owner deletes it from a right click.
+            if (!canStart || s.requestedBy !== user.id) return row;
+            return (
+              <ContextMenu key={s.id}>
+                <ContextMenuTrigger render={row} />
+                <ContextMenuContent className="w-48">
+                  <ContextMenuItem variant="destructive" disabled={remove.isPending} onClick={() => void confirmDelete(s)}>
+                    {t.deleteSession}
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
+            );
+          })}
         </div>
         {canStart && (
           <div className="mt-1 border-t border-border/60 pt-1">
@@ -471,7 +521,7 @@ function CodeSessionTabs({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{s.title}</span>
                       <span className="block truncate text-[12px] text-muted-foreground">
-                        {codeStatusText(t, s)} · {dividerLabel(new Date(s.updatedAt))}
+                        <StatusText session={s} /> · {dividerLabel(new Date(s.updatedAt))}
                       </span>
                     </span>
                   </DropdownMenuItem>
@@ -853,7 +903,7 @@ function CodeSessionView({
           <p className="truncate text-[15px] font-medium leading-snug">{session?.title ?? t.claudeCode}</p>
           {session && (
             <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
-              {codeStatusText(t, session)}
+              <StatusText session={session} />
               {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
               {session.activity && active(session.status) ? ` · ${session.activity}` : ""}
             </p>
@@ -1764,7 +1814,6 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
   const stop = useMutation({
     mutationFn: () => stopCodeSession(conversationId, session.id),
     onSuccess: (s) => applyCodeSession(qc, s),
-    meta: { success: t.stopped },
   });
   const mode = useMutation({
     mutationFn: (value: CodePermissionMode) => setCodeSessionMode(conversationId, session.id, value),

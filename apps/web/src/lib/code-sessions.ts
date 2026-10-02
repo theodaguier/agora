@@ -35,6 +35,12 @@ export function applyCodeSession(qc: QueryClient, session: CodeSession) {
   if (!qc.getQueryData(codeSessionsQuery(cid).queryKey)?.some((s) => s.id === session.id)) void qc.invalidateQueries({ queryKey: codeSessionsQuery(cid).queryKey });
 }
 
+/** Deleted by its owner (`code.removed`, or its answer): gone from the list and from its panel's cache. */
+export function dropCodeSession(qc: QueryClient, conversationId: string, id: string) {
+  qc.setQueryData<CodeSession[]>(codeSessionsQuery(conversationId).queryKey, (old) => old?.filter((s) => s.id !== id));
+  qc.removeQueries({ queryKey: codeSessionQuery(conversationId, id).queryKey });
+}
+
 /** One step added or changed (`code.step`): only the open panels hold steps. */
 export function applyCodeStep(qc: QueryClient, conversationId: string, sessionId: string, step: CodeStep) {
   qc.setQueryData<CodeSessionDetail>(codeSessionQuery(conversationId, sessionId).queryKey, (old) => old && { ...old, steps: upsert(old.steps, step) });
@@ -124,3 +130,6 @@ export const repoEnvQuery = (conversationId: string, repo: string) =>
 
 export const saveRepoEnv = (conversationId: string, repo: string, env: string) =>
   api<{ repo: string; env: string }>(path(conversationId, "/repo-env"), { method: "PUT", body: JSON.stringify({ repo, env }) });
+
+/** Its owner deletes it: its run stops, its worktree and its steps go; its cards stay in the conversation. */
+export const deleteCodeSession = (conversationId: string, id: string) => api<void>(path(conversationId, `/${encodeURIComponent(id)}`), { method: "DELETE" });

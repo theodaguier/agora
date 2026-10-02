@@ -5,7 +5,7 @@ import { insertMessage, removeMessage, type Schedule } from "@agora/core";
 import { applySchedule } from "./availability";
 import { applyAgentStatus, applyPresence, presenceQuery } from "./presence";
 import type { CodeSession, CodeSessionRef, CodeStep } from "@agora/core";
-import { applyCodeSession, applyCodeStep } from "./code-sessions";
+import { applyCodeSession, applyCodeStep, dropCodeSession } from "./code-sessions";
 
 /** Delay after which "X is typing" disappears without a new signal. */
 const TYPING_MS = 5_000;
@@ -125,7 +125,8 @@ type ServerEvent =
   | { type: "bot.error"; conversationId: string; turnId: string }
   | { type: "bot.code"; conversationId: string; turnId: string; session: CodeSessionRef }
   | { type: "code.session"; conversationId: string; session: CodeSession }
-  | { type: "code.step"; conversationId: string; sessionId: string; step: CodeStep };
+  | { type: "code.step"; conversationId: string; sessionId: string; step: CodeStep }
+  | { type: "code.removed"; conversationId: string; sessionId: string };
 
 /** Events that do not belong to a conversation. */
 type GlobalEvent =
@@ -218,6 +219,9 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
     case "code.step":
       applyCodeStep(qc, cid, ev.sessionId, ev.step);
       return;
+    case "code.removed":
+      dropCodeSession(qc, cid, ev.sessionId);
+      return;
     case "bot.done":
     case "bot.error":
       flushTurn(cid, ev.turnId);
@@ -250,6 +254,7 @@ const EVENT_TYPES = [
   "bot.code",
   "code.session",
   "code.step",
+  "code.removed",
   "presence",
   "agent.status",
   "availability",

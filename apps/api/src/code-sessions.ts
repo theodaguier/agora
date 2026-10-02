@@ -99,6 +99,8 @@ type Live = {
   summaryDirty: boolean;
   flushTimer: ReturnType<typeof setTimeout> | null;
   saveTimer: ReturnType<typeof setTimeout> | null;
+  /** Deleted by its owner: what its process still does is dropped. */
+  deleted: boolean;
 };
 
 const live = new Map<string, Live>();
@@ -225,6 +227,7 @@ function fromRow(row: Row): Live {
     summaryDirty: false,
     flushTimer: null,
     saveTimer: null,
+    deleted: false,
   };
 }
 
@@ -284,6 +287,7 @@ export async function codeSessionReport(id: string) {
 /* ---------- broadcasting and saving ---------- */
 
 function touch(s: Live, steps: (CodeStep | undefined)[] = [], summaryChanged = false) {
+  if (s.deleted) return;
   for (const step of steps) if (step) s.dirty.set(step.id, step);
   if (summaryChanged || steps.length) s.summaryDirty = true;
   s.flushTimer ??= setTimeout(() => void flush(s), FLUSH_MS);
@@ -293,6 +297,7 @@ function touch(s: Live, steps: (CodeStep | undefined)[] = [], summaryChanged = f
 async function flush(s: Live) {
   if (s.flushTimer) clearTimeout(s.flushTimer);
   s.flushTimer = null;
+  if (s.deleted) return;
   const { conversationId, id } = s.row;
   const steps = [...s.dirty.values()];
   s.dirty.clear();
@@ -310,6 +315,7 @@ async function flush(s: Live) {
 async function save(s: Live) {
   if (s.saveTimer) clearTimeout(s.saveTimer);
   s.saveTimer = null;
+  if (s.deleted) return;
   const r = s.row;
   r.updatedAt = new Date();
   try {
@@ -802,6 +808,32 @@ export async function removeCodeSessionWorktree(id: string, by: string, conversa
     if (s.outbox.length && !s.running) start(s);
   }
   return summary(s);
+}
+
+/**
+ * Its owner deletes the session: its run stops, with what it left running, its worktree goes (the
+ * branch stays in the clone), and its steps with it. Its cards stay in the conversation, without it.
+ */
+export async function deleteCodeSession(id: string, conversationId?: string) {
+  const s = await load(id, conversationId);
+  if (s.gitBusy) throw new CodeSessionError("busy");
+  const r = s.row;
+  s.deleted = true;
+  // Its process, warm or working, no longer touches the session (start, execute).
+  s.procId++;
+  for (const timer of [s.idleTimer, s.flushTimer, s.saveTimer]) if (timer) clearTimeout(timer);
+  dropQuestion(s);
+  s.proc?.kill();
+  s.proc = null;
+  s.running = false;
+  stopLeftovers((await sessionProcesses()).get(id) ?? []);
+  live.delete(id);
+  const root = await workspace();
+  if (r.worktree && !r.worktree.removedAt && r.repo && r.cwd.startsWith(worktreesDir(root) + sep)) {
+    await removeWorktree(r.worktree.clone ?? cloneDir(root, r.repo), r.cwd).catch((err) => console.error("code session: delete worktree", err));
+  }
+  await db.delete(schema.codeSession).where(eq(schema.codeSession.id, id));
+  await publishToConversation(r.conversationId, { type: "code.removed", conversationId: r.conversationId, sessionId: id }).catch((err) => console.error("code session: broadcast", err));
 }
 
 /* ---------- commit messages ---------- */
