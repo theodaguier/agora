@@ -22,10 +22,12 @@ const messages = defineMessages({
 type SimNode = SimulationNodeDatum & WikiNode & { degree: number; r: number };
 type SimLink = SimulationLinkDatum<SimNode>;
 
+/** `halo` matches the page background (--background), so a label stays legible over the edges. */
 const INK = {
-  dark: { edge: "rgba(255,255,255,0.09)", edgeFocus: "rgba(255,255,255,0.42)", ring: "#ffffff", label: "#e6e6e6" },
-  light: { edge: "rgba(0,0,0,0.1)", edgeFocus: "rgba(0,0,0,0.45)", ring: "#171717", label: "#262626" },
+  dark: { edge: "rgba(255,255,255,0.09)", edgeFocus: "rgba(255,255,255,0.42)", ring: "#ffffff", label: "#e6e6e6", halo: "#080808" },
+  light: { edge: "rgba(0,0,0,0.1)", edgeFocus: "rgba(0,0,0,0.45)", ring: "#171717", label: "#262626", halo: "#ffffff" },
 };
+const LABEL_SIZE = 11;
 
 /**
  * Memory graph, in the style of Obsidian's graph view: force simulation
@@ -90,16 +92,32 @@ function paint(
     }
   }
 
-  // Labels: when zoomed in, on the hovered neighborhood, and always for large nodes.
-  ctx.font = `${11 / view.k}px -apple-system, BlinkMacSystemFont, system-ui, sans-serif`;
+  // Labels: when zoomed in, on the hovered neighborhood, and always for large nodes. They are placed by
+  // priority (focus, search matches, agents, then the most linked pages) and a label that would overlap
+  // one already drawn is skipped, as in Obsidian: zooming in spreads the nodes and reveals the rest.
+  const rank = (n: SimNode) => (n.id === focusId ? 0 : n.id === selected ? 1 : highlight?.has(n.id) ? 2 : n.type === "agent" ? 3 : 4);
+  const candidates = s.nodes
+    .filter((n) => (focus ? focus.has(n.id) : view.k > 1.6 || n.degree >= 8 || n.type === "agent" || !!highlight?.has(n.id)))
+    .sort((a, b) => rank(a) - rank(b) || b.degree - a.degree);
+  ctx.font = `${LABEL_SIZE / view.k}px -apple-system, BlinkMacSystemFont, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  for (const n of s.nodes) {
-    const show = focus ? focus.has(n.id) : view.k > 1.6 || n.degree >= 8 || n.type === "agent" || !!highlight?.has(n.id);
-    if (!show) continue;
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3 / view.k;
+  ctx.strokeStyle = ink.halo;
+  const placed: [number, number, number, number][] = [];
+  for (const n of candidates) {
+    const label = n.label.length > 30 ? `${n.label.slice(0, 29)}…` : n.label;
+    const w = ctx.measureText(label).width * view.k;
+    const x = width / 2 + view.x + n.x! * view.k;
+    const y = height / 2 + view.y + (n.y! + n.r) * view.k + 3;
+    const box: [number, number, number, number] = [x - w / 2 - 3, y - 1, x + w / 2 + 3, y + LABEL_SIZE + 3];
+    if (box[2] < 0 || box[0] > width || box[3] < 0 || box[1] > height) continue;
+    if (n.id !== focusId && placed.some((p) => box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) continue;
+    placed.push(box);
     ctx.globalAlpha = focus && n.id !== focusId ? 0.8 : lit(n.id) ? 0.95 : 0.3;
+    ctx.strokeText(label, n.x!, n.y! + n.r + 3 / view.k);
     ctx.fillStyle = ink.label;
-    const label = n.label.length > 36 ? `${n.label.slice(0, 35)}…` : n.label;
     ctx.fillText(label, n.x!, n.y! + n.r + 3 / view.k);
   }
   ctx.globalAlpha = 1;
@@ -189,11 +207,11 @@ export function MemoryGraph(props: {
         "link",
         forceLink<SimNode, SimLink>(s.links)
           .id((d) => d.id)
-          .distance((l) => ((l.source as SimNode).type === "agent" || (l.target as SimNode).type === "agent" ? 70 : 38))
+          .distance((l) => ((l.source as SimNode).type === "agent" || (l.target as SimNode).type === "agent" ? 80 : 48))
           .strength(0.35),
       )
-      .force("charge", forceManyBody<SimNode>().strength((d) => (d.type === "agent" ? -260 : -55)).distanceMax(420))
-      .force("collide", forceCollide<SimNode>((d) => d.r + 2))
+      .force("charge", forceManyBody<SimNode>().strength((d) => (d.type === "agent" ? -300 : -90)).distanceMax(480))
+      .force("collide", forceCollide<SimNode>((d) => d.r + 4))
       // A pull toward the center keeps isolated pages in orbit, like in Obsidian.
       .force("x", forceX<SimNode>(0).strength(0.035))
       .force("y", forceY<SimNode>(0).strength(0.035))

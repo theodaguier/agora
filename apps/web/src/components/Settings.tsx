@@ -181,8 +181,9 @@ function SettingsBody({ initial }: { initial: SettingsTab }) {
         ))}
       </nav>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-5 pb-16 pt-6 sm:px-10 sm:pt-12">
+      {/* The memory graph fills the pane instead of scrolling it. */}
+      <div className={cn("min-h-0 flex-1 overflow-y-auto", tab === "memory" && "flex flex-col")}>
+        <div className={cn("mx-auto px-5 pt-6 sm:px-10 sm:pt-12", tab === "memory" ? "flex w-full flex-1 flex-col pb-5 sm:pb-8" : "max-w-3xl pb-16")}>
           <RestartProvider>
             {tab === "general" && <General />}
             {tab === "security" && <Security />}
