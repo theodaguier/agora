@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.38.1 — 2026-10-02
+
+### Fixes
+- **web**: Claude Code panel fits narrow panes, lighter question and header
+
 ## v0.38.0 — 2026-10-02
 
 ### Features
