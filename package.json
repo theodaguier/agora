@@ -14,7 +14,7 @@
     "dev:apps": "turbo run dev --filter=!@agora/updater"
   },
   "devDependencies": {
-    "turbo": "^2.11.2",
+    "turbo": "^2.11.5",
     "typescript": "^7.0.2"
   },
   "license": "AGPL-3.0-only"
