@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Spinner } from "@/components/ui/spinner";
 import { ShortcutTooltip } from "@/components/Shortcuts";
+import { playSound } from "@/lib/sounds";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import {
@@ -602,6 +603,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
       });
       qc.setQueryData<Message[]>(messagesQuery(conversationId).queryKey, (old) => old && insertMessage(old, message));
       setSending((xs) => xs.map((x) => (x.key === key ? { ...x, id: message.id } : x)));
+      void playSound("sent");
     } catch {
       setSending((xs) => xs.map((x) => (x.key === key ? { ...x, failed: true } : x)));
     }

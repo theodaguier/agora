@@ -116,6 +116,7 @@ import {
 } from "@/lib/code-sessions";
 import { confirmAction } from "@/lib/confirm";
 import { copyText } from "@/lib/feedback";
+import { playSound } from "@/lib/sounds";
 import { dividerLabel } from "@/lib/dates";
 import { useFormat } from "@/lib/usage-format";
 import { cn } from "@/lib/utils";
@@ -1870,6 +1871,7 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
       applyCodeSession(qc, s);
       setText("");
       files.clear();
+      void playSound("sent");
     },
   });
   const stop = useMutation({
