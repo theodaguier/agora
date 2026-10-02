@@ -4,7 +4,7 @@ import { fetch } from "expo/fetch";
 import { useEffect, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { apiUrl, authHeaders } from "./api";
-import { applyCodeSession, applyCodeStep } from "./code-sessions";
+import { applyCodeSession, applyCodeStep, dropCodeSession } from "./code-sessions";
 import { demoEvents, isDemo } from "./demo";
 import { presenceQuery } from "./presence";
 import type { ActiveTurn, Message, PendingApproval } from "./types";
@@ -142,7 +142,8 @@ type ServerEvent =
   | { type: "bot.error"; conversationId: string; turnId: string }
   | { type: "bot.code"; conversationId: string; turnId: string; session: CodeSessionRef }
   | { type: "code.session"; conversationId: string; session: CodeSession }
-  | { type: "code.step"; conversationId: string; sessionId: string; step: CodeStep };
+  | { type: "code.step"; conversationId: string; sessionId: string; step: CodeStep }
+  | { type: "code.removed"; conversationId: string; sessionId: string };
 
 /** Events that do not belong to a conversation. */
 type GlobalEvent =
@@ -236,6 +237,9 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       return;
     case "code.step":
       applyCodeStep(qc, cid, ev.sessionId, ev.step);
+      return;
+    case "code.removed":
+      dropCodeSession(qc, cid, ev.sessionId);
       return;
     case "bot.done":
     case "bot.error":

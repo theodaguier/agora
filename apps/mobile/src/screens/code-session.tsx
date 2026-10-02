@@ -1072,10 +1072,7 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
   });
   const stop = useMutation({
     mutationFn: () => stopCodeSession(conversationId, session.id),
-    onSuccess: (s) => {
-      applyCodeSession(qc, s);
-      toast.success(t.stopped);
-    },
+    onSuccess: (s) => applyCodeSession(qc, s),
     onError: (e) => toast.failed(e),
   });
   const mode = useMutation({
