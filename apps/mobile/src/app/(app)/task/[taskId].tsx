@@ -164,7 +164,7 @@ function TaskForm({ task }: { task: Task }) {
                     <PersonAvatar person={a} size={32} />
                   </ListGroup.ItemPrefix>
                   <ListGroup.ItemContent>
-                    <ListGroup.ItemTitle className="font-normal">{a.id === me.id ? `${a.name} (${c.you})` : a.name}</ListGroup.ItemTitle>
+                    <ListGroup.ItemTitle>{a.id === me.id ? `${a.name} (${c.you})` : a.name}</ListGroup.ItemTitle>
                     {a.current && <ListGroup.ItemDescription className="text-warning">{messages.now}</ListGroup.ItemDescription>}
                   </ListGroup.ItemContent>
                 </ListGroup.Item>
