@@ -247,7 +247,7 @@ function TurnItem({ turn }: { turn: AgentActivity["turns"][number] }) {
           {turn.tool ? (
             <>
               {t.using}
-              <Badge variant="secondary" className="h-auto gap-1 rounded-md px-1.5 py-0.5 font-mono text-[12px] font-normal text-foreground/80">
+              <Badge variant="secondary" className="h-auto gap-1 rounded-md px-1.5 py-0.5 font-mono text-xs font-normal text-foreground/80">
                 <ToolIcon name={turn.tool} className="size-3.5" />
                 {turn.tool}
               </Badge>

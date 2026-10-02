@@ -264,7 +264,7 @@ function HeaderTitle({
       size="icon"
       nativeButton={false}
       render={<Link to="/" aria-label={t.back} />}
-      className="-ml-1 rounded-lg hover:bg-transparent md:hidden"
+      className="-ml-1 hover:bg-transparent md:hidden"
     >
       <ChevronLeftIcon className="size-5" />
     </Button>
@@ -324,7 +324,7 @@ function PanelButtons({
               aria-label={panelLabels[kind]}
               aria-pressed={panel === kind}
               onClick={() => setPanel((p) => (p === kind ? null : kind))}
-              className="hidden rounded-lg aria-pressed:bg-muted lg:inline-flex"
+              className="hidden aria-pressed:bg-muted lg:inline-flex"
             >
               <Icon />
             </Button>
@@ -342,7 +342,7 @@ function PanelButtons({
         })}
       {panel !== "info" && hasInfo && (
         <ShortcutTooltip label={t.showPanel} shortcut={shortcuts.togglePanel}>
-          <Button variant="ghost" size="icon" aria-label={t.showPanel} onClick={() => setPanel("info")} className="hidden rounded-lg lg:inline-flex">
+          <Button variant="ghost" size="icon" aria-label={t.showPanel} onClick={() => setPanel("info")} className="hidden lg:inline-flex">
             <ChevronsLeftIcon />
           </Button>
         </ShortcutTooltip>

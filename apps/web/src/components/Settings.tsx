@@ -7,7 +7,7 @@ import { AppIntegrations } from "@/components/admin/AppIntegrations";
 import { Agents } from "@/components/admin/Agents";
 import { Models } from "@/components/admin/Models";
 import { OrgSettings } from "@/components/admin/OrgSettings";
-import { Loading, RestartProvider } from "@/components/admin/ui";
+import { Loading, RestartProvider, SectionHeader } from "@/components/admin/ui";
 import { RequireTwoFactor } from "@/components/admin/Security";
 import { Status } from "@/components/admin/Status";
 import { Updates } from "@/components/admin/Updates";
@@ -224,7 +224,7 @@ function General() {
 
   return (
     <>
-      <h2 className="mb-7 text-lg font-semibold tracking-tight">{t.tabs.general}</h2>
+      <SectionHeader title={t.tabs.general} />
       <FieldGroup>
         <FieldSet>
           <FieldLegend>{t.profile}</FieldLegend>
@@ -263,7 +263,7 @@ function Security() {
   const t = useT(messages);
   return (
     <>
-      <h2 className="mb-7 text-lg font-semibold tracking-tight">{t.tabs.security}</h2>
+      <SectionHeader title={t.tabs.security} />
       <FieldGroup>
         <FieldSet>
           <FieldLegend>{t.yourAccount}</FieldLegend>
@@ -287,7 +287,7 @@ function Mobile() {
   const t = useT(messages);
   return (
     <>
-      <h2 className="mb-7 text-lg font-semibold tracking-tight">{t.tabs.mobile}</h2>
+      <SectionHeader title={t.tabs.mobile} />
       <MobileApp />
     </>
   );
@@ -297,7 +297,7 @@ function Organization() {
   const t = useT(messages);
   return (
     <>
-      <h2 className="mb-7 text-lg font-semibold tracking-tight">{t.tabs.organization}</h2>
+      <SectionHeader title={t.tabs.organization} />
       <OrgSettings />
     </>
   );
@@ -308,8 +308,7 @@ function Availability() {
   const t = useT(messages);
   return (
     <>
-      <h2 className="text-lg font-semibold tracking-tight">{t.tabs.availability}</h2>
-      <p className="mb-7 mt-1 text-sm text-muted-foreground">{t.availabilityHelp}</p>
+      <SectionHeader title={t.tabs.availability} text={t.availabilityHelp} />
       <AvailabilityEditor userId={user.id} self />
     </>
   );

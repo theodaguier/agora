@@ -89,7 +89,7 @@ export function ApprovalLog({ approvals }: { approvals: { command: string; choic
         <p key={key} className="flex min-w-0 items-center gap-1.5">
           <ShieldAlertIcon className="size-3.5 shrink-0" />
           <span className="shrink-0">{a.choice === "deny" ? t.denied : t.allowed}</span>
-          <code className="truncate font-mono text-[12px] text-foreground/80">{a.command}</code>
+          <code className="truncate font-mono text-xs text-foreground/80">{a.command}</code>
         </p>
       ))}
     </div>

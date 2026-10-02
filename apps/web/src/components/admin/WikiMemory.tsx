@@ -180,7 +180,7 @@ export function WikiMemory() {
             )}
 
             <div className="absolute left-3 top-3 w-[min(280px,calc(100%-24px))]">
-              <InputGroup className="bg-background">
+              <InputGroup className="h-8 bg-background">
                 <InputGroupAddon>
                   <SearchIcon />
                 </InputGroupAddon>
@@ -194,7 +194,7 @@ export function WikiMemory() {
               {matches && (
                 <ItemGroup className="mt-1 max-h-64 gap-0 overflow-y-auto rounded-lg border bg-background p-1">
                   {matches.slice(0, 12).map((n) => (
-                    <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted" render={<button type="button" onClick={() => select(n.id)} />}>
+                    <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted/60" render={<button type="button" onClick={() => select(n.id)} />}>
                       <ItemMedia>
                         <Dot type={n.type} />
                       </ItemMedia>
@@ -369,7 +369,7 @@ function PagePanel(props: {
             <h4 className="mb-1.5 text-xs font-medium text-muted-foreground">{t.linked(linked.length)}</h4>
             <ItemGroup className="gap-0">
               {linked.map((n) => (
-                <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted" render={<button type="button" onClick={() => props.onSelect(n.id)} />}>
+                <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted/60" render={<button type="button" onClick={() => props.onSelect(n.id)} />}>
                   <ItemMedia>
                     <Dot type={n.type} />
                   </ItemMedia>

@@ -11,7 +11,16 @@ const messages = defineMessages({
 export type Option = { value: string; label: string };
 
 /** Same surface as text fields (Input). */
-const fieldLook = "h-10 data-[size=default]:h-10 w-full rounded-lg border-input bg-secondary px-3 text-sm dark:bg-secondary dark:hover:bg-secondary";
+export const fieldLook = "h-10 data-[size=default]:h-10 w-full rounded-lg border-input bg-secondary px-3 text-sm dark:bg-secondary dark:hover:bg-secondary";
+
+/** Every half hour, plus `current` if it falls between; `end` adds midnight at the end of the day. */
+export function timeOptions(current: string, end = false) {
+  const at = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  const times = Array.from({ length: 48 }, (_, i) => at(i * 30));
+  if (end) times.push("24:00");
+  if (!times.includes(current)) times.push(current);
+  return times.sort().map((v) => ({ value: v, label: v }));
+}
 
 /** Short list (language, access, time…): shadcn Select, controlled or uncontrolled value. */
 export function OptionSelect({
@@ -82,7 +91,7 @@ export function SearchSelect({
   return (
     <Combobox items={options} value={value} onValueChange={(v) => v != null && onValueChange(v as string)} itemToStringLabel={(v) => label(v as string)}>
       {/* Selecting the text on focus lets typing replace the current value instead of appending to it. */}
-      <ComboboxInput id={id} placeholder={placeholder} onFocus={(e) => e.currentTarget.select()} className={cn("h-10 w-full rounded-lg", className)} />
+      <ComboboxInput id={id} placeholder={placeholder} onFocus={(e) => e.currentTarget.select()} className={cn("w-full", className)} />
       <ComboboxContent>
         <ComboboxEmpty>{t.noResults}</ComboboxEmpty>
         <ComboboxList>

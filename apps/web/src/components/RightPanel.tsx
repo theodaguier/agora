@@ -65,7 +65,7 @@ export function RightPanel({
           <>
             <Tooltip>
               <TooltipTrigger
-                render={<Button variant="ghost" size="icon" aria-label={t.editBot} className="rounded-lg" onClick={() => setEditing(true)} />}
+                render={<Button variant="ghost" size="icon" aria-label={t.editBot} onClick={() => setEditing(true)} />}
               >
                 <SettingsIcon />
               </TooltipTrigger>
@@ -75,7 +75,7 @@ export function RightPanel({
           </>
         )}
         <ShortcutTooltip label={t.hidePanel} shortcut={shortcuts.togglePanel}>
-          <Button variant="ghost" size="icon" aria-label={t.hidePanel} onClick={onClose} className="rounded-lg">
+          <Button variant="ghost" size="icon" aria-label={t.hidePanel} onClick={onClose}>
             <ChevronsRightIcon />
           </Button>
         </ShortcutTooltip>
@@ -106,7 +106,7 @@ function RoutineItem({ conversationId, routine, onMention }: { conversationId: s
   const t = useT(messages);
   const toggle = useToggleRoutine(conversationId, routine);
   return (
-    <Item size="sm" className="items-start px-2 py-2 hover:bg-muted/50">
+    <Item size="sm" className="items-start px-2 py-2 hover:bg-muted/60">
       <ItemMedia className="pt-0.5">
         <ClockIcon className={cn("size-4", routine.enabled ? "text-success" : "text-muted-foreground")} />
       </ItemMedia>

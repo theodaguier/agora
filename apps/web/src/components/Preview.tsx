@@ -4,6 +4,7 @@ import { previewFileName, readPreviews, SCREEN_DEVICES, type PreviewRef, type Sc
 import { common } from "@agora/core/i18n";
 import { useWide } from "@/components/CodeSession";
 import { BesideButton } from "@/components/BesideButton";
+import { PaneHeader } from "@/components/PaneHeader";
 import { ChevronsRightIcon, CloseIcon, FileCodeIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -181,21 +182,21 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
-        {writing && <Spinner className="mt-1 size-4 shrink-0" />}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium leading-snug">{title}</p>
-          <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
-            {t.mockup} · {writing ? t.writing : t.ready}
-          </p>
-        </div>
-        {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
-        {onClose && (
-          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
-            {page ? <CloseIcon /> : <ChevronsRightIcon />}
-          </Button>
-        )}
-      </header>
+      <PaneHeader
+        media={writing && <Spinner />}
+        title={title}
+        description={`${t.mockup} · ${writing ? t.writing : t.ready}`}
+        actions={
+          <>
+            {onDetach && <BesideButton onClick={onDetach} />}
+            {onClose && (
+              <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
+                {page ? <CloseIcon /> : <ChevronsRightIcon />}
+              </Button>
+            )}
+          </>
+        }
+      />
       <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-3">
         <DeviceToggle value={device} onChange={setDevice} />
         <div className="flex-1" />

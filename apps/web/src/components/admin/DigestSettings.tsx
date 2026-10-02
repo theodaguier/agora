@@ -2,10 +2,9 @@ import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
-import { OptionSelect } from "@/components/Pickers";
+import { OptionSelect, timeOptions } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -142,7 +141,7 @@ export function DigestSettings() {
                 <FormLabel htmlFor={`${id}-time`} required>
                   {t.time}
                 </FormLabel>
-                <Input id={`${id}-time`} type="time" required value={form.time} onChange={(e) => e.target.value && set({ time: e.target.value })} />
+                <OptionSelect id={`${id}-time`} options={timeOptions(form.time)} value={form.time} onValueChange={(time) => set({ time })} />
                 <FieldDescription>{t.timeHelp(data.timezone)}</FieldDescription>
               </Field>
               <Field>

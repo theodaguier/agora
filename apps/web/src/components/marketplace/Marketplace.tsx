@@ -17,7 +17,7 @@ import { adminAgentsQuery, adminUsersQuery, agentsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { AddSheet } from "./AddSheet";
 import { CustomConnectorSheet } from "./CustomConnectorSheet";
-import { IntegrationTile } from "./IntegrationType";
+import { InitialTile, IntegrationTile } from "./IntegrationType";
 import { guessIntegrationType } from "@agora/core";
 import {
   fromMcp,
@@ -117,7 +117,7 @@ export function Marketplace({ onClose }: { onClose: () => void }) {
     >
       <DialogContent
         showCloseButton={false}
-        className="flex h-full max-w-[880px] flex-col gap-0 overflow-hidden rounded-none border-0 bg-background p-0 dark:bg-[oklch(0.19_0_0)] sm:h-[min(88vh,900px)] sm:max-w-[min(880px,calc(100%-3rem))] sm:rounded-2xl sm:border"
+        className="flex h-full max-w-[880px] flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[min(88vh,900px)] sm:max-w-[min(880px,calc(100%-3rem))] sm:rounded-2xl sm:border"
       >
         <DialogTitle className="sr-only">{t.title}</DialogTitle>
         <div className="flex h-14 shrink-0 items-center justify-between px-4">
@@ -358,9 +358,7 @@ function Row({ item, onAdd, wide }: { item: Item; onAdd: () => void; wide?: bool
       {item.kind === "mcp" || item.kind === "registry" ? (
         <IntegrationTile type={item.type ?? guessIntegrationType(item.name, item.description)} server={item.name} />
       ) : (
-        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-[15px] font-semibold text-foreground/85">
-          {item.name.replace(/^[^a-z0-9]+/i, "").charAt(0).toUpperCase()}
-        </span>
+        <InitialTile name={item.name} />
       )}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext, useRouter } from "@tanstack/react-router";
+import { SectionHeader } from "@/components/admin/ui";
 import { OptionSelect } from "@/components/Pickers";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -45,7 +46,7 @@ export function Appearance() {
   const t = useT(messages);
   return (
     <>
-      <h2 className="mb-7 text-lg font-semibold tracking-tight">{t.title}</h2>
+      <SectionHeader title={t.title} />
       <FieldGroup>
         <AccountLanguage />
         <FieldSeparator />

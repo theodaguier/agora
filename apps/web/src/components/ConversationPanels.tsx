@@ -141,7 +141,7 @@ export function ConversationPanel({
       <div className="flex h-12 shrink-0 items-center gap-1 px-3">
         <span className="flex-1 text-[13px] font-medium text-muted-foreground">{labels[kind]}</span>
         {onDetach && <BesideButton onClick={onDetach} />}
-        <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="rounded-lg">
+        <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
           <ChevronsRightIcon />
         </Button>
       </div>
@@ -286,7 +286,7 @@ function SearchPanel({ conversationId, onJump }: { conversationId: string; onJum
   return (
     <>
       <div className="shrink-0 px-3 pb-2">
-        <InputGroup className="bg-background">
+        <InputGroup className="h-8 bg-background">
           <InputGroupAddon>
             <SearchIcon />
           </InputGroupAddon>
@@ -323,7 +323,7 @@ function SearchPanel({ conversationId, onJump }: { conversationId: string; onJum
 /** A message in a panel list: its author, date and a line of text. */
 function MessageItem({ message, onClick, actions, children }: { message: Message; onClick: () => void; actions?: ReactNode; children: ReactNode }) {
   return (
-    <Item size="sm" className="items-start px-2 py-2 hover:bg-muted/50">
+    <Item size="sm" className="items-start px-2 py-2 hover:bg-muted/60">
       <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-start gap-2.5 text-left outline-none">
         <ItemMedia className="pt-0.5">
           <AuthorAvatar author={message.author} />
@@ -331,7 +331,7 @@ function MessageItem({ message, onClick, actions, children }: { message: Message
         <ItemContent className="min-w-0 gap-0.5">
           <ItemTitle className="w-full justify-between gap-2 font-normal">
             <span className="truncate">{message.author?.name ?? "?"}</span>
-            <span className="shrink-0 text-[12px] text-subtle">{dividerLabel(new Date(message.createdAt))}</span>
+            <span className="shrink-0 text-xs text-subtle">{dividerLabel(new Date(message.createdAt))}</span>
           </ItemTitle>
           <ItemDescription className="line-clamp-3 text-[13px]">{children}</ItemDescription>
         </ItemContent>
@@ -413,7 +413,7 @@ function FileItem({
   const t = useT(messages);
   const [viewing, setViewing] = useState<number | null>(null);
   return (
-    <Item size="sm" className="px-2 py-1.5 hover:bg-muted/50">
+    <Item size="sm" className="px-2 py-1.5 hover:bg-muted/60">
       <a
         href={attachmentUrl(file.id, !isImage(file.mime))}
         target={isImage(file.mime) ? "_blank" : undefined}
@@ -437,7 +437,7 @@ function FileItem({
         )}
         <ItemContent className="min-w-0 gap-0">
           <ItemTitle className="w-full truncate font-normal">{file.name}</ItemTitle>
-          <ItemDescription className="truncate text-[12px]">
+          <ItemDescription className="truncate text-xs">
             {description ?? `${formatSize(file.size)} · ${message.author?.name ?? "?"} · ${dividerLabel(new Date(message.createdAt))}`}
           </ItemDescription>
         </ItemContent>

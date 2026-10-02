@@ -79,7 +79,7 @@ export function QuoteBlock({
       variant="muted"
       size="xs"
       render={onClick ? <button type="button" onClick={onClick} /> : undefined}
-      className={cn("w-full rounded-xl text-left", onClick && "hover:bg-muted", className)}
+      className={cn("w-full rounded-xl text-left", onClick && "hover:bg-muted/60", className)}
     >
       <ItemContent className="min-w-0">
         <ItemTitle className="w-full truncate text-[13px]">{quote.authorName}</ItemTitle>

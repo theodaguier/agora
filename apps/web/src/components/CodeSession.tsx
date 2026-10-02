@@ -41,22 +41,25 @@ import {
   ShieldAlertIcon,
   SparklesIcon,
   StopIcon,
-  TaskListIcon,
   ToolIcon,
   UserIcon,
   WarningIcon,
 } from "@/components/icons";
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
-import { BesideButton } from "@/components/BesideButton";
+import { BesideButton, besideMessages } from "@/components/BesideButton";
+import { PaneHeader } from "@/components/PaneHeader";
+import { UserBubble } from "@/components/Bubbles";
 import { TabChip } from "@/components/TabChip";
 import { usePendingFiles } from "@/components/Composer";
 import { MessageText } from "@/components/MessageText";
 import { GroupHeading, ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -70,15 +73,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormLabel } from "@/components/FormLabel";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
@@ -253,6 +258,7 @@ export function CodeSessionsButton({
   onDeleted?: (sessionId: string) => void;
 }) {
   const t = useT(messages);
+  const beside = useT(besideMessages);
   const qc = useQueryClient();
   const { user } = useRouteContext({ from: "/app" });
   const [open, setOpen] = useState(false);
@@ -292,7 +298,7 @@ export function CodeSessionsButton({
         <TooltipTrigger
           render={
             <PopoverTrigger
-              render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden rounded-lg aria-pressed:bg-muted lg:inline-flex" />}
+              render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden aria-pressed:bg-muted lg:inline-flex" />}
             />
           }
         >
@@ -301,79 +307,96 @@ export function CodeSessionsButton({
         </TooltipTrigger>
         <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
-        <p className="px-2 pb-1.5 pt-1 text-[12px] font-medium text-muted-foreground">{t.sessions}</p>
-        {!sorted.length && <p className="px-2 pb-2 text-sm text-muted-foreground">{t.none}</p>}
-        <div className="flex max-h-96 flex-col overflow-y-auto">
+      <PopoverContent align="end" sideOffset={6} className="w-80 gap-1 p-1.5">
+        <PopoverHeader className="px-2 pt-1">
+          <PopoverTitle className="text-xs text-subtle">{t.sessions}</PopoverTitle>
+          {!sorted.length && <PopoverDescription>{t.none}</PopoverDescription>}
+        </PopoverHeader>
+        <div className="flex max-h-96 flex-col gap-0.5 overflow-y-auto">
           {sorted.map((s) => {
+            const deletable = canStart && s.requestedBy === user.id;
             const row = (
-            <div key={s.id} className="group/session relative">
-              <button
-                type="button"
+              <Item
+                key={s.id}
+                size="xs"
                 aria-current={s.id === current || undefined}
-                onClick={() => {
-                  setOpen(false);
-                  onOpen(s.id);
-                }}
-                className={cn(
-                  "flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted aria-[current]:bg-muted",
-                  onOpenBeside && "pr-10",
-                )}
+                render={
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      onOpen(s.id);
+                    }}
+                  />
+                }
+                className="flex-nowrap items-start text-left hover:bg-muted/60 aria-[current]:bg-muted"
               >
-                <StatusIcon status={s.status} asking={!!s.question} className="mt-0.5 shrink-0" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm">{s.title}</span>
-                  <span className="block truncate text-[12px] text-muted-foreground">
+                <ItemMedia className="mt-0.5">
+                  <StatusIcon status={s.status} asking={!!s.question} />
+                </ItemMedia>
+                <ItemContent className="min-w-0">
+                  <ItemTitle className="w-full truncate font-normal">{s.title}</ItemTitle>
+                  <ItemDescription className="truncate text-xs">
                     <StatusText session={s} />
                     {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
                     {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
-                  </span>
+                  </ItemDescription>
                   {s.instruction && (
-                    <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
+                    <ItemDescription className="text-xs">
                       {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
-                    </span>
+                    </ItemDescription>
                   )}
-                </span>
-              </button>
-              {onOpenBeside && (
-                <BesideButton
-                  onClick={() => {
-                    setOpen(false);
-                    onOpenBeside(s.id);
-                  }}
-                  className="absolute right-1 top-1 opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100"
-                />
-              )}
-            </div>
+                </ItemContent>
+              </Item>
             );
-            // Its owner deletes it from a right click.
-            if (!canStart || s.requestedBy !== user.id) return row;
+            // A right click opens it beside the conversation, and lets its owner delete it.
+            if (!onOpenBeside && !deletable) return row;
             return (
               <ContextMenu key={s.id}>
                 <ContextMenuTrigger render={row} />
                 <ContextMenuContent className="w-48">
-                  <ContextMenuItem variant="destructive" disabled={remove.isPending} onClick={() => void confirmDelete(s)}>
-                    {t.deleteSession}
-                  </ContextMenuItem>
+                  {onOpenBeside && (
+                    <ContextMenuItem
+                      onClick={() => {
+                        setOpen(false);
+                        onOpenBeside(s.id);
+                      }}
+                    >
+                      {beside.beside}
+                    </ContextMenuItem>
+                  )}
+                  {onOpenBeside && deletable && <ContextMenuSeparator />}
+                  {deletable && (
+                    <ContextMenuItem variant="destructive" disabled={remove.isPending} onClick={() => void confirmDelete(s)}>
+                      {t.deleteSession}
+                    </ContextMenuItem>
+                  )}
                 </ContextMenuContent>
               </ContextMenu>
             );
           })}
         </div>
         {canStart && (
-          <div className="mt-1 border-t border-border/60 pt-1">
-            <Button
-              variant="ghost"
-              className="w-full justify-start rounded-lg px-2"
-              onClick={() => {
-                setOpen(false);
-                onOpen(NEW_CODE_SESSION);
-              }}
+          <>
+            <Separator />
+            <Item
+              size="xs"
+              render={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpen(NEW_CODE_SESSION);
+                  }}
+                />
+              }
+              className="text-left hover:bg-muted/60"
             >
-              {t.newSession}
-            </Button>
-
-          </div>
+              <ItemContent>
+                <ItemTitle className="font-normal">{t.newSession}</ItemTitle>
+              </ItemContent>
+            </Item>
+          </>
         )}
       </PopoverContent>
     </Popover>
@@ -483,7 +506,7 @@ function CodeSessionTabs({
   const { isSuccess: canStart } = useQuery({ ...codeModelsQuery(conversationId), retry: false });
   const others = sessions.filter((s) => !tabs.includes(s.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return (
-    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-1.5">
+    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b px-1.5">
       {tabs.map((id) => {
         const session = sessions.find((s) => s.id === id);
         const title = session?.title ?? t.newSession;
@@ -503,7 +526,7 @@ function CodeSessionTabs({
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger
-              render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.openSession} className="shrink-0 rounded-lg" />} />}
+              render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.openSession} className="shrink-0" />} />}
             >
               <PlusIcon />
             </TooltipTrigger>
@@ -520,7 +543,7 @@ function CodeSessionTabs({
                     <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{s.title}</span>
-                      <span className="block truncate text-[12px] text-muted-foreground">
+                      <span className="block truncate text-xs text-muted-foreground">
                         <StatusText session={s} /> · {dividerLabel(new Date(s.updatedAt))}
                       </span>
                     </span>
@@ -602,19 +625,28 @@ function NewSessionView({
   };
   return (
     <div {...fileDrop(files.add)} className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium leading-snug">{t.newSession}</p>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{start.isPending ? t.empty : t.newHint}</p>
-        </div>
-        {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
-        {onClose && (
-          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
-            {page ? <CloseIcon /> : <ChevronsRightIcon />}
-          </Button>
-        )}
-      </header>
-      <div className="min-h-0 flex-1 border-t border-border/60" />
+      <PaneHeader
+        title={t.newSession}
+        actions={
+          <>
+            {onDetach && <BesideButton onClick={onDetach} />}
+            {onClose && (
+              <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
+                {page ? <CloseIcon /> : <ChevronsRightIcon />}
+              </Button>
+            )}
+          </>
+        }
+      />
+      <div className="flex min-h-0 flex-1 border-t">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">{start.isPending ? <Spinner /> : <ModelLogo provider="claude-code" />}</EmptyMedia>
+            <EmptyTitle>{t.claudeCode}</EmptyTitle>
+            <EmptyDescription>{start.isPending ? t.empty : t.newHint}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
       <div className="shrink-0 px-3 pb-3 pt-2">
         <form
           onSubmit={(e) => {
@@ -652,7 +684,7 @@ function NewSessionView({
               <ModePicker value={mode} onSelect={setMode} />
               <span className="flex-1" />
               <CodeModelPicker conversationId={conversationId} value={model} onSelect={setModel} />
-              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="disabled:opacity-40">
+              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="rounded-full disabled:opacity-40">
                 {start.isPending ? <Spinner /> : <ArrowUpIcon strokeWidth={2.25} />}
               </Button>
             </InputGroupAddon>
@@ -755,20 +787,20 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
             <CommandEmpty>{isPending ? <Spinner className="mx-auto size-4" /> : t.noRepos}</CommandEmpty>
             {custom && (
               <CommandGroup>
-                <CommandItem value={custom} onSelect={() => choose(custom)} className="h-9 px-2.5 text-sm">
+                <CommandItem value={custom} onSelect={() => choose(custom)} size="sm">
                   {t.useRepo(custom)}
                 </CommandItem>
               </CommandGroup>
             )}
             <CommandGroup>
-              <CommandItem value={t.noRepo} data-checked={!value} onSelect={() => choose(null)} className="h-9 px-2.5 text-sm">
+              <CommandItem value={t.noRepo} data-checked={!value} onSelect={() => choose(null)} size="sm">
                 {t.noRepo}
               </CommandItem>
             </CommandGroup>
             {recent.length > 0 && (
               <CommandGroup heading={t.recentRepos}>
                 {recent.map((r) => (
-                  <CommandItem key={r} value={r} data-checked={r === value} onSelect={() => choose(r)} className="h-9 px-2.5 text-sm">
+                  <CommandItem key={r} value={r} data-checked={r === value} onSelect={() => choose(r)} size="sm">
                     <span className="truncate">{r}</span>
                   </CommandItem>
                 ))}
@@ -777,27 +809,31 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
             {others.length > 0 && (
               <CommandGroup heading="GitHub">
                 {others.map((r) => (
-                  <CommandItem key={r.repo} value={r.repo} data-checked={r.repo === value} onSelect={() => choose(r.repo)} className="h-9 px-2.5 text-sm">
+                  <CommandItem key={r.repo} value={r.repo} data-checked={r.repo === value} onSelect={() => choose(r.repo)} size="sm">
                     <span className="truncate">{r.repo}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
             )}
+            {value && (
+              <>
+                <CommandSeparator alwaysRender />
+                <CommandGroup forceMount>
+                  <CommandItem
+                    size="sm"
+                    forceMount
+                    value="__credentials"
+                    onSelect={() => {
+                      setOpen(false);
+                      setCredentials(true);
+                    }}
+                  >
+                    {t.credentials.open}
+                  </CommandItem>
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
-          {value && (
-            <div className="border-t border-border/60 p-1">
-              <Button
-                variant="ghost"
-                className="w-full justify-start rounded-md px-2.5 font-normal"
-                onClick={() => {
-                  setOpen(false);
-                  setCredentials(true);
-                }}
-              >
-                {t.credentials.open}
-              </Button>
-            </div>
-          )}
         </Command>
       </PopoverContent>
       {value && <RepoCredentialsDialog conversationId={conversationId} repo={value} open={credentials} onClose={() => setCredentials(false)} />}
@@ -847,11 +883,11 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
                   autoComplete="off"
                   defaultValue={data?.env ?? ""}
                   placeholder={t.placeholder}
-                  className="max-h-96 font-mono text-[12px] leading-5 md:text-[12px]"
+                  className="max-h-96 font-mono text-xs leading-5 md:text-xs"
                 />
               )}
             </Field>
-            {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
+            {save.error && <FieldError>{save.error.message}</FieldError>}
           </FieldGroup>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
@@ -897,36 +933,43 @@ function CodeSessionView({
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
   return (
     <div {...(owner && fileDrop((files) => composer.current?.addFiles(files)))} className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
-        {session && <StatusIcon status={session.status} asking={!!session.question} className="mt-1 shrink-0" />}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium leading-snug">{session?.title ?? t.claudeCode}</p>
-          {session && (
-            <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+      <PaneHeader
+        media={session && <StatusIcon status={session.status} asking={!!session.question} />}
+        title={session?.title ?? t.claudeCode}
+        description={
+          session && (
+            <>
               <StatusText session={session} />
               {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
               {session.activity && active(session.status) ? ` · ${session.activity}` : ""}
-            </p>
-          )}
-        </div>
-        {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
-        {onClose && (
-          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
-            {page ? <CloseIcon /> : <ChevronsRightIcon />}
-          </Button>
-        )}
-      </header>
+            </>
+          )
+        }
+        actions={
+          <>
+            {onDetach && <BesideButton onClick={onDetach} />}
+            {onClose && (
+              <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
+                {page ? <CloseIcon /> : <ChevronsRightIcon />}
+              </Button>
+            )}
+          </>
+        }
+      >
+        {session && <Meta conversationId={conversationId} session={session} showModel={!owner} owner={owner} />}
+      </PaneHeader>
 
       {!session ? (
-        <div className="grid flex-1 place-items-center">
-          <Spinner className="size-5 text-muted-foreground" />
+        <div className="flex min-h-0 flex-1 border-t">
+          <Empty>
+            <Spinner className="size-5 text-muted-foreground" />
+          </Empty>
         </div>
       ) : (
         <>
-          <Meta conversationId={conversationId} session={session} showModel={!owner} owner={owner} />
           {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
 
-          <div className="relative min-h-0 flex-1 border-t border-border/60">
+          <div className="relative min-h-0 flex-1 border-t">
             <div
               ref={scroller}
               onScroll={(e) => {
@@ -938,7 +981,14 @@ function CodeSessionView({
               className="h-full overflow-y-auto px-4 py-4"
             >
               {session.steps.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t.empty}</p>
+                <Empty className="h-full">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Spinner />
+                    </EmptyMedia>
+                    <EmptyDescription>{t.empty}</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <Timeline steps={session.steps} running={session.status === "running"} />
               )}
@@ -947,7 +997,7 @@ function CodeSessionView({
               <Button
                 variant="secondary"
                 size="sm"
-                className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-md"
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-md"
                 onClick={() => {
                   follow.current = true;
                   scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
@@ -1024,7 +1074,7 @@ function Meta({ conversationId, session, showModel, owner }: { conversationId: s
   const minutes = u ? u.durationMs / 60_000 : 0;
   const time = !u ? "" : minutes < 1 ? `${Math.max(1, Math.round(u.durationMs / 1000))} s` : `${Math.round(minutes)} min`;
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 pl-10.5 text-[12px] text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
       {showModel && session.model && (
         <span className="inline-flex items-center gap-1">
           <ModelLogo provider="anthropic" model={session.model} className="size-3.5" />
@@ -1044,10 +1094,7 @@ function Meta({ conversationId, session, showModel, owner }: { conversationId: s
         </Tooltip>
       )}
       <Tooltip>
-        <TooltipTrigger
-          render={<button type="button" aria-label={t.copyPath} onClick={() => copyText(session.cwd)} />}
-          className="inline-flex min-w-0 items-center gap-1 rounded-sm font-mono outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        >
+        <TooltipTrigger render={<Button variant="ghost" size="xs" aria-label={t.copyPath} onClick={() => copyText(session.cwd)} className="-mx-2 min-w-0 font-mono text-xs" />}>
           <FolderIcon className="size-3.5 shrink-0" />
           <span className="truncate">{folder}</span>
         </TooltipTrigger>
@@ -1066,13 +1113,9 @@ function Meta({ conversationId, session, showModel, owner }: { conversationId: s
       )}
       {owner && session.repo && (
         <>
-          <button
-            type="button"
-            onClick={() => setCredentials(true)}
-            className="rounded-sm underline-offset-3 outline-none hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
+          <Button variant="ghost" size="xs" onClick={() => setCredentials(true)} className="-mx-2 text-xs">
             {t.credentials.open}
-          </button>
+          </Button>
           <RepoCredentialsDialog conversationId={conversationId} repo={session.repo} open={credentials} onClose={() => setCredentials(false)} />
         </>
       )}
@@ -1101,14 +1144,12 @@ function WorktreeBanner({ conversationId, session, worktree }: { conversationId:
     if (await confirmAction({ title: t.confirmTitle(session.title), description: t.confirmHelp(branch, session.git?.changes ?? 0), action: t.remove })) remove.mutate();
   };
   return (
-    <Alert variant="destructive" className="mb-2 rounded-2xl px-3.5 py-3">
+    <Alert className="mb-2">
       <AlertDescription>
         <p>{closed ? t.closed : t.done}</p>
-        <div className="mt-2">
-          <Button size="sm" variant="destructive" disabled={remove.isPending} onClick={() => void confirm()}>
-            {remove.isPending ? t.removing : t.remove}
-          </Button>
-        </div>
+        <Button size="sm" variant="destructive" disabled={remove.isPending} onClick={() => void confirm()} className="mt-2">
+          {remove.isPending ? t.removing : t.remove}
+        </Button>
       </AlertDescription>
     </Alert>
   );
@@ -1238,87 +1279,91 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
   ].filter(Boolean);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="mb-2 overflow-hidden rounded-2xl border border-border/70 bg-background/60">
-      <div className="flex h-10 items-center gap-2 pl-1.5 pr-1.5">
-        <CollapsibleTrigger
-          disabled={!files.length && !(owner && git.changes)}
-          className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 text-left text-[13px] outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:hover:bg-transparent"
-        >
-          {files.length > 0 && <ChevronRightIcon className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />}
-          <BranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 truncate font-mono text-[12px]">{git.branch ?? "?"}</span>
-          <span className="shrink-0 truncate text-muted-foreground">{summary.length ? summary.join(" · ") : t.clean}</span>
-          {(added > 0 || removed > 0) && (
-            <span className="shrink-0 font-mono text-[12px] tabular-nums">
-              <span className="text-success">+{added}</span> <span className="text-destructive">−{removed}</span>
-            </span>
-          )}
-        </CollapsibleTrigger>
-        {pr && (
-          <a
-            href={pr.url}
-            target="_blank"
-            rel="noreferrer"
-            title={pr.title}
-            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
-            <span className={cn("size-1.5 rounded-full", pr.state === "open" ? "bg-success" : pr.state === "merged" ? "bg-violet-500" : "bg-muted-foreground")} />
-            {t.pr(pr.number)} · {t.prState[pr.state]}
-            <ExternalLinkIcon className="size-3" />
-          </a>
-        )}
-        {primary && (
-          <Tooltip>
-            <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-              <Button size="xs" disabled={busy} onClick={primary.onSelect} className={cn("px-3", more.length > 0 && "rounded-r-none pr-2.5")}>
-                {run.isPending ? c.inProgress : primary.label}
-              </Button>
-              {more.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button size="xs" aria-label={t.more} disabled={busy} className="rounded-l-none border-l border-primary-foreground/15 px-1.5" />}>
-                    <ChevronDownIcon />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="min-w-52">
-                    {more.map((a) => (
-                      <DropdownMenuItem key={a.label} onClick={a.onSelect}>
-                        {a.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+    <Card size="sm" className="mb-2">
+      <Collapsible open={open} onOpenChange={setOpen} className="contents">
+        <CardHeader>
+          <CardTitle className="min-w-0">
+            <CollapsibleTrigger
+              disabled={!files.length && !(owner && git.changes)}
+              render={<Button variant="ghost" size="xs" className="-mx-2 max-w-full font-mono text-xs text-foreground" />}
+            >
+              {files.length > 0 && <ChevronRightIcon className={cn("text-muted-foreground transition-transform", open && "rotate-90")} />}
+              <BranchIcon className="text-muted-foreground" />
+              <span className="truncate">{git.branch ?? "?"}</span>
+            </CollapsibleTrigger>
+          </CardTitle>
+          <CardDescription className="truncate text-xs">
+            {summary.length ? summary.join(" · ") : t.clean}
+            {(added > 0 || removed > 0) && (
+              <span className="ml-2 font-mono tabular-nums">
+                <span className="text-success">+{added}</span> <span className="text-destructive">−{removed}</span>
+              </span>
+            )}
+          </CardDescription>
+          {(pr || primary) && (
+            <CardAction className="flex items-center gap-1.5">
+              {pr && (
+                <Badge variant="outline" render={<a href={pr.url} target="_blank" rel="noreferrer" title={pr.title} />}>
+                  {t.pr(pr.number)} · {t.prState[pr.state]}
+                  <ExternalLinkIcon />
+                </Badge>
               )}
-            </TooltipTrigger>
-            {working && <TooltipContent>{t.busy}</TooltipContent>}
-          </Tooltip>
-        )}
-      </div>
+              {primary && (
+                <Tooltip>
+                  <TooltipTrigger render={<ButtonGroup />}>
+                    <Button size="xs" disabled={busy} onClick={primary.onSelect}>
+                      {run.isPending ? c.inProgress : primary.label}
+                    </Button>
+                    {more.length > 0 && (
+                      <>
+                        <ButtonGroupSeparator />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={<Button size="xs" aria-label={t.more} disabled={busy} />}>
+                            <ChevronDownIcon />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-52">
+                            {more.map((a) => (
+                              <DropdownMenuItem key={a.label} onClick={a.onSelect}>
+                                {a.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
+                  </TooltipTrigger>
+                  {working && <TooltipContent>{t.busy}</TooltipContent>}
+                </Tooltip>
+              )}
+            </CardAction>
+          )}
+        </CardHeader>
 
-      <CollapsibleContent className="border-t border-border/60">
-        {files.length > 0 && (
-          <ul className="max-h-48 overflow-y-auto py-1">
-            {files.map((f) => {
-              const slash = f.path.lastIndexOf("/");
-              return (
-                <li key={f.path} className="flex items-center gap-2 px-3 py-1 text-[12px]" title={f.path}>
-                  <span className={cn("w-3 shrink-0 text-center font-mono font-medium", FILE_TONE[f.state])}>{FILE_STATE[f.state]}</span>
-                  <span className="min-w-0 flex-1 truncate font-mono">
-                    {f.path.slice(slash + 1)}
-                    {slash > 0 && <span className="ml-2 text-muted-foreground">{f.path.slice(0, slash)}</span>}
-                  </span>
-                  {f.added !== null && (
-                    <span className="shrink-0 font-mono tabular-nums">
-                      {f.added > 0 && <span className="text-success">+{f.added}</span>} {!!f.removed && <span className="text-destructive">−{f.removed}</span>}
+        <CollapsibleContent render={<CardContent className="flex flex-col gap-3" />}>
+          {files.length > 0 && (
+            <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+              {files.map((f) => {
+                const slash = f.path.lastIndexOf("/");
+                return (
+                  <li key={f.path} className="flex items-center gap-2 text-xs" title={f.path}>
+                    <span className={cn("w-3 shrink-0 text-center font-mono font-medium", FILE_TONE[f.state])}>{FILE_STATE[f.state]}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono">
+                      {f.path.slice(slash + 1)}
+                      {slash > 0 && <span className="ml-2 text-muted-foreground">{f.path.slice(0, slash)}</span>}
                     </span>
-                  )}
-                </li>
-              );
-            })}
-            {git.changes > files.length && <li className="px-3 py-1 text-[12px] text-muted-foreground">{t.moreFiles(git.changes - files.length)}</li>}
-          </ul>
-        )}
-        {owner && git.changes > 0 && (
-          <div className="border-t border-border/60 p-1.5">
-            <InputGroup className="h-auto items-end rounded-xl border-0 bg-secondary">
+                    {f.added !== null && (
+                      <span className="shrink-0 font-mono tabular-nums">
+                        {f.added > 0 && <span className="text-success">+{f.added}</span>} {!!f.removed && <span className="text-destructive">−{f.removed}</span>}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+              {git.changes > files.length && <li className="text-xs text-muted-foreground">{t.moreFiles(git.changes - files.length)}</li>}
+            </ul>
+          )}
+          {owner && git.changes > 0 && (
+            <InputGroup className="items-end">
               <InputGroupTextarea
                 rows={1}
                 value={message}
@@ -1331,9 +1376,9 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
                     run.mutate([commitReq()]);
                   }
                 }}
-                className="max-h-32 min-h-0 px-2.5 py-1.5 font-mono text-[12px] leading-5 md:text-[12px]"
+                className="max-h-32 min-h-0 font-mono text-xs leading-5 md:text-xs"
               />
-              <InputGroupAddon align="inline-end" className="py-1 pr-1">
+              <InputGroupAddon align="inline-end">
                 <Tooltip>
                   <TooltipTrigger render={<InputGroupButton size="icon-xs" aria-label={t.generate} disabled={busy} onClick={() => generate.mutate()} />}>
                     {generate.isPending ? <Spinner className="size-3.5" /> : <SparklesIcon />}
@@ -1342,11 +1387,11 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
                 </Tooltip>
               </InputGroupAddon>
             </InputGroup>
-          </div>
-        )}
-      </CollapsibleContent>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
 
-      {owner && !git.github && <p className="border-t border-border/60 px-3 py-2 text-[12px] text-muted-foreground">{t.noGithub}</p>}
+      {owner && !git.github && <CardFooter className="text-xs text-muted-foreground">{t.noGithub}</CardFooter>}
       <PullRequestDialog
         open={prDialog}
         onClose={() => setPrDialog(false)}
@@ -1357,7 +1402,7 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
         defaultBody={session.result ?? ""}
         onSubmit={(title, body) => run.mutate([{ action: "pr", title, body, draft: false }])}
       />
-    </Collapsible>
+    </Card>
   );
 }
 
@@ -1458,9 +1503,9 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
     case "user":
       return (
         <div className="flex flex-col items-end gap-1">
-          {step.by && <span className="px-1 text-[12px] text-muted-foreground">{step.by}</span>}
+          {step.by && <span className="px-1 text-xs text-muted-foreground">{step.by}</span>}
           {!!step.files?.length && <SentAttachments items={step.files} className="max-w-[88%]" />}
-          {step.text && <p className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3.5 py-2 text-sm">{step.text}</p>}
+          {step.text && <UserBubble text={step.text} className="max-w-[88%] text-sm" />}
         </div>
       );
     case "text":
@@ -1476,10 +1521,23 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
         </div>
       );
     case "notice":
+      if (step.code === "error") {
+        return (
+          <Alert variant="destructive">
+            <CloseCircleIcon />
+            <AlertTitle>{t.notices.error}</AlertTitle>
+            {step.text && (
+              <AlertDescription>
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs">{step.text}</pre>
+              </AlertDescription>
+            )}
+          </Alert>
+        );
+      }
       return (
-        <div className={cn("text-center text-[13px]", step.code === "error" ? "text-destructive" : "text-muted-foreground")}>
+        <div className="text-center text-[13px] text-muted-foreground">
           {t.notices[step.code]}
-          {step.text && <pre className="mt-1.5 whitespace-pre-wrap break-words rounded-lg bg-background px-3 py-2 text-left font-mono text-[12px]">{step.text}</pre>}
+          {step.text && <CodeBlock className="mt-1.5 text-left">{step.text}</CodeBlock>}
         </div>
       );
   }
@@ -1500,37 +1558,38 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const expandable = !!(step.input || step.output || nested);
   const row = (
     <>
-      <ToolIcon name={step.name} className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="shrink-0 text-[13px] text-muted-foreground">{step.name}</span>
-      <span className="min-w-0 flex-1 truncate text-left font-mono text-[12px] text-foreground/80">{step.title !== step.name ? step.title : ""}</span>
+      <ToolIcon name={step.name} className="size-3.5" />
+      <span className="shrink-0">{step.name}</span>
+      <span className="min-w-0 flex-1 truncate text-left font-mono text-xs text-foreground/80">{step.title !== step.name ? step.title : ""}</span>
       <ToolStatus status={step.status} />
     </>
   );
-  if (!expandable) return <div className="flex h-7 items-center gap-2 px-2">{row}</div>;
+  if (!expandable) return <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-muted-foreground">{row}</div>;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="group/tool flex h-7 w-full items-center gap-2 rounded-md px-2 outline-none hover:bg-muted/50 focus-visible:bg-muted/50">
+      <CollapsibleTrigger render={<Button variant="ghost" size="xs" className="w-full justify-start gap-2" />}>
         {row}
-        <ChevronRightIcon className={cn("size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover/tool:opacity-100", open && "rotate-90 opacity-100")} />
+        <ChevronRightIcon className={cn("size-3 transition-transform", open && "rotate-90")} />
       </CollapsibleTrigger>
-      <CollapsibleContent className="ml-[21px] flex flex-col gap-2 border-l border-border/70 py-1.5 pl-3 pr-2">
+      <CollapsibleContent className="ml-3.5 flex flex-col gap-2 border-l py-1.5 pl-3 pr-2">
         {step.input && (step.name === "ExitPlanMode" ? <MessageText text={step.input} className="text-sm" /> : <Detail label={t.input} text={step.input} />)}
-        {nested && (
-          <div className="border-l border-border pl-3">
-            <Timeline steps={all} running={false} parentId={step.id} />
-          </div>
-        )}
+        {nested && <Timeline steps={all} running={false} parentId={step.id} />}
         {step.output && <Detail label={t.output} text={step.output} />}
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
+/** A command, a tool's input or output, an error: monospaced, wrapped, scrolling past its height. */
+function CodeBlock({ className, children }: { className?: string; children: ReactNode }) {
+  return <pre className={cn("overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted px-3 py-2 font-mono text-xs", className)}>{children}</pre>;
+}
+
 function Detail({ label, text }: { label: string; text: string }) {
   return (
     <div>
-      <p className="mb-1 text-[12px] text-muted-foreground">{label}</p>
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-background px-3 py-2 font-mono text-[12px] leading-relaxed">{text}</pre>
+      <p className="mb-1 text-xs text-muted-foreground">{label}</p>
+      <CodeBlock className="max-h-72 leading-relaxed">{text}</CodeBlock>
     </div>
   );
 }
@@ -1547,26 +1606,25 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
     meta: { error: false },
   });
   return (
-    <section aria-label={t.asks} className="mb-2 rounded-2xl border border-warning/30 bg-secondary p-3.5">
-      <div className="flex items-start gap-2.5">
-        <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium leading-snug">
-            {t.asks} <span className="font-mono">{approval.tool}</span>
-          </p>
-          <p className="mt-0.5 truncate text-[13px] text-muted-foreground">{approval.title}</p>
-          {approval.detail && (
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-background px-3 py-2 font-mono text-xs">{approval.detail}</pre>
-          )}
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2 pl-6.5">
+    <Card size="sm" role="region" aria-label={t.asks} className="mb-2">
+      <CardHeader>
+        <CardTitle>
+          {t.asks} <span className="font-mono">{approval.tool}</span>
+        </CardTitle>
+        <CardDescription className="truncate">{approval.title}</CardDescription>
+      </CardHeader>
+      {approval.detail && (
+        <CardContent>
+          <CodeBlock className="max-h-40">{approval.detail}</CodeBlock>
+        </CardContent>
+      )}
+      <CardFooter className="flex-wrap gap-2">
         {canAnswer ? (
           approval.choices.map((choice, i) => (
             <Button
               key={choice}
               size="sm"
-              variant={choice === "deny" ? "ghost" : i === 0 ? "default" : "secondary"}
+              variant={choice === "deny" ? "ghost" : i === 0 ? "default" : "outline"}
               disabled={answer.isPending}
               onClick={() => answer.mutate(choice)}
             >
@@ -1577,8 +1635,8 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
           <p className="text-sm text-muted-foreground">{t.waitingOwner}</p>
         )}
         {answer.error && <p className="w-full text-sm text-destructive">{answer.error.message}</p>}
-      </div>
-    </section>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -1589,18 +1647,15 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
 function BotQuestionBlock({ question, canAnswer }: { question: CodeBotQuestion; canAnswer: boolean }) {
   const t = useT(messages);
   return (
-    <section aria-label={t.botQuestion.title(question.bot)} className="mb-2 rounded-2xl border border-warning/30 bg-secondary p-3.5">
-      <div className="flex items-start gap-2.5">
-        <ChatQuestionIcon className="mt-0.5 size-4 shrink-0 text-warning" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium leading-snug">{t.botQuestion.title(question.bot)}</p>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{canAnswer ? t.botQuestion.help(question.bot) : t.botQuestion.waiting(question.bot)}</p>
-        </div>
-      </div>
-      <div className="mt-3 max-h-[40vh] overflow-y-auto rounded-lg bg-background px-3.5 py-2.5">
+    <Card size="sm" role="region" aria-label={t.botQuestion.title(question.bot)} className="mb-2">
+      <CardHeader>
+        <CardTitle>{t.botQuestion.title(question.bot)}</CardTitle>
+        <CardDescription>{canAnswer ? t.botQuestion.help(question.bot) : t.botQuestion.waiting(question.bot)}</CardDescription>
+      </CardHeader>
+      <CardContent className="max-h-[40vh] overflow-y-auto">
         <MessageText text={question.text} className="text-sm" />
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1644,70 +1699,75 @@ function QuestionBlock({
     setChoices((all) => ({ ...all, [question]: { ...(all[question] ?? { picked: [], other: "" }), ...change } }));
   const complete = questions.every((q) => answerOf(choices[q.question]));
   return (
-    <section aria-label={t.question.title} className="mb-2 rounded-2xl border border-border/70 bg-secondary p-3.5">
-      <p className="text-sm font-medium">{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</p>
+    <Card size="sm" role="region" aria-label={t.question.title} className="mb-2">
+      <CardHeader>
+        <CardTitle>{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</CardTitle>
+      </CardHeader>
       <form
+        className="contents"
         onSubmit={(e) => {
           e.preventDefault();
           if (complete && !answer.isPending) answer.mutate(false);
         }}
       >
-        <FieldGroup className="mt-3 max-h-[45vh] gap-5 overflow-y-auto">
-          {questions.map((q, qi) => {
-            const choice = choices[q.question];
-            const picked = choice?.picked ?? [];
-            const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
-            const id = (i: number) => `code-q${qi}-${i}`;
-            const card = (o: (typeof options)[number], i: number, control: ReactNode) => (
-              <FieldLabel key={o.value} htmlFor={id(i)}>
-                <Field orientation="horizontal">
-                  <FieldContent>
-                    <FieldTitle>{o.label}</FieldTitle>
-                    {o.description && <FieldDescription>{o.description}</FieldDescription>}
-                  </FieldContent>
-                  {control}
-                </Field>
-              </FieldLabel>
-            );
-            return (
-              <FieldSet key={q.question} disabled={!canAnswer}>
-                <FieldLegend variant="label" className="flex items-start gap-2">
-                  {q.header && <Badge variant="secondary">{q.header}</Badge>}
-                  <span>{q.question}</span>
-                </FieldLegend>
-                {q.multiSelect ? (
-                  <div data-slot="checkbox-group" className="flex flex-col gap-3">
-                    {options.map((o, i) =>
-                      card(
-                        o,
-                        i,
-                        <Checkbox
-                          id={id(i)}
-                          checked={picked.includes(o.value)}
-                          onCheckedChange={(on) => set(q.question, { picked: on ? [...picked, o.value] : picked.filter((p) => p !== o.value) })}
-                        />,
-                      ),
-                    )}
-                  </div>
-                ) : (
-                  <RadioGroup value={picked[0] ?? ""} onValueChange={(v) => set(q.question, { picked: [String(v)] })}>
-                    {options.map((o, i) => card(o, i, <RadioGroupItem value={o.value} id={id(i)} />))}
-                  </RadioGroup>
-                )}
-                {picked.includes(OTHER_ANSWER) && (
-                  <Input
-                    autoFocus
-                    aria-label={t.question.other}
-                    placeholder={t.question.otherPlaceholder}
-                    value={choice?.other ?? ""}
-                    onChange={(e) => set(q.question, { other: e.target.value })}
-                  />
-                )}
-              </FieldSet>
-            );
-          })}
-        </FieldGroup>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <CardContent>
+          <FieldGroup className="max-h-[45vh] gap-5 overflow-y-auto">
+            {questions.map((q, qi) => {
+              const choice = choices[q.question];
+              const picked = choice?.picked ?? [];
+              const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
+              const id = (i: number) => `code-q${qi}-${i}`;
+              const card = (o: (typeof options)[number], i: number, control: ReactNode) => (
+                <FieldLabel key={o.value} htmlFor={id(i)}>
+                  <Field orientation="horizontal">
+                    <FieldContent>
+                      <FieldTitle>{o.label}</FieldTitle>
+                      {o.description && <FieldDescription>{o.description}</FieldDescription>}
+                    </FieldContent>
+                    {control}
+                  </Field>
+                </FieldLabel>
+              );
+              return (
+                <FieldSet key={q.question} disabled={!canAnswer}>
+                  <FieldLegend variant="label" className="flex items-start gap-2">
+                    {q.header && <Badge variant="secondary">{q.header}</Badge>}
+                    <span>{q.question}</span>
+                  </FieldLegend>
+                  {q.multiSelect ? (
+                    <div data-slot="checkbox-group" className="flex flex-col gap-3">
+                      {options.map((o, i) =>
+                        card(
+                          o,
+                          i,
+                          <Checkbox
+                            id={id(i)}
+                            checked={picked.includes(o.value)}
+                            onCheckedChange={(on) => set(q.question, { picked: on ? [...picked, o.value] : picked.filter((p) => p !== o.value) })}
+                          />,
+                        ),
+                      )}
+                    </div>
+                  ) : (
+                    <RadioGroup value={picked[0] ?? ""} onValueChange={(v) => set(q.question, { picked: [String(v)] })}>
+                      {options.map((o, i) => card(o, i, <RadioGroupItem value={o.value} id={id(i)} />))}
+                    </RadioGroup>
+                  )}
+                  {picked.includes(OTHER_ANSWER) && (
+                    <Input
+                      autoFocus
+                      aria-label={t.question.other}
+                      placeholder={t.question.otherPlaceholder}
+                      value={choice?.other ?? ""}
+                      onChange={(e) => set(q.question, { other: e.target.value })}
+                    />
+                  )}
+                </FieldSet>
+              );
+            })}
+          </FieldGroup>
+        </CardContent>
+        <CardFooter className="flex-wrap gap-2">
           {canAnswer ? (
             <>
               <Button type="submit" size="sm" disabled={!complete || answer.isPending}>
@@ -1720,9 +1780,9 @@ function QuestionBlock({
           ) : (
             <p className="text-sm text-muted-foreground">{t.waitingOwner}</p>
           )}
-        </div>
+        </CardFooter>
       </form>
-    </section>
+    </Card>
   );
 }
 
@@ -1745,42 +1805,43 @@ function PlanBlock({ conversationId, session, approval, canAnswer }: { conversat
     meta: { success: (_: CodeSession, approve: boolean) => (approve ? t.plan.approved : t.plan.sentBack) },
   });
   return (
-    <section aria-label={t.plan.title} className="mb-2 rounded-2xl border border-border/70 bg-secondary p-3.5">
-      <div className="flex items-start gap-2.5">
-        <TaskListIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium leading-snug">{t.plan.title}</p>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{t.plan.help}</p>
-        </div>
-      </div>
-      {approval.plan && (
-        <div className="mt-3 max-h-[40vh] overflow-y-auto rounded-lg bg-background px-3.5 py-2.5">
-          <MessageText text={approval.plan} className="text-sm" />
-        </div>
-      )}
-      {canAnswer ? (
-        <>
+    <Card size="sm" role="region" aria-label={t.plan.title} className="mb-2">
+      <CardHeader>
+        <CardTitle>{t.plan.title}</CardTitle>
+        <CardDescription>{t.plan.help}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {approval.plan && (
+          <div className="max-h-[40vh] overflow-y-auto">
+            <MessageText text={approval.plan} className="text-sm" />
+          </div>
+        )}
+        {canAnswer && (
           <Textarea
             rows={2}
             value={feedback}
             aria-label={t.plan.feedback}
             placeholder={t.plan.feedbackPlaceholder}
             onChange={(e) => setFeedback(e.target.value)}
-            className="mt-3 max-h-32 bg-background"
+            className="max-h-32"
           />
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+        )}
+      </CardContent>
+      <CardFooter className="flex-wrap gap-2">
+        {canAnswer ? (
+          <>
             <Button size="sm" disabled={answer.isPending || !!feedback.trim()} onClick={() => answer.mutate(true)}>
               {answer.isPending && answer.variables ? c.inProgress : t.plan.approve}
             </Button>
-            <Button size="sm" variant="secondary" disabled={answer.isPending} onClick={() => answer.mutate(false)}>
+            <Button size="sm" variant="outline" disabled={answer.isPending} onClick={() => answer.mutate(false)}>
               {answer.isPending && !answer.variables ? c.inProgress : t.plan.revise}
             </Button>
-          </div>
-        </>
-      ) : (
-        <p className="mt-3 text-sm text-muted-foreground">{t.waitingOwner}</p>
-      )}
-    </section>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t.waitingOwner}</p>
+        )}
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -1908,11 +1969,11 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
           <span className="flex-1" />
           <SessionModelPicker conversationId={conversationId} session={session} />
           {stoppable ? (
-            <Button type="button" size="icon" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()} className="disabled:opacity-40">
+            <Button type="button" size="icon" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()} className="rounded-full disabled:opacity-40">
               {stop.isPending ? <Spinner /> : <StopIcon className="size-5" />}
             </Button>
           ) : (
-            <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="disabled:opacity-40">
+            <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="rounded-full disabled:opacity-40">
               <ArrowUpIcon strokeWidth={2.25} />
             </Button>
           )}
@@ -1951,7 +2012,7 @@ function ModePicker({ value, onSelect, disabled }: { value: CodePermissionMode; 
             <DropdownMenuRadioItem key={m} value={m} className="h-auto items-start py-2">
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span>{t.modes[m]}</span>
-                <span className="text-[12px] text-muted-foreground">{t.modeHelp[m]}</span>
+                <span className="text-xs text-muted-foreground">{t.modeHelp[m]}</span>
               </span>
             </DropdownMenuRadioItem>
           ))}
@@ -1974,30 +2035,32 @@ function TodoBar({ todos, running }: { todos: CodeTodo[]; running: boolean }) {
   const current = todos.find((x) => x.status === "in_progress");
   if (done === todos.length && !running) return null;
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="mb-2 overflow-hidden rounded-2xl border border-border/70 bg-background/60">
-      <CollapsibleTrigger
-        aria-label={t.label(done, todos.length)}
-        className="flex h-10 w-full items-center gap-2 px-3 text-left text-[13px] outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      >
-        <ChevronRightIcon className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
-        <TaskListIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="shrink-0">{t.title}</span>
-        <span className="shrink-0 tabular-nums text-muted-foreground">{t.progress(done, todos.length)}</span>
-        {current && !open && <span className="min-w-0 truncate text-muted-foreground">{current.activeForm ?? current.content}</span>}
-      </CollapsibleTrigger>
-      <CollapsibleContent className="border-t border-border/60">
-        <ul className="max-h-48 overflow-y-auto py-1.5">
-          {todos.map((todo) => (
-            <li key={todo.id} className="flex items-start gap-2 px-3 py-1 text-[13px]">
-              <TodoMark status={todo.status} running={running} />
-              <span className={cn("min-w-0 break-words", todo.status === "completed" && "text-muted-foreground line-through", todo.status === "in_progress" && "font-medium")}>
-                {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </CollapsibleContent>
-    </Collapsible>
+    <Card size="sm" className="mb-2">
+      <Collapsible open={open} onOpenChange={setOpen} className="contents">
+        <CardHeader>
+          <CardTitle>
+            <CollapsibleTrigger aria-label={t.label(done, todos.length)} render={<Button variant="ghost" size="xs" className="-mx-2 text-foreground" />}>
+              <ChevronRightIcon className={cn("text-muted-foreground transition-transform", open && "rotate-90")} />
+              {t.title}
+              <span className="tabular-nums text-muted-foreground">{t.progress(done, todos.length)}</span>
+            </CollapsibleTrigger>
+          </CardTitle>
+          {current && !open && <CardDescription className="truncate text-xs">{current.activeForm ?? current.content}</CardDescription>}
+        </CardHeader>
+        <CollapsibleContent render={<CardContent />}>
+          <ul className="flex max-h-48 flex-col gap-1.5 overflow-y-auto">
+            {todos.map((todo) => (
+              <li key={todo.id} className="flex items-start gap-2 text-[13px]">
+                <TodoMark status={todo.status} running={running} />
+                <span className={cn("min-w-0 break-words", todo.status === "completed" && "text-muted-foreground line-through", todo.status === "in_progress" && "font-medium")}>
+                  {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
   );
 }
 

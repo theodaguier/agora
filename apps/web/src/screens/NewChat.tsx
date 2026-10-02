@@ -186,7 +186,7 @@ export function NewChat() {
           size="icon"
           nativeButton={false}
           render={<Link to="/" aria-label={c.back} />}
-          className="-ml-1 rounded-lg hover:bg-transparent md:hidden"
+          className="-ml-1 hover:bg-transparent md:hidden"
         >
           <ChevronLeftIcon className="size-5" />
         </Button>

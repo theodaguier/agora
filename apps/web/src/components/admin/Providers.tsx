@@ -235,7 +235,7 @@ function PickDialog({ providers, onPick }: { providers: AiProvider[]; onPick: (p
         <CommandList className="max-h-80 pt-1">
           <CommandEmpty>{t.noMatch}</CommandEmpty>
           {providers.map((p) => (
-            <CommandItem key={p.slug} value={p.slug} keywords={[p.name]} onSelect={() => onPick(p)} className="h-10 gap-2.5 rounded-lg px-2 text-sm">
+            <CommandItem key={p.slug} value={p.slug} keywords={[p.name]} onSelect={() => onPick(p)} size="sm">
               <ModelLogo provider={p.slug} className="size-4" />
               <span className="truncate">{p.name}</span>
             </CommandItem>

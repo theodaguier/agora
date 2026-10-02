@@ -143,7 +143,7 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
       <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-3">
         <span className="text-[13px] font-medium text-muted-foreground">{t.group}</span>
         <ShortcutTooltip label={t.hidePanel} shortcut={shortcuts.togglePanel}>
-          <Button variant="ghost" size="icon" aria-label={t.hidePanel} onClick={onClose} className="rounded-lg">
+          <Button variant="ghost" size="icon" aria-label={t.hidePanel} onClick={onClose}>
             <ChevronsRightIcon />
           </Button>
         </ShortcutTooltip>
@@ -286,7 +286,7 @@ function RowBody(props: { p: Participant; name: string; hint?: string }) {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm">{props.name}</span>
         {props.hint && (
-          <span className="block truncate text-[12px] text-subtle" title={props.hint}>
+          <span className="block truncate text-xs text-subtle" title={props.hint}>
             {props.hint}
           </span>
         )}

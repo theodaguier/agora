@@ -6,7 +6,7 @@ import { enUS, fr } from "react-day-picker/locale";
 import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
 import { CloseIcon, PlusIcon } from "@/components/icons";
-import { OptionSelect, SearchSelect } from "@/components/Pickers";
+import { OptionSelect, SearchSelect, timeOptions } from "@/components/Pickers";
 import { ErrorText } from "@/components/admin/ui";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -305,15 +305,6 @@ function HoursForm({ userId, settings, self }: { userId: string; settings: Sched
       </FieldSet>
     </form>
   );
-}
-
-/** Every half hour, plus `current` if it falls between; `end` adds midnight at the end of the day. */
-function timeOptions(current: string, end = false) {
-  const at = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-  const times = Array.from({ length: 48 }, (_, i) => at(i * 30));
-  if (end) times.push("24:00");
-  if (!times.includes(current)) times.push(current);
-  return times.sort().map((v) => ({ value: v, label: v }));
 }
 
 /** A new range one hour after the last one ends, capped at the end of the day. */

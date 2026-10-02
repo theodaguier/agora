@@ -244,7 +244,7 @@ function SidebarBody() {
             </Button>
           </ShortcutTooltip>
         </div>
-        <InputGroup className="group-data-[collapsible=icon]:hidden">
+        <InputGroup className="h-8 group-data-[collapsible=icon]:hidden">
           <InputGroupInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={tc.search} aria-label={t.searchConversation} />
           <InputGroupAddon>
             <SearchIcon />

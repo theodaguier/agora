@@ -54,7 +54,7 @@ export function SlashMenu(props: { items: SlashItem[]; active: number; onHover: 
         const i = props.items.findIndex((item) => item.key === key);
         if (i >= 0) props.onHover(i);
       }}
-      className="absolute bottom-full left-0 z-30 mb-2 size-auto w-full max-w-[560px] rounded-2xl! border border-border bg-popover p-1.5 shadow-2xl shadow-black/15 dark:bg-[oklch(0.17_0_0)] dark:shadow-black/60"
+      className="absolute bottom-full left-0 z-30 mb-2 size-auto w-full max-w-[560px] rounded-2xl! border border-border bg-popover p-1.5 shadow-2xl shadow-black/15 dark:shadow-black/60"
     >
       <CommandList ref={list} className="max-h-[calc(20rem-14px)]">
         <CommandEmpty>{t.empty}</CommandEmpty>

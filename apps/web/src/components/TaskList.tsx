@@ -201,7 +201,7 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
   const meta = [from, task.dueOn && t.due(formatDueDate(task.dueOn))].filter(Boolean).join(" · ");
 
   return (
-    <Item size="sm" className="flex-nowrap items-start px-3 hover:bg-muted/50">
+    <Item size="sm" className="flex-nowrap items-start px-3 hover:bg-muted/60">
       <ItemMedia className="pt-0.5">
         <Checkbox
           checked={done}

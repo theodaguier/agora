@@ -2,6 +2,7 @@ import { confirmAction } from "@/lib/confirm";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useState } from "react";
+import { CHART_COLORS } from "@agora/core";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { type AvatarShape } from "@/lib/agent-avatar";
@@ -16,7 +17,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { FieldDescription, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipPanel, ChartTooltipRow, type ChartConfig } from "@/components/ui/chart";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -149,10 +150,10 @@ const messages = defineMessages({
 
 /** Categorical slots 1–3 of the data-viz palette, stepped for each theme. */
 const chartConfig = {
-  inputTokens: { theme: { light: "#2a78d6", dark: "#3987e5" } },
-  outputTokens: { theme: { light: "#eb6834", dark: "#d95926" } },
-  cacheTokens: { theme: { light: "#1baf7a", dark: "#199e70" } },
-  cost: { theme: { light: "#2a78d6", dark: "#3987e5" } },
+  inputTokens: { theme: CHART_COLORS[0] },
+  outputTokens: { theme: CHART_COLORS[1] },
+  cacheTokens: { theme: CHART_COLORS[2] },
+  cost: { theme: CHART_COLORS[0] },
 } satisfies ChartConfig;
 
 export function Usage() {
@@ -317,24 +318,16 @@ function Timeline({ report }: { report: UsageReport }) {
               if (!active || !payload?.length) return null;
               const point = payload[0]!.payload as UsageReport["series"][number];
               return (
-                <div className="grid min-w-40 gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs shadow-xl">
-                  <p className="font-medium">{f.bucket(String(label), report.bucket)}</p>
+                <ChartTooltipPanel title={f.bucket(String(label), report.bucket)}>
                   {metric === "tokens" ? (
-                    [...kinds].reverse().map((k) => (
-                      <p key={k} className="flex items-center gap-2">
-                        <span className="size-2.5 rounded-[2px]" style={{ background: `var(--color-${k})` }} />
-                        <span className="text-muted-foreground">{kindLabel[k]}</span>
-                        <span className="ml-auto tabular-nums">{f.whole(point[k])}</span>
-                      </p>
-                    ))
+                    [...kinds].reverse().map((k) => <ChartTooltipRow key={k} color={`var(--color-${k})`} name={kindLabel[k]} value={f.whole(point[k])} />)
                   ) : (
-                    <p className="flex items-center gap-2">
-                      <span className="text-muted-foreground">{t.cost}</span>
-                      <span className="ml-auto tabular-nums">{f.cost(point.cost)}</span>
-                    </p>
+                    <>
+                      <ChartTooltipRow name={t.cost} value={f.cost(point.cost)} />
+                      <ChartTooltipRow name={t.tokens} value={f.compact(point.tokens)} />
+                    </>
                   )}
-                  {metric === "cost" && <p className="text-muted-foreground">{f.compact(point.tokens)} {t.tokens.toLowerCase()}</p>}
-                </div>
+                </ChartTooltipPanel>
               );
             }}
           />

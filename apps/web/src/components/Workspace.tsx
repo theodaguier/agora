@@ -324,7 +324,7 @@ function TabBar({ pane, focused, multiple, canSplit }: { pane: Pane; focused: bo
 function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} className="shrink-0 rounded-lg" />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} className="shrink-0" />}>{children}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );

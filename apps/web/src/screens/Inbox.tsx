@@ -97,7 +97,7 @@ export function Inbox() {
           size="icon"
           nativeButton={false}
           render={<Link to="/" aria-label={t.back} />}
-          className="-ml-1 rounded-lg hover:bg-transparent md:hidden"
+          className="-ml-1 hover:bg-transparent md:hidden"
         >
           <ChevronLeftIcon className="size-5" />
         </Button>
@@ -182,7 +182,7 @@ function InboxRow({ item }: { item: InboxItem }) {
   };
 
   return (
-    <Item size="sm" className={cn("flex-nowrap items-start px-3 hover:bg-muted/50", !item.read && "bg-muted/40")}>
+    <Item size="sm" className={cn("flex-nowrap items-start px-3 hover:bg-muted/60", !item.read && "bg-muted/40")}>
       <ItemMedia className="pt-0.5">
         {item.actor?.kind === "agent" ? (
           <AgentAvatar agent={item.actor} className="size-8" />
