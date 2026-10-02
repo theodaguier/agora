@@ -24,7 +24,17 @@ import { PersonPanel } from "@/components/PersonPanel";
 import { SentAttachments } from "@/components/Attachments";
 import { ChatMessage, MessageRow, PendingRow, useDeleteMessage } from "@/components/MessageParts";
 import { RightPanel } from "@/components/RightPanel";
-import { CodeSessionCard, CodeSessionPanel, CodeSessionsButton, NEW_CODE_SESSION, newCodeSessionId, ReplyWithSessions, useWide } from "@/components/CodeSession";
+import {
+  CodeSessionCard,
+  CodeSessionPanel,
+  CodeSessionsButton,
+  NEW_CODE_SESSION,
+  newCodeSessionId,
+  ReplyWithSessions,
+  useConversationWide,
+  useWide,
+  WideProvider,
+} from "@/components/CodeSession";
 import { findPreview, PreviewCard, PreviewCards, PreviewPanel } from "@/components/Preview";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -307,10 +317,13 @@ function PanelButtons({
 }) {
   const t = useT(strings);
   const panelLabels = usePanelLabels();
+  // Their panels open only beside the thread.
+  const wide = useWide();
   return (
     <div className="flex items-center justify-end gap-1">
       {sessions}
       {hasPanels &&
+        wide &&
         (["screen", "search", "files", "pins"] as const).map((kind) => {
           const Icon = {
             screen: BrowserIcon,
@@ -325,7 +338,7 @@ function PanelButtons({
               aria-label={panelLabels[kind]}
               aria-pressed={panel === kind}
               onClick={() => setPanel((p) => (p === kind ? null : kind))}
-              className="hidden aria-pressed:bg-muted lg:inline-flex"
+              className="aria-pressed:bg-muted"
             >
               <Icon />
             </Button>
@@ -341,9 +354,9 @@ function PanelButtons({
             </Tooltip>
           );
         })}
-      {panel !== "info" && hasInfo && (
+      {wide && panel !== "info" && hasInfo && (
         <ShortcutTooltip label={t.showPanel} shortcut={shortcuts.togglePanel}>
-          <Button variant="ghost" size="icon" aria-label={t.showPanel} onClick={() => setPanel("info")} className="hidden lg:inline-flex">
+          <Button variant="ghost" size="icon" aria-label={t.showPanel} onClick={() => setPanel("info")}>
             <ChevronsLeftIcon />
           </Button>
         </ShortcutTooltip>
@@ -487,8 +500,11 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
     setPreviewKey(key);
   };
   const preview = previewKey ? findPreview(previewKey, turns, messages) : null;
+  // Room for a panel beside the thread: this conversation's width, the screen's until it is measured.
+  const screenWide = useWide();
+  const measured = useConversationWide();
+  const wide = measured.wide ?? screenWide;
   // The mockup someone asked for opens beside the thread as soon as the bot starts writing it, unless something else is open there.
-  const wide = useWide();
   const followed = useRef(new Set<string>());
   useEffect(() => {
     for (const turn of turns) {
@@ -956,36 +972,40 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
 
   return (
     <ConversationFilesProvider messages={messages}>
-      {wide ? (
-        // The thread and its side panel, the line between them dragged to share the width.
-        <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">
-          <ResizablePanel id={`thread-${conversationId}`} minSize={320}>
-            {thread}
-          </ResizablePanel>
-          {sideKind && sideView && (
-            <>
-              <ResizableHandle className="bg-border/60" />
-              <ResizablePanel
-                key={sideKind}
-                id={`${sideKind}-${conversationId}`}
-                defaultSize={readSize(`side.${sideKind}`, SIDE_WIDTHS[sideKind])}
-                minSize={260}
-                maxSize="75%"
-                groupResizeBehavior="preserve-pixel-size"
-                onResize={(size, _, prev) => prev && writeSize(`side.${sideKind}`, size.inPixels)}
-              >
-                {sideView}
+      <WideProvider value={wide}>
+        <div ref={measured.ref} className="flex h-full min-w-0 flex-1">
+          {wide ? (
+            // The thread and its side panel, the line between them dragged to share the width.
+            <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">
+              <ResizablePanel id={`thread-${conversationId}`} minSize={320}>
+                {thread}
               </ResizablePanel>
+              {sideKind && sideView && (
+                <>
+                  <ResizableHandle className="bg-border/60" />
+                  <ResizablePanel
+                    key={sideKind}
+                    id={`${sideKind}-${conversationId}`}
+                    defaultSize={readSize(`side.${sideKind}`, SIDE_WIDTHS[sideKind])}
+                    minSize={260}
+                    maxSize="75%"
+                    groupResizeBehavior="preserve-pixel-size"
+                    onResize={(size, _, prev) => prev && writeSize(`side.${sideKind}`, size.inPixels)}
+                  >
+                    {sideView}
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
+          ) : (
+            // Narrower: the session and the mockup open in a sheet over the thread; the other panels wait for the room.
+            <>
+              {thread}
+              {(codeSession || previewKey) && sideView}
             </>
           )}
-        </ResizablePanelGroup>
-      ) : (
-        // Narrower: the session and the mockup open in a sheet over the thread; the other panels wait for the room.
-        <div className="flex h-full min-w-0 flex-1">
-          {thread}
-          {(codeSession || previewKey) && sideView}
         </div>
-      )}
+      </WideProvider>
     </ConversationFilesProvider>
   );
 }

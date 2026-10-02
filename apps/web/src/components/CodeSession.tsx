@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { Fragment, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
+import { createContext, Fragment, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
 import {
   CODE_PERMISSION_MODES,
   codeDetailLine,
@@ -35,14 +35,14 @@ import {
   ChevronsRightIcon,
   CloseCircleIcon,
   CodeIcon,
+  CopyIcon,
   ExternalLinkIcon,
-  FolderIcon,
+  MoreIcon,
   PlusIcon,
   ShieldAlertIcon,
   SparklesIcon,
   StopIcon,
   ToolIcon,
-  UserIcon,
   WarningIcon,
 } from "@/components/icons";
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
@@ -75,7 +75,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormLabel } from "@/components/FormLabel";
@@ -412,8 +412,38 @@ const subscribeWide = (cb: () => void) => {
   mql.addEventListener("change", cb);
   return () => mql.removeEventListener("change", cb);
 };
-/** Large screens show the session beside the thread; smaller ones in a sheet over it. */
-export const useWide = () => useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE).matches);
+/** Room a conversation needs for a panel beside its thread: the thread's minimum, the panel's, and some to spare. */
+const WIDE_CONVERSATION = 640;
+const WideContext = createContext<boolean | null>(null);
+export const WideProvider = WideContext.Provider;
+
+/**
+ * Whether a panel fits beside the thread; otherwise the session or the mockup opens in a sheet over it.
+ * In a conversation, its own width decides (a narrow pane of the workspace has no room, even on a large
+ * screen); elsewhere, the screen's.
+ */
+export function useWide() {
+  const conversation = useContext(WideContext);
+  const screen = useSyncExternalStore(subscribeWide, () => window.matchMedia(WIDE).matches);
+  return conversation ?? screen;
+}
+
+/**
+ * Measures the conversation for useWide (`ref` on the element it fills): before the first paint, then
+ * as it is resized. A tab behind another measures 0 and keeps what it had, so its panel stays out of sight.
+ */
+export function useConversationWide() {
+  const [wide, setWide] = useState<boolean | null>(null);
+  const ref = useCallback((el: HTMLElement | null) => {
+    if (!el) return;
+    const measure = (width: number) => width > 0 && setWide(width >= WIDE_CONVERSATION);
+    measure(el.getBoundingClientRect().width);
+    const observer = new ResizeObserver(([entry]) => entry && measure(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return { wide, ref };
+}
 
 /** The panel's id for a session not started yet: the owner's first instruction starts it. */
 export const NEW_CODE_SESSION = "new";
@@ -777,7 +807,7 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" aria-label={t.repo} />} className="min-w-0 max-w-[60%] gap-1.5">
+      <PopoverTrigger render={<InputGroupButton size="sm" aria-label={t.repo} />} className="min-w-0 max-w-[60%] shrink gap-1.5">
         <BranchIcon className="size-3.5 shrink-0" />
         <span className="truncate">{value ?? t.noRepo}</span>
       </PopoverTrigger>
@@ -930,6 +960,28 @@ function CodeSessionView({
   }, [session?.steps]);
 
   const owner = !!session && session.requestedBy === user.id;
+  // What the run waits for, after its last step: scrolled with them, so a long question never hides the steps.
+  const approval = session?.approval;
+  const pending =
+    session && (approval || session.question) ? (
+      <>
+        {approval?.kind === "question" && approval.questions ? (
+          <QuestionBlock conversationId={conversationId} session={session} approval={approval} questions={approval.questions} canAnswer={owner} />
+        ) : approval?.kind === "plan" ? (
+          <PlanBlock conversationId={conversationId} session={session} approval={approval} canAnswer={owner} />
+        ) : (
+          approval && <ApprovalBlock conversationId={conversationId} session={session} approval={approval} canAnswer={owner} />
+        )}
+        {session.question && <BotQuestionBlock question={session.question} canAnswer={owner} />}
+      </>
+    ) : null;
+  // A new one comes into view, even scrolled up: the run waits for it.
+  const waitingFor = approval?.id ?? session?.question?.text;
+  useLayoutEffect(() => {
+    if (!waitingFor) return;
+    follow.current = true;
+    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+  }, [waitingFor]);
   const composer = useRef<{ addFiles: (files: FileList) => void }>(null);
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
   return (
@@ -942,12 +994,13 @@ function CodeSessionView({
             <>
               <StatusText session={session} />
               {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
-              {session.activity && active(session.status) ? ` · ${session.activity}` : ""}
+              {session.activity && active(session.status) ? ` · ${session.activity}` : <UsageLine session={session} />}
             </>
           )
         }
         actions={
           <>
+            {session && <SessionDetails conversationId={conversationId} session={session} showModel={!owner} owner={owner} />}
             {onDetach && <BesideButton onClick={onDetach} />}
             {onClose && (
               <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
@@ -956,9 +1009,7 @@ function CodeSessionView({
             )}
           </>
         }
-      >
-        {session && <Meta conversationId={conversationId} session={session} showModel={!owner} owner={owner} />}
-      </PaneHeader>
+      />
 
       {!session ? (
         <div className="flex min-h-0 flex-1 border-t">
@@ -981,7 +1032,7 @@ function CodeSessionView({
               }}
               className="h-full overflow-y-auto px-4 py-4"
             >
-              {session.steps.length === 0 ? (
+              {session.steps.length === 0 && !pending ? (
                 <Empty className="h-full">
                   <EmptyHeader>
                     <EmptyMedia variant="icon">
@@ -991,7 +1042,10 @@ function CodeSessionView({
                   </EmptyHeader>
                 </Empty>
               ) : (
-                <Timeline steps={session.steps} running={session.status === "running"} />
+                <div className="flex flex-col gap-4">
+                  <Timeline steps={session.steps} running={session.status === "running"} />
+                  {pending}
+                </div>
               )}
             </div>
             {!atBottom && (
@@ -1011,14 +1065,6 @@ function CodeSessionView({
 
           <div className="shrink-0 px-3 pb-3 pt-2">
             {session.todos.length > 0 && <TodoBar todos={session.todos} running={session.status === "running"} />}
-            {session.approval?.kind === "question" && session.approval.questions ? (
-              <QuestionBlock conversationId={conversationId} session={session} approval={session.approval} questions={session.approval.questions} canAnswer={owner} />
-            ) : session.approval?.kind === "plan" ? (
-              <PlanBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
-            ) : (
-              session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
-            )}
-            {session.question && <BotQuestionBlock question={session.question} canAnswer={owner} />}
             {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
             {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
             {owner ? (
@@ -1061,66 +1107,95 @@ function useGitRefresh(conversationId: string, sessionId: string, enabled: boole
   }, [conversationId, sessionId, enabled, qc]);
 }
 
+const usageTime = (u: NonNullable<CodeSession["usage"]>) => {
+  const minutes = u.durationMs / 60_000;
+  return minutes < 1 ? `${Math.max(1, Math.round(u.durationMs / 1000))} s` : `${Math.round(minutes)} min`;
+};
+
+/** After the status: what the session cost and how long it ran; the detail in its details. */
+function UsageLine({ session }: { session: CodeSession }) {
+  const f = useFormat();
+  const u = session.usage;
+  return u ? <span className="tabular-nums">{` · ${f.cost(u.costUsd)} · ${usageTime(u)}`}</span> : null;
+}
+
 /**
- * Directory and what the session consumed, on one line; the detail on hover. The model too, for
- * those who cannot change it; for its owner, the account and the repository's credentials.
+ * The session's details, out of the header: its folder, what it consumed, the model for those who
+ * cannot change it; for its owner, the account and the repository's credentials.
  */
-function Meta({ conversationId, session, showModel, owner }: { conversationId: string; session: CodeSession; showModel: boolean; owner: boolean }) {
+function SessionDetails({ conversationId, session, showModel, owner }: { conversationId: string; session: CodeSession; showModel: boolean; owner: boolean }) {
   const t = useT(messages);
   const f = useFormat();
   const [credentials, setCredentials] = useState(false);
-  const showAccount = owner;
   const u = session.usage;
-  const folder = session.cwd.split("/").filter(Boolean).at(-1) ?? session.cwd;
-  const minutes = u ? u.durationMs / 60_000 : 0;
-  const time = !u ? "" : minutes < 1 ? `${Math.max(1, Math.round(u.durationMs / 1000))} s` : `${Math.round(minutes)} min`;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
-      {showModel && session.model && (
-        <span className="inline-flex items-center gap-1">
-          <ModelLogo provider="anthropic" model={session.model} className="size-3.5" />
-          {session.model}
-        </span>
-      )}
-      {showAccount && session.account && (
+    <>
+      <Popover>
         <Tooltip>
-          <TooltipTrigger render={<span />} className="inline-flex min-w-0 cursor-default items-center gap-1">
-            <UserIcon className="size-3.5 shrink-0" />
-            <span className="truncate">{session.account.email ?? t.serverAccount}</span>
+          <TooltipTrigger render={<PopoverTrigger render={<Button variant="ghost" size="icon" aria-label={t.details} />} />}>
+            <MoreIcon />
           </TooltipTrigger>
-          <TooltipContent>
-            {t.account}
-            {session.account.plan ? ` · ${session.account.plan}` : ""}
-          </TooltipContent>
+          <TooltipContent>{t.details}</TooltipContent>
         </Tooltip>
-      )}
-      <Tooltip>
-        <TooltipTrigger render={<Button variant="ghost" size="xs" aria-label={t.copyPath} onClick={() => copyText(session.cwd)} className="-mx-2 min-w-0 font-mono text-xs" />}>
-          <FolderIcon className="size-3.5 shrink-0" />
-          <span className="truncate">{folder}</span>
-        </TooltipTrigger>
-        <TooltipContent className="font-mono">{session.cwd}</TooltipContent>
-      </Tooltip>
-      {u && (
-        <Tooltip>
-          <TooltipTrigger render={<span />} className="cursor-default tabular-nums">
-            {t.tokens(f.compact(u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens))} · {f.cost(u.costUsd)} · {t.runs(u.runs)} · {time}
-          </TooltipTrigger>
-          <TooltipContent className="max-w-72">
-            <p>{t.usageDetail(f.compact(u.inputTokens), f.compact(u.outputTokens), f.compact(u.cacheReadTokens + u.cacheWriteTokens), u.turns)}</p>
-            <p className="mt-1 opacity-80">{t.costNote}</p>
-          </TooltipContent>
-        </Tooltip>
-      )}
-      {owner && session.repo && (
-        <>
-          <Button variant="ghost" size="xs" onClick={() => setCredentials(true)} className="-mx-2 text-xs">
-            {t.credentials.open}
-          </Button>
-          <RepoCredentialsDialog conversationId={conversationId} repo={session.repo} open={credentials} onClose={() => setCredentials(false)} />
-        </>
-      )}
-    </div>
+        <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
+          <Item
+            size="sm"
+            render={<button type="button" onClick={() => copyText(session.cwd)} />}
+            aria-label={t.copyPath}
+            className="flex-nowrap text-left hover:bg-muted/60"
+          >
+            <ItemContent className="min-w-0">
+              <ItemTitle>{t.folder}</ItemTitle>
+              <ItemDescription className="break-all font-mono text-xs">{session.cwd}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <CopyIcon className="size-4 text-muted-foreground" />
+            </ItemActions>
+          </Item>
+          {showModel && session.model && (
+            <Item size="sm">
+              <ItemContent className="min-w-0">
+                <ItemTitle>{t.model}</ItemTitle>
+                <ItemDescription>{session.model}</ItemDescription>
+              </ItemContent>
+            </Item>
+          )}
+          {owner && session.account && (
+            <Item size="sm">
+              <ItemContent className="min-w-0">
+                <ItemTitle>{t.account}</ItemTitle>
+                <ItemDescription className="truncate">
+                  {session.account.email ?? t.serverAccount}
+                  {session.account.plan ? ` · ${session.account.plan}` : ""}
+                </ItemDescription>
+              </ItemContent>
+            </Item>
+          )}
+          {u && (
+            <Item size="sm">
+              <ItemContent className="min-w-0">
+                <ItemTitle>{t.usage}</ItemTitle>
+                <ItemDescription className="tabular-nums">
+                  {t.tokens(f.compact(u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens))} · {f.cost(u.costUsd)} · {t.runs(u.runs)} · {usageTime(u)}
+                </ItemDescription>
+                <ItemDescription className="tabular-nums">
+                  {t.usageDetail(f.compact(u.inputTokens), f.compact(u.outputTokens), f.compact(u.cacheReadTokens + u.cacheWriteTokens), u.turns)}
+                </ItemDescription>
+                <ItemDescription className="text-xs">{t.costNote}</ItemDescription>
+              </ItemContent>
+            </Item>
+          )}
+          {owner && session.repo && (
+            <div className="px-2.5 pb-1.5 pt-1">
+              <Button variant="outline" size="sm" onClick={() => setCredentials(true)}>
+                {t.credentials.open}
+              </Button>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+      {owner && session.repo && <RepoCredentialsDialog conversationId={conversationId} repo={session.repo} open={credentials} onClose={() => setCredentials(false)} />}
+    </>
   );
 }
 
@@ -1607,7 +1682,7 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
     meta: { error: false },
   });
   return (
-    <Card size="sm" role="region" aria-label={t.asks} className="mb-2">
+    <Card size="sm" role="region" aria-label={t.asks}>
       <CardHeader>
         <CardTitle>
           {t.asks} <span className="font-mono">{approval.tool}</span>
@@ -1648,7 +1723,7 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
 function BotQuestionBlock({ question, canAnswer }: { question: CodeBotQuestion; canAnswer: boolean }) {
   const t = useT(messages);
   return (
-    <Card size="sm" role="region" aria-label={t.botQuestion.title(question.bot)} className="mb-2">
+    <Card size="sm" role="region" aria-label={t.botQuestion.title(question.bot)}>
       <CardHeader>
         <CardTitle>{t.botQuestion.title(question.bot)}</CardTitle>
         <CardDescription>{canAnswer ? t.botQuestion.help(question.bot) : t.botQuestion.waiting(question.bot)}</CardDescription>
@@ -1700,45 +1775,41 @@ function QuestionBlock({
     setChoices((all) => ({ ...all, [question]: { ...(all[question] ?? { picked: [], other: "" }), ...change } }));
   const complete = questions.every((q) => answerOf(choices[q.question]));
   return (
-    <Card size="sm" role="region" aria-label={t.question.title} className="mb-2">
-      <CardHeader>
-        <CardTitle>{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</CardTitle>
-      </CardHeader>
+    <Card size="sm" role="region" aria-label={questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}>
       <form
-        className="contents"
         onSubmit={(e) => {
           e.preventDefault();
           if (complete && !answer.isPending) answer.mutate(false);
         }}
       >
-        <CardContent>
-          <FieldGroup className="max-h-[45vh] gap-5 overflow-y-auto">
+        <CardContent className="flex flex-col gap-4">
+          <FieldGroup className="gap-5">
             {questions.map((q, qi) => {
               const choice = choices[q.question];
               const picked = choice?.picked ?? [];
               const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
               const id = (i: number) => `code-q${qi}-${i}`;
-              const card = (o: (typeof options)[number], i: number, control: ReactNode) => (
-                <FieldLabel key={o.value} htmlFor={id(i)}>
-                  <Field orientation="horizontal">
-                    <FieldContent>
-                      <FieldTitle>{o.label}</FieldTitle>
-                      {o.description && <FieldDescription>{o.description}</FieldDescription>}
-                    </FieldContent>
-                    {control}
-                  </Field>
-                </FieldLabel>
+              const row = (o: (typeof options)[number], i: number, control: ReactNode) => (
+                <Field key={o.value} orientation="horizontal">
+                  {control}
+                  <FieldContent>
+                    <FieldLabel htmlFor={id(i)} className="font-normal">
+                      {o.label}
+                    </FieldLabel>
+                    {o.description && <FieldDescription className="text-[13px]">{o.description}</FieldDescription>}
+                  </FieldContent>
+                </Field>
               );
               return (
-                <FieldSet key={q.question} disabled={!canAnswer}>
-                  <FieldLegend variant="label" className="flex items-start gap-2">
-                    {q.header && <Badge variant="secondary">{q.header}</Badge>}
-                    <span>{q.question}</span>
+                <FieldSet key={q.question} disabled={!canAnswer} className="gap-3">
+                  <FieldLegend variant="label" className="mb-0 leading-snug">
+                    {q.header && <span className="text-muted-foreground">{q.header} · </span>}
+                    {q.question}
                   </FieldLegend>
                   {q.multiSelect ? (
-                    <div data-slot="checkbox-group" className="flex flex-col gap-3">
+                    <div data-slot="checkbox-group" className="flex flex-col gap-2.5">
                       {options.map((o, i) =>
-                        card(
+                        row(
                           o,
                           i,
                           <Checkbox
@@ -1750,8 +1821,8 @@ function QuestionBlock({
                       )}
                     </div>
                   ) : (
-                    <RadioGroup value={picked[0] ?? ""} onValueChange={(v) => set(q.question, { picked: [String(v)] })}>
-                      {options.map((o, i) => card(o, i, <RadioGroupItem value={o.value} id={id(i)} />))}
+                    <RadioGroup value={picked[0] ?? ""} onValueChange={(v) => set(q.question, { picked: [String(v)] })} className="gap-2.5">
+                      {options.map((o, i) => row(o, i, <RadioGroupItem value={o.value} id={id(i)} />))}
                     </RadioGroup>
                   )}
                   {picked.includes(OTHER_ANSWER) && (
@@ -1767,21 +1838,19 @@ function QuestionBlock({
               );
             })}
           </FieldGroup>
-        </CardContent>
-        <CardFooter className="flex-wrap gap-2">
           {canAnswer ? (
-            <>
+            <div className="flex flex-wrap gap-2">
               <Button type="submit" size="sm" disabled={!complete || answer.isPending}>
                 {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
               </Button>
               <Button type="button" size="sm" variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate(true)}>
                 {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
               </Button>
-            </>
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">{t.waitingOwner}</p>
           )}
-        </CardFooter>
+        </CardContent>
       </form>
     </Card>
   );
@@ -1806,7 +1875,7 @@ function PlanBlock({ conversationId, session, approval, canAnswer }: { conversat
     meta: { success: (_: CodeSession, approve: boolean) => (approve ? t.plan.approved : t.plan.sentBack) },
   });
   return (
-    <Card size="sm" role="region" aria-label={t.plan.title} className="mb-2">
+    <Card size="sm" role="region" aria-label={t.plan.title}>
       <CardHeader>
         <CardTitle>{t.plan.title}</CardTitle>
         <CardDescription>{t.plan.help}</CardDescription>
@@ -2099,9 +2168,9 @@ function CodeModelPicker({ conversationId, value, onSelect }: { conversationId: 
   const key = (m: { id: string; label?: string }) => `${m.id} ${m.label ?? ""}`;
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" />} className="gap-1.5">
+      <PopoverTrigger render={<InputGroupButton size="sm" />} className="min-w-0 shrink gap-1.5">
         <ModelLogo provider="anthropic" model={value ?? undefined} className="size-3.5" />
-        {current?.label ?? value ?? t.model}
+        <span className="truncate">{current?.label ?? value ?? t.model}</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
         <Command defaultValue={key(current ?? list[0] ?? { id: "" })}>
