@@ -27,8 +27,8 @@ export function ReplyStrip({ quote, onCancel }: { quote: ReplyTo; onCancel: () =
     <Card variant="tertiary" className="flex-row items-center gap-2.5 p-2.5">
       <Separator orientation="vertical" variant="thick" className="self-stretch" />
       <Card.Body className="min-w-0 flex-1 gap-0">
-        <Card.Title numberOfLines={1} className="text-body font-semibold">{quote.authorName}</Card.Title>
-        <Card.Description numberOfLines={1} className="text-body">{label}</Card.Description>
+        <Card.Title numberOfLines={1}>{quote.authorName}</Card.Title>
+        <Card.Description numberOfLines={1}>{label}</Card.Description>
       </Card.Body>
       {image && (
         <Surface variant="secondary" className="size-9 p-0">

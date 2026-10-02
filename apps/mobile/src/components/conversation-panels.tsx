@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { codeSessions } from "@agora/core/i18n";
 import { router } from "expo-router";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { CodeSessionList, codeSessionHref } from "@/components/code-session";
+import { CodeSessionList, codeSessionHref, newCodeSessionHref } from "@/components/code-session";
 import { FileKindIcon, ImageViewer } from "@/components/attachments";
 import { attachmentSource, Image, isImage, saveAttachment } from "@/components/attachment-files";
 import { SheetSearch } from "@/components/conversation/sheet-search";
@@ -188,6 +188,10 @@ export function ConversationPanel({
                   onOpen={(sessionId) => {
                     onClose();
                     router.push(codeSessionHref(conversationId, sessionId));
+                  }}
+                  onNew={() => {
+                    onClose();
+                    router.push(newCodeSessionHref(conversationId));
                   }}
                 />
               </Scroll>

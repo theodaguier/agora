@@ -1,12 +1,16 @@
 import { codeDetailLine, codeStatusText, placeCodeSessions, type CodeSession, type CodeSessionRef, type CodeSessionStatus } from "@agora/core";
 import { codeSessions } from "@agora/core/i18n";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, type Href } from "expo-router";
 import { Button, Card, ListGroup, Separator, Spinner } from "heroui-native";
 import { Fragment, useEffect, type ReactNode } from "react";
 import { View } from "react-native";
-import { ChatQuestionIcon, CheckCircleIcon, ClockIcon, CloseCircleIcon, CodeIcon, ShieldAlertIcon } from "@/components/icons";
-import { applyCodeSession, codeSessionsQuery, refreshCodeSessionGit } from "@/lib/code-sessions";
+import { useAdminToast } from "@/components/admin/ui";
+import { confirmAction } from "@/components/confirm-action";
+import { ChatQuestionIcon, CheckCircleIcon, ClockIcon, CloseCircleIcon, CodeIcon, PlusIcon, ShieldAlertIcon } from "@/components/icons";
+import { LongPressMenu } from "@/components/menus";
+import { useMe } from "@/components/server-scope";
+import { applyCodeSession, codeModelsQuery, codeSessionsQuery, deleteCodeSession, dropCodeSession, refreshCodeSessionGit } from "@/lib/code-sessions";
 import { dividerLabel } from "@/lib/dates";
 import { withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
@@ -37,23 +41,25 @@ export function CodeSessionCard({ conversationId, sessionId, title }: { conversa
   const t = tr(codeSessions);
   const { data } = useQuery(codeSessionsQuery(conversationId));
   const session = data?.find((s) => s.id === sessionId);
+  // Deleted by its owner: the card stays, without the way into it.
+  const gone = !!data && !session;
   const status = session?.status ?? "running";
   const detail = session && codeDetailLine(session);
   return (
-    <Card className="w-full max-w-[92%] self-start">
-      <View className="flex-row items-center gap-3">
-        {session ? <StatusIcon status={status} asking={!!session.question} /> : <CodeIcon size={18} className="text-muted" />}
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Card.Title numberOfLines={1}>{session?.title ?? title}</Card.Title>
-          <Card.Description numberOfLines={1}>
-            {t.claudeCode} · {session ? codeStatusText(t, session) : t.status[status]}
-            {detail ? ` · ${detail}` : ""}
-          </Card.Description>
-        </View>
+    <Card className="w-full max-w-[92%] flex-row items-center gap-3 self-start">
+      {session ? <StatusIcon status={status} asking={!!session.question} /> : <CodeIcon size={18} className="text-muted" />}
+      <Card.Body className="min-w-0 gap-0.5">
+        <Card.Title numberOfLines={1}>{session?.title ?? title}</Card.Title>
+        <Card.Description numberOfLines={1}>
+          {t.claudeCode} · {session ? codeStatusText(t, session) : gone ? t.gone : t.status[status]}
+          {detail ? ` · ${detail}` : ""}
+        </Card.Description>
+      </Card.Body>
+      {!gone && (
         <Button size="sm" variant="secondary" onPress={withTap(() => router.push(codeSessionHref(conversationId, sessionId)))}>
           {isActive(status) ? t.follow : t.open}
         </Button>
-      </View>
+      )}
     </Card>
   );
 }
@@ -100,11 +106,35 @@ export function useCodeSessions(conversationId: string): CodeSession[] | null {
   return [...data].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-/** Every session of the conversation (the web's header button), each opening its screen. */
-export function CodeSessionList({ conversationId, onOpen }: { conversationId: string; onOpen: (sessionId: string) => void }) {
+/** Its owner may start a session in this conversation: the Claude Code models answer them alone (403 otherwise). */
+export function useCanStartCodeSession(conversationId: string) {
+  return useQuery({ ...codeModelsQuery(conversationId), retry: false }).isSuccess;
+}
+
+export const newCodeSessionHref = (conversationId: string) => `/code/${conversationId}/new` as Href;
+
+/**
+ * Every session of the conversation (the web's header button), each opening its screen; its owner
+ * starts one from the first row and deletes one with a long press.
+ */
+export function CodeSessionList({ conversationId, onOpen, onNew }: { conversationId: string; onOpen: (sessionId: string) => void; onNew: () => void }) {
   const t = tr(codeSessions);
   const qc = useQueryClient();
+  const me = useMe();
+  const toast = useAdminToast();
+  const canStart = useCanStartCodeSession(conversationId);
   const sessions = useCodeSessions(conversationId) ?? [];
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteCodeSession(conversationId, id),
+    onSuccess: (_, id) => {
+      dropCodeSession(qc, conversationId, id);
+      toast.success(t.deleted);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  const confirmDelete = async (s: CodeSession) => {
+    if (await confirmAction({ title: t.deleteTitle(s.title), description: t.deleteHelp, action: t.deleteSession })) remove.mutate(s.id);
+  };
   // Opened: the pull requests still open, and the branches pushed, as they are on GitHub now.
   useEffect(() => {
     for (const s of qc.getQueryData(codeSessionsQuery(conversationId).queryKey) ?? []) {
@@ -118,28 +148,41 @@ export function CodeSessionList({ conversationId, onOpen }: { conversationId: st
   }, [conversationId, qc]);
   return (
     <ListGroup>
+      {canStart && (
+        <ListGroup.Item onPress={withTap(onNew)}>
+          <ListGroup.ItemPrefix>
+            <PlusIcon size={18} className="text-muted" />
+          </ListGroup.ItemPrefix>
+          <ListGroup.ItemContent>
+            <ListGroup.ItemTitle>{t.newSession}</ListGroup.ItemTitle>
+          </ListGroup.ItemContent>
+          <ListGroup.ItemSuffix />
+        </ListGroup.Item>
+      )}
       {sessions.map((s, i) => (
         <Fragment key={s.id}>
-          {i > 0 && <Separator className="ml-12" />}
-          <ListGroup.Item onPress={withTap(() => onOpen(s.id))} className="items-start">
-            <ListGroup.ItemPrefix className="pt-0.5">
-              <StatusIcon status={s.status} asking={!!s.question} />
-            </ListGroup.ItemPrefix>
-            <ListGroup.ItemContent className="gap-0.5">
-              <ListGroup.ItemTitle numberOfLines={2}>{s.title}</ListGroup.ItemTitle>
-              <ListGroup.ItemDescription numberOfLines={1}>
-                {codeStatusText(t, s)}
-                {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
-                {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
-              </ListGroup.ItemDescription>
-              {s.instruction && (
-                <ListGroup.ItemDescription numberOfLines={2}>
-                  {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
+          {(i > 0 || canStart) && <Separator className="ml-12" />}
+          <LongPressMenu actions={[canStart && s.requestedBy === me.id && { label: t.deleteSession, icon: "trash", destructive: true, onPress: () => void confirmDelete(s) }]}>
+            <ListGroup.Item onPress={withTap(() => onOpen(s.id))} className="items-start">
+              <ListGroup.ItemPrefix className="pt-0.5">
+                <StatusIcon status={s.status} asking={!!s.question} />
+              </ListGroup.ItemPrefix>
+              <ListGroup.ItemContent className="gap-0.5">
+                <ListGroup.ItemTitle numberOfLines={2}>{s.title}</ListGroup.ItemTitle>
+                <ListGroup.ItemDescription numberOfLines={1}>
+                  {codeStatusText(t, s)}
+                  {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
+                  {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
                 </ListGroup.ItemDescription>
-              )}
-            </ListGroup.ItemContent>
-            <ListGroup.ItemSuffix />
-          </ListGroup.Item>
+                {s.instruction && (
+                  <ListGroup.ItemDescription numberOfLines={2}>
+                    {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
+                  </ListGroup.ItemDescription>
+                )}
+              </ListGroup.ItemContent>
+              <ListGroup.ItemSuffix />
+            </ListGroup.Item>
+          </LongPressMenu>
         </Fragment>
       ))}
     </ListGroup>

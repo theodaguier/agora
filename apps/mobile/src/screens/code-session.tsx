@@ -18,10 +18,11 @@ import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
 import { Stack, router, useFocusEffect, type Href } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   Accordion,
   Alert,
-  Avatar,
+  BottomSheet,
   Button,
   Card,
   Chip,
@@ -29,19 +30,19 @@ import {
   Description,
   Input,
   Label,
+  ListGroup,
   Menu,
-  Popover,
-  PressableFeedback,
   Radio,
   RadioGroup,
   Separator,
   Spinner,
   Surface,
   TextArea,
+  TextField,
   Typography,
-  useThemeColor,
+  useBottomSheetAwareHandlers,
 } from "heroui-native";
-import { Fragment, useCallback, useRef, useState, type ComponentRef } from "react";
+import { Fragment, useCallback, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { AppState, ScrollView, View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -52,7 +53,7 @@ import { PendingFiles, usePendingFiles } from "@/components/composer/pending-fil
 import { UserBubble } from "@/components/bubbles";
 import { isActive, StatusIcon } from "@/components/code-session";
 import { confirmAction } from "@/components/confirm-action";
-import { ArrowUpIcon, BranchIcon, ChatQuestionIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, FolderIcon, ShieldAlertIcon, StopIcon, TaskListIcon, ToolIcon, UserIcon } from "@/components/icons";
+import { ArrowUpIcon, BranchIcon, ChartIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, CopyIcon, ExternalLinkIcon, FolderIcon, KeyIcon, StopIcon, TaskListIcon, ToolIcon, UserIcon } from "@/components/icons";
 import { MenuButton, MenuContent } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
@@ -65,6 +66,8 @@ import {
   codeAccountsQuery,
   codeModelsQuery,
   codeSessionQuery,
+  deleteCodeSession,
+  dropCodeSession,
   refreshCodeSessionGit,
   removeCodeSessionWorktree,
   runCodeGit,
@@ -79,14 +82,17 @@ import {
 import { withTap } from "@/lib/haptics";
 import { locale, tr } from "@/lib/i18n";
 import { dateFormat } from "@/lib/intl";
-import { usePopoverInsets } from "@/lib/popover-insets";
 import { cn } from "@/lib/utils";
 
 /*
- * apps/web/src/components/CodeSession.tsx's panel as a screen pushed over the conversation: every
- * step of the session, live; its pending approval, its branch and the owner's field ride on the
- * keyboard at the bottom. The pull request's form is a sheet (app/(app)/code/…/pull-request.tsx).
+ * apps/web/src/components/CodeSession.tsx's panel as a screen pushed over the conversation. The thread
+ * holds every step, live, and ends on what waits for an answer (an approval, questions, a plan). Only
+ * the field rides on the keyboard, with a chip for the task list and one for the branch: each opens
+ * its sheet. The session's details are in the header's menu. The pull request's form is a form sheet
+ * (app/(app)/code/…/pull-request.tsx).
  */
+
+type SheetKind = "info" | "todos" | "git";
 
 export function CodeSessionScreen({ conversationId, sessionId }: { conversationId: string; sessionId: string }) {
   const t = tr(codeSessions);
@@ -99,13 +105,30 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
   const follow = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
   const [barHeight, setBarHeight] = useState(0);
+  const [sheet, setSheet] = useState<SheetKind | null>(null);
   const owner = !!session && session.requestedBy === me.id;
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  // Deleted by its owner: its run stops, and the screen gives way to the conversation.
+  const remove = useMutation({
+    mutationFn: () => deleteCodeSession(conversationId, sessionId),
+    onSuccess: () => {
+      router.back();
+      dropCodeSession(qc, conversationId, sessionId);
+      toast.success(t.deleted);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  const confirmDelete = async () => {
+    if (session && (await confirmAction({ title: t.deleteTitle(session.title), description: t.deleteHelp, action: t.deleteSession }))) remove.mutate();
+  };
 
   const toEnd = (animated: boolean) => {
     follow.current = true;
     scroller.current?.scrollToEnd({ animated });
   };
+  const todos = session && showTodos(session.todos, session.status === "running") ? session.todos : null;
 
   return (
     <>
@@ -117,9 +140,11 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               icon="ellipsis"
               label={t.claudeCode}
               actions={[
-                { label: t.copyPath, icon: "doc.on.doc", onPress: () => void Clipboard.setStringAsync(session.cwd) },
+                { label: t.details, icon: "info.circle", onPress: () => setSheet("info") },
                 !!session.git?.pr && { label: t.git.pr(session.git.pr.number), icon: "link", onPress: () => void Linking.openURL(session.git!.pr!.url) },
                 owner && !!session.repo && { label: t.credentials.open, icon: "key", onPress: () => router.push(credentialsHref(conversationId, session.id)) },
+                owner && "divider",
+                owner && { label: t.deleteSession, icon: "trash", destructive: true, disabled: remove.isPending, onPress: () => void confirmDelete() },
               ]}
             />
           </Stack.Toolbar.View>
@@ -162,23 +187,32 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 setAtBottom(bottom);
               }}
             >
-              <View className="flex-row items-start gap-2.5">
-                <StatusIcon status={session.status} asking={!!session.question} className="mt-0.5" />
-                <View className="min-w-0 flex-1 gap-1.5">
-                  <Typography type="body-sm" color="muted">
-                    {codeStatusText(t, session)}
-                    {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
-                    {session.activity && isActive(session.status) ? ` · ${session.activity}` : ""}
-                  </Typography>
-                  <Meta session={session} showModel={!owner} showAccount={owner} />
-                </View>
+              <View className="flex-row items-center gap-2">
+                <StatusIcon status={session.status} asking={!!session.question} />
+                <Typography type="body-sm" color="muted" className="min-w-0 flex-1">
+                  {codeStatusText(t, session)}
+                  {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
+                  {session.activity && isActive(session.status) ? ` · ${session.activity}` : ""}
+                </Typography>
               </View>
               {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
               {session.steps.length === 0 ? (
-                <Typography color="muted">{t.empty}</Typography>
+                <View className="items-center py-12">
+                  <Spinner />
+                </View>
               ) : (
                 <Timeline steps={session.steps} running={session.status === "running"} />
               )}
+              {/* What waits for an answer ends the thread, where the run stopped. */}
+              {session.approval?.kind === "question" && session.approval.questions ? (
+                <QuestionBlock conversationId={conversationId} session={session} approval={session.approval} questions={session.approval.questions} canAnswer={owner} />
+              ) : session.approval?.kind === "plan" ? (
+                <PlanBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
+              ) : (
+                session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
+              )}
+              {session.question && <BotQuestionBlock question={session.question} canAnswer={owner} />}
+              {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
             </KeyboardChatScrollView>
 
             <KeyboardStickyView
@@ -195,17 +229,12 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 </View>
               )}
               <Surface className="gap-2 px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
-                {session.todos.length > 0 && <TodoBar todos={session.todos} running={session.status === "running"} />}
-                {session.approval?.kind === "question" && session.approval.questions ? (
-                  <QuestionBlock conversationId={conversationId} session={session} approval={session.approval} questions={session.approval.questions} canAnswer={owner} />
-                ) : session.approval?.kind === "plan" ? (
-                  <PlanBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
-                ) : (
-                  session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
+                {(todos || session.git) && (
+                  <View className="flex-row gap-2">
+                    {todos && <TodosChip todos={todos} running={session.status === "running"} onPress={() => setSheet("todos")} />}
+                    {session.git && <BranchChip git={session.git} onPress={() => setSheet("git")} />}
+                  </View>
                 )}
-                {session.question && <BotQuestionBlock question={session.question} canAnswer={owner} />}
-                {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
-                {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
                 {owner ? (
                   <SessionComposer conversationId={conversationId} session={session} onSent={() => toEnd(true)} />
                 ) : (
@@ -215,10 +244,45 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 )}
               </Surface>
             </KeyboardStickyView>
+
+            <SessionSheet open={sheet === "info"} onClose={() => setSheet(null)} title={t.details}>
+              <InfoList conversationId={conversationId} session={session} owner={owner} onLeave={() => setSheet(null)} />
+            </SessionSheet>
+            <SessionSheet open={sheet === "todos"} onClose={() => setSheet(null)} title={t.todos.title}>
+              <TodoList todos={session.todos} running={session.status === "running"} />
+            </SessionSheet>
+            {session.git && (
+              <SessionSheet open={sheet === "git"} onClose={() => setSheet(null)} title={t.git.changesTitle} snapPoints={["70%", "92%"]}>
+                <ChangesPanel conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} onLeave={() => setSheet(null)} />
+              </SessionSheet>
+            )}
           </>
         )}
       </Surface>
     </>
+  );
+}
+
+/** A sheet over the session: its details, its task list or its branch. */
+function SessionSheet({ open, onClose, title, snapPoints = ["50%", "92%"], children }: { open: boolean; onClose: () => void; title: string; snapPoints?: string[]; children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <BottomSheet isOpen={open} onOpenChange={(next) => !next && onClose()}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content snapPoints={snapPoints} enableDynamicSizing={false} enableOverDrag={false} keyboardBehavior="extend" contentContainerClassName="h-full">
+          <View className="flex-row items-center justify-between pb-3">
+            <BottomSheet.Title>{title}</BottomSheet.Title>
+            <BottomSheet.Close />
+          </View>
+          <View className="min-h-0 flex-1">
+            <BottomSheetScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerClassName="gap-4 pt-1" contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}>
+              {children}
+            </BottomSheetScrollView>
+          </View>
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
+    </BottomSheet>
   );
 }
 
@@ -252,69 +316,108 @@ function useGitRefresh(conversationId: string, sessionId: string, enabled: boole
   );
 }
 
-/** Directory and what the session consumed; the detail in a popover. The model too, for those who cannot change it. */
-function Meta({ session, showModel, showAccount }: { session: CodeSession; showModel: boolean; showAccount: boolean }) {
+/**
+ * The session's details, in the sheet of the header's menu: the model, the Claude account, the folder
+ * (a tap copies its path), what it consumed, and the repository's credentials for its owner.
+ */
+function InfoList({ conversationId, session, owner, onLeave }: { conversationId: string; session: CodeSession; owner: boolean; onLeave: () => void }) {
   const t = tr(codeSessions);
   const c = tr(common);
   const toast = useAdminToast();
-  const insets = usePopoverInsets();
   const u = session.usage;
-  const folder = session.cwd.split("/").filter(Boolean).at(-1) ?? session.cwd;
   const minutes = u ? u.durationMs / 60_000 : 0;
   const time = !u ? "" : minutes < 1 ? `${Math.max(1, Math.round(u.durationMs / 1000))} s` : `${Math.round(minutes)} min`;
-  return (
-    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
-      {showModel && !!session.model && (
-        <View className="flex-row items-center gap-1">
-          <ModelLogo provider="anthropic" model={session.model} size={14} />
-          <Typography type="body-xs" color="muted">
-            {session.model}
-          </Typography>
-        </View>
-      )}
-      {showAccount && !!session.account && (
-        <View className="min-w-0 flex-row items-center gap-1" accessibilityLabel={t.account}>
-          <UserIcon size={14} className="text-muted" />
-          <Typography type="body-xs" color="muted" numberOfLines={1} className="shrink">
+  const rows: ReactNode[] = [
+    !!session.model && (
+      <ListGroup.Item key="model">
+        <ListGroup.ItemPrefix>
+          <ModelLogo provider="anthropic" model={session.model} size={20} />
+        </ListGroup.ItemPrefix>
+        <ListGroup.ItemContent>
+          <ListGroup.ItemTitle>{t.model}</ListGroup.ItemTitle>
+          <ListGroup.ItemDescription>{session.model}</ListGroup.ItemDescription>
+        </ListGroup.ItemContent>
+      </ListGroup.Item>
+    ),
+    owner && !!session.account && (
+      <ListGroup.Item key="account">
+        <ListGroup.ItemPrefix>
+          <UserIcon size={20} className="text-muted" />
+        </ListGroup.ItemPrefix>
+        <ListGroup.ItemContent>
+          <ListGroup.ItemTitle>{t.account}</ListGroup.ItemTitle>
+          <ListGroup.ItemDescription>
             {session.account.email ?? t.serverAccount}
             {session.account.plan ? ` · ${session.account.plan}` : ""}
-          </Typography>
-        </View>
-      )}
-      <PressableFeedback
-        accessibilityRole="button"
-        accessibilityLabel={t.copyPath}
-        onPress={withTap(async () => {
-          await Clipboard.setStringAsync(session.cwd);
-          toast.success(c.copied, session.cwd);
+          </ListGroup.ItemDescription>
+        </ListGroup.ItemContent>
+      </ListGroup.Item>
+    ),
+    <ListGroup.Item
+      key="folder"
+      accessibilityLabel={t.copyPath}
+      onPress={withTap(async () => {
+        await Clipboard.setStringAsync(session.cwd);
+        toast.success(c.copied, session.cwd);
+      })}
+    >
+      <ListGroup.ItemPrefix>
+        <FolderIcon size={20} className="text-muted" />
+      </ListGroup.ItemPrefix>
+      <ListGroup.ItemContent>
+        <ListGroup.ItemTitle>{t.folder}</ListGroup.ItemTitle>
+        <ListGroup.ItemDescription numberOfLines={2}>{session.cwd}</ListGroup.ItemDescription>
+      </ListGroup.ItemContent>
+      <ListGroup.ItemSuffix>
+        <CopyIcon size={16} className="text-muted" />
+      </ListGroup.ItemSuffix>
+    </ListGroup.Item>,
+    !!u && (
+      <ListGroup.Item key="usage">
+        <ListGroup.ItemPrefix>
+          <ChartIcon size={20} className="text-muted" />
+        </ListGroup.ItemPrefix>
+        <ListGroup.ItemContent>
+          <ListGroup.ItemTitle>{t.usage}</ListGroup.ItemTitle>
+          <ListGroup.ItemDescription>
+            {t.tokens(format.compact(u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens))} · {format.cost(u.costUsd)} · {t.runs(u.runs)} · {time}
+          </ListGroup.ItemDescription>
+          <ListGroup.ItemDescription>
+            {t.usageDetail(format.compact(u.inputTokens), format.compact(u.outputTokens), format.compact(u.cacheReadTokens + u.cacheWriteTokens), u.turns)}
+          </ListGroup.ItemDescription>
+        </ListGroup.ItemContent>
+      </ListGroup.Item>
+    ),
+    owner && !!session.repo && (
+      <ListGroup.Item
+        key="credentials"
+        onPress={withTap(() => {
+          onLeave();
+          router.push(credentialsHref(conversationId, session.id));
         })}
-        className="min-w-0 flex-row items-center gap-1"
       >
-        <FolderIcon size={14} className="text-muted" />
-        <Typography type="body-xs" color="muted" numberOfLines={1} className="shrink font-mono">
-          {folder}
-        </Typography>
-      </PressableFeedback>
-      {u && (
-        <Popover>
-          <Popover.Trigger asChild>
-            <PressableFeedback accessibilityRole="button">
-              <Typography type="body-xs" color="muted" className="tabular-nums">
-                {t.tokens(format.compact(u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens))} · {format.cost(u.costUsd)} · {t.runs(u.runs)} · {time}
-              </Typography>
-            </PressableFeedback>
-          </Popover.Trigger>
-          <Popover.Portal>
-            <Popover.Overlay />
-            <Popover.Content presentation="popover" width={300} placement="bottom" insets={insets} className="gap-2">
-              <Popover.Description>
-                {t.usageDetail(format.compact(u.inputTokens), format.compact(u.outputTokens), format.compact(u.cacheReadTokens + u.cacheWriteTokens), u.turns)}
-              </Popover.Description>
-              <Popover.Description>{t.costNote}</Popover.Description>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover>
-      )}
+        <ListGroup.ItemPrefix>
+          <KeyIcon size={20} className="text-muted" />
+        </ListGroup.ItemPrefix>
+        <ListGroup.ItemContent>
+          <ListGroup.ItemTitle>{t.credentials.open}</ListGroup.ItemTitle>
+          <ListGroup.ItemDescription>{session.repo}</ListGroup.ItemDescription>
+        </ListGroup.ItemContent>
+        <ListGroup.ItemSuffix />
+      </ListGroup.Item>
+    ),
+  ].filter(Boolean);
+  return (
+    <View className="gap-2">
+      <ListGroup>
+        {rows.map((row, i) => (
+          <Fragment key={i}>
+            {i > 0 && <Separator className="mx-4" />}
+            {row}
+          </Fragment>
+        ))}
+      </ListGroup>
+      {!!u && <Description className="px-4">{t.costNote}</Description>}
     </View>
   );
 }
@@ -398,7 +501,7 @@ function WorktreeBanner({ conversationId, session, worktree }: { conversationId:
     if (await confirmAction({ title: t.confirmTitle(session.title), description: t.confirmHelp(branch, session.git?.changes ?? 0), action: t.remove })) remove.mutate();
   };
   return (
-    <Alert status="danger">
+    <Alert>
       <Alert.Content className="gap-2">
         <Alert.Description>{closed ? t.closed : t.done}</Alert.Description>
         <Button size="sm" variant="danger" className="self-start" isDisabled={remove.isPending} onPress={withTap(() => void confirm())}>
@@ -409,17 +512,31 @@ function WorktreeBanner({ conversationId, session, worktree }: { conversationId:
   );
 }
 
+/** The branch above the field: its name and its changes; a tap opens its sheet. */
+function BranchChip({ git, onPress }: { git: CodeGit; onPress: () => void }) {
+  const t = tr(codeSessions).git;
+  const summary = git.changes ? t.changes(git.changes) : git.ahead ? t.ahead(git.ahead, git.pushed) : git.pr ? `${t.pr(git.pr.number)} · ${t.prState[git.pr.state]}` : t.clean;
+  return (
+    <Chip size="sm" variant="secondary" accessibilityRole="button" onPress={withTap(onPress)} className="min-w-0 shrink">
+      <BranchIcon size={14} className="text-muted" />
+      <Chip.Label numberOfLines={1}>
+        {git.branch ?? "?"} · {summary}
+      </Chip.Label>
+    </Chip>
+  );
+}
+
 /**
- * Where the clone stands, above the field as in an IDE's agent panel: the branch, the files changed
- * with their lines, the pull request, and for the owner the next git action (commit, push, PR,
+ * The branch's sheet (web: ChangesBar): where the clone stands, its pull request, the files changed
+ * with their lines, and for the owner the commit message and the git actions (commit, push, PR,
  * merge). A commit without a message gets one written by Claude Code from the diff.
  */
-function ChangesBar({ conversationId, session, git, owner }: { conversationId: string; session: CodeSession; git: CodeGit; owner: boolean }) {
+function ChangesPanel({ conversationId, session, git, owner, onLeave }: { conversationId: string; session: CodeSession; git: CodeGit; owner: boolean; onLeave: () => void }) {
   const t = tr(codeSessions).git;
   const c = tr(common);
   const qc = useQueryClient();
   const toast = useAdminToast();
-  const [open, setOpen] = useState<string | undefined>(undefined);
+  const field = useBottomSheetAwareHandlers();
   const [message, setMessage] = useState("");
   const run = useMutation({
     // One after the other: "commit and push" is two actions, each its own step.
@@ -437,10 +554,7 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
   });
   const generate = useMutation({
     mutationFn: () => writeCommitMessage(conversationId, session.id),
-    onSuccess: (m) => {
-      setMessage(m);
-      setOpen("files");
-    },
+    onSuccess: setMessage,
     onError: (e) => toast.failed(e, t.failed),
   });
 
@@ -459,7 +573,7 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
     }
   };
 
-  // The next thing to do with the branch, and what else can be done with it.
+  // The next thing to do with the branch first, then what else can be done with it.
   type Action = { label: string; onPress: () => void };
   const canPush = git.github && !onBase && git.ahead > 0;
   const canOpenPr = git.github && !onBase && !openPr && (git.ahead > 0 || git.pushed);
@@ -471,116 +585,108 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
           ...(git.github && !onBase ? [{ label: openPr ? t.commitPushPr(openPr.number) : t.commitPush, onPress: () => run.mutate([commitReq(), { action: "push" }]) }] : []),
         ]
       : [
-          ...(canOpenPr ? [{ label: t.openPr, onPress: () => router.push(pullRequestHref(conversationId, session.id)) }] : []),
+          ...(canOpenPr
+            ? [
+                {
+                  label: t.openPr,
+                  onPress: () => {
+                    onLeave();
+                    router.push(pullRequestHref(conversationId, session.id));
+                  },
+                },
+              ]
+            : []),
           ...(canPush ? [{ label: openPr ? t.pushPr(openPr.number) : t.push, onPress: () => run.mutate([{ action: "push" }]) }] : []),
           ...(git.pushed && git.behind > 0 ? [{ label: t.pull, onPress: () => run.mutate([{ action: "pull" }]) }] : []),
           ...(git.github && openPr && !canPush ? [{ label: t.merge, onPress: () => void merge() }] : []),
         ];
-  const [primary, ...more] = actions;
-
   const summary = [git.changes ? t.changes(git.changes) : null, git.ahead ? t.ahead(git.ahead, git.pushed) : null, git.behind ? t.behind(git.behind) : null].filter(Boolean);
-  const expandable = files.length > 0 || (owner && git.changes > 0);
-
-  const head = (
-    <View className="min-w-0 flex-1 gap-0.5">
-      <View className="min-w-0 flex-row items-center gap-1.5">
-        <BranchIcon size={14} className="text-muted" />
-        <Typography type="body-sm" numberOfLines={1} className="shrink font-mono">
-          {git.branch ?? "?"}
-        </Typography>
-      </View>
-      <Typography type="body-xs" color="muted" numberOfLines={1}>
-        {summary.length ? summary.join(" · ") : t.clean}
-        {added > 0 || removed > 0 ? "  " : ""}
-        {added > 0 && <Typography type="body-xs" className="font-mono text-success">{`+${added} `}</Typography>}
-        {removed > 0 && <Typography type="body-xs" className="font-mono text-danger">{`−${removed}`}</Typography>}
-      </Typography>
-    </View>
-  );
 
   return (
-    <Card variant="secondary" className="gap-2">
-      {expandable ? (
-        <Accordion value={open} onValueChange={setOpen} hideSeparator>
-          <Accordion.Item value="files">
-            <Accordion.Trigger className="gap-2 px-0 py-0">
-              {head}
-              <Accordion.Indicator />
-            </Accordion.Trigger>
-            <Accordion.Content className="gap-2 px-0 pt-2">
-              {files.length > 0 && (
-                <ScrollView nestedScrollEnabled style={{ maxHeight: 192 }} contentContainerClassName="gap-1">
-                  {files.map((f) => {
-                    const slash = f.path.lastIndexOf("/");
-                    return (
-                      <View key={f.path} className="flex-row items-center gap-2">
-                        <Typography type="body-xs" weight="medium" className={cn("w-3 text-center font-mono", FILE_TONE[f.state])}>
-                          {FILE_STATE[f.state]}
-                        </Typography>
-                        <Typography type="body-xs" numberOfLines={1} className="flex-1 font-mono">
-                          {f.path.slice(slash + 1)}
-                          {slash > 0 && <Typography type="body-xs" color="muted">{`  ${f.path.slice(0, slash)}`}</Typography>}
-                        </Typography>
-                        {f.added !== null && (
-                          <Typography type="body-xs" className="font-mono">
-                            {f.added > 0 && <Typography type="body-xs" className="text-success">{`+${f.added}`}</Typography>}
-                            {!!f.removed && <Typography type="body-xs" className="text-danger">{` −${f.removed}`}</Typography>}
-                          </Typography>
-                        )}
-                      </View>
-                    );
-                  })}
-                  {git.changes > files.length && (
-                    <Typography type="body-xs" color="muted">
-                      {t.moreFiles(git.changes - files.length)}
-                    </Typography>
-                  )}
-                </ScrollView>
-              )}
-              {owner && git.changes > 0 && (
-                <View className="gap-2">
-                  <Input multiline value={message} onChangeText={setMessage} accessibilityLabel={t.message} placeholder={t.messagePlaceholder} className="max-h-32 font-mono" />
-                  <Button size="sm" variant="ghost" className="self-start" isDisabled={busy} onPress={withTap(() => generate.mutate())}>
-                    {generate.isPending ? t.writing : t.generate}
-                  </Button>
-                </View>
-              )}
-            </Accordion.Content>
-          </Accordion.Item>
-        </Accordion>
-      ) : (
-        head
+    <View className="gap-4">
+      <View className="gap-1 px-1">
+        <Typography type="code" numberOfLines={1}>
+          {git.branch ?? "?"}
+        </Typography>
+        <Typography type="body-sm" color="muted">
+          {summary.length ? summary.join(" · ") : t.clean}
+          {added > 0 || removed > 0 ? "  " : ""}
+          {added > 0 && <Typography type="body-sm" className="text-success">{`+${added} `}</Typography>}
+          {removed > 0 && <Typography type="body-sm" className="text-danger">{`−${removed}`}</Typography>}
+        </Typography>
+      </View>
+
+      {pr && (
+        <ListGroup>
+          <ListGroup.Item accessibilityRole="link" onPress={withTap(() => Linking.openURL(pr.url))}>
+            <ListGroup.ItemContent>
+              <ListGroup.ItemTitle>
+                {t.pr(pr.number)} · {t.prState[pr.state]}
+              </ListGroup.ItemTitle>
+              <ListGroup.ItemDescription numberOfLines={2}>{pr.title}</ListGroup.ItemDescription>
+            </ListGroup.ItemContent>
+            <ListGroup.ItemSuffix>
+              <ExternalLinkIcon size={16} className="text-muted" />
+            </ListGroup.ItemSuffix>
+          </ListGroup.Item>
+        </ListGroup>
       )}
 
-      {(!!pr || !!primary) && (
-        <View className="flex-row flex-wrap items-center gap-2">
-          {pr && (
-            <Chip size="sm" variant="soft" color={pr.state === "open" ? "success" : "default"} accessibilityRole="link" onPress={withTap(() => Linking.openURL(pr.url))}>
-              <Chip.Label>
-                {t.pr(pr.number)} · {t.prState[pr.state]}
-              </Chip.Label>
-            </Chip>
-          )}
-          <View className="flex-1" />
-          {primary && (
-            <Button size="sm" isDisabled={busy} onPress={withTap(primary.onPress)}>
-              {run.isPending ? c.inProgress : primary.label}
+      {files.length > 0 && (
+        <ListGroup>
+          {files.map((f, i) => {
+            const slash = f.path.lastIndexOf("/");
+            return (
+              <Fragment key={f.path}>
+                {i > 0 && <Separator className="mx-4" />}
+                <ListGroup.Item accessibilityLabel={f.path}>
+                  <ListGroup.ItemPrefix>
+                    <Typography type="code" className={FILE_TONE[f.state]}>
+                      {FILE_STATE[f.state]}
+                    </Typography>
+                  </ListGroup.ItemPrefix>
+                  <ListGroup.ItemContent>
+                    <ListGroup.ItemTitle numberOfLines={1}>{f.path.slice(slash + 1)}</ListGroup.ItemTitle>
+                    {slash > 0 && <ListGroup.ItemDescription numberOfLines={1}>{f.path.slice(0, slash)}</ListGroup.ItemDescription>}
+                  </ListGroup.ItemContent>
+                  {f.added !== null && (
+                    <ListGroup.ItemSuffix>
+                      <Typography type="body-sm">
+                        {f.added > 0 && <Typography type="body-sm" className="text-success">{`+${f.added}`}</Typography>}
+                        {!!f.removed && <Typography type="body-sm" className="text-danger">{` −${f.removed}`}</Typography>}
+                      </Typography>
+                    </ListGroup.ItemSuffix>
+                  )}
+                </ListGroup.Item>
+              </Fragment>
+            );
+          })}
+        </ListGroup>
+      )}
+      {git.changes > files.length && <Description className="px-4">{t.moreFiles(git.changes - files.length)}</Description>}
+
+      {owner && git.changes > 0 && (
+        <TextField>
+          <Label>{t.message}</Label>
+          <TextArea value={message} onChangeText={setMessage} placeholder={t.messagePlaceholder} onFocus={field.onFocus} onBlur={field.onBlur} />
+          <Button size="sm" variant="ghost" className="self-start" isDisabled={busy} onPress={withTap(() => generate.mutate())}>
+            {generate.isPending ? t.writing : t.generate}
+          </Button>
+        </TextField>
+      )}
+
+      {actions.length > 0 && (
+        <View className="gap-2">
+          {actions.map((a, i) => (
+            <Button key={a.label} variant={i === 0 ? "primary" : "secondary"} isDisabled={busy} onPress={withTap(a.onPress)}>
+              {run.isPending && i === 0 ? c.inProgress : a.label}
             </Button>
-          )}
-          {more.length > 0 && <MenuButton icon="ellipsis" label={t.more} disabled={busy} placement="top" actions={more} />}
+          ))}
+          {working && <Description className="px-4">{t.busy}</Description>}
         </View>
       )}
-      {owner && working && !!primary && (
-        <Typography type="body-xs" color="muted">
-          {t.busy}
-        </Typography>
-      )}
-      {owner && !git.github && (
-        <Typography type="body-xs" color="muted">
-          {t.noGithub}
-        </Typography>
-      )}
-    </Card>
+      {owner && !git.github && <Description className="px-4">{t.noGithub}</Description>}
+    </View>
   );
 }
 
@@ -732,109 +838,89 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
   const c = tr(common);
   const qc = useQueryClient();
   const toast = useAdminToast();
-  const warning = useThemeColor("warning-soft-foreground");
   const answer = useMutation({
     mutationFn: (choice: CodeApproval["choices"][number]) => answerCodeApproval(conversationId, session.id, approval.id, { choice }),
     onSuccess: (s) => applyCodeSession(qc, s),
     onError: (e) => toast.failed(e),
   });
   return (
-    <Card role="alert" accessibilityLabel={t.asks} className="gap-3">
-      <Card.Header className="flex-row items-start gap-3">
-        <Avatar alt="" size="sm" variant="soft" color="warning">
-          <Avatar.Fallback>
-            <ShieldAlertIcon size={16} color={warning} />
-          </Avatar.Fallback>
-        </Avatar>
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Card.Title>
-            {t.asks} <Typography className="font-mono">{approval.tool}</Typography>
-          </Card.Title>
-          <Card.Description numberOfLines={2}>{approval.title}</Card.Description>
-        </View>
-      </Card.Header>
-      {!!approval.detail && <Detail text={approval.detail} />}
-      <Card.Footer className="flex-row flex-wrap gap-2">
-        {canAnswer ? (
-          approval.choices.map((choice, i) => (
-            <Button
-              key={choice}
-              size="sm"
-              variant={choice === "deny" ? "danger-soft" : i === 0 ? "primary" : "secondary"}
-              isDisabled={answer.isPending}
-              onPress={withTap(() => answer.mutate(choice))}
-            >
-              {answer.isPending && answer.variables === choice ? c.inProgress : t.choices[choice]}
-            </Button>
-          ))
-        ) : (
-          <Typography type="body-sm" color="muted">
-            {t.waitingOwner}
-          </Typography>
-        )}
-      </Card.Footer>
+    <Card role="alert" accessibilityLabel={t.asks}>
+      <View className="gap-4">
+        <Card.Body className="gap-3">
+          <View className="gap-1">
+            <Card.Title>
+              {t.asks} <Typography type="code">{approval.tool}</Typography>
+            </Card.Title>
+            <Card.Description numberOfLines={2}>{approval.title}</Card.Description>
+          </View>
+          {!!approval.detail && <Detail text={approval.detail} />}
+        </Card.Body>
+        <Card.Footer className="flex-row flex-wrap gap-2">
+          {canAnswer ? (
+            approval.choices.map((choice, i) => (
+              <Button
+                key={choice}
+                size="sm"
+                variant={choice === "deny" ? "danger-soft" : i === 0 ? "primary" : "secondary"}
+                isDisabled={answer.isPending}
+                onPress={withTap(() => answer.mutate(choice))}
+              >
+                {answer.isPending && answer.variables === choice ? c.inProgress : t.choices[choice]}
+              </Button>
+            ))
+          ) : (
+            <Typography type="body-sm" color="muted">
+              {t.waitingOwner}
+            </Typography>
+          )}
+        </Card.Footer>
+      </View>
     </Card>
   );
 }
 
-/**
- * Claude Code's task list (web: TodoBar), riding above the field: where it stands in one line, each
- * task on unfolding. Hidden once every task is done and the session rests.
- */
-function TodoBar({ todos, running }: { todos: CodeTodo[]; running: boolean }) {
+/** Its task list is shown while a task is left or while it works. */
+const showTodos = (todos: CodeTodo[], running: boolean) => todos.length > 0 && (running || todos.some((x) => x.status !== "completed"));
+
+/** Claude Code's task list above the field (web: TodoBar): where it stands; a tap opens every task. */
+function TodosChip({ todos, running, onPress }: { todos: CodeTodo[]; running: boolean; onPress: () => void }) {
   const t = tr(codeSessions).todos;
-  const [open, setOpen] = useState<string | undefined>(undefined);
   const done = todos.filter((x) => x.status === "completed").length;
-  const current = todos.find((x) => x.status === "in_progress");
-  if (done === todos.length && !running) return null;
   return (
-    <Card variant="secondary" className="gap-2">
-      <Accordion value={open} onValueChange={setOpen} hideSeparator>
-        <Accordion.Item value="todos">
-          <Accordion.Trigger accessibilityLabel={t.label(done, todos.length)} className="gap-2 px-0 py-0">
-            <View className="min-w-0 flex-1 flex-row items-center gap-2">
-              <TaskListIcon size={14} className="text-muted" />
-              <Typography type="body-sm">{t.title}</Typography>
-              <Typography type="body-sm" color="muted">
-                {t.progress(done, todos.length)}
-              </Typography>
-              {!!current && !open && (
-                <Typography type="body-sm" color="muted" numberOfLines={1} className="min-w-0 flex-1">
-                  {current.activeForm ?? current.content}
-                </Typography>
-              )}
-            </View>
-            <Accordion.Indicator />
-          </Accordion.Trigger>
-          <Accordion.Content className="px-0 pt-2">
-            <ScrollView nestedScrollEnabled style={{ maxHeight: 192 }} contentContainerClassName="gap-1.5">
-              {todos.map((todo) => (
-                <View key={todo.id} className="flex-row items-start gap-2">
-                  <View className="pt-0.5">
-                    <TodoMark status={todo.status} running={running} />
-                  </View>
-                  <Typography
-                    type="body-sm"
-                    weight={todo.status === "in_progress" ? "medium" : undefined}
-                    color={todo.status === "completed" ? "muted" : "default"}
-                    className={cn("min-w-0 flex-1", todo.status === "completed" && "line-through")}
-                  >
-                    {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
-                  </Typography>
-                </View>
-              ))}
-            </ScrollView>
-          </Accordion.Content>
-        </Accordion.Item>
-      </Accordion>
-    </Card>
+    <Chip size="sm" variant="secondary" accessibilityRole="button" accessibilityLabel={t.label(done, todos.length)} onPress={withTap(onPress)}>
+      {running ? <Spinner size="sm" /> : <TaskListIcon size={14} className="text-muted" />}
+      <Chip.Label>{t.progress(done, todos.length)}</Chip.Label>
+    </Chip>
+  );
+}
+
+/** Every task of its list, in its sheet. */
+function TodoList({ todos, running }: { todos: CodeTodo[]; running: boolean }) {
+  return (
+    <ListGroup>
+      {todos.map((todo, i) => (
+        <Fragment key={todo.id}>
+          {i > 0 && <Separator className="mx-4" />}
+          <ListGroup.Item>
+            <ListGroup.ItemPrefix>
+              <TodoMark status={todo.status} running={running} />
+            </ListGroup.ItemPrefix>
+            <ListGroup.ItemContent>
+              <ListGroup.ItemTitle>
+                {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
+              </ListGroup.ItemTitle>
+            </ListGroup.ItemContent>
+          </ListGroup.Item>
+        </Fragment>
+      ))}
+    </ListGroup>
   );
 }
 
 function TodoMark({ status, running }: { status: CodeTodo["status"]; running: boolean }) {
-  if (status === "completed") return <CheckCircleIcon size={14} className="text-success" />;
+  if (status === "completed") return <CheckCircleIcon size={20} className="text-success" />;
   if (status === "in_progress" && running) return <Spinner size="sm" />;
-  return <CircleIcon size={14} className={status === "in_progress" ? "text-foreground" : "text-muted"} />;
+  return <CircleIcon size={20} className={status === "in_progress" ? "text-foreground" : "text-muted"} />;
 }
 
 /**
@@ -843,25 +929,15 @@ function TodoMark({ status, running }: { status: CodeTodo["status"]; running: bo
  */
 function BotQuestionBlock({ question, canAnswer }: { question: CodeBotQuestion; canAnswer: boolean }) {
   const t = tr(codeSessions);
-  const warning = useThemeColor("warning-soft-foreground");
   return (
-    <Card role="alert" accessibilityLabel={t.botQuestion.title(question.bot)} className="gap-3">
-      <Card.Header className="flex-row items-start gap-3">
-        <Avatar alt="" size="sm" variant="soft" color="warning">
-          <Avatar.Fallback>
-            <ChatQuestionIcon size={16} color={warning} />
-          </Avatar.Fallback>
-        </Avatar>
-        <View className="min-w-0 flex-1 gap-0.5">
+    <Card role="alert" accessibilityLabel={t.botQuestion.title(question.bot)}>
+      <Card.Body className="gap-3">
+        <View className="gap-1">
           <Card.Title>{t.botQuestion.title(question.bot)}</Card.Title>
           <Card.Description>{canAnswer ? t.botQuestion.help(question.bot) : t.botQuestion.waiting(question.bot)}</Card.Description>
         </View>
-      </Card.Header>
-      <Surface variant="secondary" className="p-0">
-        <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }} contentContainerClassName="px-3 py-2">
-          <MessageText text={question.text} />
-        </ScrollView>
-      </Surface>
+        <MessageText text={question.text} />
+      </Card.Body>
     </Card>
   );
 }
@@ -910,86 +986,88 @@ function QuestionBlock({
     setChoices((all) => ({ ...all, [question]: { ...(all[question] ?? { picked: [], other: "" }), ...change } }));
   const complete = questions.every((q) => answerOf(choices[q.question]));
   return (
-    <Card accessibilityLabel={t.question.title} className="gap-3">
-      <Card.Title>{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</Card.Title>
-      <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" style={{ maxHeight: 320 }} contentContainerClassName="gap-4">
-        {questions.map((q) => {
-          const picked = choices[q.question]?.picked ?? [];
-          const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
-          const text = (o: (typeof options)[number]) => (
-            <View className="flex-1">
-              <Label>{o.label}</Label>
-              {!!o.description && <Description>{o.description}</Description>}
-            </View>
-          );
-          return (
-            <View key={q.question} className="gap-2">
-              <View className="flex-row flex-wrap items-center gap-2">
-                {!!q.header && (
-                  <Chip size="sm" variant="secondary">
-                    {q.header}
-                  </Chip>
-                )}
-                <Typography type="body-sm" weight="medium" className="min-w-0 flex-1">
-                  {q.question}
-                </Typography>
+    <Card accessibilityLabel={t.question.title}>
+      <View className="gap-4">
+        <Card.Body className="gap-4">
+          <Card.Title>{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</Card.Title>
+          {questions.map((q) => {
+            const picked = choices[q.question]?.picked ?? [];
+            const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
+            const text = (o: (typeof options)[number]) => (
+              <View className="flex-1">
+                <Label>{o.label}</Label>
+                {!!o.description && <Description>{o.description}</Description>}
               </View>
-              {q.multiSelect ? (
-                <View className="gap-2">
-                  {options.map((o) => (
-                    <ControlField
-                      key={o.value}
-                      isDisabled={!canAnswer}
-                      isSelected={picked.includes(o.value)}
-                      onSelectedChange={(on) => set(q.question, { picked: on ? [...picked, o.value] : picked.filter((p) => p !== o.value) })}
-                    >
-                      {text(o)}
-                      <ControlField.Indicator variant="checkbox" />
-                    </ControlField>
-                  ))}
+            );
+            return (
+              <View key={q.question} className="gap-2">
+                <View className="flex-row flex-wrap items-center gap-2">
+                  {!!q.header && (
+                    <Chip size="sm" variant="secondary">
+                      {q.header}
+                    </Chip>
+                  )}
+                  <Typography type="body-sm" weight="medium" className="min-w-0 flex-1">
+                    {q.question}
+                  </Typography>
                 </View>
-              ) : (
-                <RadioGroup value={picked[0]} isDisabled={!canAnswer} onValueChange={(v) => set(q.question, { picked: [v] })}>
-                  {options.map((o, i) => (
-                    <Fragment key={o.value}>
-                      {i > 0 && <Separator className="my-1" />}
-                      <RadioGroup.Item value={o.value}>
+                {q.multiSelect ? (
+                  <View className="gap-2">
+                    {options.map((o) => (
+                      <ControlField
+                        key={o.value}
+                        isDisabled={!canAnswer}
+                        isSelected={picked.includes(o.value)}
+                        onSelectedChange={(on) => set(q.question, { picked: on ? [...picked, o.value] : picked.filter((p) => p !== o.value) })}
+                      >
                         {text(o)}
-                        <Radio />
-                      </RadioGroup.Item>
-                    </Fragment>
-                  ))}
-                </RadioGroup>
-              )}
-              {picked.includes(OTHER_ANSWER) && (
-                <Input
-                  autoFocus
-                  accessibilityLabel={t.question.other}
-                  placeholder={t.question.otherPlaceholder}
-                  value={choices[q.question]?.other ?? ""}
-                  onChangeText={(other) => set(q.question, { other })}
-                />
-              )}
-            </View>
-          );
-        })}
-      </ScrollView>
-      <Card.Footer className="flex-row flex-wrap gap-2">
-        {canAnswer ? (
-          <>
-            <Button size="sm" variant="primary" isDisabled={!complete || answer.isPending} onPress={withTap(() => answer.mutate(false))}>
-              {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
-            </Button>
-            <Button size="sm" variant="ghost" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(true))}>
-              {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
-            </Button>
-          </>
-        ) : (
-          <Typography type="body-sm" color="muted">
-            {t.waitingOwner}
-          </Typography>
-        )}
-      </Card.Footer>
+                        <ControlField.Indicator variant="checkbox" />
+                      </ControlField>
+                    ))}
+                  </View>
+                ) : (
+                  <RadioGroup value={picked[0]} isDisabled={!canAnswer} onValueChange={(v) => set(q.question, { picked: [v] })}>
+                    {options.map((o, i) => (
+                      <Fragment key={o.value}>
+                        {i > 0 && <Separator className="my-1" />}
+                        <RadioGroup.Item value={o.value}>
+                          {text(o)}
+                          <Radio />
+                        </RadioGroup.Item>
+                      </Fragment>
+                    ))}
+                  </RadioGroup>
+                )}
+                {picked.includes(OTHER_ANSWER) && (
+                  <Input
+                    autoFocus
+                    accessibilityLabel={t.question.other}
+                    placeholder={t.question.otherPlaceholder}
+                    value={choices[q.question]?.other ?? ""}
+                    onChangeText={(other) => set(q.question, { other })}
+                  />
+                )}
+              </View>
+            );
+          })}
+        </Card.Body>
+        <Card.Footer className="flex-row flex-wrap gap-2">
+          {canAnswer ? (
+            <>
+              <Button size="sm" variant="primary" isDisabled={!complete || answer.isPending} onPress={withTap(() => answer.mutate(false))}>
+                {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
+              </Button>
+              <Button size="sm" variant="ghost" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(true))}>
+                {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
+              </Button>
+            </>
+          ) : (
+            <Typography type="body-sm" color="muted">
+              {t.waitingOwner}
+            </Typography>
+          )}
+        </Card.Footer>
+      </View>
     </Card>
   );
 }
@@ -1015,35 +1093,38 @@ function PlanBlock({ conversationId, session, approval, canAnswer }: { conversat
     onError: (e) => toast.failed(e),
   });
   return (
-    <Card accessibilityLabel={t.plan.title} className="gap-3">
-      <Card.Header className="gap-0.5">
-        <Card.Title>{t.plan.title}</Card.Title>
-        <Card.Description>{t.plan.help}</Card.Description>
-      </Card.Header>
-      {!!approval.plan && (
-        <Surface variant="secondary" className="p-0">
-          <ScrollView nestedScrollEnabled style={{ maxHeight: 280 }} contentContainerClassName="px-3 py-2">
-            <MessageText text={approval.plan} />
-          </ScrollView>
-        </Surface>
-      )}
-      {canAnswer ? (
-        <>
-          <TextArea value={feedback} onChangeText={setFeedback} accessibilityLabel={t.plan.feedback} placeholder={t.plan.feedbackPlaceholder} />
-          <Card.Footer className="flex-row flex-wrap gap-2">
-            <Button size="sm" variant="primary" isDisabled={answer.isPending || !!feedback.trim()} onPress={withTap(() => answer.mutate(true))}>
-              {answer.isPending && answer.variables ? c.inProgress : t.plan.approve}
-            </Button>
-            <Button size="sm" variant="secondary" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(false))}>
-              {answer.isPending && !answer.variables ? c.inProgress : t.plan.revise}
-            </Button>
-          </Card.Footer>
-        </>
-      ) : (
-        <Typography type="body-sm" color="muted">
-          {t.waitingOwner}
-        </Typography>
-      )}
+    <Card accessibilityLabel={t.plan.title}>
+      <View className="gap-4">
+        <Card.Body className="gap-3">
+          <View className="gap-1">
+            <Card.Title>{t.plan.title}</Card.Title>
+            <Card.Description>{t.plan.help}</Card.Description>
+          </View>
+          {!!approval.plan && <MessageText text={approval.plan} />}
+          {canAnswer && (
+            <TextField>
+              <Label>{t.plan.feedback}</Label>
+              <TextArea value={feedback} onChangeText={setFeedback} placeholder={t.plan.feedbackPlaceholder} />
+            </TextField>
+          )}
+        </Card.Body>
+        <Card.Footer className="flex-row flex-wrap gap-2">
+          {canAnswer ? (
+            <>
+              <Button size="sm" variant="primary" isDisabled={answer.isPending || !!feedback.trim()} onPress={withTap(() => answer.mutate(true))}>
+                {answer.isPending && answer.variables ? c.inProgress : t.plan.approve}
+              </Button>
+              <Button size="sm" variant="secondary" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(false))}>
+                {answer.isPending && !answer.variables ? c.inProgress : t.plan.revise}
+              </Button>
+            </>
+          ) : (
+            <Typography type="body-sm" color="muted">
+              {t.waitingOwner}
+            </Typography>
+          )}
+        </Card.Footer>
+      </View>
     </Card>
   );
 }

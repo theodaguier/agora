@@ -14,7 +14,7 @@ import { ApprovalCard, ApprovalLog } from "@/components/approval-card";
 import { FileCard, SentAttachments } from "@/components/attachments";
 import { AuthorLine, BotBubble, DateDivider, SystemEvent, ToolLine, TypingBubble } from "@/components/bubbles";
 import { ChoiceCard } from "@/components/choice-card";
-import { CodeSessionCard, ReplyWithSessions, useCodeSessions } from "@/components/code-session";
+import { CodeSessionCard, ReplyWithSessions, useCanStartCodeSession, useCodeSessions } from "@/components/code-session";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { HeaderTitle } from "@/components/conversation/header";
 import { infoHref } from "@/components/conversation/info-href";
@@ -303,7 +303,9 @@ export function Conversation({ conversationId, focus }: { conversationId: string
 
   const toEnd = () => scroller.current?.scrollTo({ y: 0, animated: true });
 
-  const hasCodeSessions = !!useCodeSessions(conversationId);
+  // Its sessions, or the way to start one for the owner of the subscription.
+  const canStartCode = useCanStartCodeSession(conversationId);
+  const hasCodeSessions = !!useCodeSessions(conversationId) || canStartCode;
   const header = (
     <ConversationHeader conv={conv} me={user.id} title={title} counterpart={(directPerson ?? directBot)?.name} codeSessions={hasCodeSessions} onPanel={setPanel} />
   );
