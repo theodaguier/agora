@@ -66,6 +66,8 @@ import {
   codeAccountsQuery,
   codeModelsQuery,
   codeSessionQuery,
+  deleteCodeSession,
+  dropCodeSession,
   refreshCodeSessionGit,
   removeCodeSessionWorktree,
   runCodeGit,
@@ -106,6 +108,21 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const owner = !!session && session.requestedBy === me.id;
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  // Deleted by its owner: its run stops, and the screen gives way to the conversation.
+  const remove = useMutation({
+    mutationFn: () => deleteCodeSession(conversationId, sessionId),
+    onSuccess: () => {
+      router.back();
+      dropCodeSession(qc, conversationId, sessionId);
+      toast.success(t.deleted);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  const confirmDelete = async () => {
+    if (session && (await confirmAction({ title: t.deleteTitle(session.title), description: t.deleteHelp, action: t.deleteSession }))) remove.mutate();
+  };
 
   const toEnd = (animated: boolean) => {
     follow.current = true;
@@ -126,6 +143,8 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 { label: t.details, icon: "info.circle", onPress: () => setSheet("info") },
                 !!session.git?.pr && { label: t.git.pr(session.git.pr.number), icon: "link", onPress: () => void Linking.openURL(session.git!.pr!.url) },
                 owner && !!session.repo && { label: t.credentials.open, icon: "key", onPress: () => router.push(credentialsHref(conversationId, session.id)) },
+                owner && "divider",
+                owner && { label: t.deleteSession, icon: "trash", destructive: true, disabled: remove.isPending, onPress: () => void confirmDelete() },
               ]}
             />
           </Stack.Toolbar.View>
