@@ -2,7 +2,6 @@ import { SplitIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { defineMessages, useT } from "@/i18n";
-import { cn } from "@/lib/utils";
 
 const messages = defineMessages({
   en: { beside: "Open beside" },
@@ -14,7 +13,7 @@ export function BesideButton({ onClick, className }: { onClick: () => void; clas
   const t = useT(messages);
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={t.beside} onClick={onClick} className={cn("rounded-lg", className)} />}>
+      <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={t.beside} onClick={onClick} className={className} />}>
         <SplitIcon />
       </TooltipTrigger>
       <TooltipContent>{t.beside}</TooltipContent>

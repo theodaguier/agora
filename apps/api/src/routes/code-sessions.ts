@@ -10,6 +10,7 @@ import {
   CodeSessionError,
   codeSessionReport,
   commitMessageFor,
+  deleteCodeSession,
   refreshCodeSessionGit,
   removeCodeSessionWorktree,
   getCodeSession,
@@ -220,6 +221,13 @@ export const codeSessions = new Hono<AppEnv>()
     const owned = await ownerOnly(c);
     if (owned instanceof Response) return owned;
     return removeCodeSessionWorktree(owned.sessionId, c.get("user").name, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
+  /** Its owner deletes it: its run stops, its worktree and its steps go. */
+  .delete("/:sessionId", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    return deleteCodeSession(owned.sessionId, owned.conversationId).then(() => c.body(null, 204), (err) => failure(c, err));
   })
 
   /** Moves Claude Code to another account; a session stopped by the limit picks up where it was. */

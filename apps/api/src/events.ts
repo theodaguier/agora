@@ -23,6 +23,8 @@ export type AppEvent =
   | { type: "code.session"; conversationId: string; session: import("@agora/core").CodeSession }
   /** One of its steps was added or changed (text streamed, tool finished). */
   | { type: "code.step"; conversationId: string; sessionId: string; step: import("@agora/core").CodeStep }
+  /** Deleted by its owner: gone from the list and the panels; its cards stay. */
+  | { type: "code.removed"; conversationId: string; sessionId: string }
   | { type: "presence"; userId: string; online: boolean; lastSeenAt: string | null }
   | { type: "agent.status"; agentId: string; working: boolean }
   /** Someone's working hours, absences or "do not disturb" changed (availability.ts). */

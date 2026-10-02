@@ -723,6 +723,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                 conversationId={conversationId}
                 current={codeSession}
                 onOpen={openCodeSession}
+                onDeleted={(id) => codeTabs.includes(id) && closeCodeTab(id)}
                 onOpenBeside={place.paneId ? (id) => openBeside(tabPath.code(conversationId, id), place.paneId!) : undefined}
               />
             )
