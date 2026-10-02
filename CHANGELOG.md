@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.38.2 — 2026-10-02
+
+### Fixes
+- **web**: readable second brain graph, fills its pane, opens in a window
+
 ## v0.38.1 — 2026-10-02
 
 ### Fixes
