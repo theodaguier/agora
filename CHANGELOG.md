@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.37.0 — 2026-10-02
+
+### Features
+- **mobile**: start and delete Claude Code sessions, as on the web
+- **mobile**: start and delete Claude Code sessions, as on the web
+- delete Claude Code sessions, color their statuses
+
+### Fixes
+- **mobile**: rework the Claude Code session screen around the thread
+- **mobile**: rework the Claude Code session screen around the thread
+- **web**: go further on the Claude Code session UI
+- **web**: compose the Claude Code session UI from shadcn primitives
+- **web**: align shadcn primitives and screens on one look per role
+
 ## v0.36.0 — 2026-10-01
 
 ### Features
