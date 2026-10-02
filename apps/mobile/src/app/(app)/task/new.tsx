@@ -130,7 +130,7 @@ export default function NewTaskSheet() {
                     <PersonAvatar person={p} size={28} />
                   </ListGroup.ItemPrefix>
                   <ListGroup.ItemContent>
-                    <ListGroup.ItemTitle className="font-normal" numberOfLines={1}>
+                    <ListGroup.ItemTitle numberOfLines={1}>
                       {p.name}
                     </ListGroup.ItemTitle>
                   </ListGroup.ItemContent>

@@ -171,7 +171,7 @@ export function AssigneesRow({ task }: { task: Task }) {
       <Select.Trigger variant="unstyled" asChild>
         <ListGroup.Item>
           <ListGroup.ItemContent>
-            <ListGroup.ItemTitle className="font-normal text-link">{messages.change}</ListGroup.ItemTitle>
+            <ListGroup.ItemTitle className="text-link">{messages.change}</ListGroup.ItemTitle>
           </ListGroup.ItemContent>
         </ListGroup.Item>
       </Select.Trigger>

@@ -6,6 +6,7 @@ import type { GestureResponderEvent } from "react-native";
 import {
   AtIcon,
   BanIcon,
+  BranchIcon,
   CameraIcon,
   CheckCircleIcon,
   CheckIcon,
@@ -109,6 +110,9 @@ const ICONS: Record<string, IconComponent> = {
   "person.2.fill": UsersIcon,
   "person.2.slash": UsersSlashIcon,
   "info.circle": InfoIcon,
+  key: KeyIcon,
+  checklist: TaskListIcon,
+  "arrow.triangle.branch": BranchIcon,
 };
 
 export type SFSymbol = string;

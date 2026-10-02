@@ -37,23 +37,25 @@ export function CodeSessionCard({ conversationId, sessionId, title }: { conversa
   const t = tr(codeSessions);
   const { data } = useQuery(codeSessionsQuery(conversationId));
   const session = data?.find((s) => s.id === sessionId);
+  // Deleted by its owner: the card stays, without the way into it.
+  const gone = !!data && !session;
   const status = session?.status ?? "running";
   const detail = session && codeDetailLine(session);
   return (
-    <Card className="w-full max-w-[92%] self-start">
-      <View className="flex-row items-center gap-3">
-        {session ? <StatusIcon status={status} asking={!!session.question} /> : <CodeIcon size={18} className="text-muted" />}
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Card.Title numberOfLines={1}>{session?.title ?? title}</Card.Title>
-          <Card.Description numberOfLines={1}>
-            {t.claudeCode} · {session ? codeStatusText(t, session) : t.status[status]}
-            {detail ? ` · ${detail}` : ""}
-          </Card.Description>
-        </View>
+    <Card className="w-full max-w-[92%] flex-row items-center gap-3 self-start">
+      {session ? <StatusIcon status={status} asking={!!session.question} /> : <CodeIcon size={18} className="text-muted" />}
+      <Card.Body className="min-w-0 gap-0.5">
+        <Card.Title numberOfLines={1}>{session?.title ?? title}</Card.Title>
+        <Card.Description numberOfLines={1}>
+          {t.claudeCode} · {session ? codeStatusText(t, session) : gone ? t.gone : t.status[status]}
+          {detail ? ` · ${detail}` : ""}
+        </Card.Description>
+      </Card.Body>
+      {!gone && (
         <Button size="sm" variant="secondary" onPress={withTap(() => router.push(codeSessionHref(conversationId, sessionId)))}>
           {isActive(status) ? t.follow : t.open}
         </Button>
-      </View>
+      )}
     </Card>
   );
 }

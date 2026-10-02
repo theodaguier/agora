@@ -356,7 +356,7 @@ function Database({ report }: { report: ServerReport }) {
           <ListGroup.Item key={table.name} disabled>
             <ListGroup.ItemContent className="gap-1.5">
               <View className="flex-row items-baseline gap-2">
-                <ListGroup.ItemTitle className="flex-1 font-mono text-sm" numberOfLines={1}>
+                <ListGroup.ItemTitle className="flex-1" numberOfLines={1}>
                   {table.name}
                 </ListGroup.ItemTitle>
                 <Typography.Paragraph type="body-sm" className="tabular-nums">
