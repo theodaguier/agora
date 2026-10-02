@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { SearchIcon, CloseIcon } from "@/components/icons";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Streamdown } from "streamdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,6 @@ const messages = defineMessages<{
   ghost: string;
   agent: string;
   linked: (n: number) => string;
-  openWindow: string;
   fullScreen: string;
   exitFullScreen: string;
 }>({
@@ -76,7 +75,6 @@ const messages = defineMessages<{
     ghost: "This page is referenced but doesn't exist yet. The curator will create it when the topic comes up again.",
     agent: "Pages and conversations linked to this agent.",
     linked: (n) => (n === 1 ? "Linked to 1 page" : `Linked to ${n} pages`),
-    openWindow: "Open in a window",
     fullScreen: "Full screen",
     exitFullScreen: "Exit full screen",
   },
@@ -113,7 +111,6 @@ const messages = defineMessages<{
     ghost: "Cette page est citée mais n'existe pas encore. Le curateur la créera quand le sujet reviendra.",
     agent: "Les pages et conversations reliées à cet agent.",
     linked: (n) => `Liée à ${n} page${n > 1 ? "s" : ""}`,
-    openWindow: "Ouvrir dans une fenêtre",
     fullScreen: "Plein écran",
     exitFullScreen: "Quitter le plein écran",
   },
@@ -123,31 +120,23 @@ const messages = defineMessages<{
 const noNodes: WikiNode[] = [];
 const noEdges: WikiEdge[] = [];
 
-/** Opens the graph alone in a window covering the screen (focused again if already open). */
-function openMemoryWindow() {
-  const { availWidth: w, availHeight: h, availLeft = 0, availTop = 0 } = window.screen as Screen & { availLeft?: number; availTop?: number };
-  window.open("/memory", "agora-memory", `popup,width=${w},height=${h},left=${availLeft},top=${availTop}`)?.focus();
-}
-
-/** Follows the browser's full screen mode, toggled from the standalone window. */
-function useFullScreen() {
-  const [on, setOn] = useState(() => !!document.fullscreenElement);
+/** Whether `ref` is the element shown in the browser's full screen mode, and a toggle for it. */
+function useFullScreen(ref: RefObject<HTMLElement | null>) {
+  const [on, setOn] = useState(false);
   useEffect(() => {
-    const sync = () => setOn(!!document.fullscreenElement);
+    const sync = () => setOn(!!ref.current && document.fullscreenElement === ref.current);
     document.addEventListener("fullscreenchange", sync);
     return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
-  const toggle = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
+  }, [ref]);
+  const toggle = () => (on ? document.exitFullscreen() : ref.current?.requestFullscreen())?.catch(() => {});
   return [on, toggle] as const;
 }
 
-/**
- * Second brain: the agents' shared wiki, as an interactive graph. It fills its parent's height
- * (the settings pane, or the whole `/memory` window when `standalone`).
- */
-export function WikiMemory({ standalone = false }: { standalone?: boolean }) {
+/** Second brain: the agents' shared wiki, as an interactive graph filling the pane, or the whole screen. */
+export function WikiMemory() {
   const t = useT(messages);
-  const [fullScreen, toggleFullScreen] = useFullScreen();
+  const box = useRef<HTMLDivElement>(null);
+  const [fullScreen, toggleFullScreen] = useFullScreen(box);
   const graph = useQuery({
     queryKey: ["wiki", "graph"],
     queryFn: () => api<Graph>("/admin/wiki/graph"),
@@ -194,15 +183,15 @@ export function WikiMemory({ standalone = false }: { standalone?: boolean }) {
       <SectionHeader
         title={t.title}
         text={t.intro}
-        action={standalone ? (fullScreen ? t.exitFullScreen : t.fullScreen) : t.openWindow}
-        onAction={standalone ? toggleFullScreen : openMemoryWindow}
+        action={graph.data && nodes.length ? t.fullScreen : undefined}
+        onAction={toggleFullScreen}
       />
 
       {graph.isPending && <Loading />}
       <ErrorText error={graph.error} />
 
       {graph.data && (
-        <div className="relative flex min-h-[360px] flex-1 overflow-hidden rounded-lg border">
+        <div ref={box} className="relative flex min-h-[360px] flex-1 overflow-hidden rounded-lg border bg-background [&:fullscreen]:rounded-none [&:fullscreen]:border-0">
           {nodes.length ? (
             <MemoryGraph nodes={nodes} edges={edges} hidden={hidden} selected={selected} highlight={highlight} onSelect={select} />
           ) : (
@@ -214,36 +203,43 @@ export function WikiMemory({ standalone = false }: { standalone?: boolean }) {
             </Empty>
           )}
 
-          <div className="absolute left-3 top-3 w-[min(280px,calc(100%-24px))]">
-            <InputGroup className="h-8 bg-background">
-              <InputGroupAddon>
-                <SearchIcon />
-              </InputGroupAddon>
-              <InputGroupInput
-                aria-label={t.searchLabel}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t.searchPlaceholder}
-              />
-            </InputGroup>
-            {matches && (
-              <ItemGroup className="mt-1 max-h-64 gap-0 overflow-y-auto rounded-lg border bg-background p-1">
-                {matches.slice(0, 12).map((n) => (
-                  <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted/60" render={<button type="button" onClick={() => select(n.id)} />}>
-                    <ItemMedia>
-                      <Dot type={n.type} />
-                    </ItemMedia>
-                    <ItemContent>
-                      <ItemTitle className="truncate font-normal">{n.label}</ItemTitle>
-                    </ItemContent>
-                  </Item>
-                ))}
-                {!matches.length && (
-                  <Item size="xs" role="listitem">
-                    <ItemContent className="text-muted-foreground">{t.noPage}</ItemContent>
-                  </Item>
-                )}
-              </ItemGroup>
+          <div className="absolute left-3 top-3 flex max-w-[calc(100%-24px)] items-start gap-2">
+            <div className="w-[280px] min-w-0 shrink">
+              <InputGroup className="h-8 bg-background">
+                <InputGroupAddon>
+                  <SearchIcon />
+                </InputGroupAddon>
+                <InputGroupInput
+                  aria-label={t.searchLabel}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t.searchPlaceholder}
+                />
+              </InputGroup>
+              {matches && (
+                <ItemGroup className="mt-1 max-h-64 gap-0 overflow-y-auto rounded-lg border bg-background p-1">
+                  {matches.slice(0, 12).map((n) => (
+                    <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted/60" render={<button type="button" onClick={() => select(n.id)} />}>
+                      <ItemMedia>
+                        <Dot type={n.type} />
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle className="truncate font-normal">{n.label}</ItemTitle>
+                      </ItemContent>
+                    </Item>
+                  ))}
+                  {!matches.length && (
+                    <Item size="xs" role="listitem">
+                      <ItemContent className="text-muted-foreground">{t.noPage}</ItemContent>
+                    </Item>
+                  )}
+                </ItemGroup>
+              )}
+            </div>
+            {fullScreen && (
+              <Button variant="outline" size="sm" onClick={toggleFullScreen} className="shrink-0 bg-background">
+                {t.exitFullScreen}
+              </Button>
             )}
           </div>
 

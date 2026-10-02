@@ -15,7 +15,6 @@ import { Setup } from "./screens/Setup";
 import { Tasks } from "./screens/Tasks";
 import { Inbox } from "./screens/Inbox";
 import { TwoFactorRequired } from "./screens/TwoFactorRequired";
-import { MemoryWindow } from "./screens/MemoryWindow";
 import { orgQuery, setupQuery, useOrgLocale } from "./lib/org";
 import { mutationCache } from "./lib/feedback";
 
@@ -115,18 +114,7 @@ const agentRoute = createRoute({
     throw redirect({ to: "/c/$conversationId", params: { conversationId: id }, replace: true });
   },
 });
-/** Second brain graph alone, opened in its own window from the Memory settings (admins only, no app shell). */
-const memoryRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/memory",
-  beforeLoad: async () => {
-    const { data } = await authClient.getSession();
-    if (!data) throw redirect({ to: "/login" });
-    if (data.user.role !== "admin") throw redirect({ to: "/" });
-  },
-  component: MemoryWindow,
-});
-const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, memoryRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, inboxRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, inboxRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
 
 export const router = createRouter({ routeTree });
 
