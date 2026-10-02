@@ -7,3 +7,9 @@ allowBuilds:
   "@prisma/client": false
   better-sqlite3: false
   unrs-resolver: false
+
+# No patched node-forge exists yet (<=1.4.0, latest is 1.4.0). It only comes in through
+# @expo/cli, the mobile build tool, never the shipped app or the API. Drop once a fix ships.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-86w9-cpqp-85rv
