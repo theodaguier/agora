@@ -1,11 +1,12 @@
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
-import type { ActiveTurn, Message, PendingApproval } from "./api";
+import type { ActiveTurn, ConversationDetail, ConversationKind, ConversationSummary, Inbox, Message, PendingApproval } from "./api";
 import { insertMessage, removeMessage, type Schedule } from "@agora/core";
 import { applySchedule } from "./availability";
 import { applyAgentStatus, applyPresence, presenceQuery } from "./presence";
 import type { CodeSession, CodeSessionRef, CodeStep } from "@agora/core";
-import { applyCodeSession, applyCodeStep, dropCodeSession } from "./code-sessions";
+import { applyCodeSession, applyCodeStep, dropCodeSession, codeSessionsQuery } from "./code-sessions";
+import { playSound } from "./sounds";
 
 /** Delay after which "X is typing" disappears without a new signal. */
 const TYPING_MS = 5_000;
@@ -110,6 +111,40 @@ export function seedTurns(conversationId: string, turns: ActiveTurn[]) {
   if (missing.length) updateTurns(conversationId, (ts) => [...ts, ...missing]);
 }
 
+const kindOf = (qc: QueryClient, conversationId: string): ConversationKind | undefined =>
+  qc.getQueryData<ConversationSummary[]>(["conversations"])?.find((c) => c.id === conversationId)?.kind ??
+  qc.getQueryData<ConversationDetail>(["conversation", conversationId])?.kind;
+
+/** A reply that asks something back: its answer waits for you. */
+const asksBack = (m: Message | undefined) => !!(m?.data?.questions || m?.data?.choices || m?.data?.mcpRequest || m?.data?.skillRequest);
+
+/** Replies of yours: ones you asked for, and in a direct conversation with a bot, the ones nobody asked for (routines). */
+function yours(qc: QueryClient, me: string, conversationId: string, turn: ActiveTurn | undefined) {
+  if (!turn) return false;
+  return turn.requestedBy === me || (turn.requestedBy === null && kindOf(qc, conversationId) === "direct");
+}
+
+type CodeSeen = { status: CodeSession["status"]; approval: string | null };
+
+/** Last status seen of each Claude Code session, and the approval it was waiting on: sounds ring on a change. */
+const codeSeen = new Map<string, CodeSeen>();
+
+const seen = (s: CodeSession): CodeSeen => ({ status: s.status, approval: s.status === "waiting" ? (s.approval?.id ?? null) : null });
+
+/** Its owner hears it wait for an approval, and finish (or fail) a run they started themselves. */
+function codeSound(qc: QueryClient, me: string, session: CodeSession) {
+  const cached = qc.getQueryData(codeSessionsQuery(session.conversationId).queryKey)?.find((s) => s.id === session.id);
+  const prev = codeSeen.get(session.id) ?? (cached && seen(cached));
+  const { approval } = seen(session);
+  codeSeen.set(session.id, seen(session));
+  if (session.requestedBy !== me) return;
+  if (approval && approval !== prev?.approval) return void playSound("attention", `code:${approval}`);
+  if (prev?.status !== "running") return;
+  if (session.status === "failed") void playSound("error", `code:${session.id}:${session.updatedAt}`);
+  // Started by a bot, its bot reports the result in its reply.
+  else if ((session.status === "idle" || session.status === "done") && !session.agentId) void playSound("reply", `code:${session.id}:${session.updatedAt}`);
+}
+
 type ServerEvent =
   | { type: "message.created"; conversationId: string; message: Message }
   | { type: "message.deleted"; conversationId: string; messageId: string }
@@ -147,7 +182,15 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
   }
   // Also refreshes the admin's recap settings (["digest", "config"]).
   if (ev.type === "digest.ready") return void qc.invalidateQueries({ queryKey: ["digest"] });
-  if (ev.type === "inbox.changed") return void qc.invalidateQueries({ queryKey: ["inbox"] });
+  if (ev.type === "inbox.changed") {
+    // A mention, a reply, a task: what lands in the inbox rings (reading it changes the inbox too, and stays silent).
+    const before = qc.getQueryData<Inbox>(["inbox", "all"])?.unread;
+    void qc.invalidateQueries({ queryKey: ["inbox"] }).then(() => {
+      const after = qc.getQueryData<Inbox>(["inbox", "all"])?.unread;
+      if (before !== undefined && after !== undefined && after > before) void playSound("message", `inbox:${after}`);
+    });
+    return;
+  }
   if (ev.type === "tasks.changed") {
     qc.invalidateQueries({ queryKey: ["tasks"] });
     // Profiles show what each person is working on.
@@ -160,6 +203,8 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       qc.setQueryData<Message[]>(["messages", cid], (old) => old && insertMessage(old, ev.message));
       const author = ev.message.author;
       if (author?.kind === "user") updateTyping(cid, (ts) => ts.filter((t) => t.userId !== author.id));
+      // Someone else's message in a direct conversation; in a group, only what reaches the inbox rings.
+      if (author?.kind === "user" && author.id !== me && kindOf(qc, cid) !== "group") void playSound("message", ev.message.id);
       qc.invalidateQueries({ queryKey: ["conversations"] });
       return;
     }
@@ -207,6 +252,7 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
     case "bot.approval":
       flushTurn(cid, ev.turnId);
       updateTurns(cid, (ts) => ts.map((t) => (t.turnId === ev.turnId ? { ...t, approval: ev.approval } : t)));
+      if (ev.approval && state.turns[cid]?.find((t) => t.turnId === ev.turnId)?.requestedBy === me) void playSound("attention", ev.approval.id);
       return;
     case "bot.code":
       // The text written until now: the card goes after it.
@@ -214,16 +260,23 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       updateTurns(cid, (ts) => ts.map((t) => (t.turnId === ev.turnId ? { ...t, codeSessions: [...(t.codeSessions ?? []), ev.session] } : t)));
       return;
     case "code.session":
+      codeSound(qc, me, ev.session);
       applyCodeSession(qc, ev.session);
       return;
     case "code.step":
       applyCodeStep(qc, cid, ev.sessionId, ev.step);
       return;
     case "code.removed":
+      codeSeen.delete(ev.sessionId);
       dropCodeSession(qc, cid, ev.sessionId);
       return;
     case "bot.done":
-    case "bot.error":
+    case "bot.error": {
+      if (!finished.has(ev.turnId) && yours(qc, me, cid, state.turns[cid]?.find((t) => t.turnId === ev.turnId))) {
+        if (ev.type === "bot.error") void playSound("error", ev.turnId);
+        else if (ev.messageId)
+          void playSound(asksBack(qc.getQueryData<Message[]>(["messages", cid])?.find((m) => m.id === ev.messageId)) ? "attention" : "reply", ev.turnId);
+      }
       flushTurn(cid, ev.turnId);
       finished.add(ev.turnId);
       updateTurns(cid, (ts) => ts.filter((t) => t.turnId !== ev.turnId));
@@ -234,6 +287,7 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       // The turn may have created or removed a routine.
       qc.invalidateQueries({ queryKey: ["routines", cid] });
       return;
+    }
   }
 }
 
