@@ -147,16 +147,20 @@ function CommandSeparator({
   )
 }
 
+/** `sm`: a row of a picker in a popover (repository, model, conversation), as tall as a menu row. */
 function CommandItem({
   className,
   children,
+  size = "default",
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Item>) {
+}: React.ComponentProps<typeof CommandPrimitive.Item> & { size?: "default" | "sm" }) {
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
+      data-size={size}
       className={cn(
         "group/command-item relative flex cursor-pointer items-center gap-3 rounded-xl px-2 text-[15px] outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-accent data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-selected:*:[svg]:text-foreground",
+        size === "sm" && "h-9 gap-2.5 rounded-lg px-2.5 text-sm",
         className
       )}
       {...props}

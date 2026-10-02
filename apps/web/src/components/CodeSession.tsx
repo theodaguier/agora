@@ -47,13 +47,14 @@ import {
 } from "@/components/icons";
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
 import { BesideButton, besideMessages } from "@/components/BesideButton";
+import { PaneHeader } from "@/components/PaneHeader";
 import { UserBubble } from "@/components/Bubbles";
 import { TabChip } from "@/components/TabChip";
 import { usePendingFiles } from "@/components/Composer";
 import { MessageText } from "@/components/MessageText";
 import { GroupHeading, ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,12 +73,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormLabel } from "@/components/FormLabel";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
@@ -377,16 +379,23 @@ export function CodeSessionsButton({
         {canStart && (
           <>
             <Separator />
-            <Button
-              variant="ghost"
-              className="justify-start rounded-lg px-2.5 font-normal text-foreground"
-              onClick={() => {
-                setOpen(false);
-                onOpen(NEW_CODE_SESSION);
-              }}
+            <Item
+              size="xs"
+              render={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpen(NEW_CODE_SESSION);
+                  }}
+                />
+              }
+              className="text-left hover:bg-muted/60"
             >
-              {t.newSession}
-            </Button>
+              <ItemContent>
+                <ItemTitle className="font-normal">{t.newSession}</ItemTitle>
+              </ItemContent>
+            </Item>
           </>
         )}
       </PopoverContent>
@@ -497,7 +506,7 @@ function CodeSessionTabs({
   const { isSuccess: canStart } = useQuery({ ...codeModelsQuery(conversationId), retry: false });
   const others = sessions.filter((s) => !tabs.includes(s.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return (
-    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-1.5">
+    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b px-1.5">
       {tabs.map((id) => {
         const session = sessions.find((s) => s.id === id);
         const title = session?.title ?? t.newSession;
@@ -616,19 +625,28 @@ function NewSessionView({
   };
   return (
     <div {...fileDrop(files.add)} className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium leading-snug">{t.newSession}</p>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{start.isPending ? t.empty : t.newHint}</p>
-        </div>
-        {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
-        {onClose && (
-          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1">
-            {page ? <CloseIcon /> : <ChevronsRightIcon />}
-          </Button>
-        )}
-      </header>
-      <div className="min-h-0 flex-1 border-t border-border/60" />
+      <PaneHeader
+        title={t.newSession}
+        actions={
+          <>
+            {onDetach && <BesideButton onClick={onDetach} />}
+            {onClose && (
+              <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
+                {page ? <CloseIcon /> : <ChevronsRightIcon />}
+              </Button>
+            )}
+          </>
+        }
+      />
+      <div className="flex min-h-0 flex-1 border-t">
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">{start.isPending ? <Spinner /> : <ModelLogo provider="claude-code" />}</EmptyMedia>
+            <EmptyTitle>{t.claudeCode}</EmptyTitle>
+            <EmptyDescription>{start.isPending ? t.empty : t.newHint}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
       <div className="shrink-0 px-3 pb-3 pt-2">
         <form
           onSubmit={(e) => {
@@ -769,20 +787,20 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
             <CommandEmpty>{isPending ? <Spinner className="mx-auto size-4" /> : t.noRepos}</CommandEmpty>
             {custom && (
               <CommandGroup>
-                <CommandItem value={custom} onSelect={() => choose(custom)} className="h-9 px-2.5 text-sm">
+                <CommandItem value={custom} onSelect={() => choose(custom)} size="sm">
                   {t.useRepo(custom)}
                 </CommandItem>
               </CommandGroup>
             )}
             <CommandGroup>
-              <CommandItem value={t.noRepo} data-checked={!value} onSelect={() => choose(null)} className="h-9 px-2.5 text-sm">
+              <CommandItem value={t.noRepo} data-checked={!value} onSelect={() => choose(null)} size="sm">
                 {t.noRepo}
               </CommandItem>
             </CommandGroup>
             {recent.length > 0 && (
               <CommandGroup heading={t.recentRepos}>
                 {recent.map((r) => (
-                  <CommandItem key={r} value={r} data-checked={r === value} onSelect={() => choose(r)} className="h-9 px-2.5 text-sm">
+                  <CommandItem key={r} value={r} data-checked={r === value} onSelect={() => choose(r)} size="sm">
                     <span className="truncate">{r}</span>
                   </CommandItem>
                 ))}
@@ -791,27 +809,31 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
             {others.length > 0 && (
               <CommandGroup heading="GitHub">
                 {others.map((r) => (
-                  <CommandItem key={r.repo} value={r.repo} data-checked={r.repo === value} onSelect={() => choose(r.repo)} className="h-9 px-2.5 text-sm">
+                  <CommandItem key={r.repo} value={r.repo} data-checked={r.repo === value} onSelect={() => choose(r.repo)} size="sm">
                     <span className="truncate">{r.repo}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
             )}
+            {value && (
+              <>
+                <CommandSeparator alwaysRender />
+                <CommandGroup forceMount>
+                  <CommandItem
+                    size="sm"
+                    forceMount
+                    value="__credentials"
+                    onSelect={() => {
+                      setOpen(false);
+                      setCredentials(true);
+                    }}
+                  >
+                    {t.credentials.open}
+                  </CommandItem>
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
-          {value && (
-            <div className="border-t border-border/60 p-1">
-              <Button
-                variant="ghost"
-                className="w-full justify-start rounded-md px-2.5 font-normal"
-                onClick={() => {
-                  setOpen(false);
-                  setCredentials(true);
-                }}
-              >
-                {t.credentials.open}
-              </Button>
-            </div>
-          )}
         </Command>
       </PopoverContent>
       {value && <RepoCredentialsDialog conversationId={conversationId} repo={value} open={credentials} onClose={() => setCredentials(false)} />}
@@ -865,7 +887,7 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
                 />
               )}
             </Field>
-            {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
+            {save.error && <FieldError>{save.error.message}</FieldError>}
           </FieldGroup>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
@@ -911,36 +933,43 @@ function CodeSessionView({
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
   return (
     <div {...(owner && fileDrop((files) => composer.current?.addFiles(files)))} className="flex min-h-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-start gap-2.5 px-4 pb-2 pt-3.5">
-        {session && <StatusIcon status={session.status} asking={!!session.question} className="mt-1 shrink-0" />}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium leading-snug">{session?.title ?? t.claudeCode}</p>
-          {session && (
-            <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
+      <PaneHeader
+        media={session && <StatusIcon status={session.status} asking={!!session.question} />}
+        title={session?.title ?? t.claudeCode}
+        description={
+          session && (
+            <>
               <StatusText session={session} />
               {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
               {session.activity && active(session.status) ? ` · ${session.activity}` : ""}
-            </p>
-          )}
-        </div>
-        {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
-        {onClose && (
-          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1">
-            {page ? <CloseIcon /> : <ChevronsRightIcon />}
-          </Button>
-        )}
-      </header>
+            </>
+          )
+        }
+        actions={
+          <>
+            {onDetach && <BesideButton onClick={onDetach} />}
+            {onClose && (
+              <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
+                {page ? <CloseIcon /> : <ChevronsRightIcon />}
+              </Button>
+            )}
+          </>
+        }
+      >
+        {session && <Meta conversationId={conversationId} session={session} showModel={!owner} owner={owner} />}
+      </PaneHeader>
 
       {!session ? (
-        <div className="grid flex-1 place-items-center">
-          <Spinner className="size-5 text-muted-foreground" />
+        <div className="flex min-h-0 flex-1 border-t">
+          <Empty>
+            <Spinner className="size-5 text-muted-foreground" />
+          </Empty>
         </div>
       ) : (
         <>
-          <Meta conversationId={conversationId} session={session} showModel={!owner} owner={owner} />
           {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
 
-          <div className="relative min-h-0 flex-1 border-t border-border/60">
+          <div className="relative min-h-0 flex-1 border-t">
             <div
               ref={scroller}
               onScroll={(e) => {
@@ -952,7 +981,14 @@ function CodeSessionView({
               className="h-full overflow-y-auto px-4 py-4"
             >
               {session.steps.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{t.empty}</p>
+                <Empty className="h-full">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Spinner />
+                    </EmptyMedia>
+                    <EmptyDescription>{t.empty}</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <Timeline steps={session.steps} running={session.status === "running"} />
               )}
@@ -1038,7 +1074,7 @@ function Meta({ conversationId, session, showModel, owner }: { conversationId: s
   const minutes = u ? u.durationMs / 60_000 : 0;
   const time = !u ? "" : minutes < 1 ? `${Math.max(1, Math.round(u.durationMs / 1000))} s` : `${Math.round(minutes)} min`;
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 pl-10.5 text-xs text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
       {showModel && session.model && (
         <span className="inline-flex items-center gap-1">
           <ModelLogo provider="anthropic" model={session.model} className="size-3.5" />
@@ -1485,10 +1521,23 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
         </div>
       );
     case "notice":
+      if (step.code === "error") {
+        return (
+          <Alert variant="destructive">
+            <CloseCircleIcon />
+            <AlertTitle>{t.notices.error}</AlertTitle>
+            {step.text && (
+              <AlertDescription>
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs">{step.text}</pre>
+              </AlertDescription>
+            )}
+          </Alert>
+        );
+      }
       return (
-        <div className={cn("text-center text-[13px]", step.code === "error" ? "text-destructive" : "text-muted-foreground")}>
+        <div className="text-center text-[13px] text-muted-foreground">
           {t.notices[step.code]}
-          {step.text && <pre className="mt-1.5 whitespace-pre-wrap break-words rounded-lg bg-muted px-3 py-2 text-left font-mono text-xs">{step.text}</pre>}
+          {step.text && <CodeBlock className="mt-1.5 text-left">{step.text}</CodeBlock>}
         </div>
       );
   }
@@ -1509,37 +1558,38 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const expandable = !!(step.input || step.output || nested);
   const row = (
     <>
-      <ToolIcon name={step.name} className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="shrink-0 text-[13px] text-muted-foreground">{step.name}</span>
+      <ToolIcon name={step.name} className="size-3.5" />
+      <span className="shrink-0">{step.name}</span>
       <span className="min-w-0 flex-1 truncate text-left font-mono text-xs text-foreground/80">{step.title !== step.name ? step.title : ""}</span>
       <ToolStatus status={step.status} />
     </>
   );
-  if (!expandable) return <div className="flex h-7 items-center gap-2 px-2">{row}</div>;
+  if (!expandable) return <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-muted-foreground">{row}</div>;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="group/tool flex h-7 w-full items-center gap-2 rounded-md px-2 outline-none hover:bg-muted/60 focus-visible:bg-muted/60">
+      <CollapsibleTrigger render={<Button variant="ghost" size="xs" className="w-full justify-start gap-2" />}>
         {row}
-        <ChevronRightIcon className={cn("size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover/tool:opacity-100", open && "rotate-90 opacity-100")} />
+        <ChevronRightIcon className={cn("size-3 transition-transform", open && "rotate-90")} />
       </CollapsibleTrigger>
-      <CollapsibleContent className="ml-[21px] flex flex-col gap-2 border-l border-border/70 py-1.5 pl-3 pr-2">
+      <CollapsibleContent className="ml-3.5 flex flex-col gap-2 border-l py-1.5 pl-3 pr-2">
         {step.input && (step.name === "ExitPlanMode" ? <MessageText text={step.input} className="text-sm" /> : <Detail label={t.input} text={step.input} />)}
-        {nested && (
-          <div className="border-l border-border pl-3">
-            <Timeline steps={all} running={false} parentId={step.id} />
-          </div>
-        )}
+        {nested && <Timeline steps={all} running={false} parentId={step.id} />}
         {step.output && <Detail label={t.output} text={step.output} />}
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
+/** A command, a tool's input or output, an error: monospaced, wrapped, scrolling past its height. */
+function CodeBlock({ className, children }: { className?: string; children: ReactNode }) {
+  return <pre className={cn("overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted px-3 py-2 font-mono text-xs", className)}>{children}</pre>;
+}
+
 function Detail({ label, text }: { label: string; text: string }) {
   return (
     <div>
       <p className="mb-1 text-xs text-muted-foreground">{label}</p>
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted px-3 py-2 font-mono text-xs leading-relaxed">{text}</pre>
+      <CodeBlock className="max-h-72 leading-relaxed">{text}</CodeBlock>
     </div>
   );
 }
@@ -1565,7 +1615,7 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
       </CardHeader>
       {approval.detail && (
         <CardContent>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted px-3 py-2 font-mono text-xs">{approval.detail}</pre>
+          <CodeBlock className="max-h-40">{approval.detail}</CodeBlock>
         </CardContent>
       )}
       <CardFooter className="flex-wrap gap-2">

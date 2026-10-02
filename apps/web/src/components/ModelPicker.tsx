@@ -195,7 +195,7 @@ export function ModelOption(props: {
       data-checked={props.active}
       onSelect={props.onSelect}
       title={props.description}
-      className="h-9 gap-2.5 px-2.5 text-sm"
+      size="sm"
     >
       {props.logo}
       <span className="min-w-0 flex-1 truncate">{props.label}</span>

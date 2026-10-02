@@ -88,7 +88,7 @@ export function ForwardDialog({ conversationId, message, onClose }: { conversati
               const title = conversationTitle(c, user.id);
               const checked = pickedIds.has(c.id);
               return (
-                <CommandItem key={c.id} value={c.id} keywords={[title]} onSelect={() => toggle(c.id)} className="h-10 gap-2.5 rounded-lg px-2 text-sm">
+                <CommandItem key={c.id} value={c.id} keywords={[title]} onSelect={() => toggle(c.id)} size="sm">
                   <ConversationAvatar conversation={c} me={user.id} className="size-6" />
                   <span className="flex-1 truncate">{title}</span>
                   <Checkbox checked={checked} tabIndex={-1} aria-hidden className="pointer-events-none" />
