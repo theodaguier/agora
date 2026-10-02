@@ -2,7 +2,7 @@ import { useMutation, useQueryClient, type QueryClient, type UseMutationResult }
 import { useId, useState } from "react";
 import { FormLabel } from "@/components/FormLabel";
 import { MoreIcon } from "@/components/icons";
-import { OptionSelect } from "@/components/Pickers";
+import { OptionSelect, timeOptions } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -185,7 +185,7 @@ function RoutineForm({ conversationId, routine, onDone }: { conversationId: stri
             <FormLabel htmlFor={`${id}-time`} required>
               {t.time}
             </FormLabel>
-            <Input id={`${id}-time`} type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="w-32" />
+            <OptionSelect id={`${id}-time`} className="w-32" options={timeOptions(time)} value={time} onValueChange={setTime} />
           </Field>
         )}
       </FieldGroup>

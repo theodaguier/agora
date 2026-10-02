@@ -113,6 +113,9 @@ ${colorConfig
 
 const ChartTooltip = RechartsPrimitive.Tooltip
 
+/** The tooltip's box, shared by ChartTooltipContent and the hand-built tooltips (ChartTooltipPanel). */
+const tooltipPanel = "grid min-w-32 max-w-72 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl"
+
 function ChartTooltipContent({
   active,
   payload,
@@ -188,7 +191,7 @@ function ChartTooltipContent({
   return (
     <div
       className={cn(
-        "grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
+        tooltipPanel,
         className
       )}
     >
@@ -263,6 +266,27 @@ function ChartTooltipContent({
             )
           })}
       </div>
+    </div>
+  )
+}
+
+/** A tooltip that shows more than the chart's series: same box and rows as ChartTooltipContent. */
+function ChartTooltipPanel({ title, className, children }: { title?: React.ReactNode; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={cn(tooltipPanel, className)}>
+      {title != null && <div className="font-medium">{title}</div>}
+      <div className="grid gap-1.5">{children}</div>
+    </div>
+  )
+}
+
+/** One row of ChartTooltipPanel: an optional color square, a name, a value. */
+function ChartTooltipRow({ color, name, value }: { color?: string; name: React.ReactNode; value: React.ReactNode }) {
+  return (
+    <div className="flex w-full items-center gap-2 leading-none">
+      {color && <div className="size-2.5 shrink-0 rounded-[2px]" style={{ background: color }} />}
+      <span className="min-w-0 truncate text-muted-foreground">{name}</span>
+      <span className="ml-auto pl-3 font-mono font-medium text-foreground tabular-nums">{value}</span>
     </div>
   )
 }
@@ -364,6 +388,8 @@ export {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
+  ChartTooltipPanel,
+  ChartTooltipRow,
   ChartLegend,
   ChartLegendContent,
   ChartStyle,

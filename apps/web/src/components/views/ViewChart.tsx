@@ -3,7 +3,7 @@ import { barRows, CHART_COLORS, chartLabel, funnelSteps, pieSlices, unitOnTicks,
 import { integrations } from "@agora/core/i18n";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipPanel, ChartTooltipRow, type ChartConfig } from "@/components/ui/chart";
 import { intlLocale, useLocale, useT } from "@/i18n";
 import { numberFormat } from "@/lib/intl";
 import { cn } from "@/lib/utils";
@@ -35,19 +35,6 @@ function Swatch({ color }: { color: string | { light: string; dark: string } }) 
   const vars = { "--light": color.light, "--dark": color.dark } as CSSProperties;
   return <span className="size-2.5 shrink-0 rounded-[2px] bg-(--light) dark:bg-(--dark)" style={vars} />;
 }
-
-/** One row of the tooltip: the series' color, its name, its value. */
-function TooltipRow({ color, name, value }: { color: string; name: string; value: string }) {
-  return (
-    <p className="flex items-center gap-2">
-      <Swatch color={color} />
-      <span className="min-w-0 truncate text-muted-foreground">{name}</span>
-      <span className="ml-auto pl-3 font-mono tabular-nums">{value}</span>
-    </p>
-  );
-}
-
-const tooltipBox = "grid min-w-40 max-w-72 gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs shadow-xl";
 
 /**
  * A chart shown by a bot (```view``` block, `"kind": "chart"`): bars, lines, areas or a pie, in the
@@ -82,13 +69,12 @@ export function ViewChart({ view }: { view: ChartView }) {
           if (!active || !payload?.length) return null;
           const { j } = payload[0]!.payload as { j: number };
           return (
-            <div className={tooltipBox}>
-              <p className="font-medium">{tick(String(label))}</p>
+            <ChartTooltipPanel title={tick(String(label))}>
               {view.series.map((s, i) => {
                 const v = s.values[j];
-                return v == null ? null : <TooltipRow key={keys[i]} color={`var(--color-${keys[i]})`} name={s.name} value={f.exact(v)} />;
+                return v == null ? null : <ChartTooltipRow key={keys[i]} color={`var(--color-${keys[i]})`} name={s.name} value={f.exact(v)} />;
               })}
-            </div>
+            </ChartTooltipPanel>
           );
         }}
       />
@@ -283,9 +269,9 @@ function PieView({ view, rest }: { view: ChartView; rest: string }) {
             content={({ active, payload }) => {
               const s = active ? (payload?.[0]?.payload as (typeof slices)[number] | undefined) : undefined;
               return s ? (
-                <div className={tooltipBox}>
-                  <TooltipRow color={`var(--color-${s.key})`} name={s.label} value={`${f.exact(s.value)} · ${share(s.value)}`} />
-                </div>
+                <ChartTooltipPanel>
+                  <ChartTooltipRow color={`var(--color-${s.key})`} name={s.label} value={`${f.exact(s.value)} · ${share(s.value)}`} />
+                </ChartTooltipPanel>
               ) : null;
             }}
           />

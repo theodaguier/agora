@@ -256,7 +256,7 @@ export function CodeSessionsButton({
         <TooltipTrigger
           render={
             <PopoverTrigger
-              render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden rounded-lg aria-pressed:bg-muted lg:inline-flex" />}
+              render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden aria-pressed:bg-muted lg:inline-flex" />}
             />
           }
         >
@@ -266,7 +266,7 @@ export function CodeSessionsButton({
         <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
       </Tooltip>
       <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
-        <p className="px-2 pb-1.5 pt-1 text-[12px] font-medium text-muted-foreground">{t.sessions}</p>
+        <p className="px-2 pb-1.5 pt-1 text-xs font-medium text-muted-foreground">{t.sessions}</p>
         {!sorted.length && <p className="px-2 pb-2 text-sm text-muted-foreground">{t.none}</p>}
         <div className="flex max-h-96 flex-col overflow-y-auto">
           {sorted.map((s) => (
@@ -279,20 +279,20 @@ export function CodeSessionsButton({
                   onOpen(s.id);
                 }}
                 className={cn(
-                  "flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted aria-[current]:bg-muted",
+                  "flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted/60 focus-visible:bg-muted/60 aria-[current]:bg-muted",
                   onOpenBeside && "pr-10",
                 )}
               >
                 <StatusIcon status={s.status} asking={!!s.question} className="mt-0.5 shrink-0" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{s.title}</span>
-                  <span className="block truncate text-[12px] text-muted-foreground">
+                  <span className="block truncate text-xs text-muted-foreground">
                     {codeStatusText(t, s)}
                     {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
                     {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
                   </span>
                   {s.instruction && (
-                    <span className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">
+                    <span className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                       {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
                     </span>
                   )}
@@ -453,7 +453,7 @@ function CodeSessionTabs({
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger
-              render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.openSession} className="shrink-0 rounded-lg" />} />}
+              render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.openSession} className="shrink-0" />} />}
             >
               <PlusIcon />
             </TooltipTrigger>
@@ -470,7 +470,7 @@ function CodeSessionTabs({
                     <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{s.title}</span>
-                      <span className="block truncate text-[12px] text-muted-foreground">
+                      <span className="block truncate text-xs text-muted-foreground">
                         {codeStatusText(t, s)} · {dividerLabel(new Date(s.updatedAt))}
                       </span>
                     </span>
@@ -559,7 +559,7 @@ function NewSessionView({
         </div>
         {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
         {onClose && (
-          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
+          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1">
             {page ? <CloseIcon /> : <ChevronsRightIcon />}
           </Button>
         )}
@@ -602,7 +602,7 @@ function NewSessionView({
               <ModePicker value={mode} onSelect={setMode} />
               <span className="flex-1" />
               <CodeModelPicker conversationId={conversationId} value={model} onSelect={setModel} />
-              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="disabled:opacity-40">
+              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="rounded-full disabled:opacity-40">
                 {start.isPending ? <Spinner /> : <ArrowUpIcon strokeWidth={2.25} />}
               </Button>
             </InputGroupAddon>
@@ -797,7 +797,7 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
                   autoComplete="off"
                   defaultValue={data?.env ?? ""}
                   placeholder={t.placeholder}
-                  className="max-h-96 font-mono text-[12px] leading-5 md:text-[12px]"
+                  className="max-h-96 font-mono text-xs leading-5 md:text-xs"
                 />
               )}
             </Field>
@@ -861,7 +861,7 @@ function CodeSessionView({
         </div>
         {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
         {onClose && (
-          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
+          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1">
             {page ? <CloseIcon /> : <ChevronsRightIcon />}
           </Button>
         )}
@@ -974,7 +974,7 @@ function Meta({ conversationId, session, showModel, owner }: { conversationId: s
   const minutes = u ? u.durationMs / 60_000 : 0;
   const time = !u ? "" : minutes < 1 ? `${Math.max(1, Math.round(u.durationMs / 1000))} s` : `${Math.round(minutes)} min`;
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 pl-10.5 text-[12px] text-muted-foreground">
+    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 pl-10.5 text-xs text-muted-foreground">
       {showModel && session.model && (
         <span className="inline-flex items-center gap-1">
           <ModelLogo provider="anthropic" model={session.model} className="size-3.5" />
@@ -1196,10 +1196,10 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
         >
           {files.length > 0 && <ChevronRightIcon className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />}
           <BranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 truncate font-mono text-[12px]">{git.branch ?? "?"}</span>
+          <span className="min-w-0 truncate font-mono text-xs">{git.branch ?? "?"}</span>
           <span className="shrink-0 truncate text-muted-foreground">{summary.length ? summary.join(" · ") : t.clean}</span>
           {(added > 0 || removed > 0) && (
-            <span className="shrink-0 font-mono text-[12px] tabular-nums">
+            <span className="shrink-0 font-mono text-xs tabular-nums">
               <span className="text-success">+{added}</span> <span className="text-destructive">−{removed}</span>
             </span>
           )}
@@ -1210,7 +1210,7 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
             target="_blank"
             rel="noreferrer"
             title={pr.title}
-            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <span className={cn("size-1.5 rounded-full", pr.state === "open" ? "bg-success" : pr.state === "merged" ? "bg-violet-500" : "bg-muted-foreground")} />
             {t.pr(pr.number)} · {t.prState[pr.state]}
@@ -1249,7 +1249,7 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
             {files.map((f) => {
               const slash = f.path.lastIndexOf("/");
               return (
-                <li key={f.path} className="flex items-center gap-2 px-3 py-1 text-[12px]" title={f.path}>
+                <li key={f.path} className="flex items-center gap-2 px-3 py-1 text-xs" title={f.path}>
                   <span className={cn("w-3 shrink-0 text-center font-mono font-medium", FILE_TONE[f.state])}>{FILE_STATE[f.state]}</span>
                   <span className="min-w-0 flex-1 truncate font-mono">
                     {f.path.slice(slash + 1)}
@@ -1263,7 +1263,7 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
                 </li>
               );
             })}
-            {git.changes > files.length && <li className="px-3 py-1 text-[12px] text-muted-foreground">{t.moreFiles(git.changes - files.length)}</li>}
+            {git.changes > files.length && <li className="px-3 py-1 text-xs text-muted-foreground">{t.moreFiles(git.changes - files.length)}</li>}
           </ul>
         )}
         {owner && git.changes > 0 && (
@@ -1281,7 +1281,7 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
                     run.mutate([commitReq()]);
                   }
                 }}
-                className="max-h-32 min-h-0 px-2.5 py-1.5 font-mono text-[12px] leading-5 md:text-[12px]"
+                className="max-h-32 min-h-0 px-2.5 py-1.5 font-mono text-xs leading-5 md:text-xs"
               />
               <InputGroupAddon align="inline-end" className="py-1 pr-1">
                 <Tooltip>
@@ -1296,7 +1296,7 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
         )}
       </CollapsibleContent>
 
-      {owner && !git.github && <p className="border-t border-border/60 px-3 py-2 text-[12px] text-muted-foreground">{t.noGithub}</p>}
+      {owner && !git.github && <p className="border-t border-border/60 px-3 py-2 text-xs text-muted-foreground">{t.noGithub}</p>}
       <PullRequestDialog
         open={prDialog}
         onClose={() => setPrDialog(false)}
@@ -1408,7 +1408,7 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
     case "user":
       return (
         <div className="flex flex-col items-end gap-1">
-          {step.by && <span className="px-1 text-[12px] text-muted-foreground">{step.by}</span>}
+          {step.by && <span className="px-1 text-xs text-muted-foreground">{step.by}</span>}
           {!!step.files?.length && <SentAttachments items={step.files} className="max-w-[88%]" />}
           {step.text && <p className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl bg-secondary px-3.5 py-2 text-sm">{step.text}</p>}
         </div>
@@ -1429,7 +1429,7 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
       return (
         <div className={cn("text-center text-[13px]", step.code === "error" ? "text-destructive" : "text-muted-foreground")}>
           {t.notices[step.code]}
-          {step.text && <pre className="mt-1.5 whitespace-pre-wrap break-words rounded-lg bg-background px-3 py-2 text-left font-mono text-[12px]">{step.text}</pre>}
+          {step.text && <pre className="mt-1.5 whitespace-pre-wrap break-words rounded-lg bg-background px-3 py-2 text-left font-mono text-xs">{step.text}</pre>}
         </div>
       );
   }
@@ -1452,14 +1452,14 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
     <>
       <ToolIcon name={step.name} className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="shrink-0 text-[13px] text-muted-foreground">{step.name}</span>
-      <span className="min-w-0 flex-1 truncate text-left font-mono text-[12px] text-foreground/80">{step.title !== step.name ? step.title : ""}</span>
+      <span className="min-w-0 flex-1 truncate text-left font-mono text-xs text-foreground/80">{step.title !== step.name ? step.title : ""}</span>
       <ToolStatus status={step.status} />
     </>
   );
   if (!expandable) return <div className="flex h-7 items-center gap-2 px-2">{row}</div>;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="group/tool flex h-7 w-full items-center gap-2 rounded-md px-2 outline-none hover:bg-muted/50 focus-visible:bg-muted/50">
+      <CollapsibleTrigger className="group/tool flex h-7 w-full items-center gap-2 rounded-md px-2 outline-none hover:bg-muted/60 focus-visible:bg-muted/60">
         {row}
         <ChevronRightIcon className={cn("size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover/tool:opacity-100", open && "rotate-90 opacity-100")} />
       </CollapsibleTrigger>
@@ -1479,8 +1479,8 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
 function Detail({ label, text }: { label: string; text: string }) {
   return (
     <div>
-      <p className="mb-1 text-[12px] text-muted-foreground">{label}</p>
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-background px-3 py-2 font-mono text-[12px] leading-relaxed">{text}</pre>
+      <p className="mb-1 text-xs text-muted-foreground">{label}</p>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-background px-3 py-2 font-mono text-xs leading-relaxed">{text}</pre>
     </div>
   );
 }
@@ -1859,11 +1859,11 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
           <span className="flex-1" />
           <SessionModelPicker conversationId={conversationId} session={session} />
           {stoppable ? (
-            <Button type="button" size="icon" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()} className="disabled:opacity-40">
+            <Button type="button" size="icon" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()} className="rounded-full disabled:opacity-40">
               {stop.isPending ? <Spinner /> : <StopIcon className="size-5" />}
             </Button>
           ) : (
-            <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="disabled:opacity-40">
+            <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="rounded-full disabled:opacity-40">
               <ArrowUpIcon strokeWidth={2.25} />
             </Button>
           )}
@@ -1902,7 +1902,7 @@ function ModePicker({ value, onSelect, disabled }: { value: CodePermissionMode; 
             <DropdownMenuRadioItem key={m} value={m} className="h-auto items-start py-2">
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span>{t.modes[m]}</span>
-                <span className="text-[12px] text-muted-foreground">{t.modeHelp[m]}</span>
+                <span className="text-xs text-muted-foreground">{t.modeHelp[m]}</span>
               </span>
             </DropdownMenuRadioItem>
           ))}

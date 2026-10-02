@@ -149,7 +149,7 @@ function pagePoint(img: HTMLImageElement, frame: Frame, clientX: number, clientY
 function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} className="rounded-lg" />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} />}>{children}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
@@ -395,7 +395,7 @@ export function ScreenPage({ conversationId, title, onClose }: { conversationId:
           {title && <span className="font-normal text-muted-foreground"> · {title}</span>}
         </p>
         {onClose && (
-          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="rounded-lg">
+          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
             <CloseIcon />
           </Button>
         )}

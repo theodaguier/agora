@@ -24,12 +24,13 @@ const messages = defineMessages({
   },
 });
 
-export function SectionHeader(props: { title: string; text: ReactNode; action?: string; onAction?: () => void }) {
+/** Title of a settings tab, with its intro and main action: the same header on every tab. */
+export function SectionHeader(props: { title: string; text?: ReactNode; action?: string; onAction?: () => void }) {
   return (
     <div className="mb-5 flex items-end justify-between gap-4">
       <div>
         <h2 className="text-lg font-semibold tracking-tight">{props.title}</h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">{props.text}</p>
+        {props.text && <p className="mt-0.5 text-sm text-muted-foreground">{props.text}</p>}
       </div>
       {props.action && (
         <Button onClick={props.onAction}>

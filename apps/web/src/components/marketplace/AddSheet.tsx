@@ -286,7 +286,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
               </FieldSet>
             )}
             {reg?.transport === "stdio" && (
-              <Alert className="rounded-xl border-0 bg-secondary px-3.5 py-2.5">
+              <Alert>
                 <AlertDescription>
                   {t.stdioBefore}{" "}
                   <code className="break-all text-foreground">{reg.command}</code>
@@ -334,7 +334,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
               </Field>
             )}
             {item.kind === "mcp" && item.entry.auth_type === "oauth" && (
-              <Alert className="rounded-xl border-0 bg-secondary px-3.5 py-2.5">
+              <Alert>
                 <AlertDescription>
                   {t.oauthBefore} <code className="text-foreground">hermes mcp login {item.name}</code> {t.oauthAfter}
                 </AlertDescription>

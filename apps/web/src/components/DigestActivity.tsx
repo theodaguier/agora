@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { CHART_COLORS } from "@agora/core";
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
-import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
+import { ChartContainer, ChartTooltip, ChartTooltipPanel, ChartTooltipRow, type ChartConfig } from "@/components/ui/chart";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getLocale, useT } from "@/i18n";
 import type { DigestStats } from "@/lib/api";
@@ -10,8 +11,8 @@ import { messages } from "./MorningDigest.messages";
 
 /** Categorical slots of the data-viz palette, as in the usage screen. */
 const chartConfig = {
-  messages: { theme: { light: "#2a78d6", dark: "#3987e5" } },
-  tokens: { theme: { light: "#eb6834", dark: "#d95926" } },
+  messages: { theme: CHART_COLORS[0] },
+  tokens: { theme: CHART_COLORS[1] },
 } satisfies ChartConfig;
 
 type Metric = "messages" | "tokens";
@@ -51,25 +52,11 @@ export function DigestActivity({ stats, byDay }: { stats: DigestStats; byDay: bo
               if (!active || !payload?.length) return null;
               const point = payload[0]!.payload as DigestStats["series"][number];
               return (
-                <div className="grid min-w-32 gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs shadow-xl">
-                  <p className="font-medium">{label(String(at))}</p>
-                  <p className="flex gap-3">
-                    <span className="text-muted-foreground">{t.metricMessages}</span>
-                    <span className="ml-auto font-mono tabular-nums">{f.whole(point.messages)}</span>
-                  </p>
-                  {stats.usage && (
-                    <p className="flex gap-3">
-                      <span className="text-muted-foreground">{t.metricTokens}</span>
-                      <span className="ml-auto font-mono tabular-nums">{f.compact(point.tokens)}</span>
-                    </p>
-                  )}
-                  {point.tasksDone > 0 && (
-                    <p className="flex gap-3">
-                      <span className="text-muted-foreground">{t.done}</span>
-                      <span className="ml-auto font-mono tabular-nums">{t.tasksDoneShort(point.tasksDone)}</span>
-                    </p>
-                  )}
-                </div>
+                <ChartTooltipPanel title={label(String(at))}>
+                  <ChartTooltipRow name={t.metricMessages} value={f.whole(point.messages)} />
+                  {stats.usage && <ChartTooltipRow name={t.metricTokens} value={f.compact(point.tokens)} />}
+                  {point.tasksDone > 0 && <ChartTooltipRow name={t.done} value={t.tasksDoneShort(point.tasksDone)} />}
+                </ChartTooltipPanel>
               );
             }}
           />

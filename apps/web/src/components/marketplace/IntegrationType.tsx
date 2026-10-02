@@ -1,6 +1,7 @@
 import { INTEGRATION_TYPES, type IntegrationType } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { BrandLogo } from "@/components/BrandLogo";
+import { fieldLook } from "@/components/Pickers";
 import { IntegrationIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -21,6 +22,15 @@ const TYPE_TINT: Record<IntegrationType, string> = {
   database: "bg-orange-500/12 text-orange-600 dark:text-orange-400",
   other: "bg-accent text-foreground/80",
 };
+
+/** Tile of a skill or plugin: the first letter of its name, same size as IntegrationTile. */
+export function InitialTile({ name, className }: { name: string; className?: string }) {
+  return (
+    <span className={cn("grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-[15px] font-semibold text-foreground/85", className)}>
+      {name.replace(/^[^a-z0-9]+/i, "").charAt(0).toUpperCase()}
+    </span>
+  );
+}
 
 /**
  * Icon tile of a connector, tinted by its integration type; the brand's logo
@@ -55,7 +65,7 @@ export function IntegrationTypeSelect(props: { id?: string; value: IntegrationTy
     <Select items={items} value={props.value} onValueChange={(v) => v && props.onValueChange(v as IntegrationType)}>
       <SelectTrigger
         id={props.id}
-        className={cn("h-10 w-full rounded-lg border-input bg-secondary px-3 text-sm data-[size=default]:h-10 dark:bg-secondary dark:hover:bg-secondary", props.className)}
+        className={cn(fieldLook, props.className)}
       >
         <SelectValue>
           {(value: IntegrationType) => (

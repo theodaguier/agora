@@ -42,7 +42,7 @@ export function ChoiceCard(props: { choices: Choices; onAnswer: (text: string) =
           <p className="text-[15px] font-medium leading-snug">{choices.question}</p>
           {choices.hint && <p className="mt-0.5 text-[15px] leading-snug text-muted-foreground">{choices.hint}</p>}
         </div>
-        <Button variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss} className="-mr-1 -mt-0.5 rounded-lg hover:bg-accent">
+        <Button variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss} className="-mr-1 -mt-0.5 hover:bg-accent">
           <CloseIcon />
         </Button>
       </div>

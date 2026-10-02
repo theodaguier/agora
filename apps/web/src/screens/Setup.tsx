@@ -414,7 +414,7 @@ function ProviderStep({ onNext }: { onNext: () => void }) {
 
       {providers.data && !selected && (
         <>
-          <InputGroup className="mb-3 h-10">
+          <InputGroup className="mb-3">
             <InputGroupAddon>
               <SearchIcon />
             </InputGroupAddon>
@@ -424,7 +424,7 @@ function ProviderStep({ onNext }: { onNext: () => void }) {
             {list.map((p, i) => (
               <Fragment key={p.slug}>
                 {i > 0 && <ItemSeparator className="my-0" />}
-                <Item size="sm" render={<button type="button" onClick={() => pick(p)} />} className="rounded-none px-4 text-left hover:bg-secondary/60">
+                <Item size="sm" render={<button type="button" onClick={() => pick(p)} />} className="rounded-none px-4 text-left hover:bg-muted/60">
                   <ItemContent>
                     <ItemTitle>{p.name}</ItemTitle>
                   </ItemContent>

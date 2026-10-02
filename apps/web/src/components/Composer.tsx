@@ -458,7 +458,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           <InputGroupAddon align="inline-end" className="cursor-default gap-1 py-0 pr-0 has-[>button]:mr-0">
             {botTools && <ModelPicker conversationId={conversationId} open={modelOpen} onOpenChange={setModelOpen} />}
             {botTools && <ContextDialog conversationId={conversationId} open={contextOpen} onOpenChange={setContextOpen} />}
-            <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="disabled:opacity-40">
+            <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="rounded-full disabled:opacity-40">
               <ArrowUpIcon strokeWidth={2.25} />
             </Button>
           </InputGroupAddon>

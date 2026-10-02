@@ -71,7 +71,7 @@ export function ToolLine({ tools, running, className }: { tools: { name: string;
       {running ? <Spinner className="size-3.5" /> : <CheckIcon className="size-3.5" />}
       {running ? t.using : t.used}
       {names.map((n) => (
-        <Badge key={n} variant="secondary" className="h-auto gap-1 rounded-md px-1.5 py-0.5 font-mono text-[12px] font-normal text-foreground/80">
+        <Badge key={n} variant="secondary" className="h-auto gap-1 rounded-md px-1.5 py-0.5 font-mono text-xs font-normal text-foreground/80">
           <BrandLogo server={toolServer(n, servers)} fallback={<ToolIcon name={n} className="size-3.5" />} className="size-3.5 rounded-[3px]" />
           {n}
         </Badge>

@@ -340,7 +340,7 @@ export function CustomConnectorSheet({ onDone }: { onDone: () => void }) {
                 </>
               ) : (
                 <>
-                  <Alert className="rounded-xl border-0 bg-secondary px-3.5 py-2.5">
+                  <Alert>
                     <AlertDescription>{t.stdioWarning}</AlertDescription>
                   </Alert>
                   <Field className="gap-1.5">

@@ -191,7 +191,7 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
         </div>
         {onDetach && <BesideButton onClick={onDetach} className="-mt-1" />}
         {onClose && (
-          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1 rounded-lg">
+          <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose} className="-mr-1.5 -mt-1">
             {page ? <CloseIcon /> : <ChevronsRightIcon />}
           </Button>
         )}

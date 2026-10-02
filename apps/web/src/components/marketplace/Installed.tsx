@@ -10,7 +10,7 @@ import { api, type McpRequest, type SkillRequest } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { common, connectors } from "@agora/core/i18n";
 import { mcpServersQuery, pluginsQuery, useSkillOwners } from "./data";
-import { IntegrationTile, IntegrationTypeMenu } from "./IntegrationType";
+import { InitialTile, IntegrationTile, IntegrationTypeMenu } from "./IntegrationType";
 import { ReconfigureDialog } from "./ReconfigureDialog";
 import type { IntegrationType } from "@agora/core";
 
@@ -137,7 +137,7 @@ export function Installed() {
           <div className="mb-8 flex flex-col">
             {pendingSkills.map((r) => (
               <div key={r.id} className="flex items-center gap-3.5 border-b border-border/50 py-3 last:border-0">
-                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent font-semibold">{r.name.charAt(0).toUpperCase()}</span>
+                <InitialTile name={r.name} />
                 <div className="min-w-0 flex-1">
                   <div className="text-[15px]">{r.name}</div>
                   {(r.kind === "create" ? r.description : r.reason) && (
@@ -233,7 +233,7 @@ export function Installed() {
       <div className="mb-8 flex flex-col">
         {enabledPlugins.map((p) => (
           <div key={p.name} className="flex items-center gap-3.5 border-b border-border/50 py-3 last:border-0">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent font-semibold">{p.name.charAt(0).toUpperCase()}</span>
+            <InitialTile name={p.name} />
             <div className="min-w-0 flex-1">
               <div className="text-[15px]">{p.name}</div>
               <div className="truncate text-sm text-muted-foreground">{p.description}</div>
@@ -249,7 +249,7 @@ export function Installed() {
       <div className="mb-2 flex flex-col">
         {skills.installed.map((s) => (
           <div key={s.name} className="flex items-center gap-3.5 border-b border-border/50 py-3 last:border-0">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent font-semibold">{s.name.charAt(0).toUpperCase()}</span>
+            <InitialTile name={s.name} />
             <div className="min-w-0 flex-1">
               <div className="text-[15px]">{s.name}</div>
               <div className="truncate text-sm text-muted-foreground">{s.description}</div>

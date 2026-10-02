@@ -38,7 +38,7 @@ export function AgentTargets(props: {
               key={a.id}
               orientation="horizontal"
               data-disabled={installed || undefined}
-              className={cn("gap-3 px-4 py-2.5", !installed && "hover:bg-secondary/60", i > 0 && "border-t border-border")}
+              className={cn("gap-3 px-4 py-2.5", !installed && "hover:bg-muted/60", i > 0 && "border-t border-border")}
             >
               <Checkbox
                 id={`target-${a.id}`}

@@ -36,7 +36,7 @@ export function PersonPanel({ userId, onClose }: { userId: string; onClose: () =
       <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-3">
         <span className="text-[13px] font-medium text-muted-foreground">{t.profile}</span>
         <ShortcutTooltip label={t.hidePanel} shortcut={shortcuts.togglePanel}>
-          <Button variant="ghost" size="icon" aria-label={t.hidePanel} onClick={onClose} className="rounded-lg">
+          <Button variant="ghost" size="icon" aria-label={t.hidePanel} onClick={onClose}>
             <ChevronsRightIcon />
           </Button>
         </ShortcutTooltip>

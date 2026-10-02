@@ -146,7 +146,7 @@ function FileCard({ a, className }: { a: Shown; className?: string }) {
       variant="outline"
       size="sm"
       render={<a href={a.previewUrl ?? attachmentUrl(a.id, true)} download={a.name} title={t.download(a.name)} />}
-      className={cn("w-72 max-w-full rounded-xl hover:bg-muted/50", className)}
+      className={cn("w-72 max-w-full rounded-xl hover:bg-muted/60", className)}
     >
       <ItemMedia variant="icon">
         <FileTextIcon className="text-muted-foreground" />

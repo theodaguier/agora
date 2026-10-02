@@ -1,4 +1,4 @@
-import { byteUnit, durationParts, type ServerHistoryRange, type ServerReport } from "@agora/core";
+import { byteUnit, CHART_COLORS, durationParts, type ServerHistoryRange, type ServerReport } from "@agora/core";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
@@ -116,10 +116,10 @@ const messages = defineMessages({
 
 /** Categorical slots 1–2 of the data-viz palette, as in Usage. */
 const colors = {
-  cpu: { theme: { light: "#2a78d6", dark: "#3987e5" } },
-  mem: { theme: { light: "#eb6834", dark: "#d95926" } },
-  user: { theme: { light: "#2a78d6", dark: "#3987e5" } },
-  bot: { theme: { light: "#eb6834", dark: "#d95926" } },
+  cpu: { theme: CHART_COLORS[0] },
+  mem: { theme: CHART_COLORS[1] },
+  user: { theme: CHART_COLORS[0] },
+  bot: { theme: CHART_COLORS[1] },
 } satisfies ChartConfig;
 
 function useFormat() {
