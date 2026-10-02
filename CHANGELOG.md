@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.38.0 — 2026-10-02
+
+### Features
+- **web**: notification sounds for replies, actions needed and messages
+
 ## v0.37.0 — 2026-10-02
 
 ### Features
