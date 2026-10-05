@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.39.0 — 2026-10-05
+
+### Features
+- optional setting giving new bots every tool
+- bots can ask to create other bots (bot-create block)
+
 ## v0.38.3 — 2026-10-05
 
 ### Fixes
