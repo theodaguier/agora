@@ -116,7 +116,7 @@ const kindOf = (qc: QueryClient, conversationId: string): ConversationKind | und
   qc.getQueryData<ConversationDetail>(["conversation", conversationId])?.kind;
 
 /** A reply that asks something back: its answer waits for you. */
-const asksBack = (m: Message | undefined) => !!(m?.data?.questions || m?.data?.choices || m?.data?.mcpRequest || m?.data?.skillRequest);
+const asksBack = (m: Message | undefined) => !!(m?.data?.questions || m?.data?.choices || m?.data?.mcpRequest || m?.data?.skillRequest || m?.data?.botRequest);
 
 /** Replies of yours: ones you asked for, and in a direct conversation with a bot, the ones nobody asked for (routines). */
 function yours(qc: QueryClient, me: string, conversationId: string, turn: ActiveTurn | undefined) {

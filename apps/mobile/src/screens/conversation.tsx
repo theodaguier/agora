@@ -27,6 +27,7 @@ import { ChatMessage, MessageRow, useDeleteMessage } from "@/components/message-
 import { QuestionsCard } from "@/components/questions-card";
 import { useMe } from "@/components/server-scope";
 import { SkillRequestCard } from "@/components/skill-request-card";
+import { BotRequestCard } from "@/components/bot-request-card";
 import { ViewCard } from "@/components/views/ViewCard";
 import { api, ApiError, conversationPath, sendMessage } from "@/lib/api";
 import { ConversationFilesProvider } from "@/lib/conversation-files";
@@ -735,6 +736,7 @@ const ThreadMessage = memo(function ThreadMessage({
           })()}
           {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
           {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
+          {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}
         </>
       )}
       {m.data?.event?.type === "code.started" ? (

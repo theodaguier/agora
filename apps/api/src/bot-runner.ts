@@ -18,6 +18,7 @@ import { connectorsPrompt, createRequest, MCP_REQUEST_PROMPT } from "./mcp-reque
 import { onboardingPrompt, parseReply, writeSoul } from "./onboarding";
 import { QUESTIONS_PROMPT } from "./questions";
 import { createSkillCreation, createSkillRequest, SKILL_CREATE_PROMPT, SKILL_REQUEST_PROMPT } from "./skill-requests";
+import { BOT_CREATE_PROMPT, createBotRequest } from "./bot-requests";
 import { accessibleAgentIds } from "./conversations";
 import { applyTasksBlock, TASKS_PROMPT, tasksContext } from "./tasks";
 import { CODE_DELEGATION_PROMPT, codeSessionsContext } from "./code-sessions";
@@ -575,7 +576,7 @@ async function runTurn(turn: Turn) {
       }),
     ]);
     const delegation = (await codeToolsUsable(bot.hermesProfile, turn.requestedBy)) ? CODE_DELEGATION_PROMPT : "";
-    system = [system, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, PREVIEW_PROMPT, mediaPrompt(conversationId), delegation, code]
+    system = [system, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, BOT_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, PREVIEW_PROMPT, mediaPrompt(conversationId), delegation, code]
       .filter(Boolean)
       .join("\n\n");
   }
@@ -677,6 +678,13 @@ async function runTurn(turn: Turn) {
           return null;
         })
       : null;
+  const bots =
+    parsed.botCreate && !turn.controller.signal.aborted
+      ? await createBotRequest(parsed.botCreate, skillCtx).catch((err) => {
+          console.error("bot-runner: bot request", err);
+          return null;
+        })
+      : null;
   if (parsed.tasks && !turn.controller.signal.aborted) {
     await applyTasksBlock(parsed.tasks, { conversationId, agentId, botName: bot.name, requestedBy: turn.requestedBy }).catch((err) =>
       console.error("bot-runner: tasks", err),
@@ -698,7 +706,7 @@ async function runTurn(turn: Turn) {
     : null;
   if (sending?.sent.size) parsed.text = withoutMediaTags(parsed.text, (p) => sending.sent.has(p));
   const sentFiles = sending?.saved ?? [];
-  if (parsed.text || parsed.choices || parsed.questions || parsed.views || previews.length || sentFiles.length || request || skill || turn.codeSessions.length) {
+  if (parsed.text || parsed.choices || parsed.questions || parsed.views || previews.length || sentFiles.length || request || skill || bots || turn.codeSessions.length) {
     const extra = {
       ...(turn.tools.length && { tools: turn.tools }),
       ...(turn.approvals.length && { approvals: turn.approvals }),
@@ -711,6 +719,7 @@ async function runTurn(turn: Turn) {
       ...(previews.length && { previews: previews.map((p) => p.preview) }),
       ...(request && { mcpRequest: request.id }),
       ...(skill && { skillRequest: skill.id }),
+      ...(bots && { botRequest: bots.id }),
     };
     saved = await postMessage(
       {

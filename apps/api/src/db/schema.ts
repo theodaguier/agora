@@ -529,6 +529,44 @@ export const skillRequest = pgTable(
   (t) => [index("skill_request_status_idx").on(t.status)],
 );
 
+export type BotRequestStatus = "pending" | "creating" | "created" | "rejected";
+
+/** One bot of a request: what the requesting bot wrote, and the identity fixed in advance (a retry resumes the same profile). */
+export type RequestedBot = {
+  name: string;
+  role?: string;
+  mission?: string;
+  instructions?: string;
+  hermesProfile: string;
+  avatarShape: AvatarShape;
+  avatarColor: string;
+  /** Set once the agent exists. */
+  agentId?: string;
+};
+
+/**
+ * Bots a bot asks to create (```bot-create``` block), e.g. one per role of an
+ * app to test. Created once an admin approves, already set up (SOUL.md
+ * written), and added to the group they were asked from.
+ */
+export const botRequest = pgTable(
+  "bot_request",
+  {
+    id: text("id").primaryKey(),
+    bots: jsonb("bots").$type<RequestedBot[]>().notNull(),
+    reason: text("reason").default("").notNull(),
+    status: text("status").$type<BotRequestStatus>().default("pending").notNull(),
+    error: text("error"),
+    requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+    agentId: text("agent_id").references(() => agent.id, { onDelete: "set null" }),
+    conversationId: text("conversation_id").references(() => conversation.id, { onDelete: "set null" }),
+    decidedBy: text("decided_by").references(() => user.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at"),
+    ...timestamps,
+  },
+  (t) => [index("bot_request_status_idx").on(t.status)],
+);
+
 export type TaskStatus = "todo" | "in_progress" | "done";
 export type TaskPriority = "low" | "normal" | "high" | "urgent";
 

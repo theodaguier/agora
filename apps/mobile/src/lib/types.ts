@@ -144,6 +144,18 @@ export type SkillRequest = {
   canDecide: boolean;
 };
 
+export type BotRequest = {
+  id: string;
+  /** `agentId` once the bot exists. */
+  bots: { name: string; role: string | null; mission: string | null; avatar: AgentAvatarSpec; agentId: string | null }[];
+  reason: string;
+  status: "pending" | "creating" | "created" | "rejected";
+  error: string | null;
+  conversationId: string | null;
+  createdAt: string;
+  canDecide: boolean;
+};
+
 export type Message = {
   id: string;
   kind: "user" | "bot" | "event";
@@ -163,6 +175,8 @@ export type Message = {
     mcpRequest?: string;
     /** Skill request issued by the bot (request id). */
     skillRequest?: string;
+    /** Bots the bot asked to create (request id). */
+    botRequest?: string;
     replyTo?: ReplyTo;
     /** Forwarded message: its original author. */
     forwarded?: { authorName: string };
