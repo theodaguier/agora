@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.38.3 — 2026-10-05
+
+### Fixes
+- **web**: prompt fields keep drafts, stop overlapping and lagging
+
 ## v0.38.2 — 2026-10-02
 
 ### Fixes
