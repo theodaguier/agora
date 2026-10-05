@@ -23,6 +23,11 @@ const messages = defineMessages({
     confirmTitle: "Require two-step verification?",
     confirmText: "Accounts that haven't turned it on will be asked to, and can't use Agora until they do.",
     confirm: "Require",
+    allTools: "Every tool for new bots",
+    allToolsHelp: "Each new bot starts with browser, terminal and file writes, with nothing to turn on bot by bot. Existing bots keep their tools.",
+    allToolsTitle: "Give new bots every tool?",
+    allToolsText: "With the terminal and the browser, a bot acts on the server that hosts Agora. An instruction hidden in a page or a file it reads can push it to.",
+    allToolsConfirm: "Turn on",
   },
   fr: {
     title: "Sécurité",
@@ -34,6 +39,11 @@ const messages = defineMessages({
     confirmTitle: "Exiger la validation en deux étapes ?",
     confirmText: "Les comptes qui ne l'ont pas activée devront le faire, et ne pourront plus utiliser Agora d'ici là.",
     confirm: "Exiger",
+    allTools: "Tous les outils pour les nouveaux bots",
+    allToolsHelp: "Chaque nouveau bot naît avec le navigateur, le terminal et l'écriture de fichiers, sans rien activer bot par bot. Les bots existants gardent leurs outils.",
+    allToolsTitle: "Donner tous les outils aux nouveaux bots ?",
+    allToolsText: "Avec le terminal et le navigateur, un bot agit sur le serveur qui héberge Agora. Une instruction cachée dans une page ou un fichier qu'il lit peut l'y pousser.",
+    allToolsConfirm: "Activer",
   },
 });
 
@@ -87,6 +97,7 @@ export default function Security() {
           )}
         </Section>
         {me.role === "admin" && <RequireTwoFactor ownEnabled={enabled} />}
+        {me.role === "admin" && <NewBotsAllTools />}
       </SettingsScroll>
     </>
   );
@@ -118,6 +129,39 @@ function RequireTwoFactor({ ownEnabled }: { ownEnabled: boolean }) {
           disabled={save.isPending || (!ownEnabled && !value)}
           onChange={async (on) => {
             if (on && !(await confirmAction({ title: messages.confirmTitle, description: messages.confirmText, action: messages.confirm, destructive: false }))) return;
+            save.mutate(on);
+          }}
+        />
+      )}
+    </Section>
+  );
+}
+
+/** Admin: new bots are born with every tool instead of confined (sandbox.ts of the API). */
+function NewBotsAllTools() {
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  const { data, error } = useQuery(adminOrgQuery);
+  const save = useMutation({
+    mutationFn: (newBotsAllTools: boolean) => api<Org>("/admin/org", { method: "PUT", body: JSON.stringify({ newBotsAllTools }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminOrgQuery.queryKey });
+      toast.success();
+    },
+    onError: (e) => toast.failed(e),
+  });
+  const value = save.isPending ? !!save.variables : !!data?.newBotsAllTools;
+
+  return (
+    <Section footer={messages.allToolsHelp}>
+      {error ? <ErrorAlert error={error} /> : null}
+      {data && (
+        <SwitchRow
+          title={messages.allTools}
+          value={value}
+          disabled={save.isPending}
+          onChange={async (on) => {
+            if (on && !(await confirmAction({ title: messages.allToolsTitle, description: messages.allToolsText, action: messages.allToolsConfirm, destructive: false }))) return;
             save.mutate(on);
           }}
         />
