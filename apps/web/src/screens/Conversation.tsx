@@ -11,6 +11,7 @@ import { ChoiceCard } from "@/components/ChoiceCard";
 import { McpRequestCard } from "@/components/McpRequestCard";
 import { QuestionsCard } from "@/components/QuestionsCard";
 import { SkillRequestCard } from "@/components/SkillRequestCard";
+import { BotRequestCard } from "@/components/BotRequestCard";
 import { ViewCard } from "@/components/views/ViewCard";
 import { insertMessage, readPreviews, withoutMediaTags, withoutPreviews, type ViewAction } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
@@ -857,6 +858,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                       <BotFiles message={m} />
                       {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
                       {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
+                      {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}
                     </>
                   )}
                   {codeStarted && (

@@ -14,6 +14,7 @@ import { questionsSchema, type Questions } from "./questions";
 import { parseSkillCreate, skillRequestSchema, type SkillCreateBlock, type SkillRequestBlock } from "./skill-requests";
 import { tasksBlockSchema, type TasksBlock } from "./tasks";
 import { availabilityBlockSchema, type AvailabilityBlock } from "./availability-bot";
+import { botCreateSchema, type BotCreateBlock } from "./bot-requests";
 import { currentLocale, defineMessages, tr, type Locale } from "./i18n";
 import { LANGUAGE } from "./org";
 import { readPreviews, withoutPreviews, type ViewBlock } from "@agora/core";
@@ -145,7 +146,7 @@ export function onboardingPrompt(opts: { userName: string; text: string; turn: n
     .join("\n");
 }
 
-const BLOCK = /```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|availability|view)[ \t]*\n([\s\S]*?)```/g;
+const BLOCK = /```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|bot-create|tasks|availability|view)[ \t]*\n([\s\S]*?)```/g;
 
 /** Separates the displayed text from the structured blocks emitted by the bot. */
 export function parseReply(reply: string) {
@@ -156,6 +157,7 @@ export function parseReply(reply: string) {
   let questions: Questions | undefined;
   let skillRequest: SkillRequestBlock | undefined;
   let skillCreate: SkillCreateBlock | undefined;
+  let botCreate: BotCreateBlock | undefined;
   let tasks: TasksBlock | undefined;
   let availability: AvailabilityBlock | undefined;
   const views: ViewBlock[] = [];
@@ -187,6 +189,10 @@ export function parseReply(reply: string) {
       const parsed = skillRequestSchema.safeParse(json);
       if (!parsed.success) return raw;
       skillRequest = parsed.data;
+    } else if (kind === "bot-create") {
+      const parsed = botCreateSchema.safeParse(json);
+      if (!parsed.success) return raw;
+      botCreate = parsed.data;
     } else if (kind === "tasks") {
       const parsed = tasksBlockSchema.safeParse(json);
       if (!parsed.success) return raw;
@@ -214,7 +220,7 @@ export function parseReply(reply: string) {
     }
     return "";
   });
-  return { text: text.replace(/\n{3,}/g, "\n\n").trim(), choices, profile, name: profile?.name ?? name, mcpRequest, questions, skillRequest, skillCreate, tasks, availability, views: views.length ? views : undefined, previews: previews.length ? previews : undefined };
+  return { text: text.replace(/\n{3,}/g, "\n\n").trim(), choices, profile, name: profile?.name ?? name, mcpRequest, questions, skillRequest, skillCreate, botCreate, tasks, availability, views: views.length ? views : undefined, previews: previews.length ? previews : undefined };
 }
 
 /** Writes the bot's identity into the SOUL.md of its Hermes profile. */

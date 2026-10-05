@@ -8,7 +8,7 @@ import { Agents } from "@/components/admin/Agents";
 import { Models } from "@/components/admin/Models";
 import { OrgSettings } from "@/components/admin/OrgSettings";
 import { Loading, RestartProvider, SectionHeader } from "@/components/admin/ui";
-import { RequireTwoFactor } from "@/components/admin/Security";
+import { NewBotsAllTools, RequireTwoFactor } from "@/components/admin/Security";
 import { Status } from "@/components/admin/Status";
 import { Updates } from "@/components/admin/Updates";
 import { Users } from "@/components/admin/Users";
@@ -276,6 +276,7 @@ function Security() {
             <FieldSet>
               <FieldLegend>{t.organization}</FieldLegend>
               <RequireTwoFactor />
+              <NewBotsAllTools />
             </FieldSet>
           </>
         )}

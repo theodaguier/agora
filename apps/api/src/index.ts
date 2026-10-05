@@ -23,6 +23,7 @@ import { mcpOAuthCallback, mcpRequests } from "./routes/mcp-requests";
 import { presence } from "./routes/presence";
 import { availability } from "./routes/availability";
 import { skillRequests } from "./routes/skill-requests";
+import { botRequests } from "./routes/bot-requests";
 import { tasks } from "./routes/tasks";
 import { updates } from "./routes/updates";
 import { users } from "./routes/users";
@@ -69,6 +70,7 @@ const app = new Hono()
   .route("/setup", setup)
   .on(["GET", "POST"], "/auth/*", (c) => auth.handler(c.req.raw))
   .route("/agents", agents)
+  .route("/bot-requests", botRequests)
   .route("/attachments", attachments)
   .route("/conversations", conversations)
   .route("/conversations/:id/code-sessions", codeSessions)
