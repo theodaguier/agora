@@ -11,6 +11,7 @@ import { invocationKey, retryLast, sessionCommand, uploadAttachment, type AgentS
 import { MentionText, splitMentions } from "@/lib/mentions";
 import { personMentionables, usePeople } from "@/lib/people";
 import { AwayNotice } from "@/components/AwayNotice";
+import { useDraft } from "@/lib/drafts";
 import { commandsQuery, routinesQuery } from "@/lib/queries";
 import { scheduleLabel } from "@/lib/routines";
 import { openSettings } from "@/lib/settings";
@@ -120,11 +121,16 @@ function currentToken(text: string, caret: number, withSlash: boolean, withMenti
 // Stable default, so the memos that depend on it don't recompute every render.
 const noMentionables: AgentSummary[] = [];
 
-/** The field grows with its text, up to 200 px. */
+const fieldSizing = typeof CSS !== "undefined" && CSS.supports("field-sizing", "content");
+
+/**
+ * The field grows with its text, up to 200 px: by CSS (`field-sizing`) where the browser can, without
+ * relaying the thread out on each keystroke; measured here otherwise.
+ */
 function useAutosize(area: RefObject<HTMLTextAreaElement | null>, text: string) {
   useLayoutEffect(() => {
     const el = area.current;
-    if (!el) return;
+    if (!el || fieldSizing) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [area, text]);
@@ -183,7 +189,8 @@ export function usePendingFiles(conversationId: string, t: { tooLarge: string; u
 
 export function Composer({ conversationId, placeholder, botTools, mentionables = noMentionables, onSend, onTyping, replyTo, onCancelReply, recipientId, ref }: Props) {
   const tr = useT(replyMessages);
-  const [text, setText] = useState("");
+  const { user } = useRouteContext({ from: "/app" });
+  const [text, setText] = useDraft(`${user.id}:chat:${conversationId}`);
   const [invocations, setInvocations] = useState<Invocation[]>([]);
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
@@ -191,8 +198,8 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
   const [modelOpen, setModelOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
+  const overlay = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const { user } = useRouteContext({ from: "/app" });
   const t = useT(messages);
   const { files, setFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
   // In a group, "/" lists the skills of the group's bots.
@@ -222,13 +229,19 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
   // Colleagues can be mentioned everywhere; bots only where they can be called (group).
   const people = usePeople();
   const colored = useMemo(() => [...mentionables, ...personMentionables(people)], [mentionables, people]);
+  const segments = useMemo(() => splitMentions(text, colored), [text, colored]);
+  // The field's text becomes transparent and a colored copy is rendered underneath.
+  const highlighted = segments.some((x) => typeof x !== "string");
+  const mentioned = segments.flatMap((s) => (typeof s !== "string" && s.target?.kind === "person" ? [s.target.person.id] : [])).join(" ");
   const recipients = useMemo(
-    () => people.filter((p) => p.id !== user.id && (p.id === recipientId || mentionPattern(p.handle).test(text))),
-    [people, user.id, recipientId, text],
+    () => people.filter((p) => p.id !== user.id && (p.id === recipientId || mentioned.split(" ").includes(p.id))),
+    [people, user.id, recipientId, mentioned],
   );
   const token = dismissed ? null : currentToken(text, caret, slash, true);
-  // The field's text becomes transparent and a colored copy is rendered underneath.
-  const highlighted = splitMentions(text, colored).some((x) => typeof x !== "string");
+  // The colored copy follows the field when it scrolls (past 200 px), or the two texts drift apart.
+  useLayoutEffect(() => {
+    if (overlay.current && area.current) overlay.current.scrollTop = area.current.scrollTop;
+  }, [text, highlighted]);
 
   const items = useMemo<SlashItem[]>(() => {
     if (!token) return [];
@@ -394,8 +407,14 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           </InputGroupAddon>
           <div className="relative flex min-w-0 flex-1">
             {highlighted && (
-              <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1 text-[15px] leading-6">
+              <div
+                ref={overlay}
+                aria-hidden
+                className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1 text-[15px] leading-6 [scrollbar-gutter:stable]"
+              >
                 <MentionText text={text} mentionables={colored} flat />
+                {/* A final line break takes a line in the field: the same here, so both scroll as far. */}
+                {"\u200b"}
               </div>
             )}
             <InputGroupTextarea
@@ -412,6 +431,9 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
                 setDismissed(false);
               }}
               onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+              onScroll={(e) => {
+                if (overlay.current) overlay.current.scrollTop = e.currentTarget.scrollTop;
+              }}
               onPaste={(e) => {
                 if (e.clipboardData.files.length) {
                   e.preventDefault();
@@ -452,7 +474,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
                 }
               }}
               placeholder={placeholder}
-              className={cn("min-h-0 min-w-0 px-1 py-1 text-[15px] leading-6 md:text-[15px]", highlighted && "text-transparent caret-foreground")}
+              className={cn("max-h-[200px] min-h-0 min-w-0 px-1 py-1 text-[15px] leading-6 [scrollbar-gutter:stable] md:text-[15px]", highlighted && "text-transparent caret-foreground")}
             />
           </div>
           <InputGroupAddon align="inline-end" className="cursor-default gap-1 py-0 pr-0 has-[>button]:mr-0">
