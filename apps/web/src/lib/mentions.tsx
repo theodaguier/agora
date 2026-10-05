@@ -18,14 +18,20 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** The color ends up in CSS: only hex colors and theme variables get through. */
 const safeColor = (c: string) => (/^#[0-9a-f]{3,8}$/i.test(c) || /^var\(--[\w-]+\)$/.test(c) ? c : "currentColor");
 
+// Built once per list (the field splits its text on every keystroke).
+const regexes = new WeakMap<Mentionable[], RegExp | null>();
+
 /** "@Name" not inside a word (an email) and followed by something other than a letter or digit; longest names first. */
 function mentionRegex(list: Mentionable[]) {
+  if (regexes.has(list)) return regexes.get(list)!;
   const names = [...new Set(list.map((m) => m.name))].sort((a, b) => b.length - a.length);
-  return names.length ? new RegExp(`(?<![\\p{L}\\p{N}_.])@(${names.map(escape).join("|")})(?![\\p{L}\\p{N}_])`, "giu") : null;
+  const re = names.length ? new RegExp(`(?<![\\p{L}\\p{N}_.])@(${names.map(escape).join("|")})(?![\\p{L}\\p{N}_])`, "giu") : null;
+  regexes.set(list, re);
+  return re;
 }
 
 export function splitMentions(text: string, list: Mentionable[]): Segment[] {
-  const re = mentionRegex(list);
+  const re = text.includes("@") ? mentionRegex(list) : null;
   if (!re) return [text];
   const out: Segment[] = [];
   let last = 0;

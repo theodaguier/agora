@@ -117,6 +117,7 @@ import {
 import { confirmAction } from "@/lib/confirm";
 import { copyText } from "@/lib/feedback";
 import { dividerLabel } from "@/lib/dates";
+import { useDraft } from "@/lib/drafts";
 import { useFormat } from "@/lib/usage-format";
 import { cn } from "@/lib/utils";
 
@@ -608,12 +609,14 @@ function NewSessionView({
   const [repo, setRepo] = useState<string | null>(recent[0] ?? null);
   const [model, setModel] = useState<string | null>(null);
   const [mode, setMode] = useState<CodePermissionMode>("bypassPermissions");
-  const [text, setText] = useState("");
+  const { user } = useRouteContext({ from: "/app" });
+  const [text, setText] = useDraft(`${user.id}:code:${conversationId}:new`);
   const files = useInstructionFiles(conversationId);
   const start = useMutation({
     mutationFn: ({ task, attachmentIds }: { task: string; attachmentIds: string[] }) =>
       startCodeSession(conversationId, { task, attachmentIds, mode, ...(repo && { repo }), ...(model && { model }) }),
     onSuccess: (s) => {
+      setText("");
       files.clear();
       applyCodeSession(qc, s);
       onStarted(s.id);
@@ -1858,7 +1861,8 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
   const t = useT(messages);
   const qc = useQueryClient();
   const area = useRef<HTMLTextAreaElement>(null);
-  const [text, setText] = useState("");
+  const { user } = useRouteContext({ from: "/app" });
+  const [text, setText] = useDraft(`${user.id}:code:${conversationId}:${session.id}`);
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [dismissed, setDismissed] = useState(false);
