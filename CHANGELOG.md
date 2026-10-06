@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.41.0 — 2026-10-06
+
+### Features
+- code sessions on Codex and Cursor, wider agent CLI detection
+
 ## v0.40.0 — 2026-10-06
 
 ### Features
