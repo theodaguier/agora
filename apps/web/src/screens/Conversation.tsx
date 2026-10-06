@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanst
 import { BrowserIcon, ChevronLeftIcon, ChevronsLeftIcon, FilesIcon, PinIcon, SearchIcon } from "@/components/icons";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
-import { AuthorLine, BotBubble, DateDivider, ToolLine, TypingBubble } from "@/components/Bubbles";
+import { AuthorLine, BotBubble, DateDivider, ToolLine, TypingBubble, TypingLine } from "@/components/Bubbles";
 import { ApprovalCard, ApprovalLog } from "@/components/ApprovalCard";
 import { ChoiceCard } from "@/components/ChoiceCard";
 import { McpRequestCard } from "@/components/McpRequestCard";
@@ -126,7 +126,6 @@ const strings = defineMessages({
     emptyHint: "Send a first message to get started.",
     theBot: "The bot",
     botTyping: (name: string) => `${name} is typing…`,
-    peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
     stop: "Stop response",
     latest: "Latest messages",
     seeMembers: (n: number) => (n === 1 ? "See 1 member" : `See ${n} members`),
@@ -146,7 +145,6 @@ const strings = defineMessages({
     emptyHint: "Envoie un premier message pour commencer.",
     theBot: "Le bot",
     botTyping: (name: string) => `${name} écrit…`,
-    peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
     stop: "Arrêter la réponse",
     latest: "Derniers messages",
     seeMembers: (n: number) => `Voir les ${n} membres`,
@@ -188,6 +186,9 @@ function BotViews({
     />
   ));
 }
+
+/** A reply with nothing to show yet (no text, session, mockup or approval): it goes on the typing line. */
+const beforeReply = (turn: ActiveTurn) => !hideBlocks(turn.text) && !turn.codeSessions?.length && !turn.approval && !readPreviews(turn.text).length;
 
 /** A reply being written: its tools, the streamed text or the typing dots, and a pending approval. */
 function LiveTurn({
@@ -906,7 +907,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                 )}
               </Fragment>
             ))}
-            {turns.map((turn) => (
+            {turns.filter((turn) => !beforeReply(turn)).map((turn) => (
               <LiveTurn
                 key={turn.turnId}
                 turn={turn}
@@ -918,12 +919,21 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                 onOpenPreview={openPreview}
               />
             ))}
-            {typing.length > 0 && (
-              <p className="chat-arrive mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
-                <TypingBubble label="" />
-                {t.peopleTyping(typing.map((p) => p.name.split(" ")[0]).join(", "), typing.length)}
-              </p>
-            )}
+            <TypingLine
+              className="chat-arrive"
+              entries={[
+                ...turns.filter(beforeReply).map((turn) => {
+                  const bot = agentById(turn.agentId);
+                  return {
+                    key: turn.turnId,
+                    name: bot?.name ?? t.theBot,
+                    avatar: group && bot && <AgentAvatar agent={bot} className="size-4" />,
+                    tool: turn.tools.at(-1)?.name,
+                  };
+                }),
+                ...typing.map((p) => ({ key: p.userId, name: p.name.split(" ")[0]! })),
+              ]}
+            />
           </div>
         </div>
         {scrolledUp && (
