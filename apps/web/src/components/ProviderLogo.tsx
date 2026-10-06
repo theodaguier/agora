@@ -2,6 +2,11 @@ import type { ComponentType, SVGProps } from "react";
 import Claude from "@lobehub/icons-static-svg/icons/claude-color.svg?react";
 import ClaudeCode from "@lobehub/icons-static-svg/icons/claudecode-color.svg?react";
 import Codex from "@lobehub/icons-static-svg/icons/codex-color.svg?react";
+import Amp from "@lobehub/icons-static-svg/icons/amp-color.svg?react";
+import Cursor from "@lobehub/icons-static-svg/icons/cursor.svg?react";
+import Goose from "@lobehub/icons-static-svg/icons/goose.svg?react";
+import Kiro from "@lobehub/icons-static-svg/icons/kiro-color.svg?react";
+import OpenCode from "@lobehub/icons-static-svg/icons/opencode.svg?react";
 import DeepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg?react";
 import Gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg?react";
 import GithubCopilot from "@lobehub/icons-static-svg/icons/githubcopilot.svg?react";
@@ -27,7 +32,13 @@ type Logo = ComponentType<SVGProps<SVGSVGElement>>;
 /** Official logos (LobeHub, MIT) by Hermes provider slug. */
 const providers: Record<string, Logo> = {
   "claude-code": ClaudeCode,
+  claude: ClaudeCode,
   codex: Codex,
+  cursor: Cursor,
+  opencode: OpenCode,
+  amp: Amp,
+  goose: Goose,
+  kiro: Kiro,
   anthropic: Claude,
   openai: OpenAI,
   "openai-codex": OpenAI,

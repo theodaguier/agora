@@ -24,6 +24,7 @@ type Job = { startedAt: string; endedAt?: string; ok?: boolean; output?: string 
 type HostCli = {
   id: string;
   name: string;
+  agent: boolean;
   installed: boolean;
   path: string | null;
   version: string | null;
@@ -60,6 +61,7 @@ const messages = defineMessages({
     clisText: "Agent command-line tools installed on the host machine.",
     checkNow: "Check for updates",
     notInstalled: "Not installed",
+    missingClis: (names: string) => `Not found on the machine: ${names}.`,
     upToDate: "Up to date",
     available: (v: string) => `${v} available`,
     unknownLatest: "Latest version unknown",
@@ -110,6 +112,7 @@ const messages = defineMessages({
     clisText: "Outils en ligne de commande des agents, installés sur la machine hôte.",
     checkNow: "Vérifier les mises à jour",
     notInstalled: "Non installée",
+    missingClis: (names: string) => `Introuvables sur la machine : ${names}.`,
     upToDate: "À jour",
     available: (v: string) => `${v} disponible`,
     unknownLatest: "Dernière version inconnue",
@@ -253,7 +256,7 @@ export function HostClis() {
       ) : (
         <>
           <ItemGroup className="gap-2">
-            {data.clis.map((cli) => (
+            {data.clis.filter((cli) => cli.installed).map((cli) => (
               <div key={cli.id} className="flex flex-col gap-2">
                 <CliRow
                   cli={cli}
@@ -265,6 +268,17 @@ export function HostClis() {
               </div>
             ))}
           </ItemGroup>
+          {/* Every agent CLI Agora knows of is looked for: the missing ones in one line, not a row each. */}
+          {data.clis.some((cli) => !cli.installed) && (
+            <FieldDescription>
+              {t.missingClis(
+                data.clis
+                  .filter((cli) => !cli.installed)
+                  .map((cli) => cli.name)
+                  .join(", "),
+              )}
+            </FieldDescription>
+          )}
         </>
       )}
     </FieldSet>

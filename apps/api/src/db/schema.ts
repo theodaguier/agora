@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, CodeAccount, CodeCommand, CodeGit, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
@@ -353,6 +353,10 @@ export const codeSession = pgTable(
     agentId: text("agent_id").references(() => agent.id, { onDelete: "set null" }),
     requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
     title: text("title").notNull(),
+    /** The agent CLI it runs on (code-engines.ts). */
+    engine: text("engine").$type<CodeEngine>().notNull().default("claude"),
+    /** Codex's thread or Cursor's chat id, resumed at each instruction (Claude Code's is the session's id). */
+    engineThread: text("engine_thread"),
     status: text("status").$type<CodeSessionStatus>().notNull(),
     cwd: text("cwd").notNull(),
     /** GitHub repository (owner/name) cloned into `cwd` at the start. */

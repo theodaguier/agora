@@ -5,7 +5,7 @@ runs it (apps/api/src/code-sessions.ts). Every step Claude Code takes shows up
 live in the conversation; its owner can write to it while it works, approve
 or deny the actions it asks about, and stop it.
 
-    claude_code_start(task, title, repo, branch, project, model)   start, then wait
+    claude_code_start(task, title, repo, branch, project, engine, model)   start, then wait
     claude_code_wait(session_id)                     wait for it to finish its work
     claude_code_send(session_id, message)            another instruction, then wait
     claude_code_stop(session_id)
@@ -132,7 +132,7 @@ def claude_code_start(args: dict, session_id: str = "", **_: Any) -> str:
     if not task:
         return _error("task is required")
     body = {"hermes_session": session_id, "task": task}
-    for key in ("title", "repo", "branch", "project", "model"):
+    for key in ("title", "repo", "branch", "project", "engine", "model"):
         if args.get(key):
             body[key] = str(args[key])
     try:
@@ -220,7 +220,14 @@ START = {
                                "repository, the session gets a worktree of that clone of its own, as with `repo`; otherwise the sessions "
                                "with the same project share the directory. Default: a new directory.",
             },
-            "model": {"type": "string", "description": "Claude model (alias like opus or sonnet, or a full id). Default: Claude Code's own."},
+            "engine": {
+                "type": "string",
+                "enum": ["claude", "codex", "cursor"],
+                "description": "Agent CLI that does the work: claude (Claude Code, default), codex (OpenAI Codex) or cursor (Cursor CLI), "
+                               "when installed on the server and the owner's. Only ask for another than claude when the owner asked for it. "
+                               "Codex and Cursor sessions cannot ask you questions, and a message sent while they work waits for the end of their run.",
+            },
+            "model": {"type": "string", "description": "Model for the engine (Claude: an alias like opus or sonnet, or a full id; Codex/Cursor: their model id). Default: the engine's own."},
             "wait": {"type": "boolean", "description": "Wait for the result (default true). False: return right away with its id."},
             "timeout_minutes": _WAIT,
         },

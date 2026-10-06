@@ -106,6 +106,23 @@ export type CodePermissionMode = "default" | "acceptEdits" | "plan" | "bypassPer
 
 export const CODE_PERMISSION_MODES: CodePermissionMode[] = ["bypassPermissions", "acceptEdits", "default", "plan"];
 
+/**
+ * The agent CLI a session runs: Claude Code (stream-json control protocol: approvals, questions, live
+ * messages, slash commands), or Codex / Cursor headless (one process per instruction, resumed by their
+ * own thread id; no approvals: they act on their own, or only read and plan).
+ */
+export type CodeEngine = "claude" | "codex" | "cursor";
+
+export const CODE_ENGINES: CodeEngine[] = ["claude", "codex", "cursor"];
+
+export const CODE_ENGINE_NAMES: Record<CodeEngine, string> = { claude: "Claude Code", codex: "Codex", cursor: "Cursor" };
+
+/** The modes an engine understands: the headless ones act on their own, or plan without touching anything. */
+export const codeEngineModes = (engine: CodeEngine): CodePermissionMode[] => (engine === "claude" ? CODE_PERMISSION_MODES : ["bypassPermissions", "plan"]);
+
+/** An engine a new session can run on: installed on the server, and its owner is the person asking. */
+export type CodeEngineInfo = { id: CodeEngine; name: string };
+
 /** A question Claude Code asks with its AskUserQuestion tool; "Other" (a free answer) is always possible. */
 export type CodeQuestion = {
   question: string;
@@ -153,8 +170,11 @@ export type CodeApprovalAnswer = {
   feedback?: string;
 };
 
-/** The next mode, as Shift+Tab cycles them in Claude Code's terminal. */
-export const nextCodeMode = (mode: CodePermissionMode) => CODE_PERMISSION_MODES[(CODE_PERMISSION_MODES.indexOf(mode) + 1) % CODE_PERMISSION_MODES.length]!;
+/** The next mode, as Shift+Tab cycles them in Claude Code's terminal (among the engine's own). */
+export const nextCodeMode = (mode: CodePermissionMode, engine: CodeEngine = "claude") => {
+  const modes = codeEngineModes(engine);
+  return modes[(modes.indexOf(mode) + 1) % modes.length]!;
+};
 
 /** A session's status in words (the codeSessions messages): what it waits for, when it waits. */
 export function codeStatusText(
@@ -236,6 +256,8 @@ export type CodeUsage = {
 export type CodeSession = {
   id: string;
   conversationId: string;
+  /** The agent CLI it runs on. */
+  engine: CodeEngine;
   /** The bot that started it (null: started by its owner). */
   agentId: string | null;
   /** Owner of the subscription: the only one who can drive the session. */

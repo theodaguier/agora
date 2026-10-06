@@ -207,10 +207,10 @@ async function* runCodex(opts: {
 const TOOL_ITEMS = new Set(["web_search", "mcp_tool_call", "command_execution", "file_change"]);
 const toolName = (item: { type: string; server?: string; tool?: string }) => (item.type === "mcp_tool_call" && item.tool ? `${item.server ?? "mcp"}.${item.tool}` : item.type);
 
-type CodexUsage = { input_tokens?: number; cached_input_tokens?: number; cache_write_input_tokens?: number; output_tokens?: number };
+export type CodexUsage = { input_tokens?: number; cached_input_tokens?: number; cache_write_input_tokens?: number; output_tokens?: number };
 
 /** `input_tokens` includes the cached ones. A subscription: no cost reported. */
-function turnUsage(u: CodexUsage, model: string): EngineUsage[] {
+export function turnUsage(u: CodexUsage, model: string): EngineUsage[] {
   const cached = u.cached_input_tokens ?? 0;
   return [
     {

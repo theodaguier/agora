@@ -76,18 +76,20 @@ export function HostClis() {
   });
 
   if (!data) return error ? <ErrorAlert error={error} /> : <LoadingRows rows={3} avatar={false} />;
+  // Every agent CLI Agora knows of is looked for: the missing ones in one line, not a row each.
+  const missing = data.clis.filter((cli) => !cli.installed).map((cli) => cli.name);
   return (
     <>
       <Section
         title={t.clisTitle}
-        help={t.clisText}
+        help={missing.length ? `${t.clisText} ${t.missingClis(missing.join(", "))}` : t.clisText}
         action={
           <Button size="sm" variant="ghost" isDisabled={check.isPending} onPress={withTap(() => check.mutate())}>
             {check.isPending ? c.inProgress : t.checkNow}
           </Button>
         }
  >
-        {data.clis.map((cli) => (
+        {data.clis.filter((cli) => cli.installed).map((cli) => (
           <CliRow
             key={cli.id}
             cli={cli}
