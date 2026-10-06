@@ -253,6 +253,13 @@
       "when": 1791217998278,
       "tag": "0035_bot_request",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791276620771,
+      "tag": "0036_code_session_engine",
+      "breakpoints": true
     }
   ]
 }
