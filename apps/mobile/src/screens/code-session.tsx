@@ -211,7 +211,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               ) : (
                 session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
               )}
-              {session.question && <BotQuestionBlock question={session.question} canAnswer={owner} />}
+              {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
               {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
             </KeyboardChatScrollView>
 
@@ -924,20 +924,72 @@ function TodoMark({ status, running }: { status: CodeTodo["status"]; running: bo
 }
 
 /**
- * Its question to the bot that started it (ask_bot): the bot answers it, or its owner with the next
- * message of the field below, which goes to it as the answer.
+ * Its question to the bot that started it (ask_bot; web: BotQuestionBlock): the bot answers it, or its
+ * owner, with one of its options or the next message of the field below, which goes to it as the answer.
  */
-function BotQuestionBlock({ question, canAnswer }: { question: CodeBotQuestion; canAnswer: boolean }) {
+function BotQuestionBlock({ conversationId, session, question, canAnswer }: { conversationId: string; session: CodeSession; question: CodeBotQuestion; canAnswer: boolean }) {
   const t = tr(codeSessions);
+  const c = tr(common);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  const [choice, setChoice] = useState<Choice>({ picked: [], other: "" });
+  const answer = useMutation({
+    mutationFn: (text: string) => sendToCodeSession(conversationId, session.id, text),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      toast.success(t.question.answered);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  const options = question.options?.length
+    ? [...question.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }]
+    : [];
+  const value = answerOf(choice);
+  const help = !canAnswer ? t.botQuestion.waiting(question.bot) : options.length ? t.botQuestion.pick(question.bot, options[0]!.label) : t.botQuestion.help(question.bot);
   return (
     <Card role="alert" accessibilityLabel={t.botQuestion.title(question.bot)}>
-      <Card.Body className="gap-3">
-        <View className="gap-1">
-          <Card.Title>{t.botQuestion.title(question.bot)}</Card.Title>
-          <Card.Description>{canAnswer ? t.botQuestion.help(question.bot) : t.botQuestion.waiting(question.bot)}</Card.Description>
-        </View>
-        <MessageText text={question.text} />
-      </Card.Body>
+      <View className="gap-4">
+        <Card.Body className="gap-3">
+          <View className="gap-1">
+            <Card.Title>{t.botQuestion.title(question.bot)}</Card.Title>
+            <Card.Description>{help}</Card.Description>
+          </View>
+          <MessageText text={question.text} />
+          {!!question.context && <MessageText text={question.context} />}
+          {options.length > 0 && (
+            <RadioGroup value={choice.picked[0]} isDisabled={!canAnswer || answer.isPending} onValueChange={(v) => setChoice((all) => ({ ...all, picked: [v] }))}>
+              {options.map((o, i) => (
+                <Fragment key={o.value}>
+                  {i > 0 && <Separator className="my-1" />}
+                  <RadioGroup.Item value={o.value}>
+                    <View className="flex-1">
+                      <Label>{o.label}</Label>
+                      {!!o.description && <Description>{o.description}</Description>}
+                    </View>
+                    <Radio />
+                  </RadioGroup.Item>
+                </Fragment>
+              ))}
+            </RadioGroup>
+          )}
+          {choice.picked.includes(OTHER_ANSWER) && (
+            <Input
+              autoFocus
+              accessibilityLabel={t.question.other}
+              placeholder={t.question.otherPlaceholder}
+              value={choice.other}
+              onChangeText={(other) => setChoice((all) => ({ ...all, other }))}
+            />
+          )}
+        </Card.Body>
+        {canAnswer && options.length > 0 && (
+          <Card.Footer className="flex-row flex-wrap gap-2">
+            <Button size="sm" variant="primary" isDisabled={!value || answer.isPending} onPress={withTap(() => answer.mutate(value))}>
+              {answer.isPending ? c.inProgress : t.question.answer}
+            </Button>
+          </Card.Footer>
+        )}
+      </View>
     </Card>
   );
 }
