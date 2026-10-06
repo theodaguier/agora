@@ -27,3 +27,13 @@ Same as the [Claude Code engine](claude-code.md), with a ChatGPT subscription: t
 | `CODEX_OWNER_EMAIL` | Agora account of the subscription holder. | `CLAUDE_CODE_OWNER_EMAIL` |
 | `CODEX_BIN` | Codex binary. | `codex` |
 | `CODEX_CWD` | Sessions workspace. | `~/.agora/codex` |
+
+## Code sessions on Codex or Cursor
+
+A code session (`apps/api/src/code-sessions.ts`) runs on Claude Code by default; its owner can pick Codex or the Cursor CLI instead in the new-session field, and a bot can pass `engine` to `claude_code_start`. Only the engines installed on the machine and owned by the person are offered (`GET /conversations/:id/code-sessions/engines`).
+
+- `apps/api/src/code-engines.ts` drives them headless: `codex exec --json` (resumed with `codex exec resume <thread>`) and `agent -p --output-format stream-json` (resumed with `--resume <chat>`). Their thread id is kept in `code_session.engine_thread`; their JSONL output becomes the same steps as Claude Code's.
+- They act on their own (`--dangerously-bypass-approvals-and-sandbox`, `--force`) or only plan (`sandbox_mode="read-only"`, `--mode plan`): no approvals, no questions to the bot, and a message sent during a run starts the next one.
+- Codex sessions use the active ChatGPT account of Settings › Models and count their tokens in Usage. Cursor uses the machine's `agent login` and reports no tokens.
+- The CLIs are found on the API's PATH or in the usual install directories (`~/.local/bin`, `~/.npm-global/bin`, Homebrew…), see `findBin` in `apps/api/src/host.ts`, which also lists every agent CLI Settings › Models looks for.
+- `CURSOR_AGENT_BIN` (empty: `cursor-agent` or `agent`, checked to be Cursor's) and `CURSOR_OWNER_EMAIL` (empty: `CLAUDE_CODE_OWNER_EMAIL`).

@@ -86,7 +86,7 @@ export default function NewCodeSessionSheet() {
         <Description className="px-4">{t.newHint}</Description>
         <TextField isRequired>
           <Label>{t.instruction}</Label>
-          <TextArea value={text} onChangeText={setText} placeholder={t.placeholderNew} autoFocus />
+          <TextArea value={text} onChangeText={setText} placeholder={t.placeholderNew("Claude Code")} autoFocus />
           <View className="flex-row items-center gap-2">
             <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
             <PendingFiles items={files} onRemove={removeFile} />

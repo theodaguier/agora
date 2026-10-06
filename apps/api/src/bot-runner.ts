@@ -7,6 +7,7 @@ import { db, schema } from "./db";
 import { publishToAll, publishToConversation } from "./events";
 import { excerpt, findHandoffs, formatGroupContext, isNoReply, MAX_RELAYS, newChain, NO_REPLY, withQuote, type Chain, type ImplicitCall, type Quoting } from "./group";
 import { dirname, join } from "node:path";
+import { canUseCodeSessions } from "./code-engines";
 import { CLAUDE_CODE_PROVIDER, claudeCodeChat, canUseClaudeCode, isClaudeCodeModel, resolveClaudeCodeModel } from "./claude-code";
 import { CODEX_PROVIDER, canUseCodex, codexChat, isCodexModel } from "./codex";
 import { answerApproval, chat, profileHome, toolsets, type HermesApproval } from "./hermes";
@@ -795,7 +796,7 @@ const codeToolsets = new Map<string, { on: boolean; at: number }>();
 async function codeToolsUsable(profile: string, requestedBy: string | null) {
   if (!requestedBy) return false;
   const [who] = await db.select({ email: user.email }).from(user).where(eq(user.id, requestedBy));
-  if (!canUseClaudeCode(who)) return false;
+  if (!canUseCodeSessions(who)) return false;
   const cached = codeToolsets.get(profile);
   if (cached && Date.now() - cached.at < 60_000) return cached.on;
   const on = await toolsets(profile).then(

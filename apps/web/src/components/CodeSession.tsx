@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { createContext, Fragment, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
 import {
-  CODE_PERMISSION_MODES,
+  CODE_ENGINE_NAMES,
   codeDetailLine,
+  codeEngineModes,
   codeStatusText,
   nextCodeMode,
   OTHER_ANSWER,
@@ -12,6 +13,7 @@ import {
   rankByQuery,
   type CodeApproval,
   type CodeBotQuestion,
+  type CodeEngine,
   type CodeGit,
   type CodePermissionMode,
   type CodeQuestion,
@@ -94,6 +96,7 @@ import {
   answerCodeApproval,
   applyCodeSession,
   codeAccountsQuery,
+  codeEnginesQuery,
   codeModelsQuery,
   codeReposQuery,
   runCodeGit,
@@ -179,7 +182,7 @@ export function CodeSessionCard({
       <ItemContent className="min-w-0">
         <ItemTitle className="w-full truncate">{session?.title ?? title}</ItemTitle>
         <ItemDescription className="truncate">
-          {t.claudeCode} · {session ? <StatusText session={session} /> : gone ? t.gone : t.status[status]}
+          {session ? CODE_ENGINE_NAMES[session.engine] : t.claudeCode} · {session ? <StatusText session={session} /> : gone ? t.gone : t.status[status]}
           {detail ? ` · ${detail}` : ""}
         </ItemDescription>
       </ItemContent>
@@ -276,8 +279,9 @@ export function CodeSessionsButton({
     if (await confirmAction({ title: t.deleteTitle(s.title), description: t.deleteHelp, action: t.deleteSession })) remove.mutate(s.id);
   };
   const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
-  // Its models answer only the owner (403 otherwise): the sign they may start a session.
-  const { isSuccess: canStart } = useQuery({ ...codeModelsQuery(conversationId), retry: false });
+  // The engines that are theirs and installed: none, they cannot start a session.
+  const { data: engines = [] } = useQuery({ ...codeEnginesQuery(conversationId), retry: false });
+  const canStart = engines.length > 0;
   // Opened: the pull requests still open, and the branches pushed, as they are on GitHub now.
   const onOpenChange = (next: boolean) => {
     setOpen(next);
@@ -535,7 +539,8 @@ function CodeSessionTabs({
   const t = useT(messages);
   const c = useT(common);
   const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
-  const { isSuccess: canStart } = useQuery({ ...codeModelsQuery(conversationId), retry: false });
+  const { data: engines = [] } = useQuery({ ...codeEnginesQuery(conversationId), retry: false });
+  const canStart = engines.length > 0;
   const others = sessions.filter((s) => !tabs.includes(s.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return (
     <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b px-1.5">
@@ -546,7 +551,7 @@ function CodeSessionTabs({
           <TabChip
             key={id}
             title={title}
-            icon={session ? <StatusIcon status={session.status} /> : <ModelLogo provider="claude-code" />}
+            icon={session ? <StatusIcon status={session.status} /> : <CodeIcon />}
             active={id === active}
             closeLabel={`${c.close} ${title}`}
             onSelect={() => onSelect(id)}
@@ -638,14 +643,24 @@ function NewSessionView({
   // The conversation's repositories, the latest session's first: usually the one to work on again.
   const recent = [...new Set([...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).flatMap((s) => (s.git?.repo ? [s.git.repo] : [])))];
   const [repo, setRepo] = useState<string | null>(recent[0] ?? null);
+  const { data: engines = [] } = useQuery({ ...codeEnginesQuery(conversationId), retry: false });
+  // Claude Code unless picked otherwise, or not available to them.
+  const [picked, setPicked] = useState<CodeEngine | null>(null);
+  const engine = (picked && engines.some((e) => e.id === picked) ? picked : (engines.find((e) => e.id === "claude") ?? engines[0])?.id) ?? "claude";
   const [model, setModel] = useState<string | null>(null);
   const [mode, setMode] = useState<CodePermissionMode>("bypassPermissions");
+  const pickEngine = (next: CodeEngine) => {
+    setPicked(next);
+    // Each engine has its own models, and the headless ones only act on their own or plan.
+    setModel(null);
+    if (!codeEngineModes(next).includes(mode)) setMode("bypassPermissions");
+  };
   const { user } = useRouteContext({ from: "/app" });
   const [text, setText] = useDraft(`${user.id}:code:${conversationId}:new`);
   const files = useInstructionFiles(conversationId);
   const start = useMutation({
     mutationFn: ({ task, attachmentIds }: { task: string; attachmentIds: string[] }) =>
-      startCodeSession(conversationId, { task, attachmentIds, mode, ...(repo && { repo }), ...(model && { model }) }),
+      startCodeSession(conversationId, { task, attachmentIds, mode, engine, ...(repo && { repo }), ...(model && { model }) }),
     onSuccess: (s) => {
       setText("");
       files.clear();
@@ -675,8 +690,8 @@ function NewSessionView({
       <div className="flex min-h-0 flex-1 border-t">
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon">{start.isPending ? <Spinner /> : <ModelLogo provider="claude-code" />}</EmptyMedia>
-            <EmptyTitle>{t.claudeCode}</EmptyTitle>
+            <EmptyMedia variant="icon">{start.isPending ? <Spinner /> : <ModelLogo provider={engine} />}</EmptyMedia>
+            <EmptyTitle>{CODE_ENGINE_NAMES[engine]}</EmptyTitle>
             <EmptyDescription>{start.isPending ? t.empty : t.newHint}</EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -696,13 +711,13 @@ function NewSessionView({
               value={text}
               autoFocus
               readOnly={start.isPending}
-              placeholder={t.placeholderNew}
+              placeholder={t.placeholderNew(CODE_ENGINE_NAMES[engine])}
               onChange={(e) => setText(e.target.value)}
               onPaste={files.onPaste}
               onKeyDown={(e) => {
                 if (e.key === "Tab" && e.shiftKey) {
                   e.preventDefault();
-                  setMode(nextCodeMode(mode));
+                  setMode(nextCodeMode(mode, engine));
                   return;
                 }
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -715,9 +730,10 @@ function NewSessionView({
             <InputGroupAddon align="block-end" className="cursor-default gap-1 px-0 pb-0">
               <AttachButton onFiles={files.add} disabled={start.isPending} />
               <RepoPicker conversationId={conversationId} recent={recent} value={repo} onSelect={setRepo} />
-              <ModePicker value={mode} onSelect={setMode} />
+              <ModePicker engine={engine} value={mode} onSelect={setMode} />
               <span className="flex-1" />
-              <CodeModelPicker conversationId={conversationId} value={model} onSelect={setModel} />
+              {engines.length > 1 && <EnginePicker engines={engines} value={engine} onSelect={pickEngine} />}
+              <CodeModelPicker conversationId={conversationId} engine={engine} value={model} onSelect={setModel} />
               <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="rounded-full disabled:opacity-40">
                 {start.isPending ? <Spinner /> : <ArrowUpIcon strokeWidth={2.25} />}
               </Button>
@@ -1241,7 +1257,8 @@ function LimitAlert({ conversationId, session, limit, owner }: { conversationId:
   const c = useT(common);
   const qc = useQueryClient();
   const rejected = limit.status === "rejected";
-  const { data: accounts = [] } = useQuery({ ...codeAccountsQuery(conversationId), enabled: owner && rejected });
+  // Only Claude Code's accounts are switched from here.
+  const { data: accounts = [] } = useQuery({ ...codeAccountsQuery(conversationId), enabled: owner && rejected && session.engine === "claude" });
   const others = accounts.filter((a) => a.id !== (session.account?.id ?? null));
   const change = useMutation({
     mutationFn: (id: string | null) => switchCodeSessionAccount(conversationId, session.id, id),
@@ -2090,7 +2107,7 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
             }
             if (e.key === "Tab" && e.shiftKey) {
               e.preventDefault();
-              if (!mode.isPending) mode.mutate(nextCodeMode(session.mode));
+              if (!mode.isPending) mode.mutate(nextCodeMode(session.mode, session.engine));
               return;
             }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -2102,7 +2119,7 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
         />
         <InputGroupAddon align="block-end" className="cursor-default gap-1 px-0 pb-0">
           <AttachButton onFiles={files.add} />
-          <ModePicker value={session.mode} disabled={mode.isPending} onSelect={(value) => value !== session.mode && mode.mutate(value)} />
+          <ModePicker engine={session.engine} value={session.mode} disabled={mode.isPending} onSelect={(value) => value !== session.mode && mode.mutate(value)} />
           <span className="flex-1" />
           <SessionModelPicker conversationId={conversationId} session={session} />
           {stoppable ? (
@@ -2134,8 +2151,31 @@ function commandItems(session: CodeSession, query: string): SlashItem[] {
   );
 }
 
+/** The agent CLI a new session runs on, among the ones installed on the server that are the person's. */
+function EnginePicker({ engines, value, onSelect }: { engines: { id: CodeEngine; name: string }[]; value: CodeEngine; onSelect: (engine: CodeEngine) => void }) {
+  const t = useT(messages);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={t.engine} className="min-w-0 shrink gap-1.5" />}>
+        <ModelLogo provider={value} className="size-3.5" />
+        <span className="truncate">{CODE_ENGINE_NAMES[value]}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-48">
+        <DropdownMenuRadioGroup value={value} onValueChange={(v) => onSelect(v as CodeEngine)}>
+          {engines.map((e) => (
+            <DropdownMenuRadioItem key={e.id} value={e.id} className="gap-2">
+              <ModelLogo provider={e.id} />
+              {e.name}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /** Claude Code's permission mode, each with what it lets it do. */
-function ModePicker({ value, onSelect, disabled }: { value: CodePermissionMode; onSelect: (mode: CodePermissionMode) => void; disabled?: boolean }) {
+function ModePicker({ engine, value, onSelect, disabled }: { engine: CodeEngine; value: CodePermissionMode; onSelect: (mode: CodePermissionMode) => void; disabled?: boolean }) {
   const t = useT(messages);
   return (
     <DropdownMenu>
@@ -2145,7 +2185,7 @@ function ModePicker({ value, onSelect, disabled }: { value: CodePermissionMode; 
       </Tooltip>
       <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-72">
         <DropdownMenuRadioGroup value={value} onValueChange={(v) => onSelect(v as CodePermissionMode)}>
-          {CODE_PERMISSION_MODES.map((m) => (
+          {codeEngineModes(engine).map((m) => (
             <DropdownMenuRadioItem key={m} value={m} className="h-auto items-start py-2">
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span>{t.modes[m]}</span>
@@ -2216,17 +2256,19 @@ function SessionModelPicker({ conversationId, session }: { conversationId: strin
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { success: t.modelChanged },
   });
-  return <CodeModelPicker conversationId={conversationId} value={session.model} onSelect={(model) => change.mutate(model)} />;
+  return <CodeModelPicker conversationId={conversationId} engine={session.engine} value={session.model} onSelect={(model) => change.mutate(model)} />;
 }
 
 /**
  * A Claude Code model among the ones the owner may use: searchable, each with its vendor's logo, as
  * in the conversation's picker. Null: Claude Code's default.
  */
-function CodeModelPicker({ conversationId, value, onSelect }: { conversationId: string; value: string | null; onSelect: (model: string) => void }) {
+function CodeModelPicker({ conversationId, engine, value, onSelect }: { conversationId: string; engine: CodeEngine; value: string | null; onSelect: (model: string) => void }) {
   const t = useT(messages);
   const [open, setOpen] = useState(false);
-  const { data: models = [] } = useQuery(codeModelsQuery(conversationId));
+  const { data: models = [] } = useQuery(codeModelsQuery(conversationId, engine));
+  // Claude's models are Anthropic's; Codex's OpenAI's; Cursor's come from every vendor.
+  const vendor = engine === "claude" ? "anthropic" : engine === "codex" ? "openai" : "cursor";
   if (!models.length && !value) return null;
   const current = models.find((m) => m.id === value);
   // Claude Code's default, as it resolved it: listed even when it is not among the models offered.
@@ -2235,7 +2277,7 @@ function CodeModelPicker({ conversationId, value, onSelect }: { conversationId: 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger render={<InputGroupButton size="sm" />} className="min-w-0 shrink gap-1.5">
-        <ModelLogo provider="anthropic" model={value ?? undefined} className="size-3.5" />
+        <ModelLogo provider={vendor} model={value ?? undefined} className="size-3.5" />
         <span className="truncate">{current?.label ?? value ?? t.model}</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
@@ -2243,7 +2285,7 @@ function CodeModelPicker({ conversationId, value, onSelect }: { conversationId: 
           <CommandInput placeholder={t.searchModel} />
           <CommandList className="max-h-80">
             <CommandEmpty>{t.noModel}</CommandEmpty>
-            <CommandGroup heading={<GroupHeading provider="claude-code" label={t.claudeCode} />}>
+            <CommandGroup heading={<GroupHeading provider={engine} label={CODE_ENGINE_NAMES[engine]} />}>
               {list.map((m) => (
                 <ModelOption
                   key={m.id}
@@ -2251,7 +2293,7 @@ function CodeModelPicker({ conversationId, value, onSelect }: { conversationId: 
                   label={"label" in m && m.label ? m.label : m.id}
                   description={"description" in m ? m.description : undefined}
                   reasoning={"reasoning" in m ? m.reasoning : undefined}
-                  logo={<ModelLogo model={m.id} provider="anthropic" />}
+                  logo={<ModelLogo model={m.id} provider={vendor} />}
                   active={m.id === value}
                   onSelect={() => {
                     setOpen(false);

@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.41.0 — 2026-10-06
+
+### Features
+- code sessions on Codex and Cursor, wider agent CLI detection
+
+## v0.40.0 — 2026-10-06
+
+### Features
+- structured ask_bot questions with options to pick
+- one-line typing indicator, shimmering on web
+
+### Fixes
+- **web**: conversation header and pane titles in narrow panes
+- **web**: keep repository chips on one line
+
 ## v0.39.0 — 2026-10-05
 
 ### Features

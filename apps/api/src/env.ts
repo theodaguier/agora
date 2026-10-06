@@ -43,6 +43,10 @@ export const env = z
     CODEX_BIN: z.string().default("codex"),
     /** Working directory for Codex sessions; default: ~/.agora/codex. */
     CODEX_CWD: z.string().default(""),
+    /** Cursor's agent CLI for code sessions (its owner's Cursor subscription); empty = found as `cursor-agent` or `agent`. */
+    CURSOR_AGENT_BIN: z.string().default(""),
+    /** Owner of the Cursor login on this machine; empty = CLAUDE_CODE_OWNER_EMAIL's. */
+    CURSOR_OWNER_EMAIL: z.string().default(""),
     /** Local model runtimes on the host (Settings › Models). */
     OLLAMA_URL: z.string().url().default("http://127.0.0.1:11434"),
     LMSTUDIO_URL: z.string().url().default("http://127.0.0.1:1234"),
