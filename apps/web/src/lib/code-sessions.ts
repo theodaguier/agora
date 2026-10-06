@@ -1,5 +1,5 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
-import type { CodeAccount, CodeApprovalAnswer, CodePermissionMode, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
+import type { CodeAccount, CodeApprovalAnswer, CodeEngine, CodeEngineInfo, CodePermissionMode, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
 import { api, conversationPath } from "./api";
 
 /** Claude Code sessions of a conversation (apps/api/src/code-sessions.ts): list for the cards, detail with steps for the panel. */
@@ -47,7 +47,7 @@ export function applyCodeStep(qc: QueryClient, conversationId: string, sessionId
 }
 
 /** A session the owner starts without a bot: Claude Code names it from its first instruction. */
-export const startCodeSession = (conversationId: string, req: { task: string; attachmentIds?: string[]; repo?: string; model?: string; mode?: CodePermissionMode }) =>
+export const startCodeSession = (conversationId: string, req: { task: string; attachmentIds?: string[]; repo?: string; engine?: CodeEngine; model?: string; mode?: CodePermissionMode }) =>
   api<CodeSession>(path(conversationId), { method: "POST", body: JSON.stringify(req) });
 
 /** GitHub repositories a new session can clone (the instance's token reaches them), the latest pushed first. */
@@ -93,11 +93,19 @@ export const refreshCodeSessionGit = (conversationId: string, id: string) =>
 export const stopCodeSession = (conversationId: string, id: string) => api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/stop`), { method: "POST" });
 
 /** Models the owner may give a session (the Claude Code engine's list, minus blocked ones). */
-export const codeModelsQuery = (conversationId: string) =>
+export const codeModelsQuery = (conversationId: string, engine: CodeEngine = "claude") =>
   queryOptions({
-    queryKey: ["code-models", conversationId],
-    queryFn: () => api<{ id: string; label?: string; description?: string; reasoning?: boolean }[]>(path(conversationId, "/models")),
+    queryKey: ["code-models", conversationId, engine],
+    queryFn: () => api<{ id: string; label?: string; description?: string; reasoning?: boolean }[]>(path(conversationId, `/models?engine=${engine}`)),
     staleTime: 10 * 60_000,
+  });
+
+/** The agent CLIs a new session can run on (installed on the server, the person's own): none, they cannot start one. */
+export const codeEnginesQuery = (conversationId: string) =>
+  queryOptions({
+    queryKey: ["code-engines", conversationId],
+    queryFn: () => api<CodeEngineInfo[]>(path(conversationId, "/engines")),
+    staleTime: 5 * 60_000,
   });
 
 export const setCodeSessionModel = (conversationId: string, id: string, model: string) =>

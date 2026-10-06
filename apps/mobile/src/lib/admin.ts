@@ -63,6 +63,7 @@ export type LocalRuntime = { id: "ollama" | "lmstudio"; url: string; running: bo
 export type HostCli = {
   id: string;
   name: string;
+  agent: boolean;
   installed: boolean;
   path: string | null;
   version: string | null;

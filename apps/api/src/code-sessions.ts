@@ -2,21 +2,23 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, join, sep } from "node:path";
 import type { Subprocess } from "bun";
-import { codeInstructionText, type CodeApproval, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
+import { CODE_ENGINE_NAMES, codeEngineModes, codeInstructionText, type CodeApproval, type CodeEngine, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
 import { activateClaudeAccount, activeClaudeAccountId, claudeCodeEnv, claudeProfiles } from "./claude-accounts";
 import { resultUsage, sessionExists, workspace, type ClaudeResult } from "./claude-code";
+import { engineBin, headlessEngine, type HeadlessEngine } from "./code-engines";
 import * as gitOps from "./code-git";
 import { GitError, githubEnv, githubToken, parseRepo, prepareWorktree, readGit, removeWorktree, sessionBranch, writeCredentials } from "./code-git";
 import { clip, isMode, planTitle, Transcript } from "./code-steps";
 import { db, schema } from "./db";
 import { env } from "./env";
 import { publishToConversation } from "./events";
+import { cliEnv } from "./host";
 import { readLines } from "./lines";
 import { postEvent } from "./messages";
 import { INLINE_IMAGE, MAX_INLINE_IMAGES, type AttachmentRow } from "./prompt";
 import { repoEnv } from "./repo-env";
 import { screenEnv } from "./screen";
-import { recordEngineUsage } from "./usage";
+import { recordEngineUsage, type EngineUsage } from "./usage";
 
 /**
  * Claude Code sessions: a `claude` agent working in a directory of the
@@ -164,6 +166,7 @@ function summary(s: Live): CodeSession {
   return {
     id: r.id,
     conversationId: r.conversationId,
+    engine: r.engine,
     agentId: r.agentId,
     requestedBy: r.requestedBy,
     title: r.title,
@@ -344,6 +347,7 @@ async function save(s: Live) {
         git: r.git,
         worktree: r.worktree,
         account: r.account,
+        engineThread: r.engineThread,
         steps: s.transcript.steps.slice(-MAX_STEPS),
         todos: s.transcript.todos,
         commands: r.commands,
@@ -458,6 +462,8 @@ export async function startCodeSession(opts: {
   announce: boolean;
   title: string;
   task: string;
+  /** The agent CLI it runs on (default: Claude Code); the caller checks it is installed and the person's. */
+  engine?: CodeEngine;
   /**
    * Sub-directory of the Claude Code workspace, shared by the sessions that name it. Once it holds a
    * clone of a GitHub repository, each session gets a worktree of that clone instead, as with `repo`.
@@ -477,7 +483,9 @@ export async function startCodeSession(opts: {
   const files = opts.files ?? [];
   const project = opts.project?.trim();
   const model = opts.model?.trim() || null;
+  const engine = opts.engine ?? "claude";
   if ((!task && !files.length) || (project && !PROJECT.test(project)) || (model && !MODEL.test(model))) throw new CodeSessionError("invalid");
+  if (opts.mode && !codeEngineModes(engine).includes(opts.mode)) throw new CodeSessionError("invalid", `${engine} sessions have no ${opts.mode} mode.`);
   const repo = opts.repo?.trim() ? parseRepo(opts.repo) : null;
   if (opts.repo?.trim() && !repo) throw new CodeSessionError("invalid", `Not a GitHub repository: ${opts.repo}. Expected owner/name or its URL.`);
   const id = crypto.randomUUID();
@@ -507,6 +515,7 @@ export async function startCodeSession(opts: {
       agentId: opts.agentId,
       requestedBy: opts.requestedBy,
       title,
+      engine,
       status: "running",
       cwd,
       repo: shared?.repo ?? null,
@@ -589,7 +598,8 @@ function instruct(s: Live, m: Instruction) {
   if (s.running && !s.stopping) {
     // It waits on its question: whoever writes to it (the bot, or its owner from the panel) answers it.
     if (s.question) answerQuestion(s, `Réponse de ${m.by ?? "son propriétaire"} :\n${m.prompt ?? m.text}`);
-    else if (s.proc) deliver(s, m);
+    // A headless engine reads its instruction once: what is written meanwhile starts the next run.
+    else if (s.proc && s.row.engine === "claude") deliver(s, m);
     else s.outbox.push(m);
     return;
   }
@@ -670,7 +680,7 @@ function questionAnswers(questions: CodeQuestion[], given: Record<string, string
  */
 export async function setCodeSessionMode(id: string, mode: CodePermissionMode, conversationId?: string) {
   const s = await load(id, conversationId);
-  if (!isMode(mode)) throw new CodeSessionError("invalid");
+  if (!isMode(mode) || !codeEngineModes(s.row.engine).includes(mode)) throw new CodeSessionError("invalid");
   setMode(s.row, mode);
   if (s.proc) write(s, { type: "control_request", request_id: crypto.randomUUID(), request: { subtype: "set_permission_mode", mode } });
   touch(s, [], true);
@@ -702,7 +712,9 @@ export async function stopCodeSession(id: string, conversationId?: string) {
   s.approval = null;
   dropQuestion(s);
   const proc = s.proc;
-  if (proc) {
+  // Nothing to interrupt a headless engine with: it ends there.
+  if (proc && s.row.engine !== "claude") proc.kill();
+  else if (proc) {
     write(s, { type: "control_request", request_id: crypto.randomUUID(), request: { subtype: "interrupt" } });
     setTimeout(() => {
       if (s.proc === proc) proc.kill();
@@ -916,7 +928,14 @@ async function quickClaude(cwd: string, system: string, prompt: string, timeout:
     "--strict-mcp-config",
     "--no-session-persistence",
   ];
-  const proc = Bun.spawn(args, { cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe", timeout });
+  let proc: Subprocess<"pipe", "pipe", "pipe">;
+  try {
+    proc = Bun.spawn(args, { cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe", timeout });
+  } catch (err) {
+    // Claude Code is not installed: a session on another engine goes without its title.
+    console.error("code session: quick answer", err);
+    return null;
+  }
   proc.stdin.write(prompt);
   proc.stdin.end();
   const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
@@ -1037,7 +1056,10 @@ export async function codeSessionsContext(conversationId: string) {
     const steps = s.transcript.steps;
     const by = r.agentId ? (agentNames.get(r.agentId) ?? "un bot") : "son propriétaire";
     const waitingFor = r.status === "waiting" && s.approval?.kind === "question" ? "attend la réponse de son propriétaire à une question" : r.status === "waiting" && s.approval?.kind === "plan" ? "attend que son propriétaire approuve son plan" : status[statusOf(r)];
-    const lines = [`## « ${r.title} » (session_id ${r.id})`, `Lancée par ${by}. État : ${waitingFor}${r.model ? `, modèle ${r.model}` : ""}${modeOf(r) === "plan" ? ", en mode plan" : ""}.`];
+    const lines = [
+      `## « ${r.title} » (session_id ${r.id})`,
+      `${CODE_ENGINE_NAMES[r.engine]}, lancée par ${by}. État : ${waitingFor}${r.model ? `, modèle ${r.model}` : ""}${modeOf(r) === "plan" ? ", en mode plan" : ""}.`,
+    ];
     const git = gitLine(r.git);
     if (git) lines.push(`Dépôt : ${git}.`);
     if (s.question) {
@@ -1045,7 +1067,7 @@ export async function codeSessionsContext(conversationId: string) {
       lines.push(`Claude Code attend la réponse de ${by} à sa question : « ${clipLine(s.question.text, 1500)} ».${options} Réponds-lui avec claude_code_send.`);
     }
     if (r.worktree?.removedAt) lines.push(`Son worktree a été supprimé par son propriétaire : une nouvelle instruction en recrée un sur la branche ${r.worktree.branch}.`);
-    if (r.account?.email) lines.push(`Compte Claude de son dernier run : ${r.account.email}.`);
+    if (r.account?.email) lines.push(`Compte ${r.engine === "codex" ? "ChatGPT" : "Claude"} de son dernier run : ${r.account.email}.`);
     if (s.limit?.status === "rejected") {
       const others = profiles.filter((p) => p.id !== r.account?.id).map((p) => p.email ?? "compte du serveur");
       lines.push(
@@ -1057,7 +1079,7 @@ export async function codeSessionsContext(conversationId: string) {
     if (events.length) {
       lines.push("Dernières instructions et actions :");
       for (const st of events) {
-        if (st.kind === "user") lines.push(`- ${st.by ?? "?"} a écrit à Claude Code : ${clipLine(codeInstructionText(st), 300)}`);
+        if (st.kind === "user") lines.push(`- ${st.by ?? "?"} a écrit à la session : ${clipLine(codeInstructionText(st), 300)}`);
         else if (st.kind === "git") lines.push(`- ${st.ok ? "" : "ÉCHEC "}${st.action}${st.by ? ` par ${st.by}` : ""} : ${clipLine(st.text, 300)}`);
         else if (st.kind === "notice") lines.push(`- ${{ stopped: "Arrêtée", restart: "Interrompue par un redémarrage", error: "Erreur" }[st.code]}${st.text ? ` : ${clipLine(st.text, 300)}` : ""}`);
       }
@@ -1085,6 +1107,7 @@ export async function codeSessionsContext(conversationId: string) {
  */
 export async function switchCodeSessionAccount(id: string, accountId: string | null, by: { id: string; name: string }, conversationId?: string) {
   const s = await load(id, conversationId);
+  if (s.row.engine !== "claude") throw new CodeSessionError("invalid", "Only Claude Code sessions change accounts from here.");
   if (!(await claudeProfiles()).some((p) => p.id === accountId)) throw new CodeSessionError("invalid", "Unknown or signed-out Claude account.");
   await activateClaudeAccount(accountId, by.id);
   // Warm processes run on the previous account: the next instruction starts one on this one.
@@ -1162,6 +1185,8 @@ export function startCodeSessionSweep() {
 /* ---------- the process ---------- */
 
 function write(s: Live, line: Json) {
+  // Only Claude Code reads its stdin during a run.
+  if (s.row.engine !== "claude") return;
   try {
     s.proc?.stdin.write(`${JSON.stringify(line)}\n`);
     s.proc?.stdin.flush();
@@ -1275,13 +1300,16 @@ async function execute(s: Live, id: number): Promise<void> {
   // Started by a bot: it can ask that bot a question (ask_bot, answered on its stdin like a permission).
   const [bot] = r.agentId ? await db.select({ name: schema.agent.name }).from(schema.agent).where(eq(schema.agent.id, r.agentId)) : [];
   s.bot = bot?.name ?? null;
+  const headless = r.engine !== "claude";
   const appended = [
     env.CHROMIUM_PATH && browserNote(env.CHROMIUM_PATH),
     r.worktree && r.repo && (await repoEnv(r.repo)) && CREDENTIALS_NOTE,
-    s.bot && askNote(s.bot),
+    // ask_bot is an MCP tool of Claude Code's control protocol.
+    s.bot && !headless && askNote(s.bot),
   ]
     .filter(Boolean)
     .join("\n\n");
+  if (headless) return executeHeadless(s, id, headlessEngine(r.engine as Exclude<CodeEngine, "claude">), appended);
   const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools, ...(s.bot ? [ASK_TOOL] : [])];
   // The files joined to its instructions, including the ones sent while this process stays warm.
   const uploads = uploadsDir(await workspace(), r.id);
@@ -1459,6 +1487,117 @@ function account(s: Live, ev: Json) {
   touch(s, [], true);
   recordEngineUsage(
     "claude-code",
+    usage,
+    { userId: r.requestedBy, agentId: r.agentId, conversationId: r.conversationId, sessionId: r.id },
+    { source: "code", taskId: r.id, taskName: r.title },
+  ).catch((err) => console.error("code session: usage", err));
+}
+
+/**
+ * A run of a headless engine (Codex, Cursor): the instructions written so far in one prompt, its
+ * output read until it exits. The next instruction resumes its thread in a new process.
+ */
+async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, system: string): Promise<void> {
+  const r = s.row;
+  const bin = engineBin(r.engine);
+  if (!bin) throw new Error(`${CODE_ENGINE_NAMES[r.engine]} is not installed on the server.`);
+  const prompt = s.outbox
+    .splice(0)
+    .map((m) => m.prompt ?? m.text)
+    .join("\n\n");
+  const thread = r.engineThread;
+  const run = await engine.command({ bin, cwd: r.cwd, prompt, model: r.model, mode: modeOf(r), thread, system });
+  r.account = await engine.account().catch(() => null);
+  touch(s, [], true);
+  // As Claude Code's: git and gh reach GitHub with the vault's token, its browsers show on the conversation's screen.
+  const spawnEnv = cliEnv(bin, { ...run.env, ...githubEnv(await githubToken()), ...(await screenEnv(r.conversationId, `code-${r.id}`).catch(() => ({}))) });
+  const proc = Bun.spawn(run.args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  s.proc = proc;
+  // Stopped while it was starting.
+  if (s.stopping) proc.kill();
+  if (run.stdin !== null) proc.stdin.write(run.stdin);
+  proc.stdin.end();
+  const stderr = new Response(proc.stderr).text().catch(() => "");
+
+  const read = engine.reader(s.transcript, r.cwd, r.model);
+  let result: { text: string; isError: boolean; durationMs?: number } | null = null;
+  let lastText = "";
+  let warning: string | null = null;
+  let produced = false;
+  const usage: EngineUsage[] = [];
+  const started = Date.now();
+  for await (const line of readLines(proc.stdout)) {
+    let ev: Json;
+    try {
+      ev = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (s.procId !== id) continue;
+    const change = read(ev);
+    let summaryChanged = false;
+    if (change.thread && change.thread !== r.engineThread) r.engineThread = change.thread;
+    if (change.todos) {
+      s.transcript.todos = change.todos;
+      summaryChanged = true;
+    }
+    if (change.activity !== undefined && change.activity !== s.activity) {
+      s.activity = change.activity;
+      summaryChanged = true;
+    }
+    if (change.usage) usage.push(...change.usage);
+    if (change.warning) warning = change.warning;
+    if (change.result) result = change.result;
+    for (const st of change.steps) {
+      produced = true;
+      if (st.kind === "text") lastText = st.text;
+    }
+    touch(s, change.steps, summaryChanged);
+    if (change.steps.some((st) => st.kind === "tool" && st.status !== "running" && GIT_TOUCHING.test(`${st.input ?? ""}\n${st.output ?? ""}`))) {
+      void rereadGit(s, false).catch((err) => console.error("code session: git state", err));
+    }
+  }
+  const code = await proc.exited;
+  // Deleted, or replaced: this run no longer owns the session.
+  if (s.procId !== id || s.proc !== proc) return;
+  s.proc = null;
+  s.activity = null;
+  touch(s, s.transcript.settle(), true);
+  accountHeadless(s, usage, result?.durationMs ?? Date.now() - started);
+
+  if (s.stopping) {
+    notice(s, "stopped");
+    return settle(s, "stopped");
+  }
+  if (result?.isError || code !== 0) {
+    const detail = result?.text || warning || (await stderr).trim().split("\n").slice(-5).join("\n") || `exit code ${code}`;
+    if (LIMIT_HIT.test(detail)) s.limit = { status: "rejected", window: "session" };
+    // Its thread could not be resumed (deleted, another account): the next instruction starts a new one.
+    if (thread && !produced) r.engineThread = null;
+    notice(s, "error", clip(detail, 1_000));
+    return settle(s, "failed");
+  }
+  r.result = result?.text || lastText || null;
+  return settle(s, "idle");
+}
+
+/** A headless run in the session's totals, and its tokens in the organization's usage when the engine reports them (Codex). */
+function accountHeadless(s: Live, usage: EngineUsage[], durationMs: number) {
+  const r = s.row;
+  const total: CodeUsage = r.usage ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, runs: 0, turns: 0, durationMs: 0 };
+  for (const u of usage) {
+    total.inputTokens += u.inputTokens;
+    total.outputTokens += u.outputTokens;
+    total.cacheReadTokens += u.cacheReadTokens;
+    total.cacheWriteTokens += u.cacheWriteTokens;
+  }
+  total.runs += 1;
+  total.turns += usage.length;
+  total.durationMs += durationMs;
+  r.usage = total;
+  if (r.engine !== "codex" || !usage.length) return;
+  recordEngineUsage(
+    "codex",
     usage,
     { userId: r.requestedBy, agentId: r.agentId, conversationId: r.conversationId, sessionId: r.id },
     { source: "code", taskId: r.id, taskName: r.title },

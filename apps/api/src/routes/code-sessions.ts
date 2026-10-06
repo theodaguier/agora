@@ -3,7 +3,9 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { attachCodeSession, turnOfHermesSession } from "../bot-runner";
 import { claudeProfiles } from "../claude-accounts";
-import { canUseClaudeCode, resolveClaudeCodeModel } from "../claude-code";
+import { CODE_ENGINES, type CodeEngine } from "@agora/core";
+import { resolveClaudeCodeModel } from "../claude-code";
+import { availableEngines, canUseCodeSessions, canUseEngine, engineBin, engineModels } from "../code-engines";
 import {
   announceCodeSession,
   answerCodeApproval,
@@ -33,6 +35,7 @@ import { repoEnv, RepoEnvError, saveRepoEnv } from "../repo-env";
 
 const TEXT_MAX = 20_000;
 const MODE = z.enum(["default", "acceptEdits", "plan", "bypassPermissions"]);
+const ENGINE = z.enum(CODE_ENGINES as [CodeEngine, ...CodeEngine[]]);
 /** Files uploaded to the conversation (POST /conversations/:id/attachments), joined to an instruction. */
 const ATTACHMENTS = z.array(z.string().uuid()).max(10).default([]);
 
@@ -69,15 +72,24 @@ export const codeSessions = new Hono<AppEnv>()
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id")!);
     if (!conv) return c.json({ error: "not_found" }, 404);
-    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
     const body = z
-      .object({ task: z.string().trim().max(TEXT_MAX).default(""), attachmentIds: ATTACHMENTS, repo: z.string().trim().max(300).optional(), model: z.string().max(100).optional(), mode: MODE.optional() })
+      .object({
+        task: z.string().trim().max(TEXT_MAX).default(""),
+        attachmentIds: ATTACHMENTS,
+        repo: z.string().trim().max(300).optional(),
+        engine: ENGINE.default("claude"),
+        model: z.string().max(100).optional(),
+        mode: MODE.optional(),
+      })
       .refine((b) => b.task || b.attachmentIds.length)
       .safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid" }, 400);
+    const { engine } = body.data;
+    if (!canUseEngine(me, engine)) return c.json({ error: "forbidden" }, 403);
+    if (!engineBin(engine)) return c.json({ error: "engine_not_installed" }, 400);
     const files = await attachmentsOf(conv.conversation.id, body.data.attachmentIds);
     if (!files) return c.json({ error: "unknown_attachment" }, 400);
-    if (body.data.model && !(await allowedClaudeCodeModels(me.id).catch(() => [])).some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
+    if (body.data.model && !(await modelsOf(engine, me.id)).some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
     return startCodeSession({
       conversationId: conv.conversation.id,
       agentId: null,
@@ -87,6 +99,7 @@ export const codeSessions = new Hono<AppEnv>()
       announce: true,
       title: "",
       task: body.data.task,
+      engine,
       model: body.data.model,
       repo: body.data.repo,
       mode: body.data.mode,
@@ -94,13 +107,22 @@ export const codeSessions = new Hono<AppEnv>()
     }).then((s) => c.json(s), (err) => failure(c, err));
   })
 
-  /** Models the owner may give a session (Claude Code's list minus the ones an admin blocked for them). */
+  /** The engines a new session can run on: installed on the server, and the person's own. */
+  .get("/engines", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id")!);
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    return c.json(availableEngines(me));
+  })
+
+  /** Models the owner may give a session on an engine (Claude Code's list minus the ones an admin blocked for them). */
   .get("/models", async (c) => {
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id")!);
     if (!conv) return c.json({ error: "not_found" }, 404);
-    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
-    return c.json(await allowedClaudeCodeModels(me.id).catch((err) => (console.error("code sessions: models", err), [])));
+    const engine = ENGINE.catch("claude").parse(c.req.query("engine") ?? "claude");
+    if (!canUseEngine(me, engine)) return c.json({ error: "forbidden" }, 403);
+    return c.json(await modelsOf(engine, me.id));
   })
 
   /** The owner's Claude accounts signed in, the active one first: a session can move to another when one runs out. */
@@ -108,7 +130,7 @@ export const codeSessions = new Hono<AppEnv>()
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id")!);
     if (!conv) return c.json({ error: "not_found" }, 404);
-    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
+    if (!canUseCodeSessions(me)) return c.json({ error: "forbidden" }, 403);
     return c.json(await claudeProfiles().catch((err) => (console.error("code sessions: accounts", err), [])));
   })
 
@@ -117,7 +139,7 @@ export const codeSessions = new Hono<AppEnv>()
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id")!);
     if (!conv) return c.json({ error: "not_found" }, 404);
-    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
+    if (!canUseCodeSessions(me)) return c.json({ error: "forbidden" }, 403);
     return c.json(await listRepos().catch((err) => (console.error("code sessions: repos", err), [])));
   })
 
@@ -126,7 +148,7 @@ export const codeSessions = new Hono<AppEnv>()
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id")!);
     if (!conv) return c.json({ error: "not_found" }, 404);
-    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
+    if (!canUseCodeSessions(me)) return c.json({ error: "forbidden" }, 403);
     const repo = parseRepo(c.req.query("repo") ?? "");
     if (!repo) return c.json({ error: "invalid" }, 400);
     console.info(`code sessions: credentials of ${repo} viewed by ${me.email}`);
@@ -138,7 +160,7 @@ export const codeSessions = new Hono<AppEnv>()
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id")!);
     if (!conv) return c.json({ error: "not_found" }, 404);
-    if (!canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
+    if (!canUseCodeSessions(me)) return c.json({ error: "forbidden" }, 403);
     const body = z.object({ repo: z.string().max(300), env: z.string().max(100_000) }).safeParse(await c.req.json().catch(() => ({})));
     const repo = body.success ? parseRepo(body.data.repo) : null;
     if (!body.success || !repo) return c.json({ error: "invalid" }, 400);
@@ -205,7 +227,7 @@ export const codeSessions = new Hono<AppEnv>()
     if (owned instanceof Response) return owned;
     const body = z.object({ model: z.string().min(1).max(100) }).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid" }, 400);
-    const allowed = await allowedClaudeCodeModels(c.get("user").id).catch(() => []);
+    const allowed = await modelsOf(owned.engine, c.get("user").id);
     if (!allowed.some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
     return setCodeSessionModel(owned.sessionId, body.data.model, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
   })
@@ -279,8 +301,8 @@ async function ownerOnly(c: Context<AppEnv>) {
   if (!conv) return c.json({ error: "not_found" }, 404);
   const session = await getCodeSession(c.req.param("sessionId")!, conv.conversation.id).catch(() => null);
   if (!session) return c.json({ error: "not_found" }, 404);
-  if (session.requestedBy !== me.id || !canUseClaudeCode(me)) return c.json({ error: "forbidden" }, 403);
-  return { conversationId: conv.conversation.id, sessionId: session.id };
+  if (session.requestedBy !== me.id || !canUseEngine(me, session.engine)) return c.json({ error: "forbidden" }, 403);
+  return { conversationId: conv.conversation.id, sessionId: session.id, engine: session.engine };
 }
 
 /* ---------- for the agora_code Hermes plugin ---------- */
@@ -309,15 +331,18 @@ export const internalCode = new Hono()
         task: z.string().trim().min(1).max(TEXT_MAX),
         title: z.string().max(200).optional(),
         project: z.string().max(64).optional(),
+        engine: ENGINE.default("claude"),
         model: z.string().max(100).optional(),
         repo: z.string().max(300).optional(),
         branch: z.string().max(200).optional(),
       })
       .safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid", detail: body.error.issues[0]?.message }, 400);
-    const turn = await ownerTurn(body.data.hermes_session);
+    const { engine } = body.data;
+    const turn = await ownerTurn(body.data.hermes_session, engine);
     if ("error" in turn) return c.json(turn, 403);
-    const model = body.data.model ? await allowedModel(turn.requestedBy, body.data.model) : undefined;
+    if (!engineBin(engine)) return c.json({ error: "engine_not_installed", message: `${engine} is not installed on the server. Leave engine out for Claude Code.` }, 400);
+    const model = body.data.model ? await allowedModel(engine, turn.requestedBy, body.data.model) : undefined;
     if (model && "error" in model) return c.json(model, 400);
     const [bot] = await db.select({ name: schema.agent.name }).from(schema.agent).where(eq(schema.agent.id, turn.agentId));
     return startCodeSession({
@@ -330,6 +355,7 @@ export const internalCode = new Hono()
       title: body.data.title ?? "",
       task: body.data.task,
       project: body.data.project,
+      engine,
       model: model?.id,
       repo: body.data.repo,
       branch: body.data.branch,
@@ -395,13 +421,19 @@ export const internalCode = new Hono()
     );
   });
 
+/** The models a session on this engine can be given (Claude Code: minus the ones an admin blocked for the person). */
+async function modelsOf(engine: CodeEngine, userId: string): Promise<{ id: string; label?: string }[]> {
+  const list = engine === "claude" ? allowedClaudeCodeModels(userId) : engineModels(engine);
+  return list.catch((err) => (console.error(`code sessions: ${engine} models`, err), []));
+}
+
 /** The model a bot asked for (an alias like "opus" or an exact id), if the owner may use it. */
-async function allowedModel(userId: string, requested: string) {
-  const allowed = await allowedClaudeCodeModels(userId).catch(() => []);
-  const id = resolveClaudeCodeModel(requested.trim());
+async function allowedModel(engine: CodeEngine, userId: string, requested: string) {
+  const allowed = await modelsOf(engine, userId);
+  const id = engine === "claude" ? resolveClaudeCodeModel(requested.trim()) : requested.trim();
   const found = allowed.find((m) => m.id === id) ?? allowed.find((m) => m.id.startsWith(id) || m.label?.toLowerCase().includes(requested.trim().toLowerCase()));
   if (found) return { id: found.id };
-  return { error: "unknown_model" as const, message: `Model not available. Available: ${allowed.map((m) => m.id).join(", ")}. Or leave it out for Claude Code's default.` };
+  return { error: "unknown_model" as const, message: `Model not available. Available: ${allowed.map((m) => m.id).join(", ")}. Or leave it out for the engine's default.` };
 }
 
 /** "agora-<conversation>[-…]" (company.ts hermesSessionId): the conversation a Hermes session belongs to. */
@@ -409,14 +441,15 @@ function conversationOf(session: string) {
   return /^agora-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/.exec(session)?.[1] ?? null;
 }
 
-async function ownerTurn(session: string) {
+/** The turn a plugin call comes from, started by the owner of the engine (`engine`: one in particular, else any). */
+async function ownerTurn(session: string, engine?: CodeEngine) {
   const turn = turnOfHermesSession(session);
-  if (!turn || !turn.requestedBy) return { error: "no_turn" as const, message: "Claude Code can only be used during a reply to a person." };
+  if (!turn || !turn.requestedBy) return { error: "no_turn" as const, message: "Code sessions can only be used during a reply to a person." };
   const [requester] = await db.select().from(schema.user).where(eq(schema.user.id, turn.requestedBy));
-  if (!canUseClaudeCode(requester)) {
+  if (engine ? !canUseEngine(requester, engine) : !canUseCodeSessions(requester)) {
     return {
       error: "not_owner" as const,
-      message: "Claude Code runs on its owner's personal subscription: only turns its owner started can use it.",
+      message: "Code sessions run on their owner's personal subscription: only turns its owner started can use them.",
     };
   }
   return { ...turn, requestedBy: turn.requestedBy };
