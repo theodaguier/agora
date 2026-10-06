@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.41.2 — 2026-10-06
+
+### Fixes
+- **web**: a conversation's Claude Code tabs survive switching conversations
+
 ## v0.41.1 — 2026-10-06
 
 ### Fixes
