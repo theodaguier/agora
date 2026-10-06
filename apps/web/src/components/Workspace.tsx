@@ -140,7 +140,8 @@ export function Workspace() {
       {w.panes.map((pane, i) => (
         <Fragment key={pane.id}>
           {i > 0 && <ResizableHandle className="bg-border" />}
-          <ResizablePanel id={pane.id} minSize={360}>
+          {/* A pane never scrolls itself (the panel's box is overflow: auto): each tab has its own scroller. */}
+          <ResizablePanel id={pane.id} minSize={360} style={{ overflow: "clip" }}>
             <PaneView pane={pane} focused={pane.id === w.focused} multiple={w.panes.length > 1} canSplit={w.panes.length < MAX_PANES} />
           </ResizablePanel>
         </Fragment>

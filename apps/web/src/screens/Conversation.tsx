@@ -989,7 +989,8 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
           {wide ? (
             // The thread and its side panel, the line between them dragged to share the width.
             <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">
-              <ResizablePanel id={`thread-${conversationId}`} minSize={320}>
+              {/* The panel's box scrolls (overflow: auto): anything overflowing let the whole thread slide up under the tab bar. Clipped, it can't scroll. */}
+              <ResizablePanel id={`thread-${conversationId}`} minSize={320} style={NO_SCROLL}>
                 {thread}
               </ResizablePanel>
               {sideKind && sideView && (
@@ -1021,6 +1022,9 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
     </ConversationFilesProvider>
   );
 }
+
+/** A panel that never scrolls itself: what it holds has its own scroller. */
+const NO_SCROLL = { overflow: "clip" } as const;
 
 /** Answer of a bot choosing to stay silent (apps/api/src/group.ts). */
 const NO_REPLY = "NO_REPLY";
