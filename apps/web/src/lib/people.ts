@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useMemo } from "react";
 import type { AgentSummary } from "./api";
-import type { Mentionable } from "./mentions";
+import { allMentionable, type Mentionable } from "./mentions";
 import { agentsQuery, userProfileQuery, usersQuery } from "./queries";
 
 /** Everyone who can be mentioned (colleagues and yourself), with the "@handle" the agents use too. */
@@ -20,13 +20,17 @@ export type MentionablePerson = ReturnType<typeof usePeople>[number];
 export const personMentionables = (people: MentionablePerson[]): Mentionable[] =>
   people.map((p) => ({ name: p.handle, avatar: { color: "var(--brand)" }, target: { kind: "person", person: p } }));
 
-/** Bots of the conversation, every other visible bot and every colleague, to color all mentions in a text. */
+/** Bots of the conversation, every other visible bot and every colleague (and "@all" in a group), to color all mentions in a text. */
 export function useMentionables(bots: AgentSummary[]) {
   const people = usePeople();
   const { data: all = [] } = useQuery(agentsQuery);
   return useMemo(() => {
     // The conversation's bots come first: their data is the one the conversation loaded.
     const agents = [...bots, ...all.filter((a) => !bots.some((b) => b.id === a.id))];
-    return [...agents.map((agent): Mentionable => ({ ...agent, target: { kind: "agent", agent } })), ...personMentionables(people)];
+    return [
+      ...agents.map((agent): Mentionable => ({ ...agent, target: { kind: "agent", agent } })),
+      ...personMentionables(people),
+      ...(bots.length > 1 ? [allMentionable] : []),
+    ];
   }, [bots, all, people]);
 }

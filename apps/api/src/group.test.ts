@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { directKey, excerpt, findHandoffs, formatGroupContext, FOLLOW_UP_MS, groupCalls, isNoReply, withQuote } from "./group";
+import { mentionsAll, soulTemplate } from "@agora/core";
+import { allRoutePrompt, directKey, excerpt, findHandoffs, formatGroupContext, FOLLOW_UP_MS, groupCalls, isNoReply, parseAllRoute, soulRole, withQuote } from "./group";
 
 describe("directKey", () => {
   test("does not depend on order", () => {
@@ -114,5 +115,45 @@ describe("groupCalls", () => {
 
   test("ignores bots outside the group", () => {
     expect(call("salut", { mentions: ["ghost"], repliedTo: "ghost" })).toEqual([]);
+  });
+});
+
+describe("@all", () => {
+  const bots = [
+    { id: "design", name: "Design" },
+    { id: "ai", name: "Agent Immobilier" },
+  ];
+
+  test("mentionsAll", () => {
+    expect(mentionsAll("@all qui peut m'aider ?")).toBe(true);
+    expect(mentionsAll("Salut @All, une question")).toBe(true);
+    expect(mentionsAll("@all, vite")).toBe(true);
+    expect(mentionsAll("@allan regarde")).toBe(false);
+    expect(mentionsAll("ecris a contact@all.fr")).toBe(false);
+    expect(mentionsAll("all hands")).toBe(false);
+  });
+
+  test("a @all message calls no one by itself", () => {
+    expect(groupCalls({ text: "@all un avis ?", mentions: [], agents: bots, now: new Date() })).toEqual([]);
+  });
+
+  test("parseAllRoute keeps the group's bots, in order, without duplicates", () => {
+    expect(parseAllRoute('{"bots": ["agent immobilier", "@Design", "Inconnu", "Design"]}', bots)).toEqual(["ai", "design"]);
+    expect(parseAllRoute('Voici :\n```json\n{"bots": []}\n```', bots)).toEqual([]);
+    expect(parseAllRoute("Design", bots)).toBeNull();
+    expect(parseAllRoute('{"robots": ["Design"]}', bots)).toBeNull();
+  });
+
+  test("soulRole drops the shared answering style", () => {
+    const soul = soulTemplate({ name: "Compta", org: "e-do", locale: "fr", role: "Tient la comptabilité et prépare les factures." });
+    const role = soulRole(soul);
+    expect(role).toContain("Tient la comptabilité");
+    expect(role).not.toContain("formules creuses");
+  });
+
+  test("allRoutePrompt lists each bot with its role", () => {
+    const prompt = allRoutePrompt({ text: "[Léa] @all on signe ?", history: "", bots: [{ id: "design", name: "Design", role: "Maquettes" }] });
+    expect(prompt).toContain("- Design : Maquettes");
+    expect(prompt).not.toContain("Derniers échanges");
   });
 });
