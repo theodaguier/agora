@@ -29,6 +29,7 @@ import {
   CodeSessionCard,
   CodeSessionPanel,
   CodeSessionsButton,
+  isNewCodeSession,
   NEW_CODE_SESSION,
   newCodeSessionId,
   ReplyWithSessions,
@@ -61,6 +62,8 @@ import {
 } from "@/lib/api";
 import { dividerLabel, needsDivider } from "@/lib/dates";
 import { ConversationFilesProvider } from "@/lib/conversation-files";
+import { codeSessionsQuery } from "@/lib/code-sessions";
+import { updateSide, useConversationSide, type ConversationSide } from "@/lib/conversation-side";
 import { conversationQuery, conversationsQuery, messagesQuery } from "@/lib/queries";
 import { seedTurns, useTurns, useTyping } from "@/lib/realtime";
 import { useOrgTitle } from "@/lib/org";
@@ -466,21 +469,27 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
     if (sending.length !== sent.length) setSending((xs) => xs.filter((s) => !s.id || !messages.some((m) => m.id === s.id)));
   }, [messages, sent]);
   const arrived = useArrivals(conversationId, messages, isPending);
-  /** Side panel: the bot's or the group's (`info`), search, files or pins; closed by default. */
-  const [panel, setPanel] = useState<PanelKind | "info" | null>(null);
   /**
-   * Claude Code panel beside the thread (it takes the side panel's place): the session in front, and the
-   * sessions opened in it as tabs. Closed, it keeps its tabs for the next time it opens.
+   * Beside the thread, as this conversation was left (lib/conversation-side.ts). `panel`: the bot's or the
+   * group's (`info`), search, files or pins; closed by default. `codeSession`, `codeTabs`: the Claude Code
+   * panel (it takes the side panel's place), the session in front and the sessions opened in it as tabs;
+   * closed, it keeps its tabs for the next time it opens. `previewKey`: an HTML mockup (`<turnId>:<index>`,
+   * see findPreview), in the side panel's place too.
    */
-  const [codeSession, setCodeSession] = useState<string | null>(null);
-  const [codeTabs, setCodeTabs] = useState<string[]>([]);
+  const { panel, codeSession, codeTabs, previewKey } = useConversationSide(user.id, conversationId);
+  const sideSetter =
+    <K extends keyof ConversationSide>(key: K) =>
+    (action: SetStateAction<ConversationSide[K]>) =>
+      updateSide(conversationId, (s) => ({ ...s, [key]: typeof action === "function" ? (action as (v: ConversationSide[K]) => ConversationSide[K])(s[key]) : action }));
+  const setPanel = sideSetter("panel");
+  const setCodeSession = sideSetter("codeSession");
+  const setCodeTabs = sideSetter("codeTabs");
+  const setPreviewKey = sideSetter("previewKey");
   useEffect(() => {
-    if (panel) setCodeSession(null);
-  }, [panel]);
-  /** HTML mockup opened beside the thread (`<turnId>:<index>`, see findPreview); it takes the side panel's place too. */
-  const [previewKey, setPreviewKey] = useState<string | null>(null);
-  useEffect(() => {
-    if (panel) setPreviewKey(null);
+    if (panel) {
+      setCodeSession(null);
+      setPreviewKey(null);
+    }
   }, [panel]);
   /** Brings a session to the front of the panel, in a tab of its own (a new one each time for `new`). */
   const openCodeSession = (id: string) => {
@@ -548,10 +557,19 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
   useEffect(() => {
     setSending([]);
     setReplyTo(null);
-    setCodeSession(null);
-    setCodeTabs([]);
-    setPreviewKey(null);
   }, [conversationId]);
+
+  // Sessions deleted since their tab was left: the tab goes too.
+  const { data: sessions } = useQuery({ ...codeSessionsQuery(conversationId), enabled: codeTabs.length > 0 });
+  useEffect(() => {
+    if (!sessions) return;
+    const gone = codeTabs.filter((id) => !isNewCodeSession(id) && !sessions.some((s) => s.id === id));
+    if (!gone.length) return;
+    updateSide(conversationId, (s) => {
+      const tabs = s.codeTabs.filter((id) => !gone.includes(id));
+      return { ...s, codeTabs: tabs, codeSession: s.codeSession && gone.includes(s.codeSession) ? (tabs.at(-1) ?? null) : s.codeSession };
+    });
+  }, [sessions, codeTabs, conversationId]);
 
   useEffect(() => {
     if (!highlight) return;
