@@ -760,7 +760,10 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
             atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
             setScrolledUp(!atBottom.current);
           }}
-          className="min-h-0 flex-1 overflow-y-auto"
+          // Positioned: an absolute element of a message (a hidden input, an sr-only label) is laid out
+          // within the scroller. Otherwise it sits at the end of the messages, outside it, and the panel
+          // gets a blank area to scroll under the composer.
+          className="relative min-h-0 flex-1 overflow-y-auto"
         >
           <div className="flex flex-col gap-1.5 px-4 pb-6 pt-4">
             {isPending && <Spinner className="chat-loading mx-auto mt-[20vh] size-5 text-muted-foreground" />}
@@ -989,7 +992,8 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
           {wide ? (
             // The thread and its side panel, the line between them dragged to share the width.
             <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">
-              <ResizablePanel id={`thread-${conversationId}`} minSize={320}>
+              {/* The panel's box scrolls (overflow: auto): anything overflowing let the whole thread slide up under the tab bar. Clipped, it can't scroll. */}
+              <ResizablePanel id={`thread-${conversationId}`} minSize={320} style={NO_SCROLL}>
                 {thread}
               </ResizablePanel>
               {sideKind && sideView && (
@@ -1021,6 +1025,9 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
     </ConversationFilesProvider>
   );
 }
+
+/** A panel that never scrolls itself: what it holds has its own scroller. */
+const NO_SCROLL = { overflow: "clip" } as const;
 
 /** Answer of a bot choosing to stay silent (apps/api/src/group.ts). */
 const NO_REPLY = "NO_REPLY";

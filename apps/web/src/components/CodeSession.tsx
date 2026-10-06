@@ -1049,7 +1049,8 @@ function CodeSessionView({
                 follow.current = bottom;
                 setAtBottom(bottom);
               }}
-              className="h-full overflow-y-auto px-4 py-4"
+              // Positioned, like the conversation's thread: its absolute elements stay within it.
+              className="relative h-full overflow-y-auto px-4 py-4"
             >
               {session.steps.length === 0 && !pending ? (
                 <Empty className="h-full">
