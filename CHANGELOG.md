@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.42.0 — 2026-10-06
+
+### Features
+- @all in groups calls only the bots the message concerns
+
 ## v0.41.2 — 2026-10-06
 
 ### Fixes
