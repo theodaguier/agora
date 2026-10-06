@@ -760,7 +760,10 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
             atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
             setScrolledUp(!atBottom.current);
           }}
-          className="min-h-0 flex-1 overflow-y-auto"
+          // Positioned: an absolute element of a message (a hidden input, an sr-only label) is laid out
+          // within the scroller. Otherwise it sits at the end of the messages, outside it, and the panel
+          // gets a blank area to scroll under the composer.
+          className="relative min-h-0 flex-1 overflow-y-auto"
         >
           <div className="flex flex-col gap-1.5 px-4 pb-6 pt-4">
             {isPending && <Spinner className="chat-loading mx-auto mt-[20vh] size-5 text-muted-foreground" />}
