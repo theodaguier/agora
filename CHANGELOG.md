@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.41.1 — 2026-10-06
+
+### Fixes
+- **web**: no blank area to scroll under the composer
+- **web**: the thread no longer slides up under the tab bar
+
 ## v0.41.0 — 2026-10-06
 
 ### Features
