@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Chip, Spinner, Surface, Typography } from "heroui-native";
-import { useEffect, type ReactNode } from "react";
+import { Fragment, useEffect, type ReactNode } from "react";
 import { View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { BrandLogo } from "@/components/brand-logo";
@@ -17,8 +17,20 @@ import { cn } from "@/lib/utils";
  */
 
 const messages = defineMessages({
-  en: { using: "Using", used: "Used", and: "and" },
-  fr: { using: "Utilise", used: "A utilisé", and: "et" },
+  en: {
+    using: "Using",
+    used: "Used",
+    and: "and",
+    usingTool: (name: string) => `${name} is using`,
+    typing: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
+  },
+  fr: {
+    using: "Utilise",
+    used: "A utilisé",
+    and: "et",
+    usingTool: (name: string) => `${name} utilise`,
+    typing: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
+  },
 });
 
 /**
@@ -86,11 +98,57 @@ export function TypingBubble({ label }: { label: string }) {
   );
 }
 
+/**
+ * Who is writing, on one line as in a messaging app (web: TypingLine): the bots before their reply,
+ * with the tool they use, and people.
+ */
+export function TypingLine({ entries }: { entries: { key: string; name: string; avatar?: ReactNode; tool?: string }[] }) {
+  const t = messages;
+  const writers = entries.filter((e) => !e.tool);
+  const users = entries.filter((e) => e.tool);
+  const avatars = (list: typeof entries) =>
+    list.some((e) => e.avatar) && <View className="flex-row -space-x-1">{list.map((e) => e.avatar && <Fragment key={e.key}>{e.avatar}</Fragment>)}</View>;
+  if (!entries.length) return null;
+  return (
+    <View accessibilityLiveRegion="polite" className="mt-1 flex-row flex-wrap items-center gap-x-1.5 gap-y-1 self-start">
+      <View className="flex-row gap-0.5">
+        {[0, 1, 2].map((d) => (
+          <BounceDot key={d} delay={d * 120} />
+        ))}
+      </View>
+      {users.map((e, i) => (
+        <Fragment key={e.key}>
+          {i > 0 && <Typography color="muted">·</Typography>}
+          {avatars([e])}
+          <Typography color="muted">{t.usingTool(e.name)}</Typography>
+          <ToolChip name={e.tool!} />
+        </Fragment>
+      ))}
+      {writers.length > 0 && (
+        <>
+          {users.length > 0 && <Typography color="muted">·</Typography>}
+          {avatars(writers)}
+          <Typography color="muted">{t.typing(writers.map((e) => e.name).join(", "), writers.length)}</Typography>
+        </>
+      )}
+    </View>
+  );
+}
+
+function ToolChip({ name }: { name: string }) {
+  const { data: brands } = useQuery(brandsQuery);
+  const servers = Object.keys(brands?.servers ?? {});
+  return (
+    <Chip size="sm" variant="secondary" color="default">
+      <BrandLogo server={toolServer(name, servers)} fallback={<ToolIcon name={name} className="size-3.5 text-muted" />} className="size-3.5 rounded-[3px]" />
+      <Chip.Label>{name}</Chip.Label>
+    </Chip>
+  );
+}
+
 /** Tools used by the agent during a reply (hermes.tool.progress events). */
 export function ToolLine({ tools, running }: { tools: { name: string; status: string }[]; running?: boolean }) {
   const t = messages;
-  const { data: brands } = useQuery(brandsQuery);
-  const servers = Object.keys(brands?.servers ?? {});
   const names = [...new Set(tools.map((tool) => tool.name))];
   if (!names.length) return null;
   return (
@@ -100,10 +158,7 @@ export function ToolLine({ tools, running }: { tools: { name: string; status: st
         {running ? t.using : t.used}
       </Typography>
       {names.map((n) => (
-        <Chip key={n} size="sm" variant="secondary" color="default">
-          <BrandLogo server={toolServer(n, servers)} fallback={<ToolIcon name={n} className="size-3.5 text-muted" />} className="size-3.5 rounded-[3px]" />
-          <Chip.Label>{n}</Chip.Label>
-        </Chip>
+        <ToolChip key={n} name={n} />
       ))}
     </View>
   );

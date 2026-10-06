@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanst
 import { BrowserIcon, ChevronLeftIcon, ChevronsLeftIcon, FilesIcon, PinIcon, SearchIcon } from "@/components/icons";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
-import { AuthorLine, BotBubble, DateDivider, ToolLine, TypingBubble } from "@/components/Bubbles";
+import { AuthorLine, BotBubble, DateDivider, ToolLine, TypingBubble, TypingLine } from "@/components/Bubbles";
 import { ApprovalCard, ApprovalLog } from "@/components/ApprovalCard";
 import { ChoiceCard } from "@/components/ChoiceCard";
 import { McpRequestCard } from "@/components/McpRequestCard";
@@ -126,7 +126,6 @@ const strings = defineMessages({
     emptyHint: "Send a first message to get started.",
     theBot: "The bot",
     botTyping: (name: string) => `${name} is typing…`,
-    peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
     stop: "Stop response",
     latest: "Latest messages",
     seeMembers: (n: number) => (n === 1 ? "See 1 member" : `See ${n} members`),
@@ -146,7 +145,6 @@ const strings = defineMessages({
     emptyHint: "Envoie un premier message pour commencer.",
     theBot: "Le bot",
     botTyping: (name: string) => `${name} écrit…`,
-    peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
     stop: "Arrêter la réponse",
     latest: "Derniers messages",
     seeMembers: (n: number) => `Voir les ${n} membres`,
@@ -188,6 +186,9 @@ function BotViews({
     />
   ));
 }
+
+/** A reply with nothing to show yet (no text, session, mockup or approval): it goes on the typing line. */
+const beforeReply = (turn: ActiveTurn) => !hideBlocks(turn.text) && !turn.codeSessions?.length && !turn.approval && !readPreviews(turn.text).length;
 
 /** A reply being written: its tools, the streamed text or the typing dots, and a pending approval. */
 function LiveTurn({
@@ -321,7 +322,7 @@ function PanelButtons({
   // Their panels open only beside the thread.
   const wide = useWide();
   return (
-    <div className="flex items-center justify-end gap-1">
+    <div className="flex shrink-0 items-center justify-end gap-1">
       {sessions}
       {hasPanels &&
         wide &&
@@ -727,7 +728,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
           {directBot ? t.dropTo(directBot.name) : group ? t.dropToGroup : t.dropTo(title)}
         </div>
       )}
-      <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
+      <header className="@container/header flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
         <div className="flex min-w-0 items-center gap-1.5">
           <HeaderTitle conv={conv} me={user.id} title={title} directBot={directBot} directPerson={directPerson} onOpenInfo={() => setPanel("info")} />
         </div>
@@ -906,7 +907,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                 )}
               </Fragment>
             ))}
-            {turns.map((turn) => (
+            {turns.filter((turn) => !beforeReply(turn)).map((turn) => (
               <LiveTurn
                 key={turn.turnId}
                 turn={turn}
@@ -918,12 +919,21 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                 onOpenPreview={openPreview}
               />
             ))}
-            {typing.length > 0 && (
-              <p className="chat-arrive mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
-                <TypingBubble label="" />
-                {t.peopleTyping(typing.map((p) => p.name.split(" ")[0]).join(", "), typing.length)}
-              </p>
-            )}
+            <TypingLine
+              className="chat-arrive"
+              entries={[
+                ...turns.filter(beforeReply).map((turn) => {
+                  const bot = agentById(turn.agentId);
+                  return {
+                    key: turn.turnId,
+                    name: bot?.name ?? t.theBot,
+                    avatar: group && bot && <AgentAvatar agent={bot} className="size-4" />,
+                    tool: turn.tools.at(-1)?.name,
+                  };
+                }),
+                ...typing.map((p) => ({ key: p.userId, name: p.name.split(" ")[0]! })),
+              ]}
+            />
           </div>
         </div>
         {scrolledUp && (
@@ -1064,21 +1074,39 @@ function HeaderStatus({ p }: { p: Participant }) {
 }
 
 const FACEPILE_MAX = 8;
+/** Faces of the pile while the header is narrow. */
+const FACEPILE_NARROW = 3;
 
 /** Group participants (bots first), up to 8 faces then "+N"; opens the members panel. */
+/**
+ * The members, beside the title. The header narrows with the panes beside it: the title keeps its
+ * place, the pile shrinks to a few faces, then leaves (the side panel lists the members).
+ */
 function Facepile({ conversation: conv, onClick }: { conversation: ConversationDetail; onClick: () => void }) {
   const everyone = othersOf(conv, "");
-  const shown = everyone.slice(0, everyone.length > FACEPILE_MAX ? FACEPILE_MAX - 1 : FACEPILE_MAX);
-  const rest = everyone.length - shown.length;
+  const fit = (max: number) => (everyone.length > max ? max - 1 : max);
+  const shown = everyone.slice(0, fit(FACEPILE_MAX));
   const t = useT(strings);
+  const count = (n: number, className: string) =>
+    n > 0 && <span className={cn("pl-1 text-[13px] font-normal tabular-nums text-muted-foreground", className)}>+{n}</span>;
   return (
-    <Button variant="ghost" onClick={onClick} aria-label={t.seeMembers(everyone.length)} className="ml-1 h-7 shrink-0 gap-0.5 rounded-full px-1.5">
-      {shown.map((p) => (
-        <span key={p.kind === "agent" ? `a:${p.agent.id}` : `u:${p.person.id}`} title={p.kind === "agent" ? p.agent.name : p.person.name}>
+    <Button
+      variant="ghost"
+      onClick={onClick}
+      aria-label={t.seeMembers(everyone.length)}
+      className="ml-1 hidden h-7 shrink-0 gap-0.5 rounded-full px-1.5 @lg/header:inline-flex"
+    >
+      {shown.map((p, i) => (
+        <span
+          key={p.kind === "agent" ? `a:${p.agent.id}` : `u:${p.person.id}`}
+          title={p.kind === "agent" ? p.agent.name : p.person.name}
+          className={cn(i >= fit(FACEPILE_NARROW) && "hidden @3xl/header:block")}
+        >
           <ParticipantAvatar p={p} className="size-5" />
         </span>
       ))}
-      {rest > 0 && <span className="pl-1 text-[13px] font-normal tabular-nums text-muted-foreground">+{rest}</span>}
+      {count(everyone.length - fit(FACEPILE_NARROW), "@3xl/header:hidden")}
+      {count(everyone.length - shown.length, "hidden @3xl/header:inline")}
     </Button>
   );
 }

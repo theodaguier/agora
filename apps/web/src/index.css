@@ -208,6 +208,15 @@
     animation: typing-dot 1.2s ease-in-out infinite both;
   }
 
+  /* Who is writing: a light passes over the words, left to right, as long as they write. */
+  .typing-shimmer {
+    color: transparent;
+    background: linear-gradient(90deg, var(--muted-foreground) 40%, var(--foreground) 50%, var(--muted-foreground) 60%) 0 0 / 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: typing-shimmer 2s linear infinite;
+  }
+
   /* Claude Code's logo while one of the conversation's sessions works: a hop, a landing, a rest. */
   .code-working {
     transform-origin: 50% 100%;
@@ -232,6 +241,12 @@
     }
     .typing-dot {
       animation-name: typing-dot-fade;
+    }
+    /* Still says it writes, without the light moving. */
+    .typing-shimmer {
+      color: var(--muted-foreground);
+      background: none;
+      animation: code-breathe 1.6s ease-in-out infinite;
     }
     /* Still says it works, without moving. */
     .code-working {
@@ -272,6 +287,15 @@
   30% {
     opacity: 1;
     transform: translateY(-3px);
+  }
+}
+
+@keyframes typing-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
   }
 }
 
