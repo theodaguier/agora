@@ -8,6 +8,11 @@ allowBuilds:
   better-sqlite3: false
   unrs-resolver: false
 
+# Advisories with a published fix, reached only through dependencies that don't take it yet.
+# - source-map-js <1.2.2 (GHSA-68fv-2mgg-jv7q), through postcss. Drop once postcss requires it.
+overrides:
+  source-map-js@<1.2.2: ^1.2.2
+
 # Advisories with no published fix, that only come in through the mobile build tooling, never
 # the shipped app or the API. Drop each one once a fix ships.
 # - node-forge <=1.4.0 (latest is 1.4.0), through @expo/cli.

@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { ApprovalCard, ApprovalLog } from "@/components/approval-card";
 import { FileCard, SentAttachments } from "@/components/attachments";
-import { AuthorLine, BotBubble, DateDivider, SystemEvent, ToolLine, TypingBubble } from "@/components/bubbles";
+import { AuthorLine, BotBubble, DateDivider, SystemEvent, ToolLine, TypingBubble, TypingLine } from "@/components/bubbles";
 import { ChoiceCard } from "@/components/choice-card";
 import { CodeSessionCard, ReplyWithSessions, useCanStartCodeSession, useCodeSessions } from "@/components/code-session";
 import { Composer, type ComposerHandle } from "@/components/composer";
@@ -39,7 +39,7 @@ import { useMentionables } from "@/lib/people";
 import { conversationQuery, conversationsQuery, messagesQuery } from "@/lib/queries";
 import { seedTurns, useTurns, useTyping } from "@/lib/realtime";
 import { useThreadHaptics } from "@/screens/conversation-haptics";
-import type { AgentSummary, Attachment, Author, ConversationDetail, Invocation, Message, ReplyTo } from "@/lib/types";
+import type { ActiveTurn, AgentSummary, Attachment, Author, ConversationDetail, Invocation, Message, ReplyTo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { MenuButton } from "@/components/menus";
 
@@ -88,7 +88,6 @@ const strings = defineMessages({
     emptyHint: "Send a first message to get started.",
     theBot: "The bot",
     botTyping: (name: string) => `${name} is typing…`,
-    peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
     stop: "Stop response",
     latest: "Latest messages",
     seeMembers: (n: number) => (n === 1 ? "See 1 member" : `See ${n} members`),
@@ -106,7 +105,6 @@ const strings = defineMessages({
     emptyHint: "Envoie un premier message pour commencer.",
     theBot: "Le bot",
     botTyping: (name: string) => `${name} écrit…`,
-    peopleTyping: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
     stop: "Arrêter la réponse",
     latest: "Derniers messages",
     seeMembers: (n: number) => `Voir les ${n} membres`,
@@ -425,7 +423,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
                   )}
                 </Fragment>
               ))}
-              {turns.map((turn) => {
+              {turns.filter((turn) => !beforeReply(turn)).map((turn) => {
                 const bot = agentById(turn.agentId);
                 const visible = hideBlocks(turn.text);
                 return (
@@ -462,14 +460,20 @@ export function Conversation({ conversationId, focus }: { conversationId: string
                   </Fragment>
                 );
               })}
-              {typing.length > 0 && (
-                <View className="mt-1 flex-row items-center gap-2">
-                  <TypingBubble label="" />
-                  <Typography type="body-sm" color="muted">
-                    {t.peopleTyping(typing.map((p) => p.name.split(" ")[0]).join(", "), typing.length)}
-                  </Typography>
-                </View>
-              )}
+              <TypingLine
+                entries={[
+                  ...turns.filter(beforeReply).map((turn) => {
+                    const bot = agentById(turn.agentId);
+                    return {
+                      key: turn.turnId,
+                      name: bot?.name ?? t.theBot,
+                      avatar: group && bot && <AgentAvatar agent={bot} className="size-4" />,
+                      tool: turn.tools.at(-1)?.name,
+                    };
+                  }),
+                  ...typing.map((p) => ({ key: p.userId, name: p.name.split(" ")[0]! })),
+                ]}
+              />
             </View>
           </KeyboardChatScrollView>
         </ConversationFilesProvider>
@@ -587,6 +591,9 @@ function ConversationHeader({
 }
 
 const NO_REPLY = "NO_REPLY";
+
+/** A reply with nothing to show yet (no text, session or approval): it goes on the typing line. */
+const beforeReply = (turn: ActiveTurn) => !hideBlocks(turn.text) && !turn.codeSessions?.length && !turn.approval;
 
 /** While streaming, structured blocks (questions, profile) and a silent answer are not shown raw. */
 const hideBlocks = (text: string) =>

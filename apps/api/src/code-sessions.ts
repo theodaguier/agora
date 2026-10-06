@@ -58,7 +58,15 @@ type Instruction = { text: string; by: string | null; files?: CodeFile[]; prompt
 type PendingApproval = CodeApproval & { requestId: string; toolUseId?: string; input: Json; suggestions: Json[] };
 
 /** An ask_bot call: answered on its control request (`requestId`), with the JSON-RPC id of its tools/call. */
-type PendingQuestion = { requestId: string; rpcId: unknown; text: string; askedAt: Date; timer: ReturnType<typeof setTimeout> };
+type PendingQuestion = {
+  requestId: string;
+  rpcId: unknown;
+  text: string;
+  context?: string;
+  options: { label: string; description?: string }[];
+  askedAt: Date;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 type Live = {
   row: Row;
@@ -185,7 +193,13 @@ function summary(s: Live): CodeSession {
       ...(a.questions && { questions: a.questions }),
       ...(a.plan !== undefined && { plan: a.plan }),
     },
-    question: s.question && { bot: s.bot ?? "", text: s.question.text, askedAt: s.question.askedAt.toISOString() },
+    question: s.question && {
+      bot: s.bot ?? "",
+      text: s.question.text,
+      ...(s.question.context && { context: s.question.context }),
+      ...(s.question.options.length && { options: s.question.options }),
+      askedAt: s.question.askedAt.toISOString(),
+    },
     result: r.result,
     usage: r.usage,
     stepCount: s.transcript.steps.length,
@@ -283,7 +297,8 @@ export async function codeSessionReport(id: string) {
   const { id: _, conversationId: __, agentId: ___, requestedBy: ____, commands: _____, ...rest } = summary(s);
   // Its question to the bot: claude_code_wait returns on it, and claude_code_send answers it.
   const { question: _q, ...report } = rest;
-  const question = s.question && { text: s.question.text, asked_at: s.question.askedAt.toISOString() };
+  const q = s.question;
+  const question = q && { text: q.text, ...(q.context && { context: q.context }), ...(q.options.length && { options: q.options }), asked_at: q.askedAt.toISOString() };
   return { session_id: id, ...report, ...(question && { question }), actions, history };
 }
 
@@ -1047,7 +1062,10 @@ export async function codeSessionsContext(conversationId: string) {
     ];
     const git = gitLine(r.git);
     if (git) lines.push(`Dépôt : ${git}.`);
-    if (s.question) lines.push(`Claude Code attend la réponse de ${by} à sa question : « ${clipLine(s.question.text, 1500)} ». Réponds-lui avec claude_code_send.`);
+    if (s.question) {
+      const options = s.question.options.length ? ` Options : ${s.question.options.map((o) => `« ${o.label} »`).join(", ")}.` : "";
+      lines.push(`Claude Code attend la réponse de ${by} à sa question : « ${clipLine(s.question.text, 1500)} ».${options} Réponds-lui avec claude_code_send.`);
+    }
     if (r.worktree?.removedAt) lines.push(`Son worktree a été supprimé par son propriétaire : une nouvelle instruction en recrée un sur la branche ${r.worktree.branch}.`);
     if (r.account?.email) lines.push(`Compte ${r.engine === "codex" ? "ChatGPT" : "Claude"} de son dernier run : ${r.account.email}.`);
     if (s.limit?.status === "rejected") {
@@ -1653,6 +1671,9 @@ const ASK = "ask_bot";
 const ASK_TOOL = `mcp__${MCP_SERVER}__${ASK}`;
 const QUESTION_MS = 15 * 60_000;
 const QUESTION_MAX = 4_000;
+const OPTIONS_MIN = 2;
+const OPTIONS_MAX = 4;
+const OPTION_MAX = 300;
 
 const askNote = (bot: string) =>
   `Tu travailles pour ${bot}, le bot qui t'a confié cette tâche dans une conversation Agora. Si le brief ne tranche pas un choix qui compte, pose-lui la question avec l'outil ${ASK_TOOL} plutôt que de deviner.`;
@@ -1662,11 +1683,31 @@ const askTool = (bot: string) => ({
   description: [
     `Pose une question à ${bot}, le bot qui t'a confié cette tâche, et attends sa réponse : elle revient comme résultat de cet outil. Le propriétaire de la session peut aussi y répondre depuis son panneau.`,
     "Pour un choix que le brief ne tranche pas et qui change le résultat, ou une information que tu ne peux pas trouver toi-même. Jamais pour ce que tu peux vérifier dans le code, ni pour annoncer ce que tu fais.",
-    `Une question à la fois, complète : le contexte utile et les options que tu envisages. Sans réponse au bout de ${QUESTION_MS / 60_000} minutes, continue avec ton meilleur jugement.`,
+    "Une question à la fois. Elle s'affiche dans une carte qu'un humain lit d'un coup d'œil : la question en une phrase, le contexte à part et court, les réponses possibles en options qu'il choisit d'un clic.",
+    `Sans réponse au bout de ${QUESTION_MS / 60_000} minutes, continue avec la première option, ou ton meilleur jugement sans options.`,
   ].join(" "),
   inputSchema: {
     type: "object",
-    properties: { question: { type: "string", description: "La question, avec le contexte nécessaire pour y répondre sans lire ton code." } },
+    properties: {
+      question: { type: "string", description: "La question elle-même, en une phrase courte. Sans le contexte ni les options." },
+      context: {
+        type: "string",
+        description: "Ce qu'il faut savoir pour trancher sans lire ton code : les faits et contraintes utiles, en Markdown, en liste courte plutôt qu'en paragraphe.",
+      },
+      options: {
+        type: "array",
+        description: `Les réponses possibles (${OPTIONS_MIN} à ${OPTIONS_MAX}), dans l'ordre de ta préférence : la première est ce que tu fais sans réponse. Omets-les seulement pour une question ouverte.`,
+        items: {
+          type: "object",
+          properties: {
+            label: { type: "string", description: "La réponse, en quelques mots." },
+            description: { type: "string", description: "Ce qu'elle implique, en une phrase." },
+          },
+          required: ["label"],
+          additionalProperties: false,
+        },
+      },
+    },
     required: ["question"],
     additionalProperties: false,
   },
@@ -1686,16 +1727,30 @@ function onMcpMessage(s: Live, requestId: string, msg: Json) {
       return reply({ result: { tools: [askTool(s.bot!)] } });
     case "tools/call": {
       if (msg.params?.name !== ASK) return toolError(`Unknown tool: ${String(msg.params?.name)}`);
-      const text = String(msg.params?.arguments?.question ?? "").trim();
+      const args = msg.params?.arguments ?? {};
+      const text = String(args.question ?? "").trim();
       if (!text) return toolError("question is required");
+      const context = String(args.context ?? "").trim();
+      const options = (Array.isArray(args.options) ? args.options : [])
+        .filter((o: Json) => o && typeof o.label === "string" && o.label.trim())
+        .slice(0, OPTIONS_MAX)
+        .map((o: Json) => ({
+          label: clipLine(String(o.label).trim(), OPTION_MAX),
+          ...(typeof o.description === "string" && o.description.trim() && { description: clipLine(o.description.trim(), OPTION_MAX) }),
+        }));
       if (s.question) return toolError("Une question attend déjà sa réponse : une à la fois.");
       const question: PendingQuestion = {
         requestId,
         rpcId: msg.id ?? null,
         text: clip(text, QUESTION_MAX),
+        ...(context && { context: clip(context, QUESTION_MAX) }),
+        // A single option is no choice: the question stays open.
+        options: options.length >= OPTIONS_MIN ? options : [],
         askedAt: new Date(),
         timer: setTimeout(() => {
-          if (s.question === question) answerQuestion(s, `${s.bot} n'a pas répondu dans les ${QUESTION_MS / 60_000} minutes. Continue avec ton meilleur jugement, et dis dans ta réponse ce que tu as supposé.`);
+          if (s.question !== question) return;
+          const fallback = question.options[0] ? `Continue avec la première option (« ${question.options[0].label} »)` : "Continue avec ton meilleur jugement";
+          answerQuestion(s, `${s.bot} n'a pas répondu dans les ${QUESTION_MS / 60_000} minutes. ${fallback}, et dis dans ta réponse ce que tu as supposé.`);
         }, QUESTION_MS),
       };
       s.question = question;

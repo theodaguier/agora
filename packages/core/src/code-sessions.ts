@@ -159,7 +159,12 @@ export type CodeApproval = {
 export type CodeBotQuestion = {
   /** The bot's name. */
   bot: string;
+  /** The question itself, in a sentence. */
   text: string;
+  /** What to know to decide, in Markdown. */
+  context?: string;
+  /** The answers it sees; the first is what it does without an answer. */
+  options?: { label: string; description?: string }[];
   askedAt: string;
 };
 

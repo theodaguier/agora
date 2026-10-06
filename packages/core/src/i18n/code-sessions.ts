@@ -91,6 +91,7 @@ export const codeSessions = defineMessages({
     botQuestion: {
       title: (bot: string) => `Claude Code asks ${bot}`,
       help: (bot: string) => `Your next message answers it, in place of ${bot}. Without an answer within 15 minutes, it goes on with its best judgment.`,
+      pick: (bot: string, first: string) => `Answer in place of ${bot}. Without an answer within 15 minutes, it goes with “${first}”.`,
       waiting: (bot: string) => `Waiting for ${bot}'s answer, or the answer of the person who started it.`,
     },
     plan: {
@@ -258,6 +259,7 @@ export const codeSessions = defineMessages({
     botQuestion: {
       title: (bot: string) => `Claude Code demande à ${bot}`,
       help: (bot: string) => `Ton prochain message y répond, à la place de ${bot}. Sans réponse dans les 15 minutes, il continue avec son meilleur jugement.`,
+      pick: (bot: string, first: string) => `Réponds à la place de ${bot}. Sans réponse dans les 15 minutes, il retient « ${first} ».`,
       waiting: (bot: string) => `En attente de la réponse de ${bot}, ou de la personne qui l'a lancée.`,
     },
     plan: {

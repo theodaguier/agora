@@ -108,13 +108,16 @@ export function PathChip({ path, children }: { path: string; children: ReactNode
  */
 export function RepoChip({ url, repo, label }: { url: string; repo: Repo; label?: string }) {
   const Logo = repo.host === "github" ? GitHubLogo : CodeIcon;
+  // "owner/repo#12" stays on one line with its logo, as a whole; only a very long one wraps.
+  const text = label ?? `${repo.owner}/${repo.name}${repo.ref ?? ""}`;
+  const wrap = text.length > 48 ? "[overflow-wrap:anywhere]" : "whitespace-nowrap";
   return (
     <a
       href={url}
       target="_blank"
       rel="noreferrer noopener"
       title={url}
-      className="rounded-[5px] bg-foreground/[0.07] px-1 py-px font-medium [overflow-wrap:anywhere] box-decoration-clone hover:bg-foreground/[0.12]"
+      className={cn("rounded-[5px] bg-foreground/[0.07] px-1 py-px font-medium box-decoration-clone hover:bg-foreground/[0.12]", wrap)}
     >
       <Logo className="mr-1 inline size-[1em] align-[-0.14em]" fill="currentColor" />
       {label ?? (

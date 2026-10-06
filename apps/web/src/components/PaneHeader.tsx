@@ -22,7 +22,10 @@ export function PaneHeader({
     <Item render={<header />} className="shrink-0 flex-nowrap items-start rounded-none px-4 pb-2 pt-3.5">
       {media && <ItemMedia className="mt-0.5">{media}</ItemMedia>}
       <ItemContent className="min-w-0">
-        <ItemTitle className="w-full truncate text-[15px]">{title}</ItemTitle>
+        {/* The title is a flex box, whose text gets no ellipsis: the span truncates. */}
+        <ItemTitle className="w-full min-w-0 text-[15px]">
+          <span className="truncate">{title}</span>
+        </ItemTitle>
         {description && <ItemDescription className="line-clamp-1 text-[13px]">{description}</ItemDescription>}
         {children}
       </ItemContent>

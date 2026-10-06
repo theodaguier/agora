@@ -991,7 +991,7 @@ function CodeSessionView({
         ) : (
           approval && <ApprovalBlock conversationId={conversationId} session={session} approval={approval} canAnswer={owner} />
         )}
-        {session.question && <BotQuestionBlock question={session.question} canAnswer={owner} />}
+        {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
       </>
     ) : null;
   // A new one comes into view, even scrolled up: the run waits for it.
@@ -1737,20 +1737,81 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
 }
 
 /**
- * Its question to the bot that started it (ask_bot): the bot answers it, or its owner with the next
- * message of the field below, which goes to it as the answer.
+ * Its question to the bot that started it (ask_bot): the bot answers it, or its owner, with one of
+ * its options or the next message of the field below, which goes to it as the answer.
  */
-function BotQuestionBlock({ question, canAnswer }: { question: CodeBotQuestion; canAnswer: boolean }) {
+function BotQuestionBlock({ conversationId, session, question, canAnswer }: { conversationId: string; session: CodeSession; question: CodeBotQuestion; canAnswer: boolean }) {
   const t = useT(messages);
+  const c = useT(common);
+  const qc = useQueryClient();
+  const [choice, setChoice] = useState<Choice>({ picked: [], other: "" });
+  const answer = useMutation({
+    mutationFn: (text: string) => sendToCodeSession(conversationId, session.id, text),
+    onSuccess: (s) => applyCodeSession(qc, s),
+    meta: { success: t.question.answered },
+  });
+  const options = question.options?.length
+    ? [...question.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }]
+    : [];
+  const value = answerOf(choice);
+  const help = !canAnswer ? t.botQuestion.waiting(question.bot) : options.length ? t.botQuestion.pick(question.bot, options[0]!.label) : t.botQuestion.help(question.bot);
+  const id = (i: number) => `bot-q-${i}`;
   return (
     <Card size="sm" role="region" aria-label={t.botQuestion.title(question.bot)}>
       <CardHeader>
         <CardTitle>{t.botQuestion.title(question.bot)}</CardTitle>
-        <CardDescription>{canAnswer ? t.botQuestion.help(question.bot) : t.botQuestion.waiting(question.bot)}</CardDescription>
+        <CardDescription>{help}</CardDescription>
       </CardHeader>
-      <CardContent className="max-h-[40vh] overflow-y-auto">
-        <MessageText text={question.text} className="text-sm" />
-      </CardContent>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (value && !answer.isPending) answer.mutate(value);
+        }}
+      >
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <MessageText text={question.text} className="text-sm font-medium" />
+            {question.context && (
+              <div className="max-h-[30vh] overflow-y-auto text-muted-foreground">
+                <MessageText text={question.context} className="text-[13px]" />
+              </div>
+            )}
+          </div>
+          {options.length > 0 && (
+            <FieldSet disabled={!canAnswer || answer.isPending} aria-label={question.text} className="gap-3">
+              <RadioGroup value={choice.picked[0] ?? ""} onValueChange={(v) => setChoice((all) => ({ ...all, picked: [String(v)] }))} className="gap-2.5">
+                {options.map((o, i) => (
+                  <Field key={o.value} orientation="horizontal">
+                    <RadioGroupItem value={o.value} id={id(i)} />
+                    <FieldContent>
+                      <FieldLabel htmlFor={id(i)} className="font-normal">
+                        {o.label}
+                      </FieldLabel>
+                      {o.description && <FieldDescription className="text-[13px]">{o.description}</FieldDescription>}
+                    </FieldContent>
+                  </Field>
+                ))}
+              </RadioGroup>
+              {choice.picked.includes(OTHER_ANSWER) && (
+                <Input
+                  autoFocus
+                  aria-label={t.question.other}
+                  placeholder={t.question.otherPlaceholder}
+                  value={choice.other}
+                  onChange={(e) => setChoice((all) => ({ ...all, other: e.target.value }))}
+                />
+              )}
+            </FieldSet>
+          )}
+          {canAnswer && options.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" size="sm" disabled={!value || answer.isPending}>
+                {answer.isPending ? c.inProgress : t.question.answer}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </form>
     </Card>
   );
 }
