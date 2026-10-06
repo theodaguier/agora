@@ -13,6 +13,8 @@ export type Org = {
   setupCompleted: boolean;
   /** Every account must turn on two-step verification before using the app (middleware.ts). */
   requireTwoFactor: boolean;
+  /** New bots get every tool, risky ones included (sandbox.ts), instead of starting confined. */
+  newBotsAllTools: boolean;
   image: string | null;
 };
 
@@ -22,9 +24,10 @@ const KEYS = {
   timezone: "org_timezone",
   setupCompleted: "setup_completed",
   requireTwoFactor: "require_two_factor",
+  newBotsAllTools: "new_bots_all_tools",
 } as const;
 
-export const DEFAULT_ORG: Org = { name: "Agora", locale: "fr", timezone: "Europe/Paris", setupCompleted: false, requireTwoFactor: false, image: null };
+export const DEFAULT_ORG: Org = { name: "Agora", locale: "fr", timezone: "Europe/Paris", setupCompleted: false, requireTwoFactor: false, newBotsAllTools: false, image: null };
 
 /** Row id of the single organization logo. */
 export const ORG_AVATAR_ID = "org";
@@ -49,6 +52,7 @@ export async function getOrg(): Promise<Org> {
     // the wizard existed (it writes "false" as soon as the admin account is created).
     setupCompleted: get(KEYS.setupCompleted) === undefined ? (await userCount()) > 0 : get(KEYS.setupCompleted) === "true",
     requireTwoFactor: get(KEYS.requireTwoFactor) === "true",
+    newBotsAllTools: get(KEYS.newBotsAllTools) === "true",
     image: logo ? orgAvatarUrl(logo.updatedAt) : null,
   };
   cache = { at: Date.now(), org };

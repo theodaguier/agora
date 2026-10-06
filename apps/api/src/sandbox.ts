@@ -15,6 +15,8 @@
  * `agent.disabled_toolsets`, the one list a cron job created by the agent
  * cannot widen. An admin can turn one back on for a given agent (Admin ›
  * Agent › Tools), knowingly; that choice is not undone at the next startup.
+ * Or for every new agent at once (Settings › Security, `newBotsAllTools`):
+ * the profile is then born with all of them (openNewProfile).
  * Attachments stay readable through the agora_files plugin (read-only, only
  * the current conversation's files).
  */
@@ -109,6 +111,19 @@ async function installFilesPlugin(profile: string) {
 export async function confineNewProfile(profile: string, alsoOff: string[] = []) {
   await installFilesPlugin(profile);
   await confine(profile, [], alsoOff);
+}
+
+/**
+ * For a new profile when the organization gives new bots every tool: the
+ * risky toolsets (and `alsoOn`) turned on, those the clone of the default
+ * profile inherited off included. Recorded as confined already, so the next
+ * startup leaves them as they are, like an admin's choice.
+ */
+export async function openNewProfile(profile: string, alsoOn: string[] = []) {
+  await installFilesPlugin(profile);
+  await setDenied(profile, RISKY_TOOLSETS, false);
+  await setPlatforms(profile, [...RISKY_TOOLSETS, ...alsoOn], true);
+  await saveConfined(profile, RISKY_TOOLSETS);
 }
 
 /** At startup: every profile gets the attachments tool, and loses the risky toolsets it was never confined from. */

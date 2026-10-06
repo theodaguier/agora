@@ -259,6 +259,7 @@ export const admin = new Hono<AppEnv>()
           })
           .optional(),
         requireTwoFactor: z.boolean().optional(),
+        newBotsAllTools: z.boolean().optional(),
       })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid_body" }, 400);

@@ -41,7 +41,7 @@ export type AdminModels = {
   unreachable: number;
 };
 
-export type Org = { name: string; locale: "fr" | "en"; timezone: string; image: string | null; requireTwoFactor?: boolean };
+export type Org = { name: string; locale: "fr" | "en"; timezone: string; image: string | null; requireTwoFactor?: boolean; newBotsAllTools?: boolean };
 
 export type DigestConfig = { enabled: boolean; time: string; days: number[]; weeklyDay: number | null; personal: boolean; usageForMembers: boolean };
 

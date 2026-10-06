@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.39.0 — 2026-10-05
+
+### Features
+- optional setting giving new bots every tool
+- bots can ask to create other bots (bot-create block)
+
+## v0.38.3 — 2026-10-05
+
+### Fixes
+- **web**: prompt fields keep drafts, stop overlapping and lagging
+
 ## v0.38.2 — 2026-10-02
 
 ### Fixes

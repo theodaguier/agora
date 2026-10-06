@@ -8,8 +8,11 @@ allowBuilds:
   better-sqlite3: false
   unrs-resolver: false
 
-# No patched node-forge exists yet (<=1.4.0, latest is 1.4.0). It only comes in through
-# @expo/cli, the mobile build tool, never the shipped app or the API. Drop once a fix ships.
+# Advisories with no published fix, that only come in through the mobile build tooling, never
+# the shipped app or the API. Drop each one once a fix ships.
+# - node-forge <=1.4.0 (latest is 1.4.0), through @expo/cli.
+# - braces <=3.0.3 (latest is 3.0.3, the advisory's 3.0.4 isn't published), through metro's micromatch.
 auditConfig:
   ignoreGhsas:
     - GHSA-86w9-cpqp-85rv
+    - GHSA-vfj7-8cjw-p6xm

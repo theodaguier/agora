@@ -16,6 +16,11 @@ const messages = defineMessages({
     confirmTitle: "Require two-step verification?",
     confirmText: "Accounts that haven't turned it on will be asked to, and can't use Agora until they do.",
     confirm: "Require",
+    allTools: "Every tool for new bots",
+    allToolsHelp: "Each new bot starts with browser, terminal and file writes, with nothing to turn on bot by bot. Existing bots keep their tools.",
+    allToolsTitle: "Give new bots every tool?",
+    allToolsText: "With the terminal and the browser, a bot acts on the server that hosts Agora. An instruction hidden in a page or a file it reads can push it to.",
+    allToolsConfirm: "Turn on",
   },
   fr: {
     require: "Exiger la validation en deux étapes",
@@ -24,6 +29,11 @@ const messages = defineMessages({
     confirmTitle: "Exiger la validation en deux étapes ?",
     confirmText: "Les comptes qui ne l'ont pas activée devront le faire, et ne pourront plus utiliser Agora d'ici là.",
     confirm: "Exiger",
+    allTools: "Tous les outils pour les nouveaux bots",
+    allToolsHelp: "Chaque nouveau bot naît avec le navigateur, le terminal et l'écriture de fichiers, sans rien activer bot par bot. Les bots existants gardent leurs outils.",
+    allToolsTitle: "Donner tous les outils aux nouveaux bots ?",
+    allToolsText: "Avec le terminal et le navigateur, un bot agit sur le serveur qui héberge Agora. Une instruction cachée dans une page ou un fichier qu'il lit peut l'y pousser.",
+    allToolsConfirm: "Activer",
   },
 });
 
@@ -58,6 +68,39 @@ export function RequireTwoFactor() {
         disabled={save.isPending || (!ownEnabled && !data.requireTwoFactor)}
         onCheckedChange={async (on) => {
           if (on && !(await confirmAction({ title: t.confirmTitle, description: t.confirmText, action: t.confirm, destructive: false }))) return;
+          save.mutate(on);
+        }}
+      />
+    </Field>
+  );
+}
+
+/** Settings › Security (admin): new bots are born with every tool instead of confined (sandbox.ts of the API). */
+export function NewBotsAllTools() {
+  const t = useT(messages);
+  const c = useT(common);
+  const id = useId();
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["admin", "org"], queryFn: () => api<{ newBotsAllTools: boolean }>("/admin/org") });
+  const save = useMutation({
+    mutationFn: (newBotsAllTools: boolean) => api("/admin/org", { method: "PUT", body: JSON.stringify({ newBotsAllTools }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "org"] }),
+    meta: { success: c.saved },
+  });
+  if (!data) return null;
+
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={id}>{t.allTools}</FieldLabel>
+        <FieldDescription>{t.allToolsHelp}</FieldDescription>
+      </FieldContent>
+      <Switch
+        id={id}
+        checked={save.isPending ? save.variables : data.newBotsAllTools}
+        disabled={save.isPending}
+        onCheckedChange={async (on) => {
+          if (on && !(await confirmAction({ title: t.allToolsTitle, description: t.allToolsText, action: t.allToolsConfirm, destructive: false }))) return;
           save.mutate(on);
         }}
       />

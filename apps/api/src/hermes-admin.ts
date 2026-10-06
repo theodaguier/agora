@@ -214,9 +214,12 @@ export async function createProfile(profile: string, description: string) {
     () => true,
     (err) => (console.error("code plugin", err), false),
   );
-  // Without terminal, code, file writes or local browser until an admin decides otherwise (sandbox.ts).
-  // The code toolset goes off in the same CLI calls: each one is a Hermes start.
-  await (await import("./sandbox")).confineNewProfile(profile, linked ? [code.CODE_TOOLSET] : []);
+  // Without terminal, code, file writes or local browser until an admin decides otherwise (sandbox.ts),
+  // unless the organization gives new bots every tool. The code toolset follows in the same CLI calls:
+  // each one is a Hermes start (Claude Code stays its owner's only: bot-runner's codeToolsUsable).
+  const sandbox = await import("./sandbox");
+  const open = (await (await import("./org")).getOrg()).newBotsAllTools;
+  await (open ? sandbox.openNewProfile : sandbox.confineNewProfile)(profile, linked ? [code.CODE_TOOLSET] : []);
   if (linked) await code.markCodePluginInstalled(profile).catch((err) => console.error("code plugin", err));
   // OAuth connectors authorized for the instance work for the new agent too.
   await shareMcpTokens(profile).catch((err) => console.error("mcp tokens", err));

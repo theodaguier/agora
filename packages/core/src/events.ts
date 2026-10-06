@@ -31,6 +31,10 @@ export type ConversationEvent =
   | { type: "skill.installed"; skill: string; bot: string }
   | { type: "skill.shared"; skill: string }
   | { type: "skill.failed"; skill: string; error: string }
+  /** Bots created at a bot's request (```bot-create``` block); `confined`: without the risky tools, like every new profile by default. */
+  | { type: "bots.created"; names: string[]; confined?: boolean }
+  | { type: "bots.refused"; names: string[] }
+  | { type: "bots.failed"; error: string }
   | { type: "mcp.exists"; name: string }
   | { type: "mcp.approved"; title: string }
   | { type: "mcp.refused"; title: string }
@@ -117,6 +121,17 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
       return fr ? `Skill ${e.skill} installé pour ${e.bot}.` : `Skill ${e.skill} installed for ${e.bot}.`;
     case "skill.failed":
       return fr ? `Skill ${e.skill} non installé : ${e.error}` : `Skill ${e.skill} not installed: ${e.error}`;
+    case "bots.created": {
+      const ready = fr ? `${list(e.names, "et")} ${e.names.length > 1 ? "sont prêts" : "est prêt"}.` : `${list(e.names, "and")} ${e.names.length > 1 ? "are" : "is"} ready.`;
+      if (e.confined === false) return ready;
+      return fr
+        ? `${ready} Navigateur et terminal restent coupés tant qu'un administrateur ne les active pas dans Administration › Agents.`
+        : `${ready} Browser and terminal stay off until an administrator turns them on in Administration › Agents.`;
+    }
+    case "bots.refused":
+      return fr ? `Création de ${list(e.names, "et")} refusée par un administrateur.` : `Creating ${list(e.names, "and")} was declined by an administrator.`;
+    case "bots.failed":
+      return fr ? `Bots non créés : ${e.error}` : `Bots not created: ${e.error}`;
     case "mcp.exists":
       return fr ? `Un connecteur « ${e.name} » existe déjà : demande ignorée.` : `A “${e.name}” connector already exists: request ignored.`;
     case "mcp.enabled": {
