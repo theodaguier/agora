@@ -12,6 +12,11 @@ allowBuilds:
 # the shipped app or the API. Drop each one once a fix ships.
 # - node-forge <=1.4.0 (latest is 1.4.0), through @expo/cli.
 # - braces <=3.0.3 (latest is 3.0.3, the advisory's 3.0.4 isn't published), through metro's micromatch.
+# Patched versions the dependencies' own ranges don't pick up yet.
+# - source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q), through postcss.
+overrides:
+  source-map-js: ">=1.2.2"
+
 auditConfig:
   ignoreGhsas:
     - GHSA-86w9-cpqp-85rv
