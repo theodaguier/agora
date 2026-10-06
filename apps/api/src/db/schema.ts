@@ -1,5 +1,6 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
 import type { AbsenceKind, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
+import type { ImplicitCall } from "../group";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 
@@ -333,7 +334,7 @@ export const pendingTurn = pgTable("pending_turn", {
   triggerId: text("trigger_id").notNull(),
   requestedBy: text("requested_by"),
   /** How the turn was called, and the exchange between bots it belongs to. */
-  options: jsonb("options").$type<{ implicit?: "reply" | "named" | "followUp"; answer?: boolean; retry?: boolean; chainId: string; relays: number }>().notNull(),
+  options: jsonb("options").$type<{ implicit?: ImplicitCall; answer?: boolean; retry?: boolean; chainId: string; relays: number }>().notNull(),
   startedAt: timestamp("started_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -94,10 +94,11 @@ export const FOLLOW_UP_MS = 10 * 60_000;
 
 /**
  * Why a bot is called without being mentioned: a reply to one of its
- * messages, its name written without "@", or a message right after its reply.
+ * messages, its name written without "@", a message right after its reply, or
+ * "@all" when the bots concerned couldn't be picked (all-route.ts).
  * It then decides whether the message calls for an answer.
  */
-export type ImplicitCall = "reply" | "named" | "followUp";
+export type ImplicitCall = "reply" | "named" | "followUp" | "all";
 
 export type GroupCall = { agentId: string; implicit?: ImplicitCall };
 
@@ -145,4 +146,59 @@ export function findHandoffs(reply: string, agents: { id: string; name: string }
     if (hit && !found.includes(hit.id)) found.push(hit.id);
   }
   return found;
+}
+
+/* ---------- "@all" ---------- */
+
+/** A bot as the "@all" router sees it: its name and what it does. */
+export type RoutedBot = { id: string; name: string; role: string };
+
+/** Longest description of a bot given to the router. */
+const ROLE_MAX = 800;
+
+/** What a SOUL.md says about the bot, without the answering style every bot shares (soulTemplate). */
+export function soulRole(soul: string) {
+  const own = soul.split(/^##\s+(?:Ta façon de répondre|How you answer)\s*$/m)[0] ?? "";
+  return excerpt(own, ROLE_MAX);
+}
+
+/** Asks which bots of the group a "@all" message concerns. */
+export function allRoutePrompt(opts: { text: string; history: string; bots: RoutedBot[] }) {
+  return [
+    "Un membre d'une conversation de groupe s'adresse à « @all ». Ton seul travail : choisir les bots du groupe qui doivent lui répondre. Tu ne réponds pas toi-même au message.",
+    "",
+    "# Bots du groupe",
+    ...opts.bots.map((b) => `- ${b.name} : ${b.role || "(rôle non décrit)"}`),
+    "",
+    ...(opts.history ? ["# Derniers échanges du groupe", opts.history, ""] : []),
+    "# Message",
+    opts.text,
+    "",
+    "# Règles",
+    "- Choisis seulement les bots dont le rôle sert vraiment la réponse ; le plus souvent un seul suffit.",
+    "- Plusieurs bots seulement quand la demande a des parties distinctes qui relèvent de rôles différents, ou qu'elle demande explicitement l'avis de chacun.",
+    "- Aucun bot quand le message n'attend rien d'eux (remerciement, simple information).",
+    "- Classe-les du plus concerné au moins concerné.",
+    "",
+    'Réponds uniquement avec ce JSON, sans autre texte : {"bots": ["Nom exact", …]}',
+  ].join("\n");
+}
+
+/** Ids of the bots the router picked, in its order; null when its reply can't be read. */
+export function parseAllRoute(reply: string, bots: { id: string; name: string }[]): string[] | null {
+  const block = [...reply.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].at(-1)?.[1] ?? reply.slice(reply.indexOf("{"), reply.lastIndexOf("}") + 1);
+  let names: unknown;
+  try {
+    names = (JSON.parse(block) as { bots?: unknown }).bots;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(names)) return null;
+  const norm = (s: string) => s.trim().replace(/^@/, "").toLowerCase();
+  const picked: string[] = [];
+  for (const n of names) {
+    const hit = typeof n === "string" ? bots.find((b) => norm(b.name) === norm(n)) : undefined;
+    if (hit && !picked.includes(hit.id)) picked.push(hit.id);
+  }
+  return picked;
 }

@@ -16,6 +16,8 @@ export type ConversationEvent =
   /** The API restarted while the bot was replying: the reply is lost. */
   | { type: "bot.interrupted"; bot: string }
   | { type: "relay.limit" }
+  /** "@all": no bot of the group was found concerned by the message. */
+  | { type: "all.none" }
   /** Posted in a direct conversation: the bot brought other bots into a group opened from it. */
   | { type: "relay.group"; bot: string; bots: string[]; conversationId: string }
   | { type: "session.reset"; actor: string }
@@ -89,6 +91,8 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
       return fr ? `${e.name} est prêt` : `${e.name} is ready`;
     case "relay.limit":
       return fr ? "Limite de relais entre bots atteinte." : "Bot-to-bot relay limit reached.";
+    case "all.none":
+      return fr ? "Aucun bot du groupe n'est concerné par ce message." : "No bot in the group is concerned by this message.";
     case "relay.group":
       return fr ? `${e.bot} a ouvert un groupe avec ${list(e.bots, "et")}` : `${e.bot} opened a group with ${list(e.bots, "and")}`;
     case "code.started":

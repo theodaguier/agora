@@ -1,4 +1,4 @@
-import { rankByQuery } from "@agora/core";
+import { ALL_HANDLE, rankByQuery } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Button, Chip, Input, Surface, Typography, type InputRef } from "heroui-native";
@@ -41,6 +41,7 @@ const messages = defineMessages({
     tooLarge: "File too large (25 MB max)",
     uploadFailed: "Upload failed",
     mentionHint: "Ask it to reply",
+    allHint: "The relevant bots reply",
     attachFiles: "Attach files",
     attachHint: "Images, PDFs, spreadsheets…",
     chooseModel: "Choose model",
@@ -64,6 +65,7 @@ const messages = defineMessages({
     tooLarge: "Fichier trop lourd (25 Mo max)",
     uploadFailed: "Envoi impossible",
     mentionHint: "Le faire répondre",
+    allHint: "Les bots concernés répondent",
     attachFiles: "Joindre des fichiers",
     attachHint: "Images, PDF, tableurs…",
     chooseModel: "Choisir le modèle",
@@ -196,6 +198,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
     if (!token) return [];
     if (token.trigger === "@") {
       const q = token.query.toLowerCase();
+      const all: SlashItem[] = mentionables.length > 1 && ALL_HANDLE.startsWith(q) ? [{ key: "all", kind: "agent", name: ALL_HANDLE, description: t.allHint }] : [];
       const bots = mentionables
         .filter((a) => a.name.toLowerCase().startsWith(q) || (!q.includes(" ") && a.name.toLowerCase().includes(q)))
         .map((a) => ({
@@ -215,7 +218,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           description: p.name,
           media: <PersonAvatar person={p} className="size-6" />,
         }));
-      return [...bots, ...colleagues];
+      return [...all, ...bots, ...colleagues];
     }
     const fail = (err: unknown) => console.error("session command", err);
     const reset = async () => {

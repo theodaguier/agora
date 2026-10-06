@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { defineMessages, useT } from "@/i18n";
 import { invocationKey, retryLast, sessionCommand, uploadAttachment, type AgentSummary, type Attachment, type Invocation, type ReplyTo } from "@/lib/api";
-import { MentionText, splitMentions } from "@/lib/mentions";
+import { ALL_HANDLE } from "@agora/core";
+import { allMentionable, MentionText, splitMentions } from "@/lib/mentions";
 import { personMentionables, usePeople } from "@/lib/people";
 import { AwayNotice } from "@/components/AwayNotice";
 import { useDraft } from "@/lib/drafts";
@@ -31,6 +32,7 @@ const messages = defineMessages({
     tooLarge: "File too large (25 MB max)",
     uploadFailed: "Upload failed",
     mentionHint: "Ask it to reply",
+    allHint: "The relevant bots reply",
     attachFiles: "Attach files",
     attachHint: "Images, PDFs, spreadsheets…",
     chooseModel: "Choose model",
@@ -52,6 +54,7 @@ const messages = defineMessages({
     tooLarge: "Fichier trop lourd (25 Mo max)",
     uploadFailed: "Envoi impossible",
     mentionHint: "Le faire répondre",
+    allHint: "Les bots concernés répondent",
     attachFiles: "Joindre des fichiers",
     attachHint: "Images, PDF, tableurs…",
     chooseModel: "Choisir le modèle",
@@ -136,15 +139,16 @@ function useAutosize(area: RefObject<HTMLTextAreaElement | null>, text: string) 
   }, [area, text]);
 }
 
-/** "@" suggestions: the bots that can be called here, then colleagues, best handle matches first. */
-function mentionItems(q: string, mentionables: AgentSummary[], people: ReturnType<typeof usePeople>, hint: string): SlashItem[] {
+/** "@" suggestions: "@all" and the bots that can be called here, then colleagues, best handle matches first. */
+function mentionItems(q: string, mentionables: AgentSummary[], people: ReturnType<typeof usePeople>, t: { mentionHint: string; allHint: string }): SlashItem[] {
+  const all: SlashItem[] = mentionables.length > 1 && ALL_HANDLE.startsWith(q) ? [{ key: "all", kind: "agent", name: ALL_HANDLE, description: t.allHint }] : [];
   const bots = mentionables
     .filter((a) => a.name.toLowerCase().startsWith(q) || (!q.includes(" ") && a.name.toLowerCase().includes(q)))
     .map((a) => ({
       key: `agent:${a.id}`,
       kind: "agent" as const,
       name: a.name,
-      description: hint,
+      description: t.mentionHint,
       media: <AgentAvatar agent={a} className="size-[18px]" />,
     }));
   const colleagues = people
@@ -157,7 +161,7 @@ function mentionItems(q: string, mentionables: AgentSummary[], people: ReturnTyp
       description: p.name,
       media: <PersonAvatar person={p} className="size-[18px]" />,
     }));
-  return [...bots, ...colleagues];
+  return [...all, ...bots, ...colleagues];
 }
 
 /** Files attached to the message being written, uploaded as soon as they're added (the Claude Code panel's field too). */
@@ -228,7 +232,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
 
   // Colleagues can be mentioned everywhere; bots only where they can be called (group).
   const people = usePeople();
-  const colored = useMemo(() => [...mentionables, ...personMentionables(people)], [mentionables, people]);
+  const colored = useMemo(() => [...mentionables, ...personMentionables(people), ...(mentionables.length > 1 ? [allMentionable] : [])], [mentionables, people]);
   const segments = useMemo(() => splitMentions(text, colored), [text, colored]);
   // The field's text becomes transparent and a colored copy is rendered underneath.
   const highlighted = segments.some((x) => typeof x !== "string");
@@ -245,7 +249,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
 
   const items = useMemo<SlashItem[]>(() => {
     if (!token) return [];
-    if (token.trigger === "@") return mentionItems(token.query.toLowerCase(), mentionables, people, t.mentionHint);
+    if (token.trigger === "@") return mentionItems(token.query.toLowerCase(), mentionables, people, t);
     const fail = (err: unknown) => void toastError(err);
     const reset = async () => {
       if (await confirmAction({ title: t.newTitle, description: t.newBody, action: t.newAction })) sessionCommand(conversationId, "new").catch(fail);

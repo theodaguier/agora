@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { MAX_FILE, storeAttachment as storeFile } from "../attachments";
+import { callAll } from "../all-route";
 import { abandonTurns, activeTurns, answerTurnApproval, cancelTurn, compactSession, enqueueTurn, resetSession } from "../bot-runner";
 import { hermesSessionId } from "../company";
 import {
@@ -33,7 +34,7 @@ import { defineMessages, tr } from "../i18n";
 import { allowedInvocations, type AttachmentRow, type Invocation } from "../prompt";
 import { sessionContext } from "../session-context";
 import { parseDraft } from "../views";
-import { SCREEN_VIEWPORTS, type ViewAction, type ViewBlock } from "@agora/core";
+import { ALL_HANDLE, mentionsAll, SCREEN_VIEWPORTS, type ViewAction, type ViewBlock } from "@agora/core";
 
 const messages = defineMessages({
   en: {
@@ -99,6 +100,8 @@ type Outgoing = {
   replyTo?: ReplyTo;
   forwarded?: Forwarded;
   viewAction?: ViewAction;
+  /** Group message to "@all": the bots it concerns answer. */
+  all?: boolean;
 };
 
 /** Saves an employee's message, marks the conversation read, and queues replies from the relevant bots. */
@@ -130,14 +133,14 @@ async function sendUserMessage(conv: LoadedConversation, me: { id: string; name:
     .update(conversationMember)
     .set({ lastReadAt: new Date() })
     .where(and(eq(conversationMember.conversationId, id), eq(conversationMember.userId, me.id)));
-  // In a group: the mentioned bots, and those the message is likely addressed to.
+  // In a group: the mentioned bots, and those the message is likely addressed to ("@all": picked below).
   const calls = conv.directBot
     ? [{ agentId: conv.directBot.agent.id }]
     : conv.conversation.kind === "group"
       ? groupCalls({
           text: out.forwarded ? "" : out.text,
           mentions: out.mentions ?? [],
-          repliedTo: out.replyTo?.authorAgentId,
+          repliedTo: out.all ? undefined : out.replyTo?.authorAgentId,
           agents: conv.agents.map((a) => ({ id: a.agent.id, name: a.agent.name })),
           lastBot: last?.kind === "bot" && last.agentId ? { agentId: last.agentId, at: last.at } : null,
           now: new Date(),
@@ -145,6 +148,10 @@ async function sendUserMessage(conv: LoadedConversation, me: { id: string; name:
       : [];
   const chain = newChain();
   for (const call of calls) enqueueTurn({ conversationId: id, ...call, triggerId: msg.id, requestedBy: me.id, chain });
+  if (out.all) {
+    const bots = conv.agents.filter((a) => !calls.some((c) => c.agentId === a.agent.id)).map(({ agent: a }) => ({ id: a.id, name: a.name, hermesProfile: a.hermesProfile }));
+    void callAll({ conversationId: id, triggerId: msg.id, requestedBy: me.id, chain, bots }).catch((err) => console.error("conversations: @all", err));
+  }
   return msg;
 }
 
@@ -389,7 +396,9 @@ export const conversations = new Hono<AppEnv>()
       if (source.author?.kind === "agent" && conv.conversation.kind === "group" && !mentions.includes(source.author.id)) mentions.push(source.author.id);
     }
 
-    const msg = await sendUserMessage(conv, me, { text: body.data.text, files, invocations, mentions, replyTo, viewAction });
+    // "@all", unless a bot of the group is called that.
+    const all = conv.conversation.kind === "group" && mentionsAll(body.data.text) && !conv.agents.some((a) => a.agent.name.trim().toLowerCase() === ALL_HANDLE);
+    const msg = await sendUserMessage(conv, me, { text: body.data.text, files, invocations, mentions, replyTo, viewAction, all });
     return c.json(msg, 201);
   })
 

@@ -1,3 +1,4 @@
+import { ALL_HANDLE } from "@agora/core";
 import type { AgentSummary, Person } from "./types";
 import { matchAll } from "./utils";
 
@@ -8,6 +9,9 @@ export type MentionTarget = { kind: "agent"; agent: AgentSummary } | { kind: "pe
 
 /** Mentionable bot (its name, avatar color) or colleague (their handle, brand color). */
 export type Mentionable = { name: string; avatar: { color: string }; target?: MentionTarget };
+
+/** "@all" in a group with several bots: the bots the message concerns answer. Brand color, no card. */
+export const allMentionable: Mentionable = { name: ALL_HANDLE, avatar: { color: "brand" } };
 
 export type MentionSegment = string | { name: string; color: string; text: string; target?: MentionTarget };
 

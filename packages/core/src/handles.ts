@@ -32,3 +32,9 @@ export function withHandles<T extends { id: string; name: string; username?: str
   }
   return people.map((p) => ({ ...p, handle: handles.get(p.id)! }));
 }
+
+/** "@all" in a group: the bots the message concerns answer, picked by the API (not every bot at once). */
+export const ALL_HANDLE = "all";
+
+/** Whether a message calls "@all" (not inside an email, not the start of a longer handle). */
+export const mentionsAll = (text: string) => /(?<![\p{L}\p{N}_.])@all(?![\p{L}\p{N}_.])/iu.test(text);

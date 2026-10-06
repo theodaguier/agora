@@ -10,8 +10,12 @@ allowBuilds:
 
 # Advisories with a published fix, reached only through dependencies that don't take it yet.
 # - source-map-js <1.2.2 (GHSA-68fv-2mgg-jv7q), through postcss. Drop once postcss requires it.
+# - shell-quote <1.11.0 (GHSA-pqg4-j6r4-53mv), through react-native's react-devtools-core. Drop once it requires it.
+# - @modelcontextprotocol/sdk <1.31.0 (GHSA-6qxp-vccf-f47h), through shadcn. Drop once shadcn requires it.
 overrides:
   source-map-js@<1.2.2: ^1.2.2
+  shell-quote@<1.11.0: ^1.11.0
+  "@modelcontextprotocol/sdk@<1.31.0": ^1.31.0
 
 # Advisories with no published fix, that only come in through the mobile build tooling, never
 # the shipped app or the API. Drop each one once a fix ships.

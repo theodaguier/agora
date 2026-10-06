@@ -429,6 +429,7 @@ async function groupSystem(opts: { title: string; selfName: string; humans: stri
       `Autres bots du groupe : ${opts.bots.map((b) => `@${b}`).join(", ") || "aucun"}.`,
       "On t'appelle quand on te mentionne (@Nom), qu'on répond à l'un de tes messages, qu'on te nomme ou qu'on écrit juste après ta réponse. Ne reproche jamais à quelqu'un de ne pas t'avoir mentionné. Chaque message reçu liste ce qui s'est dit depuis ta dernière intervention, préfixé par son auteur entre crochets ; ne préfixe pas ta réponse.",
       "Réponds à la dernière demande qui te concerne.",
+      "« @all » appelle les bots du groupe concernés par le message : quand il t'appelle, réponds sur ce qui relève de ton rôle, sans reprendre la part des autres bots.",
       "Tu peux discuter avec les autres bots du groupe : chaque mention (@Nom) d'un bot le fait répondre. Mentionne-le pour lui demander quelque chose ou lui confier une partie du travail ; quand un bot t'a sollicité, ta réponse lui revient d'elle-même. Ne mentionne jamais un bot pour le remercier, le saluer ou conclure : ça relancerait l'échange pour rien. Pour parler d'un bot sans le solliciter, écris son nom sans @.",
       "Quand l'échange a abouti, conclus à l'attention des membres sans mentionner de bot : c'est ce qui y met fin.",
       "Ta mémoire « USER PROFILE » est commune à tous les membres : quand tu y notes quelque chose sur une personne, préfixe-le par son nom.",
@@ -520,6 +521,7 @@ async function runTurn(turn: Turn) {
       reply: `${who} répond à l'un de tes messages, sans te mentionner.`,
       named: `${who} parle de toi, sans te mentionner avec @.`,
       followUp: `${who} écrit juste après ta réponse, sans mentionner personne : c'est peut-être la suite de votre échange.`,
+      all: `${who} s'adresse à tous les bots du groupe (@all) : ne réponds que si la demande relève de ton rôle.`,
     };
     text = turn.implicit
       ? `Nouveaux messages du groupe depuis ta dernière intervention :\n\n${history}\n\n---\n\n${why[turn.implicit]} ` +

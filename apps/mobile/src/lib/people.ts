@@ -2,7 +2,7 @@ import { withHandles } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useMe } from "@/components/server-scope";
-import type { Mentionable } from "./mentions";
+import { allMentionable, type Mentionable } from "./mentions";
 import { agentsQuery, userProfileQuery, usersQuery } from "./queries";
 import type { AgentSummary } from "./types";
 
@@ -22,12 +22,16 @@ export type MentionablePerson = ReturnType<typeof usePeople>[number];
 export const personMentionables = (people: MentionablePerson[]): Mentionable[] =>
   people.map((p) => ({ name: p.handle, avatar: { color: "brand" }, target: { kind: "person", person: p } }));
 
-/** Bots of the conversation, every other visible bot and every colleague, to color all mentions in a text. */
+/** Bots of the conversation, every other visible bot and every colleague (and "@all" in a group), to color all mentions in a text. */
 export function useMentionables(bots: AgentSummary[]) {
   const people = usePeople();
   const { data: all = [] } = useQuery(agentsQuery);
   return useMemo(() => {
     const agents = [...bots, ...all.filter((a) => !bots.some((b) => b.id === a.id))];
-    return [...agents.map((agent): Mentionable => ({ ...agent, target: { kind: "agent", agent } })), ...personMentionables(people)];
+    return [
+      ...agents.map((agent): Mentionable => ({ ...agent, target: { kind: "agent", agent } })),
+      ...personMentionables(people),
+      ...(bots.length > 1 ? [allMentionable] : []),
+    ];
   }, [bots, all, people]);
 }
