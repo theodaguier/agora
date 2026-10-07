@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.43.0 — 2026-10-07
+
+### Features
+- **ui**: align web and mobile with the Figma design system
+
 ## v0.42.0 — 2026-10-06
 
 ### Features
