@@ -1,8 +1,8 @@
 import { isPastDue, statusTone } from "@agora/core";
 import type { ChatItem, CodeItem, ContactItem, EventItem, FileItem, FinanceItem, GenericItem, MailItem, MailMessageView, TableView, TaskItem } from "@agora/core";
-import { integrations } from "@agora/core/i18n";
+import { conversations, integrations } from "@agora/core/i18n";
 import { LinearGradient } from "expo-linear-gradient";
-import { Avatar, Button, Chip, LinkButton, ListGroup, ScrollShadow, Separator, Surface, Typography } from "heroui-native";
+import { Avatar, LinkButton, ListGroup, ScrollShadow, Separator, Surface, Typography } from "heroui-native";
 import { Fragment, useState, type ReactNode } from "react";
 import { Linking, ScrollView, View } from "react-native";
 import { FILE_ICONS } from "@/components/text-style";
@@ -11,7 +11,7 @@ import { formatSize } from "@/lib/format";
 import { withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { toneChip } from "./tone";
+import { StatusLine } from "./block";
 import { dayKey, dayLabel, displayName, initials, money, shortDate, time } from "./format";
 
 /* apps/web/src/components/views/lists.tsx */
@@ -27,12 +27,12 @@ function Empty() {
 }
 
 /** Rows of a list, separated by hairlines like an iOS table. */
-function Group<T>({ items, children }: { items: T[]; children: (item: T, i: number) => ReactNode }) {
+function Group<T>({ items, inset, children }: { items: T[]; inset?: string; children: (item: T, i: number) => ReactNode }) {
   return (
     <ListGroup variant="transparent">
       {items.map((item, i) => (
         <Fragment key={i}>
-          {i > 0 && <Separator />}
+          {i > 0 && <Separator className={inset} />}
           {children(item, i)}
         </Fragment>
       ))}
@@ -41,18 +41,28 @@ function Group<T>({ items, children }: { items: T[]; children: (item: T, i: numb
 }
 
 /** The first rows, then the rest on demand. */
-function Rows<T>({ items, children }: { items: T[]; children: (item: T, i: number) => ReactNode }) {
+function Rows<T>({ items, inset, children }: { items: T[]; inset?: string; children: (item: T, i: number) => ReactNode }) {
   const t = tr(integrations);
   const [all, setAll] = useState(false);
   if (!items.length) return <Empty />;
   const shown = all ? items : items.slice(0, SHOWN);
   return (
     <>
-      <Group items={shown}>{children}</Group>
+      <Group items={shown} inset={inset}>
+        {children}
+      </Group>
       {items.length > shown.length && (
-        <Button variant="ghost" size="sm" className="mt-1" onPress={withTap(() => setAll(true))}>
-          {t.more(items.length - shown.length)}
-        </Button>
+        <>
+          <Separator className="-mx-[18px] mt-1" />
+          <ListGroup variant="transparent">
+            <ListGroup.Item onPress={withTap(() => setAll(true))} accessibilityRole="button" className="px-0 pb-0 pt-3">
+              <ListGroup.ItemContent>
+                <ListGroup.ItemDescription>{t.more(items.length - shown.length)}</ListGroup.ItemDescription>
+              </ListGroup.ItemContent>
+              <ListGroup.ItemSuffix />
+            </ListGroup.Item>
+          </ListGroup>
+        </>
       )}
     </>
   );
@@ -69,25 +79,21 @@ function Row({ url, onOpen, className, children }: { url?: string; onOpen?: () =
 }
 
 const Meta = ({ children }: { children: ReactNode }) => (
-  <Typography.Paragraph type="body-xs" color="muted" className="shrink-0 pt-0.5 tabular-nums">
+  <Typography.Paragraph type="body-xs" className="shrink-0 pt-0.5 text-subtle tabular-nums">
     {children}
   </Typography.Paragraph>
 );
 
 const Status = ({ children }: { children?: string }) => {
   if (!children) return null;
-  return (
-    <Chip size="sm" variant="soft" color={toneChip[statusTone(children)]}>
-      <Chip.Label>{children}</Chip.Label>
-    </Chip>
-  );
+  return <StatusLine tone={statusTone(children)} label={children} />;
 };
 
 /** Initials of a person, on a neutral fill. */
 function Initials({ name, size = "sm" }: { name: string; size?: "sm" | "md" }) {
   return (
-    <Avatar alt={name} size={size} variant="soft" color="default">
-      <Avatar.Fallback>{initials(name)}</Avatar.Fallback>
+    <Avatar alt={name} size={size} variant="soft" color="default" className={size === "sm" ? "size-8" : undefined}>
+      <Avatar.Fallback classNames={size === "sm" ? { text: "text-xs" } : undefined}>{initials(name)}</Avatar.Fallback>
     </Avatar>
   );
 }
@@ -95,19 +101,28 @@ function Initials({ name, size = "sm" }: { name: string; size?: "sm" | "md" }) {
 export function MailList({ items, onAsk }: { items: MailItem[]; onAsk?: (item: MailItem) => void }) {
   const t = tr(integrations);
   return (
-    <Rows items={items}>
+    <Rows items={items} inset="ml-11">
       {(m, i) => (
         <Row key={m.id ?? i} url={m.url} onOpen={onAsk && (() => onAsk(m))}>
+          <Initials name={displayName(m.from)} />
           <ListGroup.ItemContent className="min-w-0 gap-0.5">
-            <ListGroup.ItemTitle numberOfLines={1}>
-              {displayName(m.from)}
-            </ListGroup.ItemTitle>
-            <Typography.Paragraph type="body-sm" weight={m.unread ? "medium" : "normal"} numberOfLines={1}>
+            <View className="flex-row items-center gap-2">
+              <ListGroup.ItemTitle numberOfLines={1} className={cn("min-w-0 shrink", m.unread && "font-semibold")}>
+                {displayName(m.from)}
+              </ListGroup.ItemTitle>
+              <View className="flex-1" />
+              {!!m.unread && <View accessibilityLabel={tr(conversations).unread} className="size-[7px] rounded-full bg-brand" />}
+              {!!m.date && <Meta>{shortDate(m.date)}</Meta>}
+            </View>
+            <Typography.Paragraph type="body-sm" numberOfLines={1}>
               {m.subject || t.noSubject}
             </Typography.Paragraph>
-            {!!m.snippet && <ListGroup.ItemDescription numberOfLines={1}>{m.snippet}</ListGroup.ItemDescription>}
+            {!!m.snippet && (
+              <ListGroup.ItemDescription numberOfLines={1} className="text-footnote">
+                {m.snippet}
+              </ListGroup.ItemDescription>
+            )}
           </ListGroup.ItemContent>
-          {!!m.date && <Meta>{shortDate(m.date)}</Meta>}
         </Row>
       )}
     </Rows>
@@ -153,7 +168,10 @@ export function MailMessage({ view }: { view: MailMessageView }) {
 export function EventList({ items }: { items: EventItem[] }) {
   const t = tr(integrations);
   const days = [...new Set(items.map((e) => dayKey(e.start)))];
+  // The event under way, or else the next one: its bar in the brand color.
+  const [now] = useState(() => Date.now());
   if (!items.length) return <Empty />;
+  const current = items.find((e) => new Date(e.end ?? e.start).getTime() > now);
   return (
     <View className="gap-3">
       {days.map((day) => {
@@ -167,25 +185,25 @@ export function EventList({ items }: { items: EventItem[] }) {
             <Group items={events}>
               {(e, i) => (
                 <Row key={e.id ?? i} url={e.url} className="items-stretch">
-                  <View className="w-14 pt-0.5">
+                  <View className="w-12 pt-0.5">
                     {e.allDay || !time(e.start) ? (
                       <Typography.Paragraph type="body-xs" color="muted">
                         {t.allDay}
                       </Typography.Paragraph>
                     ) : (
                       <>
-                        <Typography.Paragraph type="body-sm" className="tabular-nums">
+                        <Typography.Paragraph type="body-sm" weight="medium" className="tabular-nums">
                           {time(e.start)}
                         </Typography.Paragraph>
                         {!!time(e.end) && (
-                          <Typography.Paragraph type="body-xs" color="muted" className="tabular-nums">
+                          <Typography.Paragraph type="body-xs" className="text-subtle tabular-nums">
                             {time(e.end)}
                           </Typography.Paragraph>
                         )}
                       </>
                     )}
                   </View>
-                  <Separator orientation="vertical" thickness={2} />
+                  <Separator orientation="vertical" thickness={3} className={cn("rounded-full", e === current ? "bg-brand" : "bg-border")} />
                   <ListGroup.ItemContent className="min-w-0 gap-0.5">
                     <ListGroup.ItemTitle>{e.title}</ListGroup.ItemTitle>
                     {!!(e.location || e.attendees?.length) && (

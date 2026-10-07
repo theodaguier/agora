@@ -1,9 +1,10 @@
 import { common } from "@agora/core/i18n";
 import { useMutation } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Accordion, Avatar, Button, Card, Chip, LinkButton, Popover, Typography, useThemeColor, useToast } from "heroui-native";
+import { Button, Card, Chip, LinkButton, Popover, Typography, useToast } from "heroui-native";
 import { View } from "react-native";
 import { ShieldAlertIcon } from "@/components/icons";
+import { BlockHeader, blockCard, CodeBlock } from "@/components/views/block";
 import { api, conversationPath } from "@/lib/api";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
@@ -77,76 +78,62 @@ export function ApprovalCard(props: { conversationId: string; turnId: string; bo
     },
   });
   const allow = approval.choices.filter((c) => c !== "deny");
-  const warning = useThemeColor("warning-soft-foreground");
+  // Primary "Autoriser", secondary "Autoriser pour la conversation", then the ghost row: "Toujours autoriser" and "Refuser".
+  const [first, second, ...rest] = allow;
+  const ghosts = [...rest, ...(approval.choices.includes("deny") ? (["deny"] as const) : [])];
+  const choice = (c: Choice, variant: "primary" | "secondary" | "ghost", className?: string) => (
+    <Button key={c} variant={variant} className={className} isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(c))}>
+      <Button.Label className={c === "deny" ? "text-danger" : undefined}>{answer.isPending && answer.variables === c ? co.inProgress : labels[c]}</Button.Label>
+    </Button>
+  );
 
   return (
-    <Card role="alert" accessibilityLabel={t.requestedBy(botName)} className="w-full max-w-[92%] gap-4">
-      <Card.Header className="flex-row items-start gap-3">
-        <Avatar alt="" size="md" variant="soft" color="warning">
-          <Avatar.Fallback>
-            <ShieldAlertIcon size={20} color={warning} />
-          </Avatar.Fallback>
-        </Avatar>
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Card.Title>{t.asks(botName)}</Card.Title>
-          {!!approval.description && <Card.Description>{approval.description}</Card.Description>}
-        </View>
-      </Card.Header>
+    <Card role="alert" accessibilityLabel={t.requestedBy(botName)} className={blockCard}>
+      <BlockHeader
+        icon={<ShieldAlertIcon size={18} className="text-warning" />}
+        title={t.asks(botName)}
+        description={approval.description}
+      />
 
-      <Card.Body className="gap-2">
-        {!!approval.command && (
-          <Accordion variant="surface" defaultValue="command">
-            <Accordion.Item value="command">
-              <Accordion.Trigger>
-                <Typography className="flex-1">{t.command}</Typography>
-                <Accordion.Indicator />
-              </Accordion.Trigger>
-              <Accordion.Content>
-                <Typography type="code" selectable>
-                  {approval.command}
-                </Typography>
-              </Accordion.Content>
-            </Accordion.Item>
-          </Accordion>
-        )}
-        {canAnswer && (
-          <Popover>
-            <Popover.Trigger asChild>
-              <LinkButton size="sm" className="self-start">
-                {t.helpLink}
-              </LinkButton>
-            </Popover.Trigger>
-            <Popover.Portal>
-              <Popover.Overlay />
-              <Popover.Content presentation="popover" width={320} placement="top" insets={insets} className="gap-3">
-                <Popover.Close className="absolute right-2 top-2 z-50" />
-                <Popover.Title>{t.helpTitle}</Popover.Title>
-                {approval.choices.map((c) => (
-                  <View key={c} className="gap-0.5">
-                    <Typography type="body-sm" weight="medium">
-                      {labels[c]}
-                    </Typography>
-                    <Popover.Description>{t.help[c]}</Popover.Description>
-                  </View>
-                ))}
-              </Popover.Content>
-            </Popover.Portal>
-          </Popover>
-        )}
-      </Card.Body>
+      {(!!approval.command || canAnswer) && (
+        <Card.Body className="gap-1">
+          {!!approval.command && <CodeBlock>{approval.command}</CodeBlock>}
+          {canAnswer && (
+            <Popover>
+              <Popover.Trigger asChild>
+                <LinkButton size="sm" className="self-start">
+                  {t.helpLink}
+                </LinkButton>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Overlay />
+                <Popover.Content presentation="popover" width={320} placement="top" insets={insets} className="gap-3">
+                  <Popover.Close className="absolute right-2 top-2 z-50" />
+                  <Popover.Title>{t.helpTitle}</Popover.Title>
+                  {approval.choices.map((c) => (
+                    <View key={c} className="gap-0.5">
+                      <Typography type="body-sm" weight="medium">
+                        {labels[c]}
+                      </Typography>
+                      <Popover.Description>{t.help[c]}</Popover.Description>
+                    </View>
+                  ))}
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover>
+          )}
+        </Card.Body>
+      )}
 
       <Card.Footer className="gap-2">
         {canAnswer ? (
           <>
-            {allow.map((c, i) => (
-              <Button key={c} variant={i === 0 ? "primary" : "secondary"} isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(c))}>
-                {answer.isPending && answer.variables === c ? co.inProgress : labels[c]}
-              </Button>
-            ))}
-            {approval.choices.includes("deny") && (
-              <Button variant="danger-soft" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate("deny"))}>
-                {labels.deny}
-              </Button>
+            {first && choice(first, "primary")}
+            {second && choice(second, "secondary")}
+            {ghosts.length > 0 && (
+              <View className="flex-row justify-between gap-2">
+                {ghosts.map((c) => choice(c, "ghost", ghosts.length === 1 && c === "deny" ? "flex-1" : undefined))}
+              </View>
             )}
           </>
         ) : (

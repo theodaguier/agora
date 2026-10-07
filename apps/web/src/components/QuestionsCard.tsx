@@ -1,10 +1,11 @@
 import { RequiredMark } from "@/components/FormLabel";
 import { CloseIcon } from "@/components/icons";
 import { type ReactNode, useState } from "react";
-import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlockCard, BlockFooter } from "@/components/views/block";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +21,7 @@ const messages = defineMessages({
     otherLabel: (label: string) => `${label}: other answer`,
     required: "Answer required.",
     submit: "Send answers",
+    placeholder: "Your answer",
   },
   fr: {
     title: "Quelques questions",
@@ -28,6 +30,7 @@ const messages = defineMessages({
     otherLabel: (label: string) => `${label} : autre réponse`,
     required: "Réponse attendue.",
     submit: "Envoyer les réponses",
+    placeholder: "Ta réponse",
   },
 });
 
@@ -64,43 +67,57 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
         submit();
       }}
     >
-      <Card>
+      <BlockCard className="max-w-full">
         <CardHeader>
-          <CardTitle>{questions.title ?? t.title}</CardTitle>
+          <CardTitle className="font-semibold">{questions.title ?? t.title}</CardTitle>
           <CardAction>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss} className="-mr-2 -mt-1">
               <CloseIcon />
             </Button>
           </CardAction>
         </CardHeader>
 
         <CardContent>
-          <FieldGroup>
+          <FieldGroup className="gap-5">
             {contentKeys(questions.questions, (q) => q.label).map(([key, q], i) => {
               const a = answers[i]!;
               const picked = new Set(a.picked);
               const id = `q${i}`;
               const invalid = tried && missing[i];
+              const other = (
+                <Input
+                  value={a.other}
+                  onChange={(e) => set(i, (x) => ({ ...x, other: e.target.value }))}
+                  placeholder={t.other}
+                  aria-label={t.otherLabel(q.label)}
+                  className="rounded-none border-0 bg-transparent px-3.5 focus-visible:ring-0"
+                />
+              );
               return (
-                <FieldSet key={key} data-invalid={invalid || undefined}>
-                  <FieldLegend variant="label">
+                <FieldSet key={key} data-invalid={invalid || undefined} className="gap-2.5">
+                  <FieldLegend variant="label" className="mb-2.5">
                     {q.label}
-                    {q.required && <RequiredMark className="ml-1" />}
+                    {q.required && <RequiredMark className="ml-1 text-muted-foreground" />}
                   </FieldLegend>
-                  {q.hint && <FieldDescription>{q.hint}</FieldDescription>}
+                  {q.hint && <FieldDescription className="text-[13px]">{q.hint}</FieldDescription>}
 
                   {q.type === "single" && (
-                    <RadioGroup value={a.picked[0] ?? ""} onValueChange={(v) => set(i, (x) => ({ ...x, picked: v ? [String(v)] : [] }))}>
+                    <RadioGroup
+                      value={a.picked[0] ?? ""}
+                      onValueChange={(v) => set(i, (x) => ({ ...x, picked: v ? [String(v)] : [] }))}
+                      className={group}
+                    >
                       {q.options.map((o, k) => (
                         <Option key={o.label} id={`${id}-${k}`} label={o.label} description={o.description}>
                           <RadioGroupItem value={o.label} id={`${id}-${k}`} />
                         </Option>
                       ))}
+                      {other}
                     </RadioGroup>
                   )}
 
                   {q.type === "multi" && (
-                    <FieldGroup className="gap-3">
+                    <div className={group}>
                       {q.options.map((o, k) => (
                         <Option key={o.label} id={`${id}-${k}`} label={o.label} description={o.description}>
                           <Checkbox
@@ -112,23 +129,19 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
                           />
                         </Option>
                       ))}
-                    </FieldGroup>
+                      {other}
+                    </div>
                   )}
 
-                  {q.type === "text" ? (
+                  {q.type === "text" && (
                     <Textarea
                       value={a.other}
                       onChange={(e) => set(i, (x) => ({ ...x, other: e.target.value }))}
                       aria-label={q.label}
                       aria-invalid={invalid || undefined}
+                      placeholder={t.placeholder}
                       rows={2}
-                    />
-                  ) : (
-                    <Input
-                      value={a.other}
-                      onChange={(e) => set(i, (x) => ({ ...x, other: e.target.value }))}
-                      placeholder={t.other}
-                      aria-label={t.otherLabel(q.label)}
+                      className="rounded-[10px] border-border bg-transparent px-3.5 py-2.5"
                     />
                   )}
                   {invalid && <FieldError>{t.required}</FieldError>}
@@ -138,25 +151,33 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
           </FieldGroup>
         </CardContent>
 
-        <CardFooter className="justify-end">
-          <Button type="submit">{t.submit}</Button>
-        </CardFooter>
-      </Card>
+        <BlockFooter>
+          <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>
+            {t.dismiss}
+          </Button>
+          <Button type="submit" size="sm">
+            {t.submit}
+          </Button>
+        </BlockFooter>
+      </BlockCard>
     </form>
   );
 }
 
-/** One answer as a shadcn choice card: the whole card is the label. */
+/** The bordered group of a question's answers, a line between each. */
+const group = "gap-0 divide-y divide-border overflow-hidden rounded-[10px] border";
+
+/** One answer, a row of the group: the control on the left, the whole row is its label. */
 function Option({ id, label, description, children }: { id: string; label: string; description?: string; children: ReactNode }) {
   return (
-    <FieldLabel htmlFor={id}>
-      <Field orientation="horizontal">
-        <FieldContent>
-          <FieldTitle>{label}</FieldTitle>
-          {description && <FieldDescription>{description}</FieldDescription>}
-        </FieldContent>
-        {children}
-      </Field>
-    </FieldLabel>
+    <Field orientation="horizontal" className="relative gap-3 px-3.5 py-2.5 transition-colors hover:bg-muted/50 has-data-checked:bg-muted">
+      {children}
+      <FieldContent className="gap-0">
+        <FieldLabel htmlFor={id} className="after:absolute after:inset-0">
+          {label}
+        </FieldLabel>
+        {description && <FieldDescription className="text-[13px] leading-snug">{description}</FieldDescription>}
+      </FieldContent>
+    </Field>
   );
 }

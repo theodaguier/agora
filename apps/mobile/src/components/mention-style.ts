@@ -10,7 +10,7 @@ function tint(hex: string) {
 }
 
 /**
- * Colors of a mention: colleagues are an `accent` chip (Agora's brand), bots in their own color,
+ * Colors of a mention: colleagues in the brand blue, bots in their own color,
  * the bot's data (a style: the value is only known at run time). `text`: the brand as a class, for
  * the composer's overlay, which is plain text.
  */
@@ -20,7 +20,7 @@ export function mentionStyle(color: string, onAccent = false) {
   const brand = color === "brand";
   return {
     chip: brand ? ("accent" as const) : ("default" as const),
-    text: brand ? "text-link" : undefined,
+    text: brand ? "text-brand" : undefined,
     pillStyle: brand ? undefined : { backgroundColor: tint(color) },
     textStyle: brand ? undefined : { color },
   };

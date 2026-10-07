@@ -254,7 +254,7 @@ function InboxRow({ item, mentionables }: { item: InboxItem; mentionables: Menti
         </ListGroup.ItemContent>
         {/* Always there, so the dates line up whether a row is read or not: the unread dot. */}
         <ListGroup.ItemSuffix className="self-center" accessibilityLabel={item.read ? undefined : t.unread}>
-          <View style={{ width: 10, height: 10 }}>{!item.read && <ColorDot size={10} color="text-accent" />}</View>
+          <View style={{ width: 10, height: 10 }}>{!item.read && <ColorDot size={10} color="text-brand" />}</View>
         </ListGroup.ItemSuffix>
       </PressableItem>
     </LongPressMenu>

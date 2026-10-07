@@ -11,7 +11,8 @@ import { defineMessages, tr } from "@/lib/i18n";
 import type { Mentionable } from "@/lib/mentions";
 import { usePeople, personMentionables } from "@/lib/people";
 import { newTaskHref, userTasksQuery, type Task, type TaskStatus } from "@/lib/tasks";
-import { statusColor, statusMessages, TASK_STATUSES } from "@/lib/task-status";
+import { cn } from "@/lib/utils";
+import { statusChipClass, statusColor, statusLabelClass, statusMessages, TASK_STATUSES } from "@/lib/task-status";
 import { PlusIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { haptic, usePullToRefresh, withTap } from "@/lib/haptics";
@@ -95,8 +96,8 @@ export default function TasksScreen() {
                   {(["all", ...TASK_STATUSES] as Filter[]).map((f) => (
                     <Tabs.Trigger key={f} value={f}>
                       <Tabs.Label>{f === "all" ? messages.all : statusMessages.tab[f]}</Tabs.Label>
-                      <Chip size="sm" variant="soft" color={f === "all" ? "default" : statusColor[f]}>
-                        <Chip.Label className="tabular-nums">{count(f)}</Chip.Label>
+                      <Chip size="sm" variant="soft" color={f === "all" ? "default" : statusColor[f]} className={f === "all" ? undefined : statusChipClass[f]}>
+                        <Chip.Label className={cn("tabular-nums", f !== "all" && statusLabelClass[f])}>{count(f)}</Chip.Label>
                       </Chip>
                     </Tabs.Trigger>
                   ))}

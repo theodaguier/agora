@@ -1,6 +1,8 @@
 import { useMutation } from "@tanstack/react-query";
 import { ShieldAlertIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BlockCard, BlockFooter } from "@/components/views/block";
 import { api, conversationPath, type PendingApproval } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -42,41 +44,42 @@ export function ApprovalCard(props: { conversationId: string; turnId: string; bo
     meta: { error: false },
   });
   const allow = approval.choices.filter((c) => c !== "deny");
+  // The primary choice (the first one) on the far right, the broader ones before it.
+  const variant = (c: string, i: number) => (i === 0 ? "default" : c === "session" ? "outline" : "ghost");
 
   return (
-    <section aria-label={t.requestedBy(botName)} className="w-full max-w-[min(680px,88%)] rounded-2xl bg-secondary p-3.5">
-      <div className="flex items-start gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent">
-          <ShieldAlertIcon className="size-4 text-warning" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-medium leading-snug">{t.asks(botName)}</p>
-          {approval.description && <p className="mt-0.5 text-[15px] leading-snug text-muted-foreground">{approval.description}</p>}
+    <BlockCard role="region" aria-label={t.requestedBy(botName)}>
+      <CardHeader className="grid-cols-[auto_1fr] gap-x-2.5">
+        <ShieldAlertIcon aria-hidden className="mt-0.5 size-[18px] text-warning" />
+        <CardTitle className="font-semibold">{t.asks(botName)}</CardTitle>
+        {approval.description && <CardDescription className="col-start-2">{approval.description}</CardDescription>}
+      </CardHeader>
+      {(approval.command || !canAnswer || answer.error) && (
+        <CardContent className="flex flex-col gap-3">
           {approval.command && (
-            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-background px-3 py-2 font-mono text-xs">{approval.command}</pre>
+            <pre className="max-h-40 overflow-auto rounded-[10px] bg-muted px-3 py-2.5 font-mono text-xs break-all whitespace-pre-wrap">{approval.command}</pre>
           )}
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2 pl-12">
-        {canAnswer ? (
-          <>
-            {allow.map((c, i) => (
-              <Button key={c} size="sm" variant={i === 0 ? "default" : "secondary"} disabled={answer.isPending} onClick={() => answer.mutate(c)}>
+          {!canAnswer && <p className="text-sm text-muted-foreground">{t.waiting}</p>}
+          {answer.error && <p className="text-sm text-destructive">{answer.error.message}</p>}
+        </CardContent>
+      )}
+      {canAnswer && (
+        <BlockFooter>
+          {approval.choices.includes("deny") && (
+            <Button size="sm" variant="ghost" className="mr-auto text-destructive hover:text-destructive" disabled={answer.isPending} onClick={() => answer.mutate("deny")}>
+              {labels.deny}
+            </Button>
+          )}
+          {allow
+            .map((c, i) => (
+              <Button key={c} size="sm" variant={variant(c, i)} disabled={answer.isPending} onClick={() => answer.mutate(c)}>
                 {answer.isPending && answer.variables === c ? co.inProgress : labels[c]}
               </Button>
-            ))}
-            {approval.choices.includes("deny") && (
-              <Button size="sm" variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate("deny")}>
-                {labels.deny}
-              </Button>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t.waiting}</p>
-        )}
-        {answer.error && <p className="w-full text-sm text-destructive">{answer.error.message}</p>}
-      </div>
-    </section>
+            ))
+            .reverse()}
+        </BlockFooter>
+      )}
+    </BlockCard>
   );
 }
 

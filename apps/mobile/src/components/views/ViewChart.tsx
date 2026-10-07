@@ -53,7 +53,7 @@ export function ViewChart({ view }: { view: ChartView }) {
 }
 
 function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
-  const [grid, surface, ink] = useThemeColor(["separator", "surface", "foreground"]);
+  const [grid, surface, ink, accent, rest] = useThemeColor(["separator", "surface", "foreground", "accent", "surface-tertiary"]);
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const colors = view.series.map((_, i) => CHART_COLORS[i]![dark ? "dark" : "light"]);
@@ -61,6 +61,8 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
   const stacked = !!view.stacked && view.chart !== "line";
   // With a few bars of a single series, each one's value is written above it, a 0 included (the web's).
   const values = view.chart === "bar" && view.series.length === 1 && n <= 12;
+  // Those bars are gray, the highest in the primary color, without grid nor scale: their values say it all.
+  const plain = values;
   const top = values ? 18 : PAD;
   const bottom = HEIGHT + top;
 
@@ -70,6 +72,7 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
     return view.series.map((s) => (stacked ? (sum += s.values[j] ?? 0) : (s.values[j] ?? 0)));
   });
   const max = Math.max(0, ...tops.flat()) || 1;
+  const highest = plain ? view.series[0]!.values.indexOf(Math.max(...view.series[0]!.values.map((v) => v ?? 0))) : -1;
   const y = (v: number) => top + (1 - v / max) * HEIGHT;
   const step = width / Math.max(n, 1);
   const x = (j: number) => step * j + step / 2;
@@ -89,8 +92,8 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
         return (
           <Path
             key={`${i}-${j}`}
-            d={barPath(left, y(tops[j]![i]!), barW, (v / max) * HEIGHT, last ? 4 : 0)}
-            fill={colors[i]}
+            d={barPath(left, y(tops[j]![i]!), barW, (v / max) * HEIGHT, last ? (plain ? 6 : 4) : 0)}
+            fill={plain ? (j === highest ? accent : rest) : colors[i]}
             stroke={stacked ? surface : undefined}
             strokeWidth={stacked ? 1 : 0}
             opacity={dim(j)}
@@ -103,7 +106,7 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
   const labels = () =>
     view.series[0]!.values.map((v, j) =>
       v == null ? null : (
-        <SvgText key={j} x={x(j)} y={y(Math.max(v, 0)) - 6} fontSize={11} fill={ink} textAnchor="middle" opacity={dim(j)}>
+        <SvgText key={j} x={x(j)} y={y(Math.max(v, 0)) - 6} fontSize={11} fontWeight={j === highest ? "600" : "400"} fill={ink} textAnchor="middle" opacity={dim(j)}>
           {compact.format(v)}
         </SvgText>
       ),
@@ -175,6 +178,7 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
       )}
       <View className="flex-row gap-2">
         {/* The scale: its top and its baseline. */}
+        {!plain && (
         <View className={cn(SCALE, "justify-between")} style={{ height: bottom, paddingTop: top - PAD }}>
           <Typography.Paragraph type="body-xs" color="muted" className="tabular-nums" numberOfLines={1}>
             {unitOnTicks(view.unit) ? withUnit(compact.format(max), view.unit, max) : compact.format(max)}
@@ -183,6 +187,7 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
             0
           </Typography.Paragraph>
         </View>
+        )}
         <PressableFeedback
           accessibilityRole="button"
           accessibilityLabel={view.title}
@@ -198,7 +203,7 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
         >
           {width > 0 && (
             <Svg width={width} height={bottom} pointerEvents="none">
-              {[top, top + HEIGHT / 2, bottom].map((gy) => (
+              {(plain ? [] : [top, top + HEIGHT / 2, bottom]).map((gy) => (
                 <Line key={gy} x1={0} x2={width} y1={gy} y2={gy} stroke={grid} strokeWidth={1} />
               ))}
               {shown !== null && view.chart !== "bar" && <Line x1={x(shown)} x2={x(shown)} y1={top} y2={bottom} stroke={grid} strokeWidth={1} />}
@@ -210,11 +215,11 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
       </View>
       {/* A few labels under the axis: first, middle, last. */}
       <View className="h-5 flex-row gap-2">
-        <View className={SCALE} />
+        {!plain && <View className={SCALE} />}
         <View className="flex-1 flex-row">
           {view.labels.map((l, j) => (
             <View key={j} className="flex-1 items-center overflow-visible">
-              {ticks.has(j) && (
+              {((plain && n <= 6) || ticks.has(j)) && (
                 <Typography.Paragraph type="body-xs" color="muted" align="center" className="w-20" numberOfLines={1}>
                   {label(l)}
                 </Typography.Paragraph>
@@ -363,24 +368,24 @@ function BarRows({ view, dark }: { view: ChartView; dark: boolean }) {
   );
 }
 
-/** Key figures shown by a bot (```view``` block, `"kind": "stats"`): two a row. The web's ViewStats. */
+/** Key figures shown by a bot (```view``` block, `"kind": "stats"`): stacked, no tiles. The web's ViewStats. */
 export function ViewStats({ view }: { view: StatsView }) {
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <View className="gap-4">
       {view.stats.map((s, i) => (
-        <Surface key={i} variant="secondary" className="min-w-[45%] flex-1 gap-1 p-3">
-          <Typography.Paragraph type="body-xs" color="muted" numberOfLines={2}>
+        <View key={i} className="gap-0.5">
+          <Typography.Paragraph color="muted" className="text-footnote" numberOfLines={2}>
             {s.label}
           </Typography.Paragraph>
-          <Typography.Heading type="h3" className="tabular-nums" numberOfLines={1} adjustsFontSizeToFit>
+          <Typography.Heading type="h3" className="text-[30px] leading-9 tabular-nums" numberOfLines={1} adjustsFontSizeToFit>
             {typeof s.value === "number" ? withUnit(exact.format(s.value), s.unit, s.value) : withUnit(s.value, s.unit)}
           </Typography.Heading>
           {!!s.note && (
-            <Typography.Paragraph type="body-xs" color="muted">
+            <Typography.Paragraph type="body-xs" className="text-subtle">
               {s.note}
             </Typography.Paragraph>
           )}
-        </Surface>
+        </View>
       ))}
     </View>
   );

@@ -170,10 +170,10 @@ export function MentionText({ text, mentionables, flat }: { text: string; mentio
     const color = safeColor(s.color);
     if (flat) {
       // Highlighted as on the web: the mention's color on a light tint of it.
-      // Colleagues in HeroUI's accent, bots in their own color.
+      // Colleagues in the brand blue, bots in their own color.
       const tone = color ? mentionStyle(color) : undefined;
       return (
-        <NativeText key={keys[i]} className={color === "brand" ? "bg-accent/15 text-accent" : undefined} style={[tone?.textStyle, tone?.pillStyle]}>
+        <NativeText key={keys[i]} className={color === "brand" ? "bg-brand-soft text-brand" : undefined} style={[tone?.textStyle, tone?.pillStyle]}>
           {s.text}
         </NativeText>
       );

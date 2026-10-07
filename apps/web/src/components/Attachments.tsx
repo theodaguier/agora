@@ -1,8 +1,8 @@
-import { FileTextIcon, CloseIcon } from "@/components/icons";
+import { CloseIcon, DownloadIcon, FileTextIcon } from "@/components/icons";
 import { useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { defineMessages, useT } from "@/i18n";
 import { attachmentUrl, type Attachment } from "@/lib/api";
@@ -138,6 +138,9 @@ function sortShown(items: Shown[]) {
   };
 }
 
+/** "recap.pdf" → "PDF": the file's type, from its extension. */
+const fileType = (name: string) => (/\.([a-z0-9]{1,8})$/i.exec(name)?.[1] ?? "").toUpperCase();
+
 /** File card: a click downloads it. */
 function FileCard({ a, className }: { a: Shown; className?: string }) {
   const t = useT(shownMessages);
@@ -146,15 +149,21 @@ function FileCard({ a, className }: { a: Shown; className?: string }) {
       variant="outline"
       size="sm"
       render={<a href={a.previewUrl ?? attachmentUrl(a.id, true)} download={a.name} title={t.download(a.name)} />}
-      className={cn("w-72 max-w-full rounded-xl hover:bg-muted/60", className)}
+      className={cn("w-72 max-w-full gap-3 rounded-2xl bg-background px-3 py-2.5 shadow-xs hover:bg-muted/60", className)}
     >
-      <ItemMedia variant="icon">
-        <FileTextIcon className="text-muted-foreground" />
+      <ItemMedia className="size-9 rounded-[10px] bg-muted">
+        <FileTextIcon className="size-[18px]" />
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0">
         <ItemTitle className="w-full truncate">{a.name}</ItemTitle>
-        <ItemDescription className="text-xs">{formatSize(a.size)}</ItemDescription>
+        <ItemDescription className="text-[13px]">{[fileType(a.name), formatSize(a.size)].filter(Boolean).join(" · ")}</ItemDescription>
       </ItemContent>
+      <ItemActions>
+        {/* The whole card downloads: the icon only shows it, as a ghost button would. */}
+        <span aria-hidden className={buttonVariants({ variant: "ghost", size: "icon-sm" })}>
+          <DownloadIcon />
+        </span>
+      </ItemActions>
     </Item>
   );
 }

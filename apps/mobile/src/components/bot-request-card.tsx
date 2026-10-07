@@ -1,16 +1,13 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Alert, Button, Card, Chip, ListGroup, Popover, Separator, Spinner, Typography, useThemeColor, useToast } from "heroui-native";
-import { Fragment } from "react";
-import { View } from "react-native";
+import { Alert, Button, Card, ListGroup, Typography, useToast } from "heroui-native";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { CheckIcon } from "@/components/icons";
+import { BlockGroup, BlockHeader, blockCard, StatusLine } from "@/components/views/block";
 import { api } from "@/lib/api";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
 import type { BotRequest } from "@/lib/types";
-import { usePopoverInsets } from "@/lib/popover-insets";
 import { botRequestQuery } from "@/lib/requests";
 
 /* apps/web/src/components/BotRequestCard.tsx */
@@ -46,7 +43,6 @@ const messages = defineMessages({
 
 /** Bots a bot asks to create (one per role to test, say): an admin approves, the app creates them. */
 export function BotRequestCard({ id }: { id: string }) {
-  const insets = usePopoverInsets();
   const qc = useQueryClient();
   const t = messages;
   const c = tr(common);
@@ -54,7 +50,6 @@ export function BotRequestCard({ id }: { id: string }) {
     ...botRequestQuery(id),
     refetchInterval: (q) => (q.state.data && (q.state.data.status === "pending" || q.state.data.status === "creating") ? 4_000 : false),
   });
-  const [success] = useThemeColor(["success-soft-foreground"]);
   const { toast } = useToast();
   const decide = useMutation({
     mutationFn: (approve: boolean) => api<BotRequest>(`/bot-requests/${id}/${approve ? "approve" : "reject"}`, { method: "POST" }),
@@ -71,58 +66,42 @@ export function BotRequestCard({ id }: { id: string }) {
 
   if (error || !req) return null;
 
+  const tone = req.status === "created" ? "success" : req.status === "rejected" ? "danger" : req.status === "creating" ? "info" : "warning";
+
   return (
-    <Card className="w-full max-w-[92%] gap-4">
-      <Card.Header className="items-start gap-1">
-        <Card.Title>{t.title(req.bots.length)}</Card.Title>
-        <Popover>
-          <Popover.Trigger asChild>
-            <Chip size="sm" variant="soft" color={req.status === "created" ? "success" : req.status === "rejected" ? "danger" : "default"} accessibilityRole="button">
-              {req.status === "created" && <CheckIcon size={14} color={success} />}
-              {req.status === "creating" && <Spinner size="sm" />}
-              <Chip.Label>{t.status[req.status]}</Chip.Label>
-            </Chip>
-          </Popover.Trigger>
-          <Popover.Portal>
-            <Popover.Overlay />
-            <Popover.Content presentation="popover" width={300} placement="bottom" align="start" insets={insets} className="gap-1">
-              <Popover.Title>{t.status[req.status]}</Popover.Title>
-              <Popover.Description>{t.statusHelp[req.status]}</Popover.Description>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover>
-        {!!req.reason && <Card.Description>{req.reason}</Card.Description>}
-      </Card.Header>
+    <Card className={blockCard}>
+      <BlockHeader
+        title={t.title(req.bots.length)}
+        description={req.reason}
+        status={<StatusLine tone={tone} label={t.status[req.status]} help={t.statusHelp[req.status]} />}
+      />
       <Card.Body>
-        <ListGroup variant="transparent">
+        <BlockGroup inset="ml-[58px]">
           {req.bots.map((bot, i) => (
-            <Fragment key={i}>
-              {i > 0 && <Separator className="ml-12" />}
-              <ListGroup.Item>
-                <ListGroup.ItemPrefix>
-                  <AgentAvatar agent={bot} size={32} />
-                </ListGroup.ItemPrefix>
-                <ListGroup.ItemContent>
-                  <ListGroup.ItemTitle>{bot.name}</ListGroup.ItemTitle>
-                  {!!(bot.role || bot.mission) && <ListGroup.ItemDescription>{bot.role ?? bot.mission}</ListGroup.ItemDescription>}
-                </ListGroup.ItemContent>
-              </ListGroup.Item>
-            </Fragment>
+            <ListGroup.Item key={i} className="gap-3 px-3.5 py-2.5">
+              <ListGroup.ItemPrefix>
+                <AgentAvatar agent={bot} size={32} />
+              </ListGroup.ItemPrefix>
+              <ListGroup.ItemContent>
+                <ListGroup.ItemTitle>{bot.name}</ListGroup.ItemTitle>
+                {!!(bot.role || bot.mission) && <ListGroup.ItemDescription>{bot.role ?? bot.mission}</ListGroup.ItemDescription>}
+              </ListGroup.ItemContent>
+            </ListGroup.Item>
           ))}
-        </ListGroup>
+        </BlockGroup>
       </Card.Body>
       {(req.status === "pending" || !!req.error) && (
-        <Card.Footer className="gap-3">
+        <Card.Footer className="gap-2">
           {req.status === "pending" &&
             (req.canDecide ? (
-              <View className="flex-row gap-2">
-                <Button className="flex-1" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(true))}>
+              <>
+                <Button isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(true))}>
                   {decide.isPending && decide.variables ? c.inProgress : req.error ? c.retry : t.approve}
                 </Button>
-                <Button className="flex-1" variant="danger-soft" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(false))}>
-                  {t.reject}
+                <Button variant="ghost" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(false))}>
+                  <Button.Label className="text-danger">{t.reject}</Button.Label>
                 </Button>
-              </View>
+              </>
             ) : (
               <Typography.Paragraph type="body-sm" color="muted">
                 {t.adminMust}

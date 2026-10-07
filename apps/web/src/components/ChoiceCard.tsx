@@ -1,9 +1,11 @@
-import { CloseIcon } from "@/components/icons";
+import { ChevronRightIcon, CloseIcon } from "@/components/icons";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Kbd } from "@/components/ui/kbd";
+import { BlockCard } from "@/components/views/block";
 import type { Choices } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 
@@ -36,51 +38,59 @@ export function ChoiceCard(props: { choices: Choices; onAnswer: (text: string) =
   }, [choices, onAnswer]);
 
   return (
-    <div className="w-full max-w-[min(680px,88%)] rounded-2xl bg-secondary p-3.5">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-medium leading-snug">{choices.question}</p>
-          {choices.hint && <p className="mt-0.5 text-[15px] leading-snug text-muted-foreground">{choices.hint}</p>}
-        </div>
-        <Button variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss} className="-mr-1 -mt-0.5 hover:bg-accent">
-          <CloseIcon />
-        </Button>
-      </div>
+    <BlockCard className="gap-3">
+      <CardHeader>
+        <CardTitle className="font-semibold">{choices.question}</CardTitle>
+        {choices.hint && <CardDescription>{choices.hint}</CardDescription>}
+        <CardAction>
+          <Button variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss} className="-mr-2 -mt-1">
+            <CloseIcon />
+          </Button>
+        </CardAction>
+      </CardHeader>
 
-      <ItemGroup role="group" aria-label={t.options} className="mt-3 gap-0 divide-y divide-border overflow-hidden rounded-xl border border-border">
+      <ItemGroup role="group" aria-label={t.options} className="gap-0 px-2">
         {choices.options.map((o, i) => (
           <Item
             key={o.label}
             render={<button type="button" onClick={() => onAnswer(o.label)} />}
-            className="gap-3 rounded-none border-0 px-2.5 py-2.5 text-left hover:bg-accent"
+            className="items-start gap-3 rounded-[10px] px-3 py-2.5 text-left hover:bg-muted focus-visible:bg-muted"
           >
-            <ItemMedia>
-              <Kbd className="size-6 rounded-md bg-accent text-[11px]">{letters[i]}</Kbd>
+            <ItemMedia className="pt-px">
+              <Kbd className="size-[22px] rounded-md border bg-background text-[11px]">{letters[i]}</Kbd>
             </ItemMedia>
             <ItemContent className="gap-0">
-              <ItemTitle className="line-clamp-none text-[15px] font-normal">{o.label}</ItemTitle>
-              {o.description && <ItemDescription className="line-clamp-none text-[15px] leading-snug">{o.description}</ItemDescription>}
+              <ItemTitle className="line-clamp-none">{o.label}</ItemTitle>
+              {o.description && <ItemDescription className="line-clamp-none text-[13px] leading-snug">{o.description}</ItemDescription>}
             </ItemContent>
+            <ItemActions className="self-center opacity-0 group-hover/item:opacity-100 group-focus-visible/item:opacity-100">
+              <ChevronRightIcon className="size-4 text-muted-foreground" />
+            </ItemActions>
           </Item>
         ))}
       </ItemGroup>
 
-      <form
-        className="mt-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const text = custom.trim();
-          if (text) onAnswer(text);
-        }}
-      >
-        <Input
-          value={custom}
-          onChange={(e) => setCustom(e.target.value)}
-          placeholder={t.placeholder}
-          aria-label={t.own}
-          className="rounded-xl border-transparent bg-background px-3.5 text-[15px] placeholder:text-muted-foreground focus-visible:border-border md:text-[15px]"
-        />
-      </form>
-    </div>
+      <CardFooter className="bg-transparent px-5 py-1.5">
+        <form
+          className="flex w-full items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = custom.trim();
+            if (text) onAnswer(text);
+          }}
+        >
+          <Input
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            placeholder={t.placeholder}
+            aria-label={t.own}
+            className="h-9 flex-1 rounded-none border-0 bg-transparent px-0 focus-visible:ring-0"
+          />
+          <Kbd aria-hidden className="border bg-background">
+            ↵
+          </Kbd>
+        </form>
+      </CardFooter>
+    </BlockCard>
   );
 }

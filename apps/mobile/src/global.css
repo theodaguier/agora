@@ -7,7 +7,10 @@
 @source "../node_modules/heroui-native/lib";
 
 /*
- * HeroUI Native's default theme, untouched: components look as in its documentation.
+ * HeroUI Native's components, with the web's palette (apps/web/src/index.css) in its theme
+ * variables: neutral grays, a near-black primary (`accent`), and the web's blue as the extra `brand`
+ * token (unread dots, "working", links). Overridden the documented way (Theming: "Override colors",
+ * "Adding Custom Colors"), never per component.
  * Text uses the iOS type scale (Dynamic Type sizes at the default setting): `text-body` is 17 pt.
  */
 @theme {
@@ -39,4 +42,138 @@
 
   --spacing-hairline: hairlineWidth();
 
+  /* Fields as on the web: 8 px corners (the base radius), a 1 px border, no shadow. */
+  --field-radius: var(--radius);
+  --field-border-width: 1px;
+}
+
+@layer theme {
+  :root {
+    @variant light {
+      --background: oklch(1 0 0);
+      --foreground: oklch(0.17 0 0);
+
+      --surface: oklch(0.97 0 0);
+      --surface-foreground: var(--foreground);
+      --surface-secondary: oklch(0.955 0 0);
+      --surface-secondary-foreground: var(--foreground);
+      --surface-tertiary: oklch(0.93 0 0);
+      --surface-tertiary-foreground: var(--foreground);
+
+      --overlay: oklch(1 0 0);
+      --overlay-foreground: var(--foreground);
+      --backdrop: oklch(0% 0 0 / 20%);
+
+      --muted: oklch(0.48 0 0);
+      --subtle: oklch(0.6 0 0);
+
+      --default: oklch(0.955 0 0);
+      --default-foreground: oklch(0.17 0 0);
+
+      /* The web's primary. */
+      --accent: oklch(0.17 0 0);
+      --accent-foreground: oklch(0.985 0 0);
+
+      --brand: oklch(0.56 0.2 255);
+
+      --field-background: oklch(0.955 0 0);
+      --field-foreground: var(--foreground);
+      --field-placeholder: oklch(0.6 0 0);
+      --field-border: oklch(0.905 0 0);
+
+      --success: oklch(0.58 0.15 150);
+      --success-foreground: oklch(1 0 0);
+      --warning: oklch(0.7 0.15 75);
+      --warning-foreground: oklch(0.17 0 0);
+      --danger: oklch(0.577 0.245 27.325);
+      --danger-foreground: oklch(1 0 0);
+
+      --segment: oklch(1 0 0);
+      --segment-foreground: var(--foreground);
+
+      --border: oklch(0.905 0 0);
+      --separator: oklch(0.905 0 0);
+      --focus: oklch(0.6 0 0);
+      --link: var(--foreground);
+
+      --surface-shadow:
+        0 2px 4px 0 rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.06),
+        0 0 1px 0 rgba(0, 0, 0, 0.06);
+      --overlay-shadow:
+        0 2px 8px 0 rgba(0, 0, 0, 0.02), 0 -6px 12px 0 rgba(0, 0, 0, 0.01),
+        0 14px 28px 0 rgba(0, 0, 0, 0.03);
+      --field-shadow: 0 0 0 0 transparent inset;
+    }
+
+    @variant dark {
+      --background: oklch(0.13 0 0);
+      --foreground: oklch(0.96 0 0);
+
+      --surface: oklch(0.155 0 0);
+      --surface-foreground: var(--foreground);
+      --surface-secondary: oklch(0.235 0 0);
+      --surface-secondary-foreground: var(--foreground);
+      --surface-tertiary: oklch(0.29 0 0);
+      --surface-tertiary-foreground: var(--foreground);
+
+      --overlay: oklch(0.235 0 0);
+      --overlay-foreground: var(--foreground);
+      --backdrop: oklch(0% 0 0 / 20%);
+
+      --muted: oklch(0.68 0 0);
+      --subtle: oklch(0.52 0 0);
+
+      --default: oklch(0.235 0 0);
+      --default-foreground: oklch(0.96 0 0);
+
+      --accent: oklch(0.96 0 0);
+      --accent-foreground: oklch(0.13 0 0);
+
+      --brand: oklch(0.64 0.19 255);
+
+      --field-background: oklch(0.235 0 0);
+      --field-foreground: var(--foreground);
+      --field-placeholder: oklch(0.52 0 0);
+      --field-border: oklch(0.26 0 0);
+
+      --success: oklch(0.72 0.17 150);
+      --success-foreground: oklch(0.13 0 0);
+      --warning: oklch(0.879 0.169 91.605);
+      --warning-foreground: oklch(0.13 0 0);
+      --danger: oklch(0.704 0.191 22.216);
+      --danger-foreground: oklch(1 0 0);
+
+      --segment: oklch(0.13 0 0);
+      --segment-foreground: var(--foreground);
+
+      --border: oklch(0.26 0 0);
+      --separator: oklch(0.26 0 0);
+      --focus: oklch(0.68 0 0);
+      --link: var(--foreground);
+
+      --surface-shadow: 0 0 0 0 transparent inset;
+      --overlay-shadow: 0 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+      --field-shadow: 0 0 0 0 transparent inset;
+    }
+  }
+}
+
+/*
+ * The extra tokens as Tailwind colors (`text-brand`, `bg-brand-soft`, `text-subtle`…), and the soft
+ * tints recomputed for a near-black accent: `accent-soft` is the web's neutral secondary rather
+ * than a 15 % gray wash, the status tints are the web's 12 %.
+ */
+@theme inline static {
+  --color-brand: var(--brand);
+  --color-brand-soft: color-mix(in oklab, var(--brand) 12%, transparent);
+  --color-subtle: var(--subtle);
+
+  --color-accent-soft: var(--default);
+  --color-accent-soft-foreground: var(--default-foreground);
+  --color-accent-soft-hover: color-mix(in oklab, var(--default) 92%, var(--default-foreground) 8%);
+
+  --color-success-soft: color-mix(in oklab, var(--success) 12%, transparent);
+  /* Amber-500, as the web's warning tint. */
+  --color-warning-soft: color-mix(in oklab, oklch(0.769 0.188 70.08) 12%, transparent);
+  --color-danger-soft: color-mix(in oklab, var(--danger) 12%, transparent);
 }

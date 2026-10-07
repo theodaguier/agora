@@ -1,23 +1,21 @@
 import { RequiredMark } from "@/components/FormLabel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon, ExternalLinkIcon } from "@/components/icons";
-import { Badge } from "@/components/ui/badge";
+import { WarningIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ConnectorField } from "@/components/ConnectorField";
 import { Spinner } from "@/components/ui/spinner";
 import { api, type McpRequest } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
-import { IntegrationTile } from "@/components/marketplace/IntegrationType";
 import { useMcpOAuth } from "@/components/marketplace/use-mcp-oauth";
 import { OAuthClientFields } from "@/components/marketplace/OAuthClientFields";
 import { needsOwnClient, oauthClientOf } from "@/lib/oauth-client";
 import { useState, type FormEvent } from "react";
-import { integrations } from "@agora/core/i18n";
+import { connectors, integrations } from "@agora/core/i18n";
 import type { StatusTone } from "@agora/core";
-import { toneBadge } from "@/components/views/tone";
-import { cn } from "@/lib/utils";
+import { BlockCard, BlockFooter, MetaList, MetaRow, StatusLine } from "@/components/views/block";
 import { common } from "@agora/core/i18n";
 
 const LIVE = new Set<McpRequest["status"]>(["pending", "approved", "authorizing"]);
@@ -42,6 +40,10 @@ const messages = defineMessages({
     loading: "Connector request…",
     connector: (title: string) => `Connector ${title}`,
     docs: "Documentation",
+    category: "Category",
+    address: "Address",
+    command: "Command",
+    connection: "Connection",
     stdioWarning: "This server will run this command on the Hermes machine. Check where it comes from before approving.",
     approve: "Approve",
     reject: "Reject",
@@ -67,6 +69,10 @@ const messages = defineMessages({
     loading: "Demande de connecteur…",
     connector: (title: string) => `Connecteur ${title}`,
     docs: "Documentation",
+    category: "Catégorie",
+    address: "Adresse",
+    command: "Commande",
+    connection: "Connexion",
     stdioWarning: "Ce serveur exécutera cette commande sur la machine Hermes. Vérifie sa provenance avant de valider.",
     approve: "Valider",
     reject: "Refuser",
@@ -94,6 +100,7 @@ export function McpRequestCard({ id }: { id: string }) {
   const t = useT(messages);
   const c = useT(common);
   const i = useT(integrations);
+  const co = useT(connectors);
   const { data: req, error } = useQuery({
     ...mcpRequestQuery(id),
     refetchInterval: (q) => (q.state.data && LIVE.has(q.state.data.status) ? 5_000 : false),
@@ -134,9 +141,9 @@ export function McpRequestCard({ id }: { id: string }) {
   if (error) return null;
   if (!req) {
     return (
-      <div className="flex w-full max-w-[min(680px,88%)] items-center gap-2 rounded-2xl bg-secondary p-3.5 text-sm text-muted-foreground">
+      <BlockCard className="flex-row items-center gap-2 py-4 px-5 text-muted-foreground">
         <Spinner /> {t.loading}
-      </div>
+      </BlockCard>
     );
   }
 
@@ -144,50 +151,37 @@ export function McpRequestCard({ id }: { id: string }) {
   const needsForm = req.env.length > 0 || req.auth === "header";
   const failure = decide.error ?? install.error ?? authorize.error;
 
-  return (
-    <div className="w-full max-w-[min(680px,88%)] rounded-2xl bg-secondary p-3.5">
-      <div className="flex items-start gap-3">
-        <IntegrationTile type={req.type} server={req.name} className="size-9 [&_svg]:size-4" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[15px] font-medium leading-snug">{t.connector(req.title)}</p>
-            <Badge variant="secondary" className="bg-accent font-normal text-muted-foreground">
-              {i.types[req.type]}
-            </Badge>
-            <Badge variant="secondary" className={cn("font-normal", toneBadge[STATUS_TONE[req.status]])}>
-              {req.status === "installed" && <CheckIcon data-icon="inline-start" />}
-              {t.status[req.status]}
-            </Badge>
-          </div>
-          {req.description && <p className="mt-0.5 text-[15px] leading-snug text-muted-foreground">{req.description}</p>}
-          <p className="mt-1.5 break-all font-mono text-xs text-muted-foreground">{req.url ?? req.command}</p>
-          {req.docsUrl && (
-            <a href={req.docsUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-              {t.docs} <ExternalLinkIcon className="size-3" />
-            </a>
-          )}
-        </div>
-      </div>
+  const decides = req.status === "pending" && req.canDecide;
+  const target = req.url ?? req.command;
 
-      <div className="mt-3 flex flex-col gap-3 pl-12">
-        {req.status === "pending" &&
-          (req.canDecide ? (
-            <>
-              {req.transport === "stdio" && (
-                <p className="text-sm text-warning">{t.stdioWarning}</p>
-              )}
-              <div className="flex gap-2">
-                <Button size="sm" disabled={busy} onClick={() => decide.mutate(true)}>
-                  {decide.isPending && decide.variables ? c.inProgress : t.approve}
-                </Button>
-                <Button size="sm" variant="ghost" disabled={busy} onClick={() => decide.mutate(false)}>
-                  {t.reject}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t.adminMust}</p>
-          ))}
+  return (
+    <BlockCard>
+      <CardHeader>
+        <CardTitle className="font-semibold">{t.connector(req.title)}</CardTitle>
+        {req.description && <CardDescription>{req.description}</CardDescription>}
+        <StatusLine tone={STATUS_TONE[req.status]} className="mt-1">
+          {t.status[req.status]}
+        </StatusLine>
+      </CardHeader>
+
+      <CardContent className="flex flex-col gap-3">
+        <MetaList>
+          <MetaRow label={t.category}>{i.types[req.type]}</MetaRow>
+          {target && (
+            <MetaRow label={req.url ? t.address : t.command} mono>
+              {target}
+            </MetaRow>
+          )}
+          <MetaRow label={t.connection}>{co.auths[req.auth]}</MetaRow>
+        </MetaList>
+
+        {decides && req.transport === "stdio" && (
+          <p className="flex items-start gap-2 text-[13px] text-muted-foreground">
+            <WarningIcon aria-hidden className="mt-px size-4 shrink-0 text-warning" />
+            {t.stdioWarning}
+          </p>
+        )}
+        {req.status === "pending" && !req.canDecide && <p className="text-sm text-muted-foreground">{t.adminMust}</p>}
 
         {(req.status === "approved" || req.status === "authorizing") &&
           (!req.canConnect ? (
@@ -244,7 +238,7 @@ export function McpRequestCard({ id }: { id: string }) {
                       aria-invalid={invalid.has("bearer_token") || undefined}
                       autoComplete="off"
                       onChange={(e) => setValues((vs) => ({ ...vs, bearer_token: e.target.value }))}
-                      className="bg-background font-mono"
+                      className="font-mono"
                     />
                   </Field>
                 )}
@@ -297,7 +291,27 @@ export function McpRequestCard({ id }: { id: string }) {
         {(failure || (req.error && req.status !== "installed")) && (
           <p className="text-sm text-destructive">{failure instanceof Error ? failure.message : req.error}</p>
         )}
-      </div>
-    </div>
+      </CardContent>
+
+      {(decides || req.docsUrl) && (
+        <BlockFooter>
+          {req.docsUrl && (
+            <Button size="sm" variant="ghost" className="mr-auto" nativeButton={false} render={<a href={req.docsUrl} target="_blank" rel="noreferrer" />}>
+              {t.docs}
+            </Button>
+          )}
+          {decides && (
+            <>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => decide.mutate(false)}>
+                {t.reject}
+              </Button>
+              <Button size="sm" disabled={busy} onClick={() => decide.mutate(true)}>
+                {decide.isPending && decide.variables ? c.inProgress : t.approve}
+              </Button>
+            </>
+          )}
+        </BlockFooter>
+      )}
+    </BlockCard>
   );
 }

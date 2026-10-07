@@ -10,7 +10,8 @@ import { boxText } from "@/components/text-style";
 import { withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
 import { formatDueDate, isOverdue, taskHref, taskQuery, type Task } from "@/lib/tasks";
-import { priorityColor, priorityMessages, statusColor, statusMessages, statusText } from "@/lib/task-status";
+import { cn } from "@/lib/utils";
+import { priorityColor, priorityMessages, statusChipClass, statusColor, statusLabelClass, statusMessages, statusText } from "@/lib/task-status";
 import { usePopoverInsets } from "@/lib/popover-insets";
 
 /*
@@ -49,9 +50,9 @@ export function TaskRef({ taskId }: { taskId: string }) {
     <InlineBox>
       <Popover isOpen={open} onOpenChange={setOpen}>
         <Popover.Trigger asChild>
-          <Chip size="sm" variant="soft" color={statusColor[task.status]} accessibilityRole="button" accessibilityLabel={task.title}>
+          <Chip size="sm" variant="soft" color={statusColor[task.status]} className={statusChipClass[task.status]} accessibilityRole="button" accessibilityLabel={task.title}>
             <CheckCircleIcon className={statusText[task.status]} size={em(1.05)} />
-            <Chip.Label className={done ? "shrink line-through" : "shrink"} style={boxText(em, 1)}>
+            <Chip.Label className={cn(done ? "shrink line-through" : "shrink", statusLabelClass[task.status])} style={boxText(em, 1)}>
               {task.title}
             </Chip.Label>
           </Chip>
@@ -86,8 +87,8 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: () => void }) {
       <View className="gap-1.5">
         <Popover.Title>{task.title}</Popover.Title>
         <View className="flex-row flex-wrap items-center gap-1.5">
-          <Chip size="sm" variant="soft" color={statusColor[task.status]}>
-            <Chip.Label>{s.label[task.status]}</Chip.Label>
+          <Chip size="sm" variant="soft" color={statusColor[task.status]} className={statusChipClass[task.status]}>
+            <Chip.Label className={statusLabelClass[task.status]}>{s.label[task.status]}</Chip.Label>
           </Chip>
           {priority && !done && (
             <Chip size="sm" variant="soft" color={priority}>

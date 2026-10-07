@@ -35,11 +35,11 @@ const messages = defineMessages({
 
 /**
  * A bubble: HeroUI's Surface, `secondary` for everyone else's (colleagues and bots), `tertiary` for
- * yours, the web's two grays.
+ * yours, the web's two grays, with the web's 16 px corners.
  */
 export function Bubble({ mine, className, children }: { mine?: boolean; className?: string; children: ReactNode }) {
   return (
-    <Surface variant={mine ? "tertiary" : "secondary"} className={cn("min-w-0", mine ? "self-end" : "self-start", className)}>
+    <Surface variant={mine ? "tertiary" : "secondary"} className={cn("min-w-0 rounded-2xl", mine ? "self-end" : "self-start", className)}>
       {children}
     </Surface>
   );
@@ -47,7 +47,7 @@ export function Bubble({ mine, className, children }: { mine?: boolean; classNam
 
 export function BotBubble({ text, streaming, mentionables, className }: { text: string; streaming?: boolean; mentionables?: Mentionable[]; className?: string }) {
   return (
-    <Bubble className={cn("px-3.5 py-2", className)}>
+    <Bubble className={cn("px-3.5 py-2.5", className)}>
       <MessageText text={text} streaming={streaming} mentionables={mentionables} className="min-w-0" />
     </Bubble>
   );
@@ -70,7 +70,7 @@ export function PeerBubble({ text, mentionables, className }: { text: string; me
   );
 }
 
-/** One dot of the typing indicator, each one 120 ms after the previous. */
+/** One dot of the typing indicator (6 px, muted, as on the web), each one 120 ms after the previous. */
 function BounceDot({ delay }: { delay: number }) {
   const y = useSharedValue(0);
   useEffect(() => {
@@ -79,16 +79,14 @@ function BounceDot({ delay }: { delay: number }) {
   const style = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }));
   return (
     <Animated.View style={style}>
-      <Typography color="muted" weight="bold">
-        •
-      </Typography>
+      <View className="size-1.5 rounded-full bg-muted" />
     </Animated.View>
   );
 }
 
 export function TypingBubble({ label }: { label: string }) {
   return (
-    <Bubble className="px-3.5 py-1">
+    <Bubble className="px-4 py-3.5">
       <View accessibilityLabel={label} className="flex-row gap-1">
         {[0, 1, 2].map((d) => (
           <BounceDot key={d} delay={d * 120} />
@@ -111,7 +109,7 @@ export function TypingLine({ entries }: { entries: { key: string; name: string; 
   if (!entries.length) return null;
   return (
     <View accessibilityLiveRegion="polite" className="mt-1 flex-row flex-wrap items-center gap-x-1.5 gap-y-1 self-start">
-      <View className="flex-row gap-0.5">
+      <View className="flex-row gap-1">
         {[0, 1, 2].map((d) => (
           <BounceDot key={d} delay={d * 120} />
         ))}
