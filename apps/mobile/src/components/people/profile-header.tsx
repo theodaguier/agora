@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { Chip, Popover, Typography } from "heroui-native";
 import { View } from "react-native";
 import { StatusAvatar, useStatus, type StatusTone } from "@/components/conversation-avatar";
@@ -29,7 +30,7 @@ const messages = defineMessages({
 });
 
 /** One Chip color per status, as the avatar's dot. */
-const toneColor = { online: "success", away: "default", dnd: "danger", working: "accent" } as const;
+const toneColor = { online: "success", away: "default", dnd: "danger", working: "default" } as const;
 
 /**
  * Top of a profile, like an iOS contact card: big HeroUI Avatar with its status dot, name,
@@ -53,8 +54,8 @@ export function ProfileHeader({ p, name, subtitle, children }: { p: Participant;
       {!!status && (
         <Popover>
           <Popover.Trigger asChild>
-            <Chip size="sm" variant="soft" color={toneColor[status.tone]} className="mt-1" accessibilityHint={messages.statusHelp}>
-              <Chip.Label numberOfLines={1}>{status.label}</Chip.Label>
+            <Chip size="sm" variant="soft" color={toneColor[status.tone]} className={cn("mt-1", status.tone === "working" && "bg-brand-soft")} accessibilityHint={messages.statusHelp}>
+              <Chip.Label numberOfLines={1} className={cn(status.tone === "working" && "text-brand")}>{status.label}</Chip.Label>
             </Chip>
           </Popover.Trigger>
           <Popover.Portal>

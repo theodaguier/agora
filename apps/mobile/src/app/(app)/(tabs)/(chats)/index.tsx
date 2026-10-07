@@ -148,7 +148,7 @@ function Row({
           {/* Unread: the dot of iOS Messages. */}
           {c.unread && (
             <ListGroup.ItemSuffix accessibilityLabel={t.unread}>
-              <ColorDot size={10} color="text-accent" />
+              <ColorDot size={10} color="text-brand" />
             </ListGroup.ItemSuffix>
           )}
         </PressableItem>

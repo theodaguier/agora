@@ -5,6 +5,7 @@ import { ConversationAvatar, useStatus } from "@/components/conversation-avatar"
 import { othersOf, type Participant } from "@/components/participants";
 import { withTap } from "@/lib/haptics";
 import type { ConversationDetail } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { infoHref } from "@/components/conversation/info-href";
 
 /*
@@ -46,13 +47,24 @@ export function HeaderTitle({ conversation: conv, me, title, label }: { conversa
   );
 }
 
-/** A chip colored like the avatar's dot: green when online, accent while a bot works, neutral for "Seen…". */
+/**
+ * A chip colored like the avatar's dot: green when online, the brand blue while a bot works (a soft
+ * brand tint, as on the web: HeroUI's accent is the near-black primary), neutral for "Seen…".
+ */
 function Status({ p }: { p: Participant }) {
   const status = useStatus(p);
   if (!status) return null;
+  const working = status.tone === "working";
   return (
-    <Chip size="sm" variant="soft" color={({ online: "success", working: "accent", away: "default", dnd: "danger" } as const)[status.tone]} className="self-start">
-      <Chip.Label numberOfLines={1}>{status.label}</Chip.Label>
+    <Chip
+      size="sm"
+      variant="soft"
+      color={({ online: "success", working: "default", away: "default", dnd: "danger" } as const)[status.tone]}
+      className={cn("self-start", working && "bg-brand-soft")}
+    >
+      <Chip.Label numberOfLines={1} className={cn(working && "text-brand")}>
+        {status.label}
+      </Chip.Label>
     </Chip>
   );
 }

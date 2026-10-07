@@ -11,10 +11,17 @@ export const TASK_PRIORITIES: TaskPriority[] = ["urgent", "high", "normal", "low
 type ChipColor = "accent" | "default" | "success" | "warning" | "danger";
 
 /** One color per status: blue to do, amber in progress, green done. */
-export const statusColor: Record<TaskStatus, ChipColor> = { todo: "accent", in_progress: "warning", done: "success" };
+export const statusColor: Record<TaskStatus, ChipColor> = { todo: "default", in_progress: "warning", done: "success" };
+
+/**
+ * "To do" is the brand blue, as the web's `bg-brand/12 text-brand`: HeroUI has no brand chip color
+ * (its accent is the near-black primary), so the soft default chip gets the brand tint.
+ */
+export const statusChipClass: Record<TaskStatus, string | undefined> = { todo: "bg-brand-soft", in_progress: undefined, done: undefined };
+export const statusLabelClass: Record<TaskStatus, string | undefined> = { todo: "text-brand", in_progress: undefined, done: undefined };
 
 /** Text color alone (counters). */
-export const statusText: Record<TaskStatus, string> = { todo: "text-link", in_progress: "text-warning", done: "text-success" };
+export const statusText: Record<TaskStatus, string> = { todo: "text-brand", in_progress: "text-warning", done: "text-success" };
 
 /** Chip per priority; "normal" shows none. */
 export const priorityColor: Record<TaskPriority, ChipColor | null> = { urgent: "danger", high: "warning", normal: null, low: "default" };

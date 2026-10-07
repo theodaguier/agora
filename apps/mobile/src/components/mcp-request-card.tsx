@@ -1,12 +1,11 @@
-import { common, integrations } from "@agora/core/i18n";
+import { common, connectors, integrations } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import * as Haptics from "expo-haptics";
-import { Accordion, Alert, Button, Card, Chip, Description, Input, Label, LinkButton, Popover, SkeletonGroup, Spinner, TextField, Typography, useThemeColor, useToast } from "heroui-native";
+import { Alert, Button, Card, Description, Input, Label, LinkButton, SkeletonGroup, Spinner, TextField, Typography, useToast } from "heroui-native";
 import { Linking, View } from "react-native";
 import { ConnectorField } from "@/components/connector-field";
-import { CheckIcon } from "@/components/icons";
-import { IntegrationTile } from "@/components/marketplace/integration-type";
+import { WarningIcon } from "@/components/icons";
 import { OAuthClientFields } from "@/components/marketplace/oauth-client-fields";
 import { EMPTY_OAUTH_CLIENT, needsOwnClient, oauthClientOf } from "@/components/marketplace/oauth-client";
 import { api } from "@/lib/api";
@@ -14,9 +13,8 @@ import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
 import { useMcpOAuth } from "@/lib/marketplace";
 import type { McpRequest } from "@/lib/types";
-import { usePopoverInsets } from "@/lib/popover-insets";
 import type { StatusTone } from "@agora/core";
-import { toneChip } from "@/components/views/tone";
+import { BlockGroup, BlockHeader, blockCard, MetaRow, StatusLine } from "@/components/views/block";
 import { mcpRequestQuery } from "@/lib/requests";
 
 /* apps/web/src/components/McpRequestCard.tsx */
@@ -57,7 +55,10 @@ const messages = defineMessages({
     installing: "Installing…",
     tools: (n: number, list: string) => `${n} tool${n > 1 ? "s" : ""}: ${list}`,
     connected: "Connected.",
-    details: "Technical details",
+    category: "Category",
+    address: "Address",
+    command: "Command",
+    connection: "Connection",
     statusHelp: {
       pending: "An admin reviews the connector before the agent can use it.",
       approved: "The connector is approved: whoever requested it now connects their account.",
@@ -90,7 +91,10 @@ const messages = defineMessages({
     installing: "Installation…",
     tools: (n: number, list: string) => `${n} outil${n > 1 ? "s" : ""} : ${list}`,
     connected: "Connecté.",
-    details: "Détails techniques",
+    category: "Catégorie",
+    address: "Adresse",
+    command: "Commande",
+    connection: "Connexion",
     statusHelp: {
       pending: "Un administrateur examine le connecteur avant que l'agent puisse s'en servir.",
       approved: "Le connecteur est validé : la personne qui l'a demandé connecte maintenant son compte.",
@@ -103,7 +107,6 @@ const messages = defineMessages({
 
 /** MCP connector requested by a bot: admin approval, then secrets or OAuth, in the conversation. */
 export function McpRequestCard({ id }: { id: string }) {
-  const insets = usePopoverInsets();
   const qc = useQueryClient();
   const t = messages;
   const c = tr(common);
@@ -160,18 +163,14 @@ export function McpRequestCard({ id }: { id: string }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [fileNames, setFileNames] = useState<Record<string, string>>({});
   const [tried, setTried] = useState(false);
-  const success = useThemeColor("success-soft-foreground");
 
   if (error) return null;
   if (!req) {
     return (
-      <Card className="w-full max-w-[92%]" accessibilityLabel={t.loading}>
-        <SkeletonGroup isLoading className="flex-row items-center gap-3">
-          <SkeletonGroup.Item className="size-10 rounded-full" />
-          <View className="flex-1 gap-1.5">
-            <SkeletonGroup.Item className="h-4 w-2/3 rounded-md" />
-            <SkeletonGroup.Item className="h-3 w-1/3 rounded-md" />
-          </View>
+      <Card className={blockCard} accessibilityLabel={t.loading}>
+        <SkeletonGroup isLoading className="gap-2">
+          <SkeletonGroup.Item className="h-4 w-2/3 rounded-md" />
+          <SkeletonGroup.Item className="h-3 w-1/3 rounded-md" />
         </SkeletonGroup>
       </Card>
     );
@@ -195,78 +194,53 @@ export function McpRequestCard({ id }: { id: string }) {
   const target = req.url ?? req.command;
 
   return (
-    <Card className="w-full max-w-[92%] gap-4">
-      <Card.Header className="flex-row items-start gap-3">
-        <IntegrationTile type={req.type} server={req.name} />
-        <View className="min-w-0 flex-1 items-start gap-1">
-          <Card.Title>{t.connector(req.title)}</Card.Title>
-          <View className="flex-row flex-wrap items-center gap-2">
-            <Chip size="sm" variant="secondary">
-              {tr(integrations).types[req.type]}
-            </Chip>
-            <Popover>
-              <Popover.Trigger asChild>
-                <Chip size="sm" variant="soft" color={toneChip[STATUS_TONE[req.status]]} accessibilityRole="button">
-                  {req.status === "installed" && <CheckIcon size={14} color={success} />}
-                  <Chip.Label>{t.status[req.status]}</Chip.Label>
-                </Chip>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Overlay />
-                <Popover.Content presentation="popover" width={300} placement="bottom" align="start" insets={insets} className="gap-1">
-                  <Popover.Title>{t.status[req.status]}</Popover.Title>
-                  <Popover.Description>{t.statusHelp[req.status]}</Popover.Description>
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover>
-          </View>
-        </View>
-      </Card.Header>
+    <Card className={blockCard}>
+      <BlockHeader
+        title={t.connector(req.title)}
+        description={req.description}
+        status={<StatusLine tone={STATUS_TONE[req.status]} label={t.status[req.status]} help={t.statusHelp[req.status]} />}
+      />
 
-      {(!!req.description || !!target || !!req.docsUrl) && (
-        <Card.Body className="gap-2">
-          {!!req.description && <Card.Description>{req.description}</Card.Description>}
+      <Card.Body className="gap-2">
+        <BlockGroup>
+          <MetaRow label={t.category}>{tr(integrations).types[req.type]}</MetaRow>
           {!!target && (
-            <Accordion variant="surface" defaultValue={req.status === "pending" && req.transport === "stdio" ? "details" : undefined}>
-              <Accordion.Item value="details">
-                <Accordion.Trigger>
-                  <Typography className="flex-1">{t.details}</Typography>
-                  <Accordion.Indicator />
-                </Accordion.Trigger>
-                <Accordion.Content>
-                  <Typography type="code" selectable>
-                    {target}
-                  </Typography>
-                </Accordion.Content>
-              </Accordion.Item>
-            </Accordion>
+            <MetaRow label={req.transport === "stdio" ? t.command : t.address} mono>
+              {target}
+            </MetaRow>
           )}
-          {!!req.docsUrl && (
-            <LinkButton size="sm" accessibilityRole="link" onPress={withTap(() => Linking.openURL(req.docsUrl!))} className="self-start">
-              {t.docs}
-            </LinkButton>
-          )}
-        </Card.Body>
-      )}
+          {req.status !== "rejected" && <MetaRow label={t.connection}>{tr(connectors).auths[req.auth]}</MetaRow>}
+        </BlockGroup>
+        {req.status === "pending" && req.canDecide && req.transport === "stdio" && (
+          <View className="flex-row items-start gap-2">
+            <WarningIcon size={16} className="mt-1 text-warning" />
+            <Typography.Paragraph type="body-sm" color="muted" className="min-w-0 flex-1">
+              {t.stdioWarning}
+            </Typography.Paragraph>
+          </View>
+        )}
+        {!!req.docsUrl && !(req.status === "pending" && req.canDecide) && (
+          <LinkButton size="sm" accessibilityRole="link" onPress={withTap(() => Linking.openURL(req.docsUrl!))} className="self-start">
+            {t.docs}
+          </LinkButton>
+        )}
+      </Card.Body>
 
-      <Card.Footer className="gap-3">
+      <Card.Footer className="gap-2">
         {req.status === "pending" &&
           (req.canDecide ? (
             <>
-              {req.transport === "stdio" && (
-                <Alert status="warning">
-                  <Alert.Indicator />
-                  <Alert.Content>
-                    <Alert.Description>{t.stdioWarning}</Alert.Description>
-                  </Alert.Content>
-                </Alert>
-              )}
-              <View className="flex-row gap-2">
-                <Button className="flex-1" isDisabled={busy} onPress={withTap(() => decide.mutate(true))}>
-                  {decide.isPending && decide.variables ? c.inProgress : t.approve}
-                </Button>
-                <Button className="flex-1" variant="danger-soft" isDisabled={busy} onPress={withTap(() => decide.mutate(false))}>
-                  {t.reject}
+              <Button isDisabled={busy} onPress={withTap(() => decide.mutate(true))}>
+                {decide.isPending && decide.variables ? c.inProgress : t.approve}
+              </Button>
+              <View className="flex-row justify-between gap-2">
+                {!!req.docsUrl && (
+                  <Button variant="ghost" accessibilityRole="link" onPress={withTap(() => Linking.openURL(req.docsUrl!))}>
+                    {t.docs}
+                  </Button>
+                )}
+                <Button variant="ghost" className={req.docsUrl ? undefined : "flex-1"} isDisabled={busy} onPress={withTap(() => decide.mutate(false))}>
+                  <Button.Label className="text-danger">{t.reject}</Button.Label>
                 </Button>
               </View>
             </>

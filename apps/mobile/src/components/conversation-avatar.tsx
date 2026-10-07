@@ -84,9 +84,9 @@ export function ColorDot({ size, color, bar }: { size: number; color: string; ba
 
 type DotSpec = { color: string; bar?: boolean; pulse?: boolean };
 
-const working: DotSpec = { color: "text-accent", pulse: true };
+const working: DotSpec = { color: "text-brand", pulse: true };
 
-/** The dot of a participant: green when online, red with a bar when away, accent while a bot works. */
+/** The dot of a participant: green when online, red with a bar when away, brand blue while a bot works. */
 function useDot(p: Participant): DotSpec | null {
   const away = useAvailability(p.kind === "user" ? p.person.id : "");
   const online = usePresence(p.kind === "user" ? p.person.id : "").online;

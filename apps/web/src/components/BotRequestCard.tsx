@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckIcon } from "@/components/icons";
+import type { StatusTone } from "@agora/core";
 import { AgentAvatar } from "@/components/AgentAvatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { Spinner } from "@/components/ui/spinner";
+import { BlockCard, BlockFooter, StatusLine } from "@/components/views/block";
 import { api, type BotRequest } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
+
+const STATUS_TONE: Record<BotRequest["status"], StatusTone> = { pending: "warning", creating: "info", created: "success", rejected: "danger" };
 
 const messages = defineMessages({
   en: {
@@ -44,48 +46,44 @@ export function BotRequestCard({ id }: { id: string }) {
 
   if (error || !req) return null;
 
+  const decides = req.status === "pending" && req.canDecide;
+
   return (
-    <div className="w-full max-w-[min(680px,88%)] rounded-2xl bg-secondary p-3.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="text-[15px] font-medium leading-snug">{t.title(req.bots.length)}</p>
-        <Badge variant="secondary" className="bg-accent font-normal text-muted-foreground">
-          {req.status === "created" && <CheckIcon data-icon="inline-start" />}
-          {req.status === "creating" && <Spinner data-icon="inline-start" />}
+    <BlockCard>
+      <CardHeader>
+        <CardTitle className="font-semibold">{t.title(req.bots.length)}</CardTitle>
+        {req.reason && <CardDescription>{req.reason}</CardDescription>}
+        <StatusLine tone={STATUS_TONE[req.status]} className="mt-1">
           {t.status[req.status]}
-        </Badge>
-      </div>
-      {req.reason && <p className="mt-0.5 text-[15px] leading-snug text-muted-foreground">{req.reason}</p>}
-      <ItemGroup className="mt-2.5">
-        {req.bots.map((bot, i) => (
-          <Item key={i} size="xs" className="px-0">
-            <ItemMedia>
-              <AgentAvatar agent={bot} className="size-8" />
-            </ItemMedia>
-            <ItemContent>
-              <ItemTitle>{bot.name}</ItemTitle>
-              {(bot.role || bot.mission) && <ItemDescription>{bot.role ?? bot.mission}</ItemDescription>}
-            </ItemContent>
-          </Item>
-        ))}
-      </ItemGroup>
-      {(req.status === "pending" || req.error || decide.error) && (
-        <div className="mt-3 flex flex-col gap-2">
-          {req.status === "pending" &&
-            (req.canDecide ? (
-              <div className="flex gap-2">
-                <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate(true)}>
-                  {decide.isPending && decide.variables ? c.inProgress : req.error ? c.retry : t.approve}
-                </Button>
-                <Button size="sm" variant="ghost" disabled={decide.isPending} onClick={() => decide.mutate(false)}>
-                  {t.reject}
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{t.adminMust}</p>
-            ))}
-          {(decide.error || req.error) && <p className="text-sm text-destructive">{decide.error?.message ?? req.error}</p>}
-        </div>
+        </StatusLine>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <ItemGroup className="gap-0 overflow-hidden rounded-[10px] border">
+          {req.bots.map((bot, i) => (
+            <Item key={i} className="rounded-none border-0 border-border px-3.5 py-2.5 not-last:border-b">
+              <ItemMedia>
+                <AgentAvatar agent={bot} className="size-8" />
+              </ItemMedia>
+              <ItemContent className="gap-0">
+                <ItemTitle>{bot.name}</ItemTitle>
+                {(bot.role || bot.mission) && <ItemDescription className="line-clamp-1 text-[13px]">{bot.role ?? bot.mission}</ItemDescription>}
+              </ItemContent>
+            </Item>
+          ))}
+        </ItemGroup>
+        {req.status === "pending" && !req.canDecide && <p className="text-sm text-muted-foreground">{t.adminMust}</p>}
+        {(decide.error || req.error) && <p className="text-sm text-destructive">{decide.error?.message ?? req.error}</p>}
+      </CardContent>
+      {decides && (
+        <BlockFooter>
+          <Button size="sm" variant="ghost" disabled={decide.isPending} onClick={() => decide.mutate(false)}>
+            {t.reject}
+          </Button>
+          <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate(true)}>
+            {decide.isPending && decide.variables ? c.inProgress : req.error ? c.retry : t.approve}
+          </Button>
+        </BlockFooter>
       )}
-    </div>
+    </BlockCard>
   );
 }

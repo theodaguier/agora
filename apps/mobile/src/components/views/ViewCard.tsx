@@ -1,15 +1,13 @@
 import type { Drafts, DraftType, MailItem, ViewAction, ViewActionKind, ViewBlock } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
-import { Avatar, Card, Chip, useThemeColor } from "heroui-native";
-import { View } from "react-native";
-import { IntegrationIcon } from "@/components/icons";
+import { Card } from "heroui-native";
 import { tr } from "@/lib/i18n";
 import { DraftCard } from "./DraftCard";
 import { draftLabel } from "@/components/views/draft-label";
 import { displayName } from "./format";
 import { ViewChart, ViewStats } from "./ViewChart";
 import { ChatList, CodeList, ContactList, DataTable, EventList, FileList, FinanceList, GenericList, MailList, MailMessage, TaskItems } from "./lists";
-import { TYPE_COLOR } from "./tone";
+import { BlockHeader, blockCard } from "./block";
 
 /* apps/web/src/components/views/ViewCard.tsx */
 
@@ -29,8 +27,6 @@ export function ViewCard(props: {
   const t = tr(integrations);
   const { view } = props;
   const count = view.kind === "list" ? view.items.length : view.kind === "table" ? view.rows.length : null;
-  const color = TYPE_COLOR[view.type];
-  const ink = useThemeColor(`${color}-soft-foreground`);
 
   const openMail = (m: MailItem) => props.onAsk(`${t.open} « ${m.subject || t.noSubject} » (${displayName(m.from)})`);
 
@@ -70,25 +66,13 @@ export function ViewCard(props: {
     }
   };
 
+  // One muted line under the title: what the view is (its subtitle, else its type) and how many rows it has.
+  const line = [view.subtitle || (view.title ? t.types[view.type] : null), count != null && count > 0 ? String(count) : null].filter(Boolean).join(" · ");
+
   return (
-    <Card className="w-full max-w-[92%] gap-4">
-      <Card.Header className="flex-row items-center gap-3">
-        <Avatar alt="" size="sm" variant="soft" color={color}>
-          <Avatar.Fallback>
-            <IntegrationIcon type={view.type} size={20} color={ink} />
-          </Avatar.Fallback>
-        </Avatar>
-        {/* A chart's title is its conclusion, a sentence: it wraps rather than being cut. */}
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Card.Title numberOfLines={view.kind === "chart" || view.kind === "stats" ? 3 : 1}>{view.title || t.types[view.type]}</Card.Title>
-          {!!view.subtitle && <Card.Description>{view.subtitle}</Card.Description>}
-        </View>
-        {count != null && count > 0 && (
-          <Chip size="sm" variant="soft" color="default">
-            <Chip.Label>{count}</Chip.Label>
-          </Chip>
-        )}
-      </Card.Header>
+    <Card className={blockCard}>
+      {/* A chart's title is its conclusion, a sentence: it wraps rather than being cut. */}
+      <BlockHeader title={view.title || t.types[view.type]} description={line} titleLines={view.kind === "chart" || view.kind === "stats" ? 3 : 1} />
       {view.kind === "draft" ? (
         <DraftCard
           view={props.answer?.draft ? ({ ...view, draft: props.answer.draft } as typeof view) : view}

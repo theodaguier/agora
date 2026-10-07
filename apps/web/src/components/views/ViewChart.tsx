@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 import { barRows, CHART_COLORS, chartLabel, funnelSteps, pieSlices, unitOnTicks, withUnit, type ChartView, type StatsView } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipPanel, ChartTooltipRow, type ChartConfig } from "@/components/ui/chart";
 import { intlLocale, useLocale, useT } from "@/i18n";
 import { numberFormat } from "@/lib/intl";
@@ -57,12 +56,17 @@ export function ViewChart({ view }: { view: ChartView }) {
   const scale = Math.max(24, f.axis(top).length * 7 + 8);
   // With a few bars of a single series, each one's value is written on it, a 0 included.
   const values = view.chart === "bar" && !several && view.labels.length <= 12;
+  // A single series of bars: gray, the highest one in the primary color.
+  const single = view.chart === "bar" && !several;
+  const highest = single ? Math.max(...view.series[0]!.values.map((v) => v ?? -Infinity)) : null;
+  const isHighest = (j: number) => single && view.series[0]!.values[j] === highest;
 
   const children = (
     <>
-      <CartesianGrid vertical={false} />
+      {/* Each bar's value written on it: the scale and its lines would only repeat it. */}
+      {!values && <CartesianGrid vertical={false} />}
       <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} tickFormatter={tick} />
-      <YAxis tickLine={false} axisLine={false} width={scale} tickFormatter={f.axis} />
+      {!values && <YAxis tickLine={false} axisLine={false} width={scale} tickFormatter={f.axis} />}
       <ChartTooltip
         cursor={view.chart === "bar" ? { fill: "var(--muted)", opacity: 0.5 } : true}
         content={({ active, payload, label }) => {
@@ -96,12 +100,31 @@ export function ViewChart({ view }: { view: ChartView }) {
                 name={view.series[i]!.name}
                 stackId={stack}
                 fill={`var(--color-${k})`}
-                stroke={stack ? "var(--secondary)" : undefined}
+                stroke={stack ? "var(--background)" : undefined}
                 strokeWidth={stack ? 1 : 0}
-                maxBarSize={32}
-                radius={!stack || i === keys.length - 1 ? [4, 4, 0, 0] : 0}
+                maxBarSize={single ? 40 : 32}
+                radius={!stack || i === keys.length - 1 ? [6, 6, 0, 0] : 0}
               >
-                {values && <LabelList dataKey={k} position="top" offset={6} className="fill-foreground text-xs tabular-nums" formatter={(v: unknown) => (typeof v === "number" ? f.short(v) : "")} />}
+                {single && data.map((d) => <Cell key={d.j} fill={isHighest(d.j) ? "var(--primary)" : "var(--chart-5)"} />)}
+                {values && (
+                  <LabelList
+                    dataKey={k}
+                    position="top"
+                    offset={6}
+                    content={({ x, y, width, value, index }) =>
+                      typeof value === "number" ? (
+                        <text
+                          x={Number(x) + Number(width) / 2}
+                          y={Number(y) - 6}
+                          textAnchor="middle"
+                          className={cn("text-xs tabular-nums", isHighest(Number(index)) ? "fill-foreground font-medium" : "fill-muted-foreground")}
+                        >
+                          {f.short(value)}
+                        </text>
+                      ) : null
+                    }
+                  />
+                )}
               </Bar>
             ))}
           </BarChart>
@@ -135,7 +158,7 @@ export function ViewChart({ view }: { view: ChartView }) {
                 stroke={`var(--color-${k})`}
                 strokeWidth={2}
                 dot={view.labels.length <= 12 ? { r: 4 } : false}
-                activeDot={{ r: 5, stroke: "var(--secondary)", strokeWidth: 2 }}
+                activeDot={{ r: 5, stroke: "var(--background)", strokeWidth: 2 }}
                 connectNulls
               />
             ))}
@@ -231,24 +254,27 @@ function BarRows({ view }: { view: ChartView }) {
   );
 }
 
-/** Key figures shown by a bot (```view``` block, `"kind": "stats"`): a card each, two to three a row. */
+/**
+ * Key figures shown by a bot (```view``` block, `"kind": "stats"`): side by side, two to three a row,
+ * a line between each, no tiles.
+ */
 export function ViewStats({ view }: { view: StatsView }) {
   const locale = intlLocale(useLocale());
   const whole = numberFormat({ maximumFractionDigits: 2 }, locale);
   const value = (s: StatsView["stats"][number]) =>
     typeof s.value === "number" ? withUnit(whole.format(s.value), s.unit, locale, s.value) : withUnit(s.value, s.unit, locale);
+  const n = view.stats.length;
+  const cols = n <= 3 ? n : n % 3 === 0 ? 3 : 2;
   return (
-    <div className={cn("grid grid-cols-2 gap-2", view.stats.length % 3 === 0 && "sm:grid-cols-3")}>
+    <div className="grid gap-y-5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
       {view.stats.map((s, i) => (
-        <Card key={i} size="sm" className="gap-0 border-0 shadow-none">
-          <CardHeader className="gap-1">
-            <CardDescription className="line-clamp-2" title={s.label}>
-              {s.label}
-            </CardDescription>
-            <CardTitle className="truncate text-2xl font-semibold tabular-nums group-data-[size=sm]/card:text-2xl">{value(s)}</CardTitle>
-            {s.note && <CardDescription className="text-xs">{s.note}</CardDescription>}
-          </CardHeader>
-        </Card>
+        <div key={i} className={cn("flex min-w-0 flex-col gap-1", i % cols === 0 ? "pr-4" : "border-l px-4")}>
+          <p className="line-clamp-2 text-[13px] text-muted-foreground" title={s.label}>
+            {s.label}
+          </p>
+          <p className="truncate text-[28px] leading-tight font-semibold tabular-nums">{value(s)}</p>
+          {s.note && <p className="text-xs text-subtle">{s.note}</p>}
+        </div>
       ))}
     </div>
   );
@@ -275,7 +301,7 @@ function PieView({ view, rest }: { view: ChartView; rest: string }) {
               ) : null;
             }}
           />
-          <Pie data={slices} dataKey="value" nameKey="label" innerRadius="55%" strokeWidth={2} stroke="var(--secondary)">
+          <Pie data={slices} dataKey="value" nameKey="label" innerRadius="55%" strokeWidth={2} stroke="var(--background)">
             {slices.map((s) => (
               <Cell key={s.key} fill={`var(--color-${s.key})`} />
             ))}

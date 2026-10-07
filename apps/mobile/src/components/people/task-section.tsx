@@ -5,6 +5,7 @@ import { Section, SectionNote } from "@/components/people/section";
 import { defineMessages } from "@/lib/i18n";
 import { agentTasksQuery } from "@/lib/profile";
 import { tasksQuery } from "@/lib/queries";
+import { statusChipClass, statusColor, statusLabelClass } from "@/lib/task-status";
 import type { Task, TaskStatus } from "@/lib/types";
 
 /* The list part of apps/web/src/components/TaskList.tsx, read-only: open tasks first, then the done ones. */
@@ -22,8 +23,6 @@ const messages = defineMessages({
   },
 });
 
-/** One color per status, as on the web: blue to do, amber in progress, green done. */
-const statusColor = { todo: "accent", in_progress: "warning", done: "success" } as const;
 
 export function TaskSection({ title, empty, ...who }: { title: string; empty: string } & ({ userId: string } | { agentId: string })) {
   const { data: tasks, isPending } = useQuery("agentId" in who ? agentTasksQuery(who.agentId) : tasksQuery(who.userId));
@@ -73,8 +72,8 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
         {now && <ListGroup.ItemDescription>{messages.now}</ListGroup.ItemDescription>}
       </ListGroup.ItemContent>
       <ListGroup.ItemSuffix>
-        <Chip size="sm" variant="soft" color={statusColor[task.status]}>
-          <Chip.Label>{messages.status[task.status]}</Chip.Label>
+        <Chip size="sm" variant="soft" color={statusColor[task.status]} className={statusChipClass[task.status]}>
+          <Chip.Label className={statusLabelClass[task.status]}>{messages.status[task.status]}</Chip.Label>
         </Chip>
       </ListGroup.ItemSuffix>
     </ListGroup.Item>

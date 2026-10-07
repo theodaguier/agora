@@ -177,13 +177,18 @@ export function CodeSessionCard({
   const status = session?.status ?? "running";
   const detail = session && codeDetailLine(session);
   return (
-    <Item variant="outline" className={cn("my-1 w-full max-w-[min(680px,88%)]", className)}>
-      <ItemMedia variant="icon">{session ? <StatusIcon status={status} asking={!!session.question} /> : <CodeIcon />}</ItemMedia>
-      <ItemContent className="min-w-0">
-        <ItemTitle className="w-full truncate">{session?.title ?? title}</ItemTitle>
-        <ItemDescription className="truncate">
-          {session ? CODE_ENGINE_NAMES[session.engine] : t.claudeCode} · {session ? <StatusText session={session} /> : gone ? t.gone : t.status[status]}
-          {detail ? ` · ${detail}` : ""}
+    <Item variant="outline" className={cn("my-1 w-full max-w-[min(680px,88%)] gap-3 rounded-2xl bg-background px-4 py-3 shadow-xs", className)}>
+      <ItemMedia className="size-9 rounded-[10px] bg-muted" title={session ? CODE_ENGINE_NAMES[session.engine] : t.claudeCode}>
+        <CodeIcon className="size-[18px]" />
+      </ItemMedia>
+      <ItemContent className="min-w-0 gap-0.5">
+        <ItemTitle className="w-full truncate font-semibold">{session?.title ?? title}</ItemTitle>
+        <ItemDescription className="flex items-center gap-1.5 text-[13px]">
+          {session && <StatusIcon status={status} asking={!!session.question} className="size-3" />}
+          <span className="truncate">
+            {session ? codeStatusText(t, session) : gone ? t.gone : t.status[status]}
+            {detail ? ` · ${detail}` : ""}
+          </span>
         </ItemDescription>
       </ItemContent>
       {!gone && (

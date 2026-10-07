@@ -236,7 +236,10 @@ function sortShown(items: Shown[]) {
   };
 }
 
-/** File row: its icon, name and size; a tap downloads it. */
+/** "PDF" for "recap.pdf": the type shown beside a file's size. */
+const extension = (name: string) => (/\.([a-z0-9]{1,8})$/i.exec(name)?.[1] ?? "").toUpperCase();
+
+/** File row: its icon, name, type and size; a tap downloads it. */
 export function FileCard({ a, className }: { a: Shown; className?: string }) {
   const t = shownMessages;
   return (
@@ -249,15 +252,17 @@ export function FileCard({ a, className }: { a: Shown; className?: string }) {
       accessibilityLabel={t.download(a.name)}
       className={cn("w-64 max-w-full", className)}
     >
-      <Card variant="default" className="p-2.5">
+      <Card className="rounded-[22px] border border-border bg-background p-3">
         <PressableFeedback.Highlight />
         <Card.Body className="flex-row items-center gap-3">
-          <Surface variant="secondary" className="size-10 items-center justify-center p-0">
-            <FileKindIcon name={a.name} className="size-5 text-accent" />
+          <Surface variant="secondary" className="size-9 items-center justify-center rounded-[10px] p-0 shadow-none">
+            <FileKindIcon name={a.name} className="size-[18px] text-foreground" />
           </Surface>
           <View className="min-w-0 flex-1">
-            <Card.Title numberOfLines={1}>{a.name}</Card.Title>
-            <Card.Description>{formatSize(a.size)}</Card.Description>
+            <Card.Title numberOfLines={1} className="text-sm">
+              {a.name}
+            </Card.Title>
+            <Card.Description className="text-footnote">{[extension(a.name), formatSize(a.size)].filter(Boolean).join(" · ")}</Card.Description>
           </View>
         </Card.Body>
       </Card>

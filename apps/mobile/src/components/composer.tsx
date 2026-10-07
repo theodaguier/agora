@@ -332,7 +332,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
        * ChatGPT's composer: one card, the field on top (the quote and the files above it), the
        * skills/connectors/routines called with the message, then a toolbar: "+", the model, the send arrow.
        */}
-      <Surface variant="secondary" className="gap-1 p-2">
+      <Surface variant="secondary" className="gap-1 rounded-[22px] p-2">
         {replyTo && <ReplyStrip quote={replyTo} onCancel={onCancelReply} />}
         <PendingFiles items={files} onRemove={removeFile} />
         {/*
@@ -356,9 +356,9 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           onKeyPress={(e) => {
             if (e.nativeEvent.key === "Backspace" && text === "" && invocations.length) setInvocations((xs) => xs.slice(0, -1));
           }}
-          // Part of the card rather than a field inside it: no fill, no shadow, no focus outline (it is always
-          // the one being typed in). The messages' size (text-body), placeholder included. Six lines, then it scrolls.
-          className="max-h-[152px] bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
+          // Part of the card rather than a field inside it: no fill, no border, no shadow, no focus outline (it is
+          // always the one being typed in). The messages' size (text-body), placeholder included. Six lines, then it scrolls.
+          className="max-h-[152px] border-transparent bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
         >
           <MentionText text={text} mentionables={colored} flat />
         </Input>

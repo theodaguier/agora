@@ -2,7 +2,7 @@ import { codeDetailLine, codeStatusText, placeCodeSessions, type CodeSession, ty
 import { codeSessions } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, type Href } from "expo-router";
-import { Button, Card, ListGroup, Separator, Spinner } from "heroui-native";
+import { Button, Card, ListGroup, Separator, Spinner, Surface } from "heroui-native";
 import { Fragment, useEffect, type ReactNode } from "react";
 import { View } from "react-native";
 import { useAdminToast } from "@/components/admin/ui";
@@ -27,13 +27,14 @@ export const isActive = (s: CodeSessionStatus) => s === "running" || s === "wait
 export const codeSessionHref = (conversationId: string, sessionId: string) => `/code/${conversationId}/${sessionId}` as Href;
 
 /** `asking`: it waits on its question to its bot, not on an approval. */
-export function StatusIcon({ status, asking, className }: { status: CodeSessionStatus; asking?: boolean; className?: string }) {
-  if (status === "running") return <Spinner size="sm" className={className} />;
-  if (status === "waiting" && asking) return <ChatQuestionIcon size={18} className={cn("text-warning", className)} />;
-  if (status === "waiting") return <ShieldAlertIcon size={18} className={cn("text-warning", className)} />;
-  if (status === "idle") return <ClockIcon size={18} className={cn("text-muted", className)} />;
-  if (status === "done") return <CheckCircleIcon size={18} className={cn("text-success", className)} />;
-  return <CloseCircleIcon size={18} className={cn(status === "failed" ? "text-danger" : "text-muted", className)} />;
+export function StatusIcon({ status, asking, className, small }: { status: CodeSessionStatus; asking?: boolean; className?: string; small?: boolean }) {
+  const size = small ? 12 : 18;
+  if (status === "running") return <Spinner size="sm" className={cn(small && "size-3", className)} />;
+  if (status === "waiting" && asking) return <ChatQuestionIcon size={size} className={cn("text-warning", className)} />;
+  if (status === "waiting") return <ShieldAlertIcon size={size} className={cn("text-warning", className)} />;
+  if (status === "idle") return <ClockIcon size={size} className={cn("text-muted", className)} />;
+  if (status === "done") return <CheckCircleIcon size={size} className={cn("text-success", className)} />;
+  return <CloseCircleIcon size={size} className={cn(status === "failed" ? "text-danger" : "text-muted", className)} />;
 }
 
 /** Card of a Claude Code session, where it was started in the conversation: where it stands, and the way into its steps. */
@@ -46,14 +47,21 @@ export function CodeSessionCard({ conversationId, sessionId, title }: { conversa
   const status = session?.status ?? "running";
   const detail = session && codeDetailLine(session);
   return (
-    <Card className="w-full max-w-[92%] flex-row items-center gap-3 self-start">
-      {session ? <StatusIcon status={status} asking={!!session.question} /> : <CodeIcon size={18} className="text-muted" />}
+    <Card className="w-full max-w-[92%] flex-row items-center gap-3 self-start rounded-[22px] border border-border bg-background p-3">
+      <Surface variant="secondary" className="size-9 items-center justify-center rounded-[10px] p-0 shadow-none">
+        <CodeIcon size={18} className="text-foreground" />
+      </Surface>
       <Card.Body className="min-w-0 gap-0.5">
-        <Card.Title numberOfLines={1}>{session?.title ?? title}</Card.Title>
-        <Card.Description numberOfLines={1}>
-          {t.claudeCode} · {session ? codeStatusText(t, session) : gone ? t.gone : t.status[status]}
-          {detail ? ` · ${detail}` : ""}
-        </Card.Description>
+        <Card.Title numberOfLines={1} className="text-sm font-semibold">
+          {session?.title ?? title}
+        </Card.Title>
+        <View className="flex-row items-center gap-1.5">
+          {session && <StatusIcon status={status} asking={!!session.question} small />}
+          <Card.Description numberOfLines={1} className="min-w-0 shrink text-footnote">
+            {session ? codeStatusText(t, session) : gone ? t.gone : t.status[status]}
+            {detail ? ` · ${detail}` : ""}
+          </Card.Description>
+        </View>
       </Card.Body>
       {!gone && (
         <Button size="sm" variant="secondary" onPress={withTap(() => router.push(codeSessionHref(conversationId, sessionId)))}>

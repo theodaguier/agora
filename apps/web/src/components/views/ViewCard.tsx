@@ -1,14 +1,19 @@
 import type { Drafts, DraftType, MailItem, ViewAction, ViewActionKind, ViewBlock } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
-import { IntegrationTile } from "@/components/marketplace/IntegrationType";
-import { Badge } from "@/components/ui/badge";
-import { useT } from "@/i18n";
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { defineMessages, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
+import { BlockCard } from "./block";
 import { DraftCard } from "./DraftCard";
 import { draftLabel } from "./format";
 import { displayName } from "./format";
 import { ViewChart, ViewStats } from "./ViewChart";
 import { ChatList, CodeList, ContactList, DataTable, EventList, FileList, FinanceList, GenericList, MailList, MailMessage, TaskItems } from "./lists";
+
+const messages = defineMessages({
+  en: { draft: { mail: "Mail draft", calendar: "Event draft", chat: "Message draft", tasks: "Task draft" } as Record<DraftType, string> },
+  fr: { draft: { mail: "Brouillon de mail", calendar: "Brouillon d'événement", chat: "Brouillon de message", tasks: "Brouillon de tâche" } },
+});
 
 /**
  * A view of connector data shown by a bot (```view``` block): a list, a message,
@@ -24,6 +29,7 @@ export function ViewCard(props: {
   onAsk: (text: string) => void;
 }) {
   const t = useT(integrations);
+  const m = useT(messages);
   const { view } = props;
   const count = view.kind === "list" ? view.items.length : view.kind === "table" ? view.rows.length : null;
 
@@ -72,24 +78,26 @@ export function ViewCard(props: {
     }
   };
 
+  // One muted line under the title: where it comes from, and how many there are.
+  const subtitle =
+    view.kind === "draft"
+      ? (view.subtitle ?? m.draft[view.type])
+      : [view.subtitle ?? (view.source && serverName(view.source)), count ? String(count) : null].filter(Boolean).join(" · ");
+  const padded = view.kind !== "list";
+
   return (
-    <section className="w-full max-w-[min(680px,88%)] rounded-2xl bg-secondary p-2.5">
-      <header className="mb-1.5 flex items-center gap-2.5 px-1">
-        <IntegrationTile type={view.type} server={view.source} className="size-8 shrink-0 rounded-lg [&_svg]:size-4" />
+    <BlockCard className={cn(view.kind === "list" && "gap-3")}>
+      <CardHeader>
         {/* A chart's title is its conclusion, a sentence: it wraps rather than being cut. */}
-        <div className="min-w-0 flex-1">
-          <h3 className={cn("text-[15px] font-medium text-pretty", view.kind === "chart" || view.kind === "stats" ? "line-clamp-2" : "truncate")}>
-            {view.title || t.types[view.type]}
-          </h3>
-          {view.subtitle && <p className="text-xs text-pretty text-muted-foreground">{view.subtitle}</p>}
-        </div>
-        {count != null && count > 0 && (
-          <Badge variant="secondary" className="bg-accent font-normal tabular-nums text-muted-foreground">
-            {count}
-          </Badge>
-        )}
-      </header>
-      <div className={view.kind === "draft" || view.kind === "message" ? "px-1.5 pb-1.5 pt-1" : undefined}>{body()}</div>
-    </section>
+        <CardTitle className={cn("font-semibold text-pretty", view.kind === "chart" || view.kind === "stats" ? "line-clamp-2" : "truncate")}>
+          {view.title || t.types[view.type]}
+        </CardTitle>
+        {subtitle && <CardDescription className="text-pretty">{subtitle}</CardDescription>}
+      </CardHeader>
+      {view.kind === "draft" ? body() : padded ? <CardContent>{body()}</CardContent> : body()}
+    </BlockCard>
   );
 }
+
+/** "google-calendar" → "Google Calendar": the MCP server's name, as a person would write it. */
+const serverName = (server: string) => server.replace(/[-_]+/g, " ").replace(/(^|\s)\S/g, (c) => c.toUpperCase());
