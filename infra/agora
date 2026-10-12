@@ -75,21 +75,22 @@ case "${1:-}" in
     # kanban) are consistent: Hermes is paused for the local copy only (seconds,
     # as for the updater's backups), the upload then runs from the copy.
     # Needs free disk space for one more copy of the volume, while it runs.
+    # Package caches are left out, as in the updater's backups
+    # (apps/updater/src/backup.ts): several GB rebuilt by the next install. With
+    # them, the copy filled the disk, Hermes stayed paused and Postgres went down.
     staging=agora_restic-staging
     docker volume create "$staging" >/dev/null
     hermes="$(compose ps -q hermes)"
-    if [ -n "$hermes" ]; then
-      docker pause "$hermes" >/dev/null
-      # Never leave Hermes paused, even if this script is interrupted.
-      trap 'docker unpause "$hermes" >/dev/null 2>&1 || true' EXIT
-    fi
+    # Never leave Hermes paused nor the copy on disk, even if this script fails.
+    trap '[ -n "$hermes" ] && docker unpause "$hermes" >/dev/null 2>&1; docker volume rm -f "$staging" >/dev/null 2>&1 || true' EXIT
+    [ -n "$hermes" ] && docker pause "$hermes" >/dev/null
     copied=true
-    docker run --rm -v agora_hermes-data:/from:ro -v "$staging:/to" alpine \
-      sh -c 'find /to -mindepth 1 -delete && cp -a /from/. /to/' || copied=false
-    if [ -n "$hermes" ]; then
-      docker unpause "$hermes" >/dev/null
-      trap - EXIT
-    fi
+    docker run --rm -v agora_hermes-data:/from:ro -v "$staging:/to" alpine sh -c '
+      set -o pipefail
+      find /to -mindepth 1 -delete
+      tar -C /from -cf - --exclude=node_modules --exclude=./.bun/install/cache --exclude=./.npm \
+        --exclude=./.cache --exclude=./.local/share/pnpm . | tar -C /to -xpf -' || copied=false
+    [ -n "$hermes" ] && { docker unpause "$hermes" >/dev/null 2>&1 || true; }
     $copied || { echo "Copy of the Hermes data failed: nothing sent." >&2; exit 1; }
     # Same path as the live volume (/data/hermes-data): restores are unchanged.
     # The copy has new inodes and ctimes: compare on mtime and size only.
