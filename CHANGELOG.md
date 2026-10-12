@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.43.1 — 2026-10-12
+
+### Fixes
+- **infra**: off-site backup no longer fills the disk
+
 ## v0.43.0 — 2026-10-07
 
 ### Features
