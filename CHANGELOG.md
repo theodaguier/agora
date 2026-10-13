@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.44.0 — 2026-10-13
+
+### Features
+- **api**: bots' MCP connectors on Claude Code, Codex and Cursor
+
 ## v0.43.1 — 2026-10-12
 
 ### Fixes
