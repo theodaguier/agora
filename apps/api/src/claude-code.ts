@@ -1,3 +1,4 @@
+import type { Subprocess } from "bun";
 import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -8,6 +9,7 @@ import { anthropicModels, newestFirst, type CatalogModel } from "./model-catalog
 import type { EngineUsage } from "./usage";
 import { activeClaudeAccountId, claudeCodeEnv } from "./claude-accounts";
 import { readLines } from "./lines";
+import { claudeMcpConfig, noMcp, type EngineMcp } from "./engine-mcp";
 
 /**
  * Claude Code engine: the official `claude -p` binary, on its owner's Claude
@@ -177,11 +179,15 @@ export async function* claudeCodeChat(opts: {
   system?: string;
   /** Directories the agent may read in addition to its workspace (attachments). */
   readDirs?: string[];
+  /** The bot's connectors (engine-mcp.ts). */
+  mcp?: EngineMcp;
   signal?: AbortSignal;
 }): AsyncGenerator<HermesEvent> {
   const cwd = await workspace();
   const sessionId = sessionUuid(opts.sessionKey);
-  const allowed = env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean);
+  const mcp = await claudeMcpConfig(opts.mcp ?? noMcp());
+  // -p refuses any tool not allowed here: the connectors' tools are.
+  const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...mcp.allowed];
   const args = [
     env.CLAUDE_CODE_BIN,
     "-p",
@@ -193,13 +199,20 @@ export async function* claudeCodeChat(opts: {
     // None of the owner's hooks, CLAUDE.md or personal MCP servers: only what the app provides.
     "--setting-sources", "project",
     "--strict-mcp-config",
+    ...mcp.args,
     ...((await sessionExists(sessionId)) ? ["--resume", sessionId] : ["--session-id", sessionId]),
     ...(opts.system ? ["--append-system-prompt", opts.system] : []),
     ...(allowed.length ? ["--allowedTools", ...allowed] : []),
     ...[...new Set(opts.readDirs ?? [])].flatMap((d) => ["--add-dir", d]),
   ];
 
-  const proc = Bun.spawn(args, { cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  let proc: Subprocess<"pipe", "pipe", "pipe">;
+  try {
+    proc = Bun.spawn(args, { cwd, env: await claudeCodeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  } catch (err) {
+    await mcp.dispose();
+    throw err;
+  }
   const abort = () => proc.kill();
   opts.signal?.addEventListener("abort", abort, { once: true });
 
@@ -239,6 +252,7 @@ export async function* claudeCodeChat(opts: {
   } finally {
     opts.signal?.removeEventListener("abort", abort);
     if (proc.exitCode === null) proc.kill();
+    await mcp.dispose();
   }
 }
 

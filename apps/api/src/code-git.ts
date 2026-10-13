@@ -269,17 +269,30 @@ export async function writeCredentials(cwd: string, text: string) {
     }
   }
   if (!file) return t.credentialsTracked;
-  const common = (await git(cwd, ["rev-parse", "--git-common-dir"])).out;
-  if (common) {
-    const exclude = join(isAbsolute(common) ? common : join(cwd, common), "info", "exclude");
-    const current = await readFile(exclude, "utf8").catch(() => "");
-    if (!current.split("\n").includes(`/${file}`)) {
-      await mkdir(join(exclude, ".."), { recursive: true });
-      await appendFile(exclude, `${current && !current.endsWith("\n") ? "\n" : ""}/${file}\n`);
-    }
-  }
+  await excludeFromGit(cwd, file);
   await writeFile(join(cwd, file), `${CREDENTIALS_HEAD}\n${text}`, { mode: 0o600 });
   return t.credentials(file);
+}
+
+/** Excludes a path of the worktree in the clone's info/exclude: no commit can take it. */
+async function excludeFromGit(cwd: string, file: string) {
+  const common = (await git(cwd, ["rev-parse", "--git-common-dir"])).out;
+  if (!common) return;
+  const exclude = join(isAbsolute(common) ? common : join(cwd, common), "info", "exclude");
+  const current = await readFile(exclude, "utf8").catch(() => "");
+  if (current.split("\n").includes(`/${file}`)) return;
+  await mkdir(join(exclude, ".."), { recursive: true });
+  await appendFile(exclude, `${current && !current.endsWith("\n") ? "\n" : ""}/${file}\n`);
+}
+
+/**
+ * Before writing a file holding a secret into the worktree: false when the repository tracks it
+ * (a commit would take the secret), otherwise it is excluded from git first.
+ */
+export async function untrackedSecretFile(cwd: string, file: string) {
+  if ((await git(cwd, ["ls-files", "--error-unmatch", "--", file])).ok) return false;
+  await excludeFromGit(cwd, file);
+  return true;
 }
 
 /**

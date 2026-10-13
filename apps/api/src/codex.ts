@@ -1,8 +1,10 @@
+import type { Subprocess } from "bun";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { activeCodexAccountId, codexEnv } from "./codex-accounts";
 import { codexAppServer } from "./codex-app-server";
+import { codexMcpArgs, noMcp, type EngineMcp } from "./engine-mcp";
 import { env } from "./env";
 import type { HermesEvent, ModelInfo } from "./hermes";
 import { readLines } from "./lines";
@@ -105,6 +107,8 @@ export async function* codexChat(opts: {
   images?: string[];
   model: string;
   system?: string;
+  /** The bot's connectors (engine-mcp.ts). */
+  mcp?: EngineMcp;
   signal?: AbortSignal;
 }): AsyncGenerator<HermesEvent> {
   const cwd = await workspace();
@@ -131,6 +135,7 @@ async function* runCodex(opts: {
   images?: string[];
   model: string;
   system?: string;
+  mcp?: EngineMcp;
   signal?: AbortSignal;
   cwd: string;
   thread: string | undefined;
@@ -141,6 +146,8 @@ async function* runCodex(opts: {
     await mkdir(tmp, { recursive: true });
     await Promise.all(images.map((f) => writeFile(f.path, f.data)));
   }
+  // The bot's connectors, through the gateway until the run ends.
+  const mcp = codexMcpArgs(opts.mcp ?? noMcp());
   const args = [
     env.CODEX_BIN,
     "exec",
@@ -156,11 +163,18 @@ async function* runCodex(opts: {
     ...DISABLED.flatMap((f) => ["-c", `features.${f}=false`]),
     // A JSON string is a valid TOML string.
     ...(opts.system ? ["-c", `developer_instructions=${JSON.stringify(opts.system)}`] : []),
+    ...mcp.args,
     ...images.flatMap((f) => ["--image", f.path]),
     "-",
   ];
 
-  const proc = Bun.spawn(args, { cwd: opts.cwd, env: await codexEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  let proc: Subprocess<"pipe", "pipe", "pipe">;
+  try {
+    proc = Bun.spawn(args, { cwd: opts.cwd, env: { ...(await codexEnv()), ...mcp.env }, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  } catch (err) {
+    await mcp.dispose();
+    throw err;
+  }
   const abort = () => proc.kill();
   opts.signal?.addEventListener("abort", abort, { once: true });
   proc.stdin.write(opts.text);
@@ -201,6 +215,7 @@ async function* runCodex(opts: {
     opts.signal?.removeEventListener("abort", abort);
     if (proc.exitCode === null) proc.kill();
     if (images.length) await rm(tmp, { recursive: true, force: true });
+    await mcp.dispose();
   }
 }
 

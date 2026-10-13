@@ -26,6 +26,8 @@ import {
   snapshotMcpServer,
 } from "./hermes-admin";
 import { errors } from "./errors.messages";
+import { engineConnectorsLines, engineMcpOrNone } from "./engine-mcp";
+import { forgetOAuthToken } from "./mcp-oauth-token";
 import { defineMessages, tr } from "./i18n";
 
 const messages = defineMessages({
@@ -142,8 +144,7 @@ export async function connectorsPrompt(profile: string, engine: "hermes" | "clau
   const waiting = { pending: "attend la validation d'un administrateur", approved: "attend ses secrets ou sa connexion", authorizing: "attend l'autorisation OAuth" };
   const lines = ["# Tes connecteurs MCP (état réel, recalculé à chaque message)"];
   if (engine !== "hermes") {
-    const name = engine === "codex" ? "Codex" : "Claude Code";
-    lines.push(`Tu tournes en ce moment sur le moteur ${name} : aucun connecteur MCP n'y est branché. Si la demande en a besoin, dis-le et propose de repasser sur un modèle Hermes avec le sélecteur de modèle.`);
+    lines.push(...engineConnectorsLines(engine, await engineMcpOrNone(profile)));
   } else if (on.length) {
     lines.push(`Activés pour toi : ${on.map((s) => `\`${s.name}\` (outils \`${toolPrefix(s.name)}*\`)`).join(", ")}.`);
   } else {
@@ -563,6 +564,8 @@ async function finish(row: Row, tools: string[]) {
     await refreshAgentMcp(row.name);
   }
   await db.update(mcpServer).set({ status: "installed", tools, error: null }).where(eq(mcpServer.id, row.id));
+  // New authorization or secrets: the engines' gateway takes Hermes's tokens again.
+  forgetOAuthToken(row.name);
   let restarted = true;
   await restartGateway().catch((err) => {
     restarted = false;

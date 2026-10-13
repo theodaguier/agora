@@ -10,6 +10,7 @@ import { agents } from "./routes/agents";
 import { attachments } from "./routes/attachments";
 import { conversations } from "./routes/conversations";
 import { codeSessions, internalCode } from "./routes/code-sessions";
+import { internalMcp } from "./mcp-gateway";
 import { digest } from "./routes/digest";
 import { events } from "./routes/events";
 import { hermesAdmin } from "./routes/hermes-admin";
@@ -97,7 +98,9 @@ const app = new Hono()
   .route("/admin/wiki", wiki)
   .route("/admin", admin)
   // The agora_code Hermes plugin only (127.0.0.1, its own token).
-  .route("/internal/code", internalCode);
+  .route("/internal/code", internalCode)
+  // The engines' MCP connectors (127.0.0.1, a token per run).
+  .route("/internal/mcp", internalMcp);
 
 export type AppType = typeof app;
 
