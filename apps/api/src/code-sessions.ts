@@ -11,6 +11,7 @@ import { GitError, githubEnv, githubToken, parseRepo, prepareWorktree, readGit, 
 import { clip, isMode, planTitle, Transcript } from "./code-steps";
 import { db, schema } from "./db";
 import { env } from "./env";
+import { claudeMcpConfig, engineMcpOrNone, noMcp, type EngineMcp } from "./engine-mcp";
 import { publishToConversation } from "./events";
 import { cliEnv } from "./host";
 import { readLines } from "./lines";
@@ -1298,8 +1299,12 @@ async function execute(s: Live, id: number): Promise<void> {
     touch(s, [], true);
   }
   // Started by a bot: it can ask that bot a question (ask_bot, answered on its stdin like a permission).
-  const [bot] = r.agentId ? await db.select({ name: schema.agent.name }).from(schema.agent).where(eq(schema.agent.id, r.agentId)) : [];
+  const [bot] = r.agentId
+    ? await db.select({ name: schema.agent.name, profile: schema.agent.hermesProfile }).from(schema.agent).where(eq(schema.agent.id, r.agentId))
+    : [];
   s.bot = bot?.name ?? null;
+  // And it gets that bot's connectors, the ones enabled for it in Hermes.
+  const connectors = bot ? await engineMcpOrNone(bot.profile) : noMcp();
   const headless = r.engine !== "claude";
   const appended = [
     env.CHROMIUM_PATH && browserNote(env.CHROMIUM_PATH),
@@ -1309,8 +1314,9 @@ async function execute(s: Live, id: number): Promise<void> {
   ]
     .filter(Boolean)
     .join("\n\n");
-  if (headless) return executeHeadless(s, id, headlessEngine(r.engine as Exclude<CodeEngine, "claude">), appended);
-  const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools, ...(s.bot ? [ASK_TOOL] : [])];
+  if (headless) return executeHeadless(s, id, headlessEngine(r.engine as Exclude<CodeEngine, "claude">), appended, connectors);
+  const mcp = await claudeMcpConfig(connectors, s.bot ? { [MCP_SERVER]: { type: "sdk", name: MCP_SERVER } } : {});
+  const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools, ...(s.bot ? [ASK_TOOL] : []), ...mcp.allowed];
   // The files joined to its instructions, including the ones sent while this process stays warm.
   const uploads = uploadsDir(await workspace(), r.id);
   await mkdir(uploads, { recursive: true });
@@ -1337,7 +1343,7 @@ async function execute(s: Live, id: number): Promise<void> {
     ...(allowed.length ? ["--allowedTools", ...allowed] : []),
     ...[uploads, ...r.permissions.dirs].flatMap((d) => ["--add-dir", d]),
     ...(appended ? ["--append-system-prompt", appended] : []),
-    ...(s.bot ? ["--mcp-config", JSON.stringify({ mcpServers: { [MCP_SERVER]: { type: "sdk", name: MCP_SERVER } } })] : []),
+    ...mcp.args,
   ];
   // git and gh reach GitHub with the vault's token (the clone's credential helper reads it from there).
   // The browsers it launches show on the conversation's screen.
@@ -1353,7 +1359,14 @@ async function execute(s: Live, id: number): Promise<void> {
   const profile = (await claudeProfiles().catch(() => [])).find((p) => p.id === accountId);
   r.account = { id: accountId, email: profile?.email ?? null, plan: profile?.plan ?? null };
   touch(s, [], true);
-  const proc = Bun.spawn(args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  let proc: Subprocess<"pipe", "pipe", "pipe">;
+  try {
+    proc = Bun.spawn(args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  } catch (err) {
+    await mcp.dispose();
+    throw err;
+  }
+  void proc.exited.finally(mcp.dispose);
   s.proc = proc;
   // Stopped while it was starting.
   if (s.stopping) proc.kill();
@@ -1497,7 +1510,7 @@ function account(s: Live, ev: Json) {
  * A run of a headless engine (Codex, Cursor): the instructions written so far in one prompt, its
  * output read until it exits. The next instruction resumes its thread in a new process.
  */
-async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, system: string): Promise<void> {
+async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, system: string, mcp: EngineMcp): Promise<void> {
   const r = s.row;
   const bin = engineBin(r.engine);
   if (!bin) throw new Error(`${CODE_ENGINE_NAMES[r.engine]} is not installed on the server.`);
@@ -1506,12 +1519,19 @@ async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, syst
     .map((m) => m.prompt ?? m.text)
     .join("\n\n");
   const thread = r.engineThread;
-  const run = await engine.command({ bin, cwd: r.cwd, prompt, model: r.model, mode: modeOf(r), thread, system });
+  const run = await engine.command({ bin, cwd: r.cwd, prompt, model: r.model, mode: modeOf(r), thread, system, mcp });
   r.account = await engine.account().catch(() => null);
   touch(s, [], true);
   // As Claude Code's: git and gh reach GitHub with the vault's token, its browsers show on the conversation's screen.
   const spawnEnv = cliEnv(bin, { ...run.env, ...githubEnv(await githubToken()), ...(await screenEnv(r.conversationId, `code-${r.id}`).catch(() => ({}))) });
-  const proc = Bun.spawn(run.args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  let proc: Subprocess<"pipe", "pipe", "pipe">;
+  try {
+    proc = Bun.spawn(run.args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  } catch (err) {
+    await run.cleanup?.();
+    throw err;
+  }
+  if (run.cleanup) void proc.exited.finally(run.cleanup);
   s.proc = proc;
   // Stopped while it was starting.
   if (s.stopping) proc.kill();

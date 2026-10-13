@@ -16,6 +16,7 @@ import { blockedModels, resolveHermesModel } from "./models";
 import { attributeSession, recordEngineUsage, syncHermesUsage } from "./usage";
 import { agentAuthor, listMessages, postEvent, postMessage, unseenMessages, type MessageDto } from "./messages";
 import { connectorsPrompt, createRequest, MCP_REQUEST_PROMPT } from "./mcp-requests";
+import { engineMcpOrNone } from "./engine-mcp";
 import { onboardingPrompt, parseReply, writeSoul } from "./onboarding";
 import { QUESTIONS_PROMPT } from "./questions";
 import { createSkillCreation, createSkillRequest, SKILL_CREATE_PROMPT, SKILL_REQUEST_PROMPT } from "./skill-requests";
@@ -280,6 +281,8 @@ function openChat(
         model: engine.model!.split("::")[1]!,
         // Outside Hermes, the bot's personality is not injected automatically.
         system: [await readSoul(bot.hermesProfile), opts.system].filter(Boolean).join("\n\n"),
+        // Nor its connectors: the ones enabled for it in Hermes, declared to the engine.
+        mcp: await engineMcpOrNone(bot.hermesProfile),
         signal: opts.signal,
       };
       if (engine.kind === "codex") yield* codexChat(common);

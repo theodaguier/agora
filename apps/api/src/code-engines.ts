@@ -2,7 +2,9 @@ import { CODE_ENGINE_NAMES, CODE_ENGINES, type CodeAccount, type CodeEngine, typ
 import { canUseClaudeCode } from "./claude-code";
 import { canUseCodex, codexModels, turnUsage, type CodexUsage } from "./codex";
 import { activeCodexAccountId, codexEnv, listCodexAccounts } from "./codex-accounts";
+import { untrackedSecretFile } from "./code-git";
 import { clip, describeTool, type Transcript } from "./code-steps";
+import { codexMcpArgs, cursorMcpConfig, noMcp, type EngineMcp } from "./engine-mcp";
 import { env } from "./env";
 import { childEnv } from "./harden";
 import { cliEnv, cliPath } from "./host";
@@ -42,11 +44,23 @@ export type HeadlessRun = {
   env: Record<string, string>;
   /** Written to its stdin, then closed (null: the prompt is in the arguments). */
   stdin: string | null;
+  /** Once the process has exited (or failed to start): ends what the run was given. */
+  cleanup?: () => Promise<void>;
 };
 
 export type HeadlessEngine = {
   id: Exclude<CodeEngine, "claude">;
-  command(o: { bin: string; cwd: string; prompt: string; model: string | null; mode: CodePermissionMode; thread: string | null; system: string }): Promise<HeadlessRun>;
+  command(o: {
+    bin: string;
+    cwd: string;
+    prompt: string;
+    model: string | null;
+    mode: CodePermissionMode;
+    thread: string | null;
+    system: string;
+    /** The connectors of the bot that started the session (engine-mcp.ts); engines without MCP ignore them. */
+    mcp?: EngineMcp;
+  }): Promise<HeadlessRun>;
   /** Reads one run's output, adding its steps to the session's transcript. */
   reader(t: Transcript, cwd: string, model: string | null): (ev: Json) => EngineChange;
   account(): Promise<CodeAccount | null>;
@@ -126,9 +140,10 @@ const PLAN_NOTE =
 
 const codex: HeadlessEngine = {
   id: "codex",
-  async command({ bin, prompt, model, mode, thread, system }) {
+  async command({ bin, prompt, model, mode, thread, system, mcp }) {
     const plan = mode === "plan";
     const instructions = [system, plan && PLAN_NOTE].filter(Boolean).join("\n\n");
+    const connectors = codexMcpArgs(mcp ?? noMcp());
     return {
       args: [
         bin,
@@ -143,10 +158,12 @@ const codex: HeadlessEngine = {
         ...(model ? ["--model", model] : []),
         // A JSON string is a valid TOML string.
         ...(instructions ? ["-c", `developer_instructions=${JSON.stringify(instructions)}`] : []),
+        ...connectors.args,
         "-",
       ],
-      env: cliEnv(bin, await codexEnv()),
+      env: cliEnv(bin, { ...(await codexEnv()), ...connectors.env }),
       stdin: prompt,
+      cleanup: connectors.dispose,
     };
   },
   reader(t, cwd, model) {
@@ -304,9 +321,11 @@ function cursorResult(result: Json | undefined): { output?: string; failed: bool
 
 const cursor: HeadlessEngine = {
   id: "cursor",
-  async command({ bin, cwd, prompt, model, mode, thread, system }) {
+  async command({ bin, cwd, prompt, model, mode, thread, system, mcp }) {
     // No system prompt of its own: what Agora tells it opens the first instruction.
     const text = [!thread && system && `<agora>\n${system}\n</agora>`, prompt].filter(Boolean).join("\n\n");
+    // The bot's connectors, in the workspace's .cursor/mcp.json for the run.
+    const connectors = await cursorMcpConfig(mcp ?? noMcp(), cwd, (file) => untrackedSecretFile(cwd, file));
     return {
       args: [
         bin,
@@ -318,10 +337,12 @@ const cursor: HeadlessEngine = {
         ...(mode === "plan" ? ["--mode", "plan"] : ["--force"]),
         ...(model ? ["--model", model] : []),
         ...(thread ? ["--resume", thread] : []),
+        ...connectors.args,
         text,
       ],
-      env: cliEnv(bin, childEnv({ NO_COLOR: "1" })),
+      env: cliEnv(bin, childEnv({ NO_COLOR: "1", ...connectors.env })),
       stdin: null,
+      cleanup: connectors.dispose,
     };
   },
   reader(t, cwd) {

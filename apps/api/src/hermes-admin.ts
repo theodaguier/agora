@@ -297,6 +297,21 @@ export async function agentMcpServers(profile: string) {
   }));
 }
 
+/**
+ * Declarations of the servers enabled for the agent, as its gateway runs them: the profile's own
+ * copy (the instance's for the default profile), and the .env its `${VAR}` references resolve in.
+ */
+export async function enabledMcpConfigs(profile: string): Promise<{ servers: [string, McpConfig][]; envFiles: string[] }> {
+  const instance = await instanceMcpServers();
+  const own = isDefaultProfile(profile)
+    ? instance
+    : (((await loadYaml(join(profileHome(profile), "config.yaml"))).toJS()?.mcp_servers ?? {}) as Record<string, McpConfig>);
+  const servers = Object.entries(own).filter(([name, cfg]) => instance[name] && instance[name]!.enabled !== false && cfg.enabled !== false);
+  // The profile's .env last: its values win, as in its gateway.
+  const envFiles = [join(env.HERMES_HOME, ".env"), ...(isDefaultProfile(profile) ? [] : [join(profileHome(profile), ".env")])];
+  return { servers, envFiles };
+}
+
 export async function setAgentMcp(profile: string, server: string, enabled: boolean) {
   if (isDefaultProfile(profile)) {
     throw new HermesError(tr(messages).defaultProfileMcp, 400);

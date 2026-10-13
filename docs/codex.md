@@ -9,7 +9,7 @@ Same as the [Claude Code engine](claude-code.md), with a ChatGPT subscription: t
 ## Settled decisions
 
 - **Owner only**, like Claude Code: `CODEX_OWNER_EMAIL` (empty = `CLAUDE_CODE_OWNER_EMAIL`). Offered everywhere to the owner; only the turns they start run on it, the others fall back to the bot's Hermes model.
-- **Official binary, the owner's config left out.** `codex exec --json --ignore-user-config`: none of the owner's MCP servers, profiles or hooks.
+- **Official binary, the owner's config left out.** `codex exec --json --ignore-user-config`: none of the owner's MCP servers, profiles or hooks. It gets the bot's connectors instead, through Agora's MCP gateway (see « MCP connectors » in `claude-code.md`).
 - **No shell.** Read-only sandbox, `approval_policy="never"`, and the tools that run commands or act outside the chat turned off (`shell_tool`, `unified_exec`, `code_mode_host`, sub-agents, apps, browser, computer use, image generation). Web search stays on. Features are turned off with `-c features.<name>=false` rather than `--disable`, which fails on a name the installed version doesn't know.
 - **Models detected.** `model/list` of `codex app-server`, per account, cached 10 minutes; `account/read` gives the account's email and plan.
 

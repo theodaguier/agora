@@ -12,6 +12,8 @@ export const env = z
     /** Root of the Hermes instance: profiles, attachments, gateway pid. */
     HERMES_HOME: z.string().default(""),
     HERMES_BIN: z.string().default("hermes"),
+    /** Hermes's Python, for its OAuth code (mcp-oauth-token.ts); empty = the one HERMES_BIN runs. */
+    HERMES_PYTHON: z.string().default(""),
     /** Secret used to derive profile API keys (HMAC per profile name). */
     HERMES_KEY_SECRET: z.string().default(""),
     /** Update service (production); empty in dev. */
