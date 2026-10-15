@@ -217,6 +217,25 @@ to `iptables_chains` (next to `INPUT`): Docker's published ports skip `INPUT`,
 bans wouldn't reach them otherwise. Then
 `sudo systemctl restart crowdsec crowdsec-firewall-bouncer`.
 
+Opening a conversation with many images downloads one `/api/attachments/<id>`
+per image: `http-crawl-non_statics` takes it for a crawl and bans the user (seen
+on 2026-10-15, Agora unreachable for 4 hours). Successful attachment downloads
+are left out of the scenarios; probes and brute force still count:
+
+```sh
+sudo tee /etc/crowdsec/parsers/s02-enrich/agora-attachments-whitelist.yaml <<'EOF'
+name: agora/attachments-whitelist
+description: "Agora: successful attachment downloads are app traffic, not crawling"
+whitelist:
+  reason: "Agora attachments (a conversation with many images looks like a crawl)"
+  expression:
+    - "evt.Meta.http_verb == 'GET' && evt.Meta.http_path startsWith '/api/attachments/' && evt.Meta.http_status in ['200', '206', '304']"
+EOF
+sudo systemctl reload crowdsec
+```
+
+A user banned anyway: `sudo cscli decisions delete --ip <ip>`.
+
 **SSH through Tailscale only.** Once `tailscale up` works and you can
 connect through the tailnet IP: `sudo ufw allow in on tailscale0 to any port 22 proto tcp`,
 then `sudo ufw delete allow 22/tcp`. Every device of the tailnet can then reach

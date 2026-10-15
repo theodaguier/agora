@@ -82,7 +82,9 @@ case "${1:-}" in
     docker volume create "$staging" >/dev/null
     hermes="$(compose ps -q hermes)"
     # Never leave Hermes paused nor the copy on disk, even if this script fails.
-    trap '[ -n "$hermes" ] && docker unpause "$hermes" >/dev/null 2>&1; docker volume rm -f "$staging" >/dev/null 2>&1 || true' EXIT
+    # set +e: under errexit, the unpause of a running Hermes (always the case at
+    # the end) aborted the trap before the volume removal, and failed the run.
+    trap 'set +e; [ -n "$hermes" ] && docker unpause "$hermes" >/dev/null 2>&1; docker volume rm -f "$staging" >/dev/null 2>&1; true' EXIT
     [ -n "$hermes" ] && docker pause "$hermes" >/dev/null
     copied=true
     docker run --rm -v agora_hermes-data:/from:ro -v "$staging:/to" alpine sh -c '
