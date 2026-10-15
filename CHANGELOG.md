@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.44.1 — 2026-10-15
+
+### Fixes
+- **infra**: backup cleanup trap survives errexit, CrowdSec attachments whitelist
+
 ## v0.44.0 — 2026-10-13
 
 ### Features
