@@ -1,6 +1,6 @@
 # Web app (Vite build) served by Caddy, which also handles HTTPS and proxies /api.
 # Build context: repo root.
-FROM node:24-slim AS build
+FROM node:25-slim AS build
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
