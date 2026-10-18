@@ -1,6 +1,6 @@
 # Update service: Bun + Docker/Compose CLI (drives the host's daemon).
 # Build context: repo root.
-FROM oven/bun:1.3.9-alpine
+FROM oven/bun:1.4.2-alpine
 ARG APP_VERSION=0.0.0
 # git + su-exec: keeps the server's checkout on the running version's tag (src/repo.ts).
 RUN apk add --no-cache docker-cli docker-cli-compose git su-exec
