@@ -111,6 +111,16 @@ The updater backs up automatically before each update (volume
 - `agora_pgdata`: accounts, agents, conversations;
 - `agora_hermes-data`: Hermes profiles, memories, wiki, skills (`shared-skills/`: written by the bots, read by all of them), attachments, provider keys.
 
+Local rollback archives are limited by `KEEP_BACKUPS` (default 7) and
+`BACKUP_BUDGET_PERCENT` (default 20% of the backup filesystem capacity). Cleanup
+runs before a new backup, after success, at startup and hourly. It retains the
+newest consecutive archives within both limits and always keeps the most recent
+complete archive, even if that archive exceeds the size budget. A budget of 0
+disables the size limit. With the budget enabled, older archives are also removed
+when needed to leave room for an archive the size of the latest one plus a 1 GiB
+reserve; actual free space is checked again after each deletion. This local policy
+is independent of off-site retention.
+
 ```sh
 docker compose exec postgres pg_dump -U agora agora | gzip > agora-$(date +%F).sql.gz
 docker run --rm -v agora_hermes-data:/data -v "$PWD":/out alpine \

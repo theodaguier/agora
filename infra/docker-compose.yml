@@ -127,6 +127,8 @@ services:
       REGISTRY_USER: ${REGISTRY_USER:-}
       REGISTRY_TOKEN: ${REGISTRY_TOKEN:-}
       BACKUPS_VOLUME: agora_backups
+      KEEP_BACKUPS: ${KEEP_BACKUPS:-7}
+      BACKUP_BUDGET_PERCENT: ${BACKUP_BUDGET_PERCENT:-20}
       TZ: ${TZ:-Europe/Paris}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
