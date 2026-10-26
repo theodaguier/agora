@@ -134,8 +134,17 @@ Backblaze B2 or an SFTP server.
 2. `./agora backup-offsite`: the database (fresh dump), the `hermes-data` volume,
    the updater's pre-update backups and `.env`. The repository is created on the
    first run; 7 daily, 4 weekly and 6 monthly snapshots are kept.
+   Hermes data is staged as `hermes-data.tgz` with rebuildable dependency/cache
+   directories excluded. Source files, lockfiles and Git history are preserved.
+   Compression is limited to one CPU and 256 MiB of memory; its output is capped
+   below the available disk space with a 1 GiB reserve. Hermes resumes before
+   upload. Retention also runs after a failed file backup. A compressed archive
+   can reduce restic's deduplication across snapshots; monitor repository growth.
 3. `./agora restore-check`: lists the snapshots, checks part of the data, and
    restores the latest dump into a throwaway Postgres (prints the account count).
+   For the compressed format it also reads the complete Hermes archive (including
+   the gzip checksum), restores its SQLite databases to temporary storage and
+   checks their integrity. No production database or volume is overwritten.
    Run it once after setting things up, then from time to time: an untested
    backup is not a backup.
 
@@ -170,7 +179,13 @@ docker run --rm -it -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID
   -v "$PWD/restore:/restore" restic/restic:0.18.0 restore latest --host agora --tag files --target /restore
 cp restore/data/env/.env infra/.env      # same secrets as before
 cd infra && docker compose -p agora up -d postgres
-docker run --rm -v agora_hermes-data:/data -v "$PWD/../restore/data/hermes-data:/src:ro" alpine cp -a /src/. /data/
+if [ -f ../restore/data/hermes-data.tgz ]; then
+  docker run --rm -v agora_hermes-data:/data -v "$PWD/../restore/data:/src:ro" alpine \
+    tar -xzf /src/hermes-data.tgz -C /data
+else
+  # Older snapshots used an uncompressed directory.
+  docker run --rm -v agora_hermes-data:/data -v "$PWD/../restore/data/hermes-data:/src:ro" alpine cp -a /src/. /data/
+fi
 docker run --rm -i -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
   restic/restic:0.18.0 dump --host agora --tag db latest /agora-db.sql \
   | docker compose -p agora exec -T postgres psql -U agora -d agora -v ON_ERROR_STOP=1 -q

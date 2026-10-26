@@ -1,4 +1,5 @@
 import type { Drafts, DraftType, MailItem, ViewAction, ViewActionKind, ViewBlock } from "@agora/core";
+import { lazy, Suspense } from "react";
 import { integrations } from "@agora/core/i18n";
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { defineMessages, useT } from "@/i18n";
@@ -7,8 +8,11 @@ import { BlockCard } from "./block";
 import { DraftCard } from "./DraftCard";
 import { draftLabel } from "./format";
 import { displayName } from "./format";
-import { ViewChart, ViewStats } from "./ViewChart";
+import { Spinner } from "@/components/ui/spinner";
 import { ChatList, CodeList, ContactList, DataTable, EventList, FileList, FinanceList, GenericList, MailList, MailMessage, TaskItems } from "./lists";
+
+const ViewChart = lazy(() => import("./ViewChart").then((m) => ({ default: m.ViewChart })));
+const ViewStats = lazy(() => import("./ViewChart").then((m) => ({ default: m.ViewStats })));
 
 const messages = defineMessages({
   en: { draft: { mail: "Mail draft", calendar: "Event draft", chat: "Message draft", tasks: "Task draft" } as Record<DraftType, string> },
@@ -51,9 +55,9 @@ export function ViewCard(props: {
       case "table":
         return <DataTable view={view} />;
       case "chart":
-        return <ViewChart view={view} />;
+        return <Suspense fallback={<Spinner className="mx-auto" />}><ViewChart view={view} /></Suspense>;
       case "stats":
-        return <ViewStats view={view} />;
+        return <Suspense fallback={<Spinner className="mx-auto" />}><ViewStats view={view} /></Suspense>;
       case "list":
         switch (view.type) {
           case "mail":

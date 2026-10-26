@@ -152,7 +152,7 @@ type ServerEvent =
   | { type: "read"; conversationId: string; userId: string }
   | { type: "typing"; conversationId: string; userId: string; name: string }
   | { type: "pins.changed"; conversationId: string }
-  | { type: "bot.started"; conversationId: string; turnId: string; agentId: string; requestedBy: string | null }
+  | { type: "bot.started"; conversationId: string; turnId: string; agentId: string; requestedBy: string | null; startedAt?: string }
   | { type: "bot.delta"; conversationId: string; turnId: string; text: string }
   | { type: "bot.tool"; conversationId: string; turnId: string; name: string; status: string }
   | { type: "bot.approval"; conversationId: string; turnId: string; approval: PendingApproval | null }
@@ -209,7 +209,11 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       return;
     }
     case "message.deleted":
+      // A response already in flight may still contain the deleted message or its quotes.
+      // Cancel before updating the cache; the replacement GET starts after the deletion committed.
+      void qc.cancelQueries({ queryKey: ["messages", cid], exact: true }, { revert: false });
       qc.setQueryData<Message[]>(["messages", cid], (old) => old && removeMessage(old, ev.messageId));
+      qc.invalidateQueries({ queryKey: ["messages", cid], exact: true });
       // Its pins went with it, and the list shows the last message.
       qc.invalidateQueries({ queryKey: ["pins", cid] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
@@ -239,7 +243,7 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       return;
     case "bot.started":
       updateTurns(cid, (ts) =>
-        ts.some((t) => t.turnId === ev.turnId) ? ts : [...ts, { turnId: ev.turnId, agentId: ev.agentId, requestedBy: ev.requestedBy, text: "", tools: [] }],
+        ts.some((t) => t.turnId === ev.turnId) ? ts : [...ts, { turnId: ev.turnId, startedAt: ev.startedAt, agentId: ev.agentId, requestedBy: ev.requestedBy, text: "", tools: [] }],
       );
       return;
     case "bot.delta":

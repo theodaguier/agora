@@ -17,6 +17,7 @@ import { commandsQuery, routinesQuery } from "@/lib/queries";
 import { scheduleLabel } from "@/lib/routines";
 import { openSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
+import { PreviewUrls } from "@/lib/preview-urls";
 import { AgentAvatar } from "./AgentAvatar";
 import { confirmAction } from "@/lib/confirm";
 import { ContextDialog } from "./ContextDialog";
@@ -167,28 +168,45 @@ function mentionItems(q: string, mentionables: AgentSummary[], people: ReturnTyp
 /** Files attached to the message being written, uploaded as soon as they're added (the Claude Code panel's field too). */
 export function usePendingFiles(conversationId: string, t: { tooLarge: string; uploadFailed: string }) {
   const [files, setFiles] = useState<PendingFile[]>([]);
+  const [previews] = useState(() => new PreviewUrls());
+  const uploads = useRef(new Map<string, AbortController>());
+  const clearFiles = () => {
+    previews.clear();
+    for (const controller of uploads.current.values()) controller.abort();
+    uploads.current.clear();
+    setFiles([]);
+  };
+  useEffect(() => () => {
+    previews.clear();
+    for (const controller of uploads.current.values()) controller.abort();
+    uploads.current.clear();
+  }, [previews, conversationId]);
   const addFiles = (list: FileList | File[]) => {
     for (const file of Array.from(list).slice(0, 10)) {
       const key = crypto.randomUUID();
-      const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+      const previewUrl = file.type.startsWith("image/") ? previews.create(file) : undefined;
       if (file.size > MAX_FILE) {
         setFiles((xs) => [...xs, { key, file, previewUrl, status: "error", error: t.tooLarge }]);
         continue;
       }
       setFiles((xs) => [...xs, { key, file, previewUrl, status: "uploading" }]);
-      uploadAttachment(conversationId, file).then(
+      const controller = new AbortController();
+      uploads.current.set(key, controller);
+      uploadAttachment(conversationId, file, controller.signal).then(
         (attachment) => setFiles((xs) => xs.map((x) => (x.key === key ? { ...x, status: "done", attachment } : x))),
         () => setFiles((xs) => xs.map((x) => (x.key === key ? { ...x, status: "error", error: t.uploadFailed } : x))),
-      );
+      ).finally(() => uploads.current.delete(key));
     }
   };
 
   const removeFile = (key: string) => {
     const f = files.find((x) => x.key === key);
-    if (f?.previewUrl) URL.revokeObjectURL(f.previewUrl);
+    previews.remove(f?.previewUrl);
+    uploads.current.get(key)?.abort();
+    uploads.current.delete(key);
     setFiles((xs) => xs.filter((x) => x.key !== key));
   };
-  return { files, setFiles, addFiles, removeFile };
+  return { files, clearFiles, addFiles, removeFile };
 }
 
 export function Composer({ conversationId, placeholder, botTools, mentionables = noMentionables, onSend, onTyping, replyTo, onCancelReply, recipientId, ref }: Props) {
@@ -205,7 +223,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
   const overlay = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const t = useT(messages);
-  const { files, setFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
+  const { files, clearFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
   // In a group, "/" lists the skills of the group's bots.
   const slash = botTools || mentionables.length > 0;
   const { data: commands } = useQuery({ ...commandsQuery(conversationId), enabled: slash });
@@ -330,11 +348,9 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
       invocations,
       mentions,
     );
-    // The previews of files sent live on in the message; the others are dropped here.
-    const sent = new Set(ready);
-    for (const f of files) if (f.previewUrl && !sent.has(f)) URL.revokeObjectURL(f.previewUrl);
+    // The pending message retained its previews synchronously in onSend.
     setText("");
-    setFiles([]);
+    clearFiles();
     setInvocations([]);
   };
 

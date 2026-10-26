@@ -753,7 +753,7 @@ function NewSessionView({
 /** The files of an instruction: uploaded to the conversation as they are added, their ids sent with it. */
 function useInstructionFiles(conversationId: string) {
   const t = useT(messages);
-  const { files, setFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
+  const { files, clearFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
   return {
     files,
     add: addFiles,
@@ -761,10 +761,7 @@ function useInstructionFiles(conversationId: string) {
     uploading: files.some((f) => f.status === "uploading"),
     ids: files.flatMap((f) => (f.status === "done" && f.attachment ? [f.attachment.id] : [])),
     /** Sent: the instruction shows them from the server from now on. */
-    clear: () => {
-      for (const f of files) if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
-      setFiles([]);
-    },
+    clear: clearFiles,
     onPaste: (e: ClipboardEvent) => {
       if (!e.clipboardData.files.length) return;
       e.preventDefault();

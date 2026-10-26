@@ -1,23 +1,26 @@
 import { QueryClient } from "@tanstack/react-query";
-import { createRootRoute, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
-import { AppShell } from "./components/AppShell";
+import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect } from "@tanstack/react-router";
 import { api } from "./lib/api";
 import { authClient } from "./lib/auth";
-import { ForgotPassword } from "./screens/ForgotPassword";
-import { Invite } from "./screens/Invite";
 import { Login } from "./screens/Login";
-import { ResetPassword } from "./screens/ResetPassword";
-import { NewChat } from "./screens/NewChat";
-import { Conversation } from "./screens/Conversation";
-import { CodeSessionRoute, PreviewRoute, ScreenRoute } from "./screens/ConversationTabs";
-import { Welcome } from "./screens/Welcome";
-import { Setup } from "./screens/Setup";
-import { Tasks } from "./screens/Tasks";
-import { Inbox } from "./screens/Inbox";
-import { TwoFactorRequired } from "./screens/TwoFactorRequired";
-import { MemoryWindow } from "./screens/MemoryWindow";
 import { orgQuery, setupQuery, useOrgLocale } from "./lib/org";
 import { mutationCache } from "./lib/feedback";
+
+const AppShell = lazyRouteComponent(() => import("./components/AppShell"), "AppShell");
+const ForgotPassword = lazyRouteComponent(() => import("./screens/ForgotPassword"), "ForgotPassword");
+const Invite = lazyRouteComponent(() => import("./screens/Invite"), "Invite");
+const ResetPassword = lazyRouteComponent(() => import("./screens/ResetPassword"), "ResetPassword");
+const NewChat = lazyRouteComponent(() => import("./screens/NewChat"), "NewChat");
+const Conversation = lazyRouteComponent(() => import("./screens/Conversation"), "Conversation");
+const CodeSessionRoute = lazyRouteComponent(() => import("./screens/ConversationTabs"), "CodeSessionRoute");
+const PreviewRoute = lazyRouteComponent(() => import("./screens/ConversationTabs"), "PreviewRoute");
+const ScreenRoute = lazyRouteComponent(() => import("./screens/ConversationTabs"), "ScreenRoute");
+const Welcome = lazyRouteComponent(() => import("./screens/Welcome"), "Welcome");
+const Setup = lazyRouteComponent(() => import("./screens/Setup"), "Setup");
+const Tasks = lazyRouteComponent(() => import("./screens/Tasks"), "Tasks");
+const Inbox = lazyRouteComponent(() => import("./screens/Inbox"), "Inbox");
+const TwoFactorRequired = lazyRouteComponent(() => import("./screens/TwoFactorRequired"), "TwoFactorRequired");
+const MemoryWindow = lazyRouteComponent(() => import("./screens/MemoryWindow"), "MemoryWindow");
 
 export const queryClient = new QueryClient({
   mutationCache,

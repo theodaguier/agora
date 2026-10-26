@@ -11,7 +11,7 @@ export type AppEvent =
   | { type: "read"; conversationId: string; userId: string; at: string }
   | { type: "typing"; conversationId: string; userId: string; name: string }
   | { type: "pins.changed"; conversationId: string }
-  | { type: "bot.started"; conversationId: string; turnId: string; agentId: string; requestedBy: string | null }
+  | { type: "bot.started"; conversationId: string; turnId: string; agentId: string; requestedBy: string | null; startedAt?: string }
   | { type: "bot.delta"; conversationId: string; turnId: string; text: string }
   | { type: "bot.tool"; conversationId: string; turnId: string; name: string; status: string; label?: string }
   | { type: "bot.approval"; conversationId: string; turnId: string; approval: import("./bot-runner").PendingApproval | null }

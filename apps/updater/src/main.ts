@@ -6,7 +6,7 @@
  * - exposes a small (token-protected) API consumed by the Agora API for the admin.
  */
 import { updateApp } from "./app-update";
-import { listBackups } from "./backup";
+import { listBackups, pruneBackups } from "./backup";
 import { DISK_ALERT, diskUsage, reclaimDisk } from "./cleanup";
 import { config, usesRegistry } from "./config";
 import { compose, run } from "./exec";
@@ -65,10 +65,11 @@ async function apply(target: "hermes" | "app", to: string, trigger: "auto" | "ma
   if (running) throw new Error(`Mise à jour déjà en cours (${running.target} → ${running.to})`);
   if (reclaiming) throw new Error("Nettoyage du disque en cours, réessaie dans quelques minutes");
   if (!parseVersion(to)) throw new Error("Version invalide");
-  // Only forward: a downgrade (to a version with a known flaw) goes through the automatic rollback, never through the API.
-  if (compare(to, (await current())[target]) <= 0) throw new Error("Version antérieure ou identique à la version en place");
+  // Reserve before the first await: two requests must never run backups/updates together.
   running = { target, to };
   try {
+    // Only forward: a downgrade goes through automatic rollback, never through the API.
+    if (compare(to, (await current())[target]) <= 0) throw new Error("Version antérieure ou identique à la version en place");
     return target === "hermes" ? await updateHermes(to, trigger) : await updateApp(to, trigger);
   } finally {
     running = null;
@@ -85,6 +86,7 @@ function inWindow(s: Settings) {
 /** Automatic round: Hermes first, then the app (excluding majors), one version at a time. */
 async function tick() {
   if (running) return;
+  await pruneBackups().catch((err) => console.error("backup retention", err));
   if ((await diskUsage().catch(() => 0)) >= DISK_ALERT) await reclaim({ allBuildCache: true });
   await check().catch((e) => console.error("check", e));
   const state = await loadState();
@@ -186,6 +188,7 @@ Bun.serve({
 });
 
 console.log(`updater ready on :${config.port} (checking every ${config.checkEveryMinutes} min, timezone ${config.tz})`);
+await pruneBackups().catch((err) => console.error("backup retention", err));
 await check().catch((e) => console.error("initial check", e));
 // After an app update, this container is the new updater: the previous one's image is free now.
 await reclaim();
