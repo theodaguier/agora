@@ -66,7 +66,11 @@ case "${1:-}" in
     ;;
   backup-offsite)
     # systemd and manual runs must not share or delete each other's staging.
-    exec 9>"${TMPDIR:-/tmp}/agora-backup-offsite.lock"
+    # Keep the lock in this trusted directory, with no truncation of an existing file.
+    # A read-only fd also lets the repo owner lock a file first created by root.
+    lock="$INFRA/.backup-offsite.lock"
+    (umask 022; set -o noclobber; : > "$lock") 2>/dev/null || [ -f "$lock" ]
+    exec 9<"$lock"
     flock -n 9 || { echo "An off-site backup is already running." >&2; exit 75; }
     # Repository created on first use.
     restic_run "$RESTIC_IMAGE" cat config >/dev/null 2>&1 || restic_run "$RESTIC_IMAGE" init
