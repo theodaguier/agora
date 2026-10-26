@@ -23,7 +23,7 @@ import { createSkillCreation, createSkillRequest, SKILL_CREATE_PROMPT, SKILL_REQ
 import { BOT_CREATE_PROMPT, createBotRequest } from "./bot-requests";
 import { accessibleAgentIds } from "./conversations";
 import { applyTasksBlock, TASKS_PROMPT, tasksContext } from "./tasks";
-import { CODE_DELEGATION_PROMPT, codeSessionsContext } from "./code-sessions";
+import { CODE_DELEGATION_PROMPT, codeSessionsContext, wakePrompt } from "./code-sessions";
 import { applyAvailabilityBlock, AVAILABILITY_BLOCK_PROMPT, availabilityContext } from "./availability-bot";
 import { withAttachments, withInvocations, type Invocation } from "./prompt";
 import { typesForProfile } from "./integrations";
@@ -49,7 +49,12 @@ export type TurnRequest = {
   implicit?: ImplicitCall;
   /** /retry: the trigger is sent again, asking for a different answer. */
   retry?: boolean;
+  /** Woken by a Claude Code session it started (code-wake.ts): the trigger is the event line, the prompt is the session's report. */
+  wake?: CodeWake;
 };
+
+/** Why a session woke its bot, and what it had to say then. */
+export type CodeWake = { sessionId: string; reason: "idle" | "failed" | "question" };
 
 /** Approval requested by the agent, as seen by conversation members. */
 export type PendingApproval = { id: string; command: string; description: string; choices: string[] };
@@ -103,7 +108,7 @@ function endTurn(turn: Turn) {
 
 /** Kept in the database until it ends, so that a restart of the API doesn't lose it silently. */
 function rememberTurn(turn: Turn) {
-  const { implicit, answer, retry, chain } = turn;
+  const { implicit, answer, retry, chain, wake } = turn;
   return db
     .insert(pendingTurn)
     .values({
@@ -112,7 +117,7 @@ function rememberTurn(turn: Turn) {
       agentId: turn.agentId,
       triggerId: turn.triggerId,
       requestedBy: turn.requestedBy,
-      options: { implicit, answer, retry, chainId: chain.id, relays: chain.relays },
+      options: { implicit, answer, retry, wake, chainId: chain.id, relays: chain.relays },
     })
     .catch((err) => console.error("bot-runner: pending turn", err));
 }
@@ -146,11 +151,11 @@ export async function recoverTurns() {
       await postEvent(r.conversationId, { type: "bot.interrupted", bot: names.get(r.agentId) ?? "?" });
       continue;
     }
-    const { chainId, relays, implicit, answer, retry } = r.options;
+    const { chainId, relays, implicit, answer, retry, wake } = r.options;
     const chain = chains.get(chainId) ?? newChain(relays, chainId);
     chain.relays = Math.max(chain.relays, relays);
     chains.set(chainId, chain);
-    enqueueTurn({ conversationId: r.conversationId, agentId: r.agentId, triggerId: r.triggerId, requestedBy: r.requestedBy, chain, implicit, answer, retry });
+    enqueueTurn({ conversationId: r.conversationId, agentId: r.agentId, triggerId: r.triggerId, requestedBy: r.requestedBy, chain, implicit, answer, retry, wake });
   }
   console.log(`bot-runner: ${rows.length} turn(s) recovered after restart`);
 }
@@ -486,7 +491,9 @@ async function runTurn(turn: Turn) {
   let people: { id: string; name: string }[] = [];
   /** Direct conversation: the employee's other bots, which this bot may bring into a group. */
   let otherBots: { id: string; name: string }[] = [];
-  const [requester] = !group && trigger.authorUserId ? await db.select().from(user).where(eq(user.id, trigger.authorUserId)) : [];
+  // Woken by a session: the event line has no author, the turn is the session owner's.
+  const requesterId = trigger.authorUserId ?? (turn.wake ? turn.requestedBy : null);
+  const [requester] = !group && requesterId ? await db.select().from(user).where(eq(user.id, requesterId)) : [];
   if (group) {
     const [humans, bots, context] = await Promise.all([
       db
@@ -586,6 +593,8 @@ async function runTurn(turn: Turn) {
       .filter(Boolean)
       .join("\n\n");
   }
+  // Woken by a Claude Code session: the prompt is its report, whatever the event line says.
+  if (turn.wake) text = await wakePrompt(turn.wake, requester?.name ?? null);
   // /retry: same message again, but the previous answer is already in the session.
   if (turn.retry) text = `${text}\n\n---\n\n(Nouvelle tentative : ta réponse précédente à ce message ne convenait pas. Propose une autre réponse, sans y faire référence.)`;
   // First message after /compact: the new session starts from the summary.

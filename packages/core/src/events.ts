@@ -25,6 +25,8 @@ export type ConversationEvent =
   | { type: "code.started"; bot: string | null; title: string; sessionId: string }
   /** A pull request of a Claude Code session opened or merged (by its owner from the panel, or by Agora). */
   | { type: "code.pr"; actor: string; title: string; sessionId: string; number: number; url: string; merged: boolean }
+  /** A session the bot started needs it (its run ended or failed, or it asks a question): the bot takes over by itself. */
+  | { type: "code.wake"; bot: string; title: string; sessionId: string; reason: "idle" | "failed" | "question" }
   | { type: "session.compacted"; actor: string }
   | { type: "session.compactFailed"; bot: string }
   | { type: "agent.updated" }
@@ -111,6 +113,12 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
         : fr
           ? `${e.actor} a ouvert la PR #${e.number} de la session « ${e.title} » : ${e.url}`
           : `${e.actor} opened PR #${e.number} of the “${e.title}” session: ${e.url}`;
+    case "code.wake":
+      return {
+        idle: fr ? `« ${e.title} » est terminée, ${e.bot} reprend la main` : `“${e.title}” is done, ${e.bot} takes over`,
+        failed: fr ? `« ${e.title} » a échoué, ${e.bot} reprend la main` : `“${e.title}” failed, ${e.bot} takes over`,
+        question: fr ? `Claude Code pose une question à ${e.bot} dans « ${e.title} »` : `Claude Code asks ${e.bot} a question in “${e.title}”`,
+      }[e.reason];
     case "session.reset":
       return fr ? `${e.actor} a démarré un nouveau contexte` : `${e.actor} started a fresh context`;
     case "session.compacted":

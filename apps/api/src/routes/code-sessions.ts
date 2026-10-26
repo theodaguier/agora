@@ -17,6 +17,7 @@ import {
   removeCodeSessionWorktree,
   getCodeSession,
   listCodeSessions,
+  listCodeSessionsOf,
   runGitAction,
   sendToCodeSession,
   switchCodeSessionAccount,
@@ -27,7 +28,7 @@ import {
 } from "../code-sessions";
 import { listRepos, parseRepo } from "../code-git";
 import { internalToken } from "../code-plugin";
-import { loadConversation } from "../conversations";
+import { accessibleAgentIds, loadConversation } from "../conversations";
 import { db, schema } from "../db";
 import { requireUser, type AppEnv } from "../middleware";
 import { allowedClaudeCodeModels } from "../models";
@@ -304,6 +305,28 @@ async function ownerOnly(c: Context<AppEnv>) {
   if (session.requestedBy !== me.id || !canUseEngine(me, session.engine)) return c.json({ error: "forbidden" }, 403);
   return { conversationId: conv.conversation.id, sessionId: session.id, engine: session.engine };
 }
+
+/**
+ * Every session of the conversations the user is in, the last changed first (the Sessions page). A
+ * direct conversation with a bot they lost access to is left out, as loadConversation does.
+ */
+export const mySessions = new Hono<AppEnv>().use(requireUser).get("/", async (c) => {
+  const me = c.get("user");
+  const rows = await db
+    .select({ id: schema.conversation.id, kind: schema.conversation.kind })
+    .from(schema.conversationMember)
+    .innerJoin(schema.conversation, eq(schema.conversation.id, schema.conversationMember.conversationId))
+    .where(eq(schema.conversationMember.userId, me.id));
+  const direct = rows.filter((r) => r.kind === "direct").map((r) => r.id);
+  const [links, allowed] = await Promise.all([
+    direct.length
+      ? db.select({ conversationId: schema.conversationAgent.conversationId, agentId: schema.conversationAgent.agentId }).from(schema.conversationAgent).where(inArray(schema.conversationAgent.conversationId, direct))
+      : [],
+    accessibleAgentIds(me.id),
+  ]);
+  const hidden = new Set(links.filter((l) => !allowed.has(l.agentId) && links.filter((x) => x.conversationId === l.conversationId).length === 1).map((l) => l.conversationId));
+  return c.json(await listCodeSessionsOf(rows.map((r) => r.id).filter((id) => !hidden.has(id))));
+});
 
 /* ---------- for the agora_code Hermes plugin ---------- */
 
