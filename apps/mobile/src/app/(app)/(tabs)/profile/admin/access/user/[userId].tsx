@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { Typography } from "heroui-native";
 import { useState } from "react";
 import { useSaveAccess } from "@/components/admin/access";
 import { accessMessages, accessSummary, agentSpec } from "@/components/admin/access-summary";
@@ -8,6 +7,8 @@ import { AdminGate, ErrorAlert, LoadingRows, SearchBox, Section, SettingsScroll,
 import { AgentAvatar } from "@/components/agent-avatar";
 import { adminAgentsQuery, adminUsersQuery } from "@/lib/admin";
 import { MenuButton } from "@/components/menus";
+import { EmptyState } from "@/components/empty-state";
+import { BotIcon, SearchIcon } from "@/components/icons";
 
 /* apps/web/src/components/admin/Access.tsx `UserAccess` popover, as a screen: one switch per agent. */
 
@@ -52,7 +53,7 @@ export default function UserAccess() {
               <LoadingRows rows={4} />
             )
           ) : shown.length === 0 ? (
-            <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-4 py-8">{q ? t.noMatch : t.noAgents}</Typography.Paragraph>
+            <EmptyState icon={q ? SearchIcon : BotIcon} description={q ? t.noMatch : t.noAgents} />
           ) : (
             <Section title={t.agents} footer={accessSummary(user, all)}>
               {shown.map((a) => {

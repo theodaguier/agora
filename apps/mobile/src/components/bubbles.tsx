@@ -12,8 +12,9 @@ import type { Mentionable } from "@/lib/mentions";
 import { cn } from "@/lib/utils";
 
 /*
- * apps/web/src/components/Bubbles.tsx: HeroUI surfaces as bubbles, in the web's neutral grays —
- * yours on the right a shade darker, everyone else's (colleagues and bots) on the left.
+ * apps/web/src/components/Bubbles.tsx, Figma « Bulle »: HeroUI surfaces as bubbles — everyone else's
+ * (colleagues and bots) grey on the left, yours on the right in the accent: the bot's colour in a
+ * conversation with it (ScopedVariables in screens/conversation.tsx), ink elsewhere.
  */
 
 const messages = defineMessages({
@@ -33,13 +34,10 @@ const messages = defineMessages({
   },
 });
 
-/**
- * A bubble: HeroUI's Surface, `secondary` for everyone else's (colleagues and bots), `tertiary` for
- * yours, the web's two grays, with the web's 16 px corners.
- */
+/** A bubble: HeroUI's Surface, `secondary` grey for everyone else's, the accent for yours, Figma's 14 px corners. */
 export function Bubble({ mine, className, children }: { mine?: boolean; className?: string; children: ReactNode }) {
   return (
-    <Surface variant={mine ? "tertiary" : "secondary"} className={cn("min-w-0 rounded-2xl", mine ? "self-end" : "self-start", className)}>
+    <Surface variant="secondary" className={cn("min-w-0 rounded-[14px]", mine ? "self-end bg-accent" : "self-start", className)}>
       {children}
     </Surface>
   );
@@ -47,7 +45,7 @@ export function Bubble({ mine, className, children }: { mine?: boolean; classNam
 
 export function BotBubble({ text, streaming, mentionables, className }: { text: string; streaming?: boolean; mentionables?: Mentionable[]; className?: string }) {
   return (
-    <Bubble className={cn("px-3.5 py-2.5", className)}>
+    <Bubble className={cn("px-3 py-2", className)}>
       <MessageText text={text} streaming={streaming} mentionables={mentionables} className="min-w-0" />
     </Bubble>
   );
@@ -55,8 +53,8 @@ export function BotBubble({ text, streaming, mentionables, className }: { text: 
 
 export function UserBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
   return (
-    <Bubble mine className={cn("px-3.5 py-2", className)}>
-      <MessageText plain text={text} mentionables={mentionables} className="min-w-0" />
+    <Bubble mine className={cn("px-3 py-2", className)}>
+      <MessageText plain onAccent text={text} mentionables={mentionables} className="min-w-0" textClassName="text-accent-foreground" />
     </Bubble>
   );
 }
@@ -64,7 +62,7 @@ export function UserBubble({ text, mentionables, className }: { text: string; me
 /** Message from another employee, left-aligned. */
 export function PeerBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
   return (
-    <Bubble className={cn("px-3.5 py-2", className)}>
+    <Bubble className={cn("px-3 py-2", className)}>
       <MessageText plain text={text} mentionables={mentionables} className="min-w-0" />
     </Bubble>
   );

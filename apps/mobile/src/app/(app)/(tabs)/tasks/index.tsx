@@ -1,9 +1,10 @@
 import { common, conversations } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import { Chip, ListGroup, Separator, Skeleton, Tabs, Typography } from "heroui-native";
+import { ListGroup, Separator, Skeleton, Typography } from "heroui-native";
 import { Fragment, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
+import { FilterTags } from "@/components/filter-tags";
 import { useMe } from "@/components/server-scope";
 import { TaskRow } from "@/components/tasks/task-row";
 import { WorkingOn } from "@/components/tasks/working-on";
@@ -11,17 +12,18 @@ import { defineMessages, tr } from "@/lib/i18n";
 import type { Mentionable } from "@/lib/mentions";
 import { usePeople, personMentionables } from "@/lib/people";
 import { newTaskHref, userTasksQuery, type Task, type TaskStatus } from "@/lib/tasks";
-import { cn } from "@/lib/utils";
-import { statusChipClass, statusColor, statusLabelClass, statusMessages, TASK_STATUSES } from "@/lib/task-status";
-import { PlusIcon } from "@/components/icons";
+import { statusMessages, TASK_STATUSES } from "@/lib/task-status";
+import { SearchIcon, TaskListIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
-import { haptic, usePullToRefresh, withTap } from "@/lib/haptics";
+import { usePullToRefresh, withTap } from "@/lib/haptics";
+import { EmptyState } from "@/components/empty-state";
 
 /* apps/web/src/screens/Tasks.tsx + components/TaskList.tsx. */
 
 const messages = defineMessages({
   en: {
-    noTasks: "Nothing to do. Tasks assigned to you, by a colleague or an agent, show up here.",
+    noTasksTitle: "Nothing to do",
+    noTasks: "Tasks assigned to you, by a colleague or an agent, show up here.",
     done: (n: number) => `Done · ${n}`,
     all: "All",
     noneWithStatus: "No tasks with this status.",
@@ -29,7 +31,8 @@ const messages = defineMessages({
     newTask: "New task",
   },
   fr: {
-    noTasks: "Rien à faire. Les tâches qu'un collègue ou un agent t'assigne arrivent ici.",
+    noTasksTitle: "Rien à faire",
+    noTasks: "Les tâches qu'un collègue ou un agent t'assigne arrivent ici.",
     done: (n: number) => `Terminées · ${n}`,
     all: "Toutes",
     noneWithStatus: "Aucune tâche avec ce statut.",
@@ -84,26 +87,15 @@ export default function TasksScreen() {
             ))}
           </View>
         ) : !all.length ? (
-          <Typography color="muted" align="center" className="px-8 py-12">
-            {messages.noTasks}
-          </Typography>
+          <EmptyState mascot="green" title={messages.noTasksTitle} description={messages.noTasks} />
         ) : (
           <>
-            <Tabs value={filter} onValueChange={(v) => (haptic.select(), setFilter(v as Filter))} className="px-4">
-              <Tabs.List>
-                <Tabs.ScrollView scrollAlign="start">
-                  <Tabs.Indicator />
-                  {(["all", ...TASK_STATUSES] as Filter[]).map((f) => (
-                    <Tabs.Trigger key={f} value={f}>
-                      <Tabs.Label>{f === "all" ? messages.all : statusMessages.tab[f]}</Tabs.Label>
-                      <Chip size="sm" variant="soft" color={f === "all" ? "default" : statusColor[f]} className={f === "all" ? undefined : statusChipClass[f]}>
-                        <Chip.Label className={cn("tabular-nums", f !== "all" && statusLabelClass[f])}>{count(f)}</Chip.Label>
-                      </Chip>
-                    </Tabs.Trigger>
-                  ))}
-                </Tabs.ScrollView>
-              </Tabs.List>
-            </Tabs>
+            <FilterTags
+              accessibilityLabel={tr(conversations).tasks}
+              value={filter}
+              onChange={setFilter}
+              options={(["all", ...TASK_STATUSES] as Filter[]).map((f) => ({ id: f, label: `${f === "all" ? messages.all : statusMessages.tab[f]} · ${count(f)}` }))}
+            />
             <TaskSections tasks={found} filter={filter} me={me.id} mentionables={mentionables} searching={!!query} />
           </>
         )}
@@ -123,11 +115,7 @@ function TaskSections({ tasks, filter, me, mentionables, searching }: { tasks: T
       ))}
     </ListGroup>
   );
-  const empty = (text: string) => (
-    <Typography type="body-sm" color="muted" align="center" className="px-8 py-10">
-      {text}
-    </Typography>
-  );
+  const empty = (text: string) => <EmptyState icon={searching ? SearchIcon : TaskListIcon} description={text} />;
 
   if (filter !== "all") {
     const shown = tasks.filter((x) => x.status === filter);

@@ -1,13 +1,14 @@
-import { insertMessage, renderEvent, withoutMediaTags, withoutPreviews, type ViewAction } from "@agora/core";
+import { agentAccentColor, agentMascot, insertMessage, renderEvent, withoutMediaTags, withoutPreviews, type ViewAction } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { Alert, Button, Chip, Spinner, Surface, Typography, useToast } from "heroui-native";
-import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type ComponentRef } from "react";
+import { Alert, Button, Chip, Spinner, Surface, useToast } from "heroui-native";
+import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
+import { ScopedVariables } from "uniwind";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { ApprovalCard, ApprovalLog } from "@/components/approval-card";
@@ -42,6 +43,7 @@ import { useThreadHaptics } from "@/screens/conversation-haptics";
 import type { ActiveTurn, AgentSummary, Attachment, Author, ConversationDetail, Invocation, Message, ReplyTo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { MenuButton } from "@/components/menus";
+import { EmptyState } from "@/components/empty-state";
 
 /*
  * apps/web/src/screens/Conversation.tsx as an iOS chat: the native header (avatar, name, status,
@@ -334,10 +336,14 @@ export function Conversation({ conversationId, focus }: { conversationId: string
   const mine = turns.filter((turn) => turn.requestedBy === user.id);
   const placeholder = directBot ? t.messageTo(directBot.name) : group ? t.writeGroup : t.messageTo(title);
 
+  // Figma « Agora · Accent du bot »: a conversation with a bot is dressed in its colour (your bubbles, send, primary buttons).
+  const accent = accentVariables(directBot?.avatar.color);
+
   return (
-    <>
+    <ScopedVariables variables={accent}>
       {header}
-      <Surface className="flex-1 p-0">
+      {/* Figma « Conversation » (mobile): the thread and the composer on the white page. */}
+      <Surface variant="transparent" className="flex-1 bg-background p-0">
         <ConversationFilesProvider messages={messages}>
           {/* The thread follows the keyboard frame by frame, and only lifts when at its end (reading back stays put).
               It is flipped, as an inverted FlatList: its end is offset 0, so it opens there without scrolling, and what
@@ -374,14 +380,16 @@ export function Conversation({ conversationId, focus }: { conversationId: string
                 </View>
               )}
               {!isPending && messages.length === 0 && !sending.length && conv && (
-                <View className="flex-1 items-center justify-center gap-3 px-8">
-                  <ConversationAvatar conversation={conv} me={user.id} className="size-20" />
-                  <Typography.Heading type="h4" align="center">
-                    {title}
-                  </Typography.Heading>
-                  <Typography.Paragraph type="body-sm" color="muted" align="center">
-                    {t.emptyHint}
-                  </Typography.Paragraph>
+                // Figma « État vide », conversation neuve: the bot's figurine; a colleague or a group, their avatar.
+                <View className="flex-1 justify-center">
+                  {directBot ? (
+                    <EmptyState mascot={agentMascot(directBot.avatar.color)} title={title} description={t.emptyHint} />
+                  ) : (
+                    <View className="items-center gap-3 px-8">
+                      <ConversationAvatar conversation={conv} me={user.id} className="size-20" />
+                      <EmptyState title={title} description={t.emptyHint} className="py-0" />
+                    </View>
+                  )}
                 </View>
               )}
               {messages.slice(hidden).map((m, i) => (
@@ -390,6 +398,9 @@ export function Conversation({ conversationId, focus }: { conversationId: string
                   conversationId={conversationId}
                   m={m}
                   prev={messages[hidden + i - 1]}
+                  next={messages[hidden + i + 1]}
+                  bot={directBot ?? undefined}
+                  liveAfter={turns.length > 0}
                   me={user.id}
                   group={group}
                   directBot={!!directBot}
@@ -427,7 +438,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
                 const bot = agentById(turn.agentId);
                 const visible = hideBlocks(turn.text);
                 return (
-                  <Fragment key={turn.turnId}>
+                  <BotRun key={turn.turnId} avatar={directBot ?? undefined}>
                     {group && bot && <AuthorLine name={bot.name} avatar={<AgentAvatar agent={bot} className="size-5" />} />}
                     <ToolLine tools={turn.tools} running={!visible} />
                     {turn.codeSessions?.length ? (
@@ -457,7 +468,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
                         canAnswer={turn.requestedBy === user.id || user.role === "admin"}
    />
                     )}
-                  </Fragment>
+                  </BotRun>
                 );
               })}
               <TypingLine
@@ -501,7 +512,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
             </View>
           )}
           {/* overflow-visible: the composer's "/" and "@" menu floats above the bar, over the thread. */}
-          <Surface className="gap-2 overflow-visible px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
+          <Surface variant="transparent" className="gap-2 overflow-visible bg-background px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
             {mine.length > 0 && (
               <Button size="sm" variant="secondary" className="self-center" onPress={withTap(() => mine.forEach((turn) => stop(turn.turnId)))}>
                 {t.stop}
@@ -530,8 +541,19 @@ export function Conversation({ conversationId, focus }: { conversationId: string
       </Surface>
       <ForwardDialog conversationId={conversationId} message={forwarding} onClose={() => setForwarding(null)} />
       <ConversationPanel kind={panel} conversationId={conversationId} onJump={jumpTo} onClose={() => setPanel(null)} />
-    </>
+    </ScopedVariables>
   );
+}
+
+const NO_ACCENT = {};
+const accents = new Map<string, Record<string, string>>();
+/** The scoped variables of a bot's accent, one stable object per colour (ScopedVariables memoizes on it). */
+function accentVariables(color: string | undefined) {
+  if (!color) return NO_ACCENT;
+  const accent = agentAccentColor(color);
+  let vars = accents.get(accent);
+  if (!vars) accents.set(accent, (vars = { "--accent": accent, "--accent-foreground": "#ffffff" }));
+  return vars;
 }
 
 /** Answer of a bot choosing to stay silent (apps/api/src/group.ts). */
@@ -627,6 +649,9 @@ const ThreadMessage = memo(function ThreadMessage({
   me,
   group,
   directBot,
+  bot,
+  next,
+  liveAfter,
   highlighted,
   pinned,
   mentions,
@@ -639,6 +664,11 @@ const ThreadMessage = memo(function ThreadMessage({
   me: string;
   group: boolean;
   directBot: boolean;
+  /** Direct conversation with a bot: its messages sit right of a 28 px gutter, its avatar under the last of a run. */
+  bot?: AgentSummary;
+  next?: Message;
+  /** A live reply follows the last message: the run goes on. */
+  liveAfter: boolean;
   highlighted: boolean;
   pinned: boolean;
   mentions: Mentionable[];
@@ -686,7 +716,13 @@ const ThreadMessage = memo(function ThreadMessage({
         </MessageRow>
       )}
       {m.kind === "bot" && (
-        <>
+        <BotRun
+          avatar={
+            bot && m.author?.kind === "agent"
+              ? (next ? next.kind !== "bot" || authorKey(next.author) !== authorKey(m.author) || needsDivider(at, new Date(next.createdAt)) : !liveAfter) && bot
+              : undefined
+          }
+        >
           {m.data?.tools && <ToolLine tools={m.data.tools} />}
           {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
           {(!!m.text || !!m.data?.codeSessions?.length) && (
@@ -744,7 +780,7 @@ const ThreadMessage = memo(function ThreadMessage({
           {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
           {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
           {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}
-        </>
+        </BotRun>
       )}
       {m.data?.event?.type === "code.started" ? (
         <CodeSessionCard conversationId={conversationId} sessionId={m.data.event.sessionId} title={m.data.event.title} />
@@ -756,3 +792,17 @@ const ThreadMessage = memo(function ThreadMessage({
 });
 
 const FLIPPED = { transform: [{ scaleY: -1 }] };
+
+/**
+ * Figma « Ligne · agent »: a bot's message and its parts. `avatar` undefined (groups, colleagues): no
+ * gutter. Otherwise a 28 px gutter on the left, the bot's mascot at its bottom (false: the run goes on).
+ */
+export function BotRun({ avatar, children }: { avatar?: AgentSummary | false; children: ReactNode }) {
+  if (avatar === undefined) return <>{children}</>;
+  return (
+    <View className="flex-row items-end gap-2">
+      <View className="size-7">{avatar && <AgentAvatar agent={avatar} size={28} />}</View>
+      <View className="min-w-0 flex-1 gap-1">{children}</View>
+    </View>
+  );
+}

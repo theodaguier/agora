@@ -2,7 +2,7 @@ import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { ListGroup, SearchField, Spinner, Typography, useToast } from "heroui-native";
+import { ListGroup, SearchField, Spinner, useToast } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -12,9 +12,10 @@ import { Section } from "@/components/people/section";
 import { api, conversationPath } from "@/lib/api";
 import { defineMessages, tr } from "@/lib/i18n";
 import { agentsQuery, conversationQuery, conversationsQuery, usersQuery } from "@/lib/queries";
-import { CheckIcon } from "@/components/icons";
+import { CheckIcon, SearchIcon, UsersIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
+import { EmptyState } from "@/components/empty-state";
 
 /* AddMembers of apps/web/src/components/MembersPanel.tsx: several can be added in a row. */
 
@@ -112,9 +113,7 @@ export default function AddMembers() {
           </Section>
         )}
         {!botsShown.length && !peopleShown.length && (
-          <Typography color="muted" align="center" className="px-6 py-12">
-            {botsLeft.length + peopleLeft.length ? t.noMatch : t.everyoneHere}
-          </Typography>
+          <EmptyState icon={botsLeft.length + peopleLeft.length ? SearchIcon : UsersIcon} description={botsLeft.length + peopleLeft.length ? t.noMatch : t.everyoneHere} />
         )}
       </KeyboardAwareScrollView>
     </>

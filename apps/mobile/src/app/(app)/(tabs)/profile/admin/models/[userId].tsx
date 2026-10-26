@@ -8,6 +8,8 @@ import { AdminGate, ErrorAlert, LoadingRows, SearchBox, Section, SettingsScroll,
 import { api } from "@/lib/api";
 import { adminModelsQuery, adminUsersQuery, modelKey, providerName, type AdminModels } from "@/lib/admin";
 import { MenuButton } from "@/components/menus";
+import { EmptyState } from "@/components/empty-state";
+import { SearchIcon } from "@/components/icons";
 
 /* apps/web/src/components/admin/Models.tsx `UserModels` popover, as a screen: providers as sections, one switch per model. */
 
@@ -91,9 +93,7 @@ export default function UserModels() {
                 {modelsSummary(providers, blocked)}
               </Typography.Paragraph>
               {shown.length === 0 && (
-                <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-4 py-8">
-                  {t.noMatch}
-                </Typography.Paragraph>
+                <EmptyState icon={SearchIcon} description={t.noMatch} />
               )}
               {shown.map((p) => {
                 const all = idsOf.get(p.provider) ?? [];

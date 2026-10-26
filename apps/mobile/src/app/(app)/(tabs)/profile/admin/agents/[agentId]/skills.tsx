@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, Spinner, Typography } from "heroui-native";
+import { Alert, Spinner } from "heroui-native";
 import { Fragment, useState } from "react";
 import { confirmAction } from "@/components/confirm-action";
 import { AdminGate, ErrorAlert, SettingsScroll, LoadingRows, RowMenu, SearchBox, Section, SwitchRow, useAdminToast } from "@/components/admin/ui";
@@ -10,6 +10,8 @@ import { defineMessages } from "@/lib/i18n";
 import { marketplaceHref } from "@/lib/marketplace";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
+import { EmptyState } from "@/components/empty-state";
+import { SearchIcon } from "@/components/icons";
 
 /* SkillsSection of apps/web/src/components/admin/AgentDetail.tsx */
 
@@ -137,9 +139,7 @@ export default function AgentSkillsScreen() {
             </Section>
           ) : (
             !!filter && (
-              <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-4 py-8">
-                {t.noMatch}
-              </Typography.Paragraph>
+              <EmptyState icon={SearchIcon} description={t.noMatch} />
             )
           )}
         </SettingsScroll>

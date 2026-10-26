@@ -1,14 +1,18 @@
 import {
+  CODE_ENGINE_NAMES,
   CODE_PERMISSION_MODES,
+  codeExchanges,
   codeStatusText,
   OTHER_ANSWER,
   questionAnswer,
   rankByQuery,
   type CodeApproval,
   type CodeBotQuestion,
+  type CodeExchange,
   type CodeGit,
   type CodeQuestion,
   type CodeSession,
+  type CodeSessionDetail,
   type CodeStep,
   type CodeTodo,
 } from "@agora/core";
@@ -37,6 +41,7 @@ import {
   Separator,
   Spinner,
   Surface,
+  Tabs,
   TextArea,
   TextField,
   Typography,
@@ -47,13 +52,14 @@ import { AppState, ScrollView, View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAdminToast } from "@/components/admin/ui";
+import { AgentAvatar } from "@/components/agent-avatar";
 import { SentAttachments } from "@/components/attachments";
 import { AttachMenu } from "@/components/composer/attach-menu";
 import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
 import { UserBubble } from "@/components/bubbles";
 import { isActive, StatusIcon } from "@/components/code-session";
 import { confirmAction } from "@/components/confirm-action";
-import { ArrowUpIcon, BranchIcon, ChartIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, CopyIcon, ExternalLinkIcon, FolderIcon, KeyIcon, StopIcon, TaskListIcon, ToolIcon, UserIcon } from "@/components/icons";
+import { ArrowUpIcon, BranchIcon, ChartIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, CopyIcon, ExternalLinkIcon, FolderIcon, KeyIcon, StopIcon, ToolIcon, UserIcon } from "@/components/icons";
 import { MenuButton, MenuContent } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
@@ -79,7 +85,8 @@ import {
   writeCommitMessage,
   type CodeGitRequest,
 } from "@/lib/code-sessions";
-import { withTap } from "@/lib/haptics";
+import { haptic, withTap } from "@/lib/haptics";
+import { conversationQuery } from "@/lib/queries";
 import { locale, tr } from "@/lib/i18n";
 import { dateFormat } from "@/lib/intl";
 import { cn } from "@/lib/utils";
@@ -92,7 +99,9 @@ import { cn } from "@/lib/utils";
  * (app/(app)/code/…/pull-request.tsx).
  */
 
-type SheetKind = "info" | "todos" | "git";
+type SheetKind = "info" | "git";
+/** Aperçu: where it stands (web's tab of the same name); Journal: every step. Modifications stay in the branch's sheet. */
+type SessionTab = "overview" | "journal";
 
 export function CodeSessionScreen({ conversationId, sessionId }: { conversationId: string; sessionId: string }) {
   const t = tr(codeSessions);
@@ -106,6 +115,10 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
   const [atBottom, setAtBottom] = useState(true);
   const [barHeight, setBarHeight] = useState(0);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
+  const [tab, setTab] = useState<SessionTab>("overview");
+  const journal = tab === "journal";
+  const { data: conv } = useQuery(conversationQuery(conversationId));
+  const agent = session?.agentId ? conv?.agents.find((a) => a.id === session.agentId) : undefined;
   const owner = !!session && session.requestedBy === me.id;
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
   const qc = useQueryClient();
@@ -128,7 +141,18 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
     follow.current = true;
     scroller.current?.scrollToEnd({ animated });
   };
-  const todos = session && showTodos(session.todos, session.status === "running") ? session.todos : null;
+  const pending = session && (
+    <>
+      {session.approval?.kind === "question" && session.approval.questions ? (
+        <QuestionBlock conversationId={conversationId} session={session} approval={session.approval} questions={session.approval.questions} canAnswer={owner} />
+      ) : session.approval?.kind === "plan" ? (
+        <PlanBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
+      ) : (
+        session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
+      )}
+      {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
+    </>
+  );
 
   return (
     <>
@@ -178,7 +202,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               scrollEventThrottle={64}
-              onContentSizeChange={() => follow.current && scroller.current?.scrollToEnd({ animated: false })}
+              onContentSizeChange={() => journal && follow.current && scroller.current?.scrollToEnd({ animated: false })}
               onScrollBeginDrag={() => (follow.current = false)}
               onScroll={(e) => {
                 const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
@@ -187,31 +211,44 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 setAtBottom(bottom);
               }}
             >
-              <View className="flex-row items-center gap-2">
+              <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
                 <StatusIcon status={session.status} asking={!!session.question} />
-                <Typography type="body-sm" color="muted" className="min-w-0 flex-1">
+                <Typography type="body-sm" color="muted">
                   {codeStatusText(t, session)}
                   {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
-                  {session.activity && isActive(session.status) ? ` · ${session.activity}` : ""}
                 </Typography>
+                {agent && (
+                  <View className="flex-row items-center gap-1">
+                    <AgentAvatar agent={agent} size={16} />
+                    <Typography type="body-sm" color="muted">
+                      {t.view.launchedBy(agent.name)}
+                    </Typography>
+                  </View>
+                )}
               </View>
+              <Tabs value={tab} onValueChange={(v) => (haptic.select(), setTab(v as SessionTab))}>
+                <Tabs.List>
+                  <Tabs.Indicator />
+                  <Tabs.Trigger value="overview">
+                    <Tabs.Label>{t.view.overview}</Tabs.Label>
+                  </Tabs.Trigger>
+                  <Tabs.Trigger value="journal">
+                    <Tabs.Label>{t.view.journal}</Tabs.Label>
+                  </Tabs.Trigger>
+                </Tabs.List>
+              </Tabs>
               {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
-              {session.steps.length === 0 ? (
+              {!journal ? (
+                <Overview session={session} agent={agent} pending={pending} />
+              ) : session.steps.length === 0 ? (
                 <View className="items-center py-12">
                   <Spinner />
                 </View>
               ) : (
                 <Timeline steps={session.steps} running={session.status === "running"} />
               )}
-              {/* What waits for an answer ends the thread, where the run stopped. */}
-              {session.approval?.kind === "question" && session.approval.questions ? (
-                <QuestionBlock conversationId={conversationId} session={session} approval={session.approval} questions={session.approval.questions} canAnswer={owner} />
-              ) : session.approval?.kind === "plan" ? (
-                <PlanBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
-              ) : (
-                session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
-              )}
-              {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
+              {/* What waits for an answer ends the log, where the run stopped. */}
+              {journal && pending}
               {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
             </KeyboardChatScrollView>
 
@@ -221,7 +258,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               className="absolute inset-x-0 bottom-0"
               onLayout={(e) => setBarHeight(e.nativeEvent.layout.height)}
             >
-              {!atBottom && (
+              {journal && !atBottom && (
                 <View pointerEvents="box-none" className="absolute inset-x-0 bottom-full mb-2 items-center">
                   <Button size="sm" variant="secondary" onPress={() => toEnd(true)}>
                     {t.latest}
@@ -229,10 +266,9 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 </View>
               )}
               <Surface className="gap-2 px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
-                {(todos || session.git) && (
+                {session.git && (
                   <View className="flex-row gap-2">
-                    {todos && <TodosChip todos={todos} running={session.status === "running"} onPress={() => setSheet("todos")} />}
-                    {session.git && <BranchChip git={session.git} onPress={() => setSheet("git")} />}
+                    <BranchChip git={session.git} onPress={() => setSheet("git")} />
                   </View>
                 )}
                 {owner ? (
@@ -247,9 +283,6 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
 
             <SessionSheet open={sheet === "info"} onClose={() => setSheet(null)} title={t.details}>
               <InfoList conversationId={conversationId} session={session} owner={owner} onLeave={() => setSheet(null)} />
-            </SessionSheet>
-            <SessionSheet open={sheet === "todos"} onClose={() => setSheet(null)} title={t.todos.title}>
-              <TodoList todos={session.todos} running={session.status === "running"} />
             </SessionSheet>
             {session.git && (
               <SessionSheet open={sheet === "git"} onClose={() => setSheet(null)} title={t.git.changesTitle} snapPoints={["70%", "92%"]}>
@@ -880,17 +913,81 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
 }
 
 /** Its task list is shown while a task is left or while it works. */
-const showTodos = (todos: CodeTodo[], running: boolean) => todos.length > 0 && (running || todos.some((x) => x.status !== "completed"));
 
 /** Claude Code's task list above the field (web: TodoBar): where it stands; a tap opens every task. */
-function TodosChip({ todos, running, onPress }: { todos: CodeTodo[]; running: boolean; onPress: () => void }) {
-  const t = tr(codeSessions).todos;
-  const done = todos.filter((x) => x.status === "completed").length;
+/** Aperçu: what waits for an answer, what it does now (or its answer, once it rests), its tasks, what it and its bot said to each other. */
+function Overview({ session, agent, pending }: { session: CodeSessionDetail; agent?: { name: string; avatar: { color: string } }; pending: ReactNode }) {
+  const t = tr(codeSessions);
+  const v = t.view;
+  const running = session.status === "running";
+  const waiting = !!session.approval || !!session.question;
+  const done = session.todos.filter((x) => x.status === "completed").length;
+  const exchanges = codeExchanges(session.steps);
+  const now = isActive(session.status) ? (session.activity ?? codeStatusText(t, session)) : session.status === "failed" || session.status === "stopped" ? codeStatusText(t, session) : null;
   return (
-    <Chip size="sm" variant="secondary" accessibilityRole="button" accessibilityLabel={t.label(done, todos.length)} onPress={withTap(onPress)}>
-      {running ? <Spinner size="sm" /> : <TaskListIcon size={14} className="text-muted" />}
-      <Chip.Label>{t.progress(done, todos.length)}</Chip.Label>
-    </Chip>
+    <View className="gap-6">
+      {waiting && <View className="gap-3">{pending}</View>}
+      {!waiting && now && (
+        <OverviewSection title={v.now}>
+          <View className="flex-row items-start gap-2">
+            <StatusIcon status={session.status} asking={!!session.question} />
+            <Typography className="min-w-0 flex-1">{now}</Typography>
+          </View>
+        </OverviewSection>
+      )}
+      {!isActive(session.status) && !!session.result && (
+        <OverviewSection title={v.answer}>
+          <MessageText text={session.result} />
+        </OverviewSection>
+      )}
+      {session.todos.length > 0 && (
+        <OverviewSection title={v.tasks(done, session.todos.length)}>
+          <TodoList todos={session.todos} running={running} />
+        </OverviewSection>
+      )}
+      {exchanges.length > 0 && (
+        <OverviewSection title={agent ? v.exchangesWith(agent.name) : v.instructions}>
+          <View className="gap-3.5">
+            {exchanges.map((x) => (
+              <ExchangeRow key={x.id} exchange={x} session={session} agent={agent} />
+            ))}
+          </View>
+        </OverviewSection>
+      )}
+    </View>
+  );
+}
+
+function OverviewSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View className="gap-2">
+      <Typography type="body-sm" color="muted">
+        {title}
+      </Typography>
+      {children}
+    </View>
+  );
+}
+
+/** One exchange: who and what it was, then its words; a long one unfolds on a tap. */
+function ExchangeRow({ exchange, session, agent }: { exchange: CodeExchange; session: CodeSession; agent?: { name: string; avatar: { color: string } } }) {
+  const t = tr(codeSessions);
+  const [open, setOpen] = useState(false);
+  const fromCode = exchange.kind === "question";
+  return (
+    <View className="flex-row gap-2.5">
+      <View className="mt-0.5 size-5 items-center justify-center">
+        {fromCode ? <ModelLogo provider={session.engine === "codex" ? "codex" : session.engine === "cursor" ? "cursor" : "claude-code"} size={16} /> : agent && exchange.by === agent.name ? <AgentAvatar agent={agent} size={20} /> : null}
+      </View>
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Typography type="body-xs" color="muted">
+          {fromCode ? CODE_ENGINE_NAMES[session.engine] : (exchange.by ?? t.claudeCode)} · {t.view.kinds[exchange.kind]}
+        </Typography>
+        <Typography numberOfLines={open ? undefined : 4} onPress={() => setOpen((o) => !o)}>
+          {exchange.text}
+        </Typography>
+      </View>
+    </View>
   );
 }
 

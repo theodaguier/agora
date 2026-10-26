@@ -16,7 +16,7 @@ import { FileKindIcon, ImageViewer } from "@/components/attachments";
 import { attachmentSource, Image, isImage, saveAttachment } from "@/components/attachment-files";
 import { SheetSearch } from "@/components/conversation/sheet-search";
 import { PersonAvatar } from "@/components/conversation-avatar";
-import { PinIcon } from "@/components/icons";
+import { FileTextIcon, PinIcon, SearchIcon } from "@/components/icons";
 import { setPinned } from "@/lib/api";
 import { dividerLabel } from "@/lib/dates";
 import { formatSize } from "@/lib/format";
@@ -27,6 +27,7 @@ import { messagesQuery, pinsQuery } from "@/lib/queries";
 import type { Attachment, Author, Message, Pin, PinTarget } from "@/lib/types";
 import { LongPressMenu, type MenuEntry } from "@/components/menus";
 import { rowKey } from "@/lib/utils";
+import { EmptyState } from "@/components/empty-state";
 
 /*
  * apps/web/src/components/ConversationPanels.tsx. The side panels (search, files, pins, and the
@@ -44,12 +45,15 @@ const messages = defineMessages({
     pins: "Pinned",
     searchPlaceholder: "Search the conversation",
     searchHint: "Messages and file names of this conversation.",
-    noMatch: "No messages match.",
+    noMatchTitle: "No results",
+    noMatch: "Try another word, or look in the files.",
     results: (n: number) => (n === 1 ? "1 result" : `${n} results`),
-    noFiles: "No files in this conversation yet.",
+    noFilesTitle: "No files yet",
+    noFiles: "Images, PDFs and documents shared in the conversation land here.",
     images: "Images",
     documents: "Documents",
-    noPins: "Nothing pinned yet. Pin a message or a file from its menu so everyone finds it here.",
+    noPinsTitle: "Nothing pinned",
+    noPins: "Pin a message or a file from its menu so everyone finds it here.",
     pin: "Pin",
     unpin: "Unpin",
     show: "Show in conversation",
@@ -72,12 +76,15 @@ const messages = defineMessages({
     pins: "Épinglés",
     searchPlaceholder: "Rechercher dans la conversation",
     searchHint: "Messages et noms de fichiers de cette conversation.",
-    noMatch: "Aucun message ne correspond.",
+    noMatchTitle: "Aucun résultat",
+    noMatch: "Essaie un autre mot, ou cherche dans les fichiers.",
     results: (n: number) => (n <= 1 ? `${n} résultat` : `${n} résultats`),
-    noFiles: "Aucun fichier dans cette conversation pour l'instant.",
+    noFilesTitle: "Aucun fichier",
+    noFiles: "Les images, PDF et documents partagés dans la conversation arrivent ici.",
     images: "Images",
     documents: "Documents",
-    noPins: "Rien d'épinglé pour l'instant. Épingle un message ou un fichier depuis son menu pour que tout le monde le retrouve ici.",
+    noPinsTitle: "Rien d’épinglé",
+    noPins: "Épingle un message ou un fichier depuis son menu pour que tout le monde le retrouve ici.",
     pin: "Épingler",
     unpin: "Désépingler",
     show: "Voir dans la conversation",
@@ -343,7 +350,7 @@ function SearchPanel({ conversationId, onJump }: { conversationId: string; onJum
         {!deferred.trim() ? (
           <PanelNote>{t.searchHint}</PanelNote>
         ) : hits.length === 0 ? (
-          <PanelNote>{t.noMatch}</PanelNote>
+          <EmptyState icon={SearchIcon} title={t.noMatchTitle} description={t.noMatch} />
         ) : (
           <>
             <SectionTitle>{t.results(hits.length)}</SectionTitle>
@@ -463,7 +470,7 @@ function FilesPanel({ conversationId, onJump }: { conversationId: string; onJump
   return (
     <Scroll>
       {entries.length === 0 ? (
-        <PanelNote>{t.noFiles}</PanelNote>
+        <EmptyState icon={FileTextIcon} title={t.noFilesTitle} description={t.noFiles} />
       ) : (
         <>
           {section(t.images, images)}
@@ -540,7 +547,7 @@ function PinsPanel({ conversationId, onJump }: { conversationId: string; onJump:
   return (
     <Scroll>
       {pins.length === 0 ? (
-        <PanelNote>{t.noPins}</PanelNote>
+        <EmptyState icon={PinIcon} title={t.noPinsTitle} description={t.noPins} />
       ) : (
         <Rows>
           {[...pins].reverse().map((p) => {

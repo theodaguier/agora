@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
  * status dot), one grouped zone, then the actions.
  */
 
-/** The block's Card: white, a 1px border, radius 22. */
-export const blockCard = "w-full max-w-[92%] gap-4 rounded-[22px] border border-border bg-background px-[18px] py-4";
+/** The block's Card, as Figma « Carte d'autorisation » and « Carte de PR »: white, a 1px border, radius 14. */
+export const blockCard = "w-full gap-3 rounded-[14px] border border-border bg-background px-4 py-3.5";
 
 /** A status tone as the color of its dot (`info`: in progress, the brand blue). */
 const DOT: Record<StatusTone, string> = {
