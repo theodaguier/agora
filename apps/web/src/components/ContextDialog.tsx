@@ -1,3 +1,4 @@
+import { modelName } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
@@ -75,7 +76,7 @@ export function ContextDialog({ conversationId, open, onOpenChange }: { conversa
                 <Item size="sm">
                   <ItemContent>
                     <ItemTitle>{t.model}</ItemTitle>
-                    <ItemDescription>{data.model}</ItemDescription>
+                    <ItemDescription>{data.model && modelName(data.model)}</ItemDescription>
                   </ItemContent>
                 </Item>
               )}

@@ -102,7 +102,7 @@ function tagAtCaret(text: string, caret: number) {
  * that person (one task per person tagged); nobody tagged = for you, or for
  * `assignee` when set (profile panel). A due date is optional.
  */
-export function QuickAddTask({ assignee }: { assignee?: { id: string; name: string } }) {
+export function QuickAddTask({ assignee, autoFocus, onCancel }: { assignee?: { id: string; name: string }; autoFocus?: boolean; onCancel?: () => void }) {
   const { user } = useRouteContext({ from: "/app" });
   const qc = useQueryClient();
   const t = useT(messages);
@@ -169,7 +169,8 @@ export function QuickAddTask({ assignee }: { assignee?: { id: string; name: stri
 
   return (
     <form
-      className="relative flex flex-col gap-2"
+      // Figma « Carte »: white, a hairline, the field then its options on one line.
+      className="relative flex flex-col gap-2 rounded-[14px] border border-border bg-background px-3.5 py-3 transition-[border-color] focus-within:border-black/15 dark:focus-within:border-white/20"
       onSubmit={(e) => {
         e.preventDefault();
         if (title && !add.isPending) add.mutate();
@@ -178,6 +179,7 @@ export function QuickAddTask({ assignee }: { assignee?: { id: string; name: stri
       <div className="relative">
         <Input
           ref={input}
+          autoFocus={autoFocus}
           onScroll={(e) => overlay.current && (overlay.current.scrollLeft = e.currentTarget.scrollLeft)}
           value={text}
           onChange={(e) => {
@@ -199,22 +201,25 @@ export function QuickAddTask({ assignee }: { assignee?: { id: string; name: stri
               setDismissed(tag!.start);
             }
           }}
+          onKeyUp={(e) => {
+            if (e.key === "Escape" && !current && !text) onCancel?.();
+          }}
           maxLength={300}
           placeholder={placeholder}
           aria-label={t.label}
           aria-expanded={suggestions.length > 0}
-          className={cn("h-10", highlighted && "text-transparent caret-foreground")}
+          className={cn("h-[21px] rounded-none border-0 bg-transparent px-0 text-[15px] leading-[21px] shadow-none focus-visible:ring-0 md:text-[15px] dark:bg-transparent", highlighted && "text-transparent caret-foreground")}
         />
         {/* The field's text turns transparent and a copy with colored tags is drawn over it. */}
         {highlighted && (
           <div
             ref={overlay}
             aria-hidden
-            className="pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre border border-transparent px-3 text-base md:text-sm"
+            className="pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre border border-transparent text-[15px] leading-[21px]"
           >
             {splitTags(text, people).map((part, i) =>
               part.tag ? (
-                <span key={i} className="rounded-sm bg-brand/15 text-brand">
+                <span key={i} className="text-brand">
                   {part.text}
                 </span>
               ) : (
@@ -225,7 +230,7 @@ export function QuickAddTask({ assignee }: { assignee?: { id: string; name: stri
         )}
       </div>
       {current && (
-        <Command value={current.id} shouldFilter={false} className="absolute top-11 z-20 h-auto w-64 border border-border shadow-md">
+        <Command value={current.id} shouldFilter={false} className="absolute top-10 z-20 h-auto w-64 border border-border shadow-md">
           <CommandList>
             {suggestions.map((p) => (
               <CommandItem
@@ -245,7 +250,7 @@ export function QuickAddTask({ assignee }: { assignee?: { id: string; name: stri
       )}
       {title && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="min-w-0 truncate px-1 text-[13px] text-muted-foreground">
+          <span className="flex h-6 min-w-0 items-center truncate rounded-full bg-secondary px-2.5 text-xs text-muted-foreground">
             {forYou ? t.forYou : t.forPeople(targets.map((p) => (p.id === user.id ? p.name.split(" ")[0] : p.name)).join(", "))}
           </span>
           <DuePicker value={due} onChange={setDue} />
@@ -274,7 +279,7 @@ function DuePicker({ value, onChange }: { value: string | null; onChange: (day: 
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<Button type="button" variant="secondary" size="sm" className="font-normal" />}>
+      <PopoverTrigger render={<Button type="button" variant="secondary" size="xs" className="font-normal text-muted-foreground" />}>
         {value ? t.due(formatDueDate(value)) : t.noDue}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-0">
@@ -301,7 +306,7 @@ function PriorityPicker({ value, onChange }: { value: TaskPriority; onChange: (p
   const p = useT(priorityMessages);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button type="button" variant="secondary" size="sm" className="font-normal" />}>
+      <DropdownMenuTrigger render={<Button type="button" variant="secondary" size="xs" className="font-normal text-muted-foreground" />}>
         {p.priority} · {p.label[value]}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-40">

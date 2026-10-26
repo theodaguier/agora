@@ -63,7 +63,11 @@ export const conversationQuery = (id: string) =>
 export const messagesQuery = (conversationId: string) =>
   queryOptions({
     queryKey: ["messages", conversationId],
-    queryFn: async ({ client, queryKey }) => mergeMessages(await api<Message[]>(conversationPath(conversationId, "/messages")), client.getQueryData<Message[]>(queryKey)),
+    queryFn: async ({ client, queryKey, signal }) => {
+      const before = client.getQueryData<Message[]>(queryKey) ?? [];
+      const fresh = await api<Message[]>(conversationPath(conversationId, "/messages"), { signal });
+      return mergeMessages(fresh, client.getQueryData<Message[]>(queryKey), before);
+    },
   });
 
 export const pinsQuery = (conversationId: string) =>

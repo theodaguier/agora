@@ -5,11 +5,10 @@ import { common } from "@agora/core/i18n";
 import { useWide } from "@/components/CodeSession";
 import { BesideButton } from "@/components/BesideButton";
 import { PaneHeader } from "@/components/PaneHeader";
-import { ChevronsRightIcon, CloseIcon, FileCodeIcon } from "@/components/icons";
+import { CloseIcon, FileCodeIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -73,21 +72,22 @@ export function findPreview(key: string, turns: ActiveTurn[], thread: Message[])
 /** A mockup in the thread, where the bot wrote it: its state, and the way into the preview. */
 export function PreviewCard({ title, writing, onOpen, className }: { title: string; writing: boolean; onOpen: () => void; className?: string }) {
   const t = useT(messages);
+  // Figma « Carte de PR »: a white hairline card, its icon in a bordered tile, the title, a grey line, one grey pill.
   return (
-    <Item variant="outline" className={cn("my-1 w-full max-w-[min(680px,88%)]", className)}>
-      <ItemMedia variant="icon">{writing ? <Spinner className="size-4" /> : <FileCodeIcon />}</ItemMedia>
-      <ItemContent className="min-w-0">
-        <ItemTitle className="w-full truncate">{title || t.untitled}</ItemTitle>
-        <ItemDescription className="truncate">
+    <div className={cn("flex w-full max-w-[520px] items-center gap-3 rounded-[14px] border border-border bg-background p-3", className)}>
+      <span className="grid size-10 shrink-0 place-items-center rounded-[10px] border border-border text-icon [&_svg]:size-5">
+        {writing ? <Spinner className="size-4" /> : <FileCodeIcon />}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate text-[15px] leading-[21px]">{title || t.untitled}</span>
+        <span className="truncate text-[13px] leading-[18px] text-muted-foreground">
           {t.mockup} · {writing ? t.writing : t.ready}
-        </ItemDescription>
-      </ItemContent>
-      <ItemActions>
-        <Button variant="outline" size="sm" onClick={onOpen}>
-          {writing ? t.follow : t.open}
-        </Button>
-      </ItemActions>
-    </Item>
+        </span>
+      </span>
+      <Button variant="secondary" onClick={onOpen}>
+        {writing ? t.follow : t.open}
+      </Button>
+    </div>
   );
 }
 
@@ -111,7 +111,7 @@ export function PreviewPanel({ source, onClose, onDetach }: { source: PreviewSou
       </Sheet>
     );
   }
-  return <aside className="flex h-full w-full flex-col bg-sidebar">{view}</aside>;
+  return <aside className="flex h-full w-full flex-col bg-background">{view}</aside>;
 }
 
 /** A mockup as a workspace tab: the whole pane for the page. */
@@ -191,7 +191,7 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
             {onDetach && <BesideButton onClick={onDetach} />}
             {onClose && (
               <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
-                {page ? <CloseIcon /> : <ChevronsRightIcon />}
+                <CloseIcon />
               </Button>
             )}
           </>
@@ -213,7 +213,7 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
         {kept ? (
           <ScaledFrame html={kept.html} done={!writing} device={device} />
         ) : saved.isError || (!source && !id) ? (
-          <Empty className="h-full rounded-lg border border-solid border-border bg-background/60">
+          <Empty className="h-full">
             <EmptyHeader>
               <EmptyDescription>{t.missing}</EmptyDescription>
             </EmptyHeader>
@@ -265,7 +265,7 @@ function ScaledFrame({ html, done, device }: { html: string; done: boolean; devi
     <div ref={box} className={cn("flex h-full justify-center overflow-hidden", mobile ? "items-center" : "rounded-lg border border-border bg-background")}>
       {size.width > 0 &&
         (mobile ? (
-          <div style={{ width: base * scale, height: baseHeight * scale }} className="shrink-0 overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+          <div style={{ width: base * scale, height: baseHeight * scale }} className="shrink-0 overflow-hidden rounded-xl border border-border bg-background">
             <HtmlFrame html={html} done={done} style={{ width: base, height: baseHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} />
           </div>
         ) : (

@@ -18,6 +18,12 @@ export const codeSessionQuery = (conversationId: string, id: string) =>
     queryFn: () => api<CodeSessionDetail>(path(conversationId, `/${encodeURIComponent(id)}`)),
   });
 
+/** Every session of the user's conversations, the last changed first (the Sessions page). */
+export const allCodeSessionsQuery = queryOptions({
+  queryKey: ["code-sessions-all"],
+  queryFn: () => api<CodeSession[]>("/code-sessions"),
+});
+
 const upsert = <T extends { id: string }>(list: T[], item: T) => {
   const i = list.findIndex((x) => x.id === item.id);
   if (i === -1) return [...list, item];
@@ -31,6 +37,8 @@ export function applyCodeSession(qc: QueryClient, session: CodeSession) {
   const cid = session.conversationId;
   qc.setQueryData<CodeSessionDetail>(codeSessionQuery(cid, session.id).queryKey, (old) => old && { ...old, ...session });
   qc.setQueryData<CodeSession[]>(codeSessionsQuery(cid).queryKey, (old) => (old ? upsert(old, session) : old));
+  // The Sessions page: moved to the top, its last change.
+  qc.setQueryData<CodeSession[]>(allCodeSessionsQuery.queryKey, (old) => old && [{ ...old.find((s) => s.id === session.id), ...session }, ...old.filter((s) => s.id !== session.id)]);
   // A new session (its card) or one this client never loaded.
   if (!qc.getQueryData(codeSessionsQuery(cid).queryKey)?.some((s) => s.id === session.id)) void qc.invalidateQueries({ queryKey: codeSessionsQuery(cid).queryKey });
 }
@@ -39,6 +47,7 @@ export function applyCodeSession(qc: QueryClient, session: CodeSession) {
 export function dropCodeSession(qc: QueryClient, conversationId: string, id: string) {
   qc.setQueryData<CodeSession[]>(codeSessionsQuery(conversationId).queryKey, (old) => old?.filter((s) => s.id !== id));
   qc.removeQueries({ queryKey: codeSessionQuery(conversationId, id).queryKey });
+  qc.setQueryData<CodeSession[]>(allCodeSessionsQuery.queryKey, (old) => old?.filter((s) => s.id !== id));
 }
 
 /** One step added or changed (`code.step`): only the open panels hold steps. */

@@ -343,7 +343,7 @@ function Absences({ userId, settings }: { userId: string; settings: ScheduleSett
 
   if (!settings.absences.length)
     return (
-      <Empty className="border border-dashed">
+      <Empty className="p-4">
         <EmptyHeader>
           <EmptyTitle>{t.noAbsences}</EmptyTitle>
           <EmptyDescription>{t.noAbsencesHelp}</EmptyDescription>

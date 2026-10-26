@@ -71,3 +71,29 @@ export function formatDueDate(day: string) {
 
 /** Due before today. */
 export const isOverdue = (day: string | null) => !!day && day < toDay(new Date());
+
+/** Time of a conversation list row: "10:44" today, "Mon" this week, "Oct 24" before. */
+export function listTime(date: Date) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - d.getTime()) / 86_400_000);
+  if (diff <= 0) return dateFormat({ hour: "2-digit", minute: "2-digit" }).format(date);
+  if (diff < 7) return dateFormat({ weekday: "short" }).format(date);
+  return dateFormat({ day: "numeric", month: "short" }).format(date);
+}
+
+/** Day heading of a list: "Today", "Yesterday", then "Monday 24 October". */
+export function dayLabel(date: Date) {
+  const t = tr(messages);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - d.getTime()) / 86_400_000);
+  if (diff === 0) return t.today;
+  if (diff === 1) return t.yesterday;
+  const label = dateFormat({ weekday: "long", day: "numeric", month: "long" }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}

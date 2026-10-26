@@ -1,11 +1,11 @@
 import { rankByQuery } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { ArrowUpIcon, PackageIcon, ClockIcon, PlugIcon, PlusIcon, CloseIcon } from "@/components/icons";
+import { ArrowUpIcon, PackageIcon, ClockIcon, PlugIcon, PlusIcon, CloseIcon, StopIcon } from "@/components/icons";
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref, type RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { defineMessages, useT } from "@/i18n";
 import { invocationKey, retryLast, sessionCommand, uploadAttachment, type AgentSummary, type Attachment, type Invocation, type ReplyTo } from "@/lib/api";
 import { ALL_HANDLE } from "@agora/core";
@@ -101,6 +101,9 @@ type Props = {
   /** Message being answered, shown above the field until sent or cancelled. */
   replyTo?: ReplyTo | null;
   onCancelReply?: () => void;
+  /** A reply you asked for is being written: with the field empty, the send button stops it. */
+  onStop?: () => void;
+  stopLabel?: string;
   /** The colleague of a direct conversation: warned about if they can't be disturbed, like mentioned ones. */
   recipientId?: string;
   ref?: Ref<ComposerHandle>;
@@ -191,7 +194,7 @@ export function usePendingFiles(conversationId: string, t: { tooLarge: string; u
   return { files, setFiles, addFiles, removeFile };
 }
 
-export function Composer({ conversationId, placeholder, botTools, mentionables = noMentionables, onSend, onTyping, replyTo, onCancelReply, recipientId, ref }: Props) {
+export function Composer({ conversationId, placeholder, botTools, mentionables = noMentionables, onSend, onTyping, replyTo, onCancelReply, onStop, stopLabel, recipientId, ref }: Props) {
   const tr = useT(replyMessages);
   const { user } = useRouteContext({ from: "/app" });
   const [text, setText] = useDraft(`${user.id}:chat:${conversationId}`);
@@ -347,12 +350,13 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           e.preventDefault();
           send();
         }}
-        className="relative rounded-[22px] bg-secondary p-1.5"
+        // Figma « Composer »: a pill (46 px on one line), hairline and a soft shadow; quotes, files and invocations stack above the line.
+        className="relative rounded-[23px] border border-border bg-background py-[5px] pr-[5px] pl-1.5 shadow-card transition-[border-color] focus-within:border-black/15 dark:focus-within:border-white/20"
       >
         {token && (token.trigger === "/" || items.length > 0) && <SlashMenu items={items} active={Math.min(active, Math.max(items.length - 1, 0))} onHover={setActive} onPick={pick} />}
 
         {invocations.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-1 pb-1.5 pt-1">
+          <div className="flex flex-wrap gap-1.5 px-2 pb-1.5 pt-1.5">
             {invocations.map((v) => (
               <Badge
                 key={invocationKey(v)}
@@ -380,7 +384,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
         )}
         {replyTo && (
           // The height is set at once (the thread follows in the same frame); only the quote fades in, so nothing bounces.
-          <div className="chat-arrive px-1 pb-1.5 pt-1">
+          <div className="chat-arrive px-1.5 pb-1.5 pt-1">
             <QuoteBlock
               quote={replyTo}
               className="bg-accent"
@@ -403,18 +407,18 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             e.target.value = "";
           }}
         />
-        <InputGroup className="h-auto items-end border-0 bg-transparent">
-          <InputGroupAddon align="inline-start" className="cursor-default py-0 pl-0 has-[>button]:ml-0">
-            <InputGroupButton size="icon-sm" aria-label={t.attachFiles} onClick={() => picker.current?.click()}>
-              <PlusIcon className="size-5" strokeWidth={1.75} />
-            </InputGroupButton>
+        <InputGroup className="h-auto flex-row items-end gap-1 rounded-none border-0 bg-transparent shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+          <InputGroupAddon align="inline-start" className="cursor-default p-0 has-[>button]:ml-0">
+            <Button variant="ghost" size="icon-lg" aria-label={t.attachFiles} onClick={() => picker.current?.click()} className="text-icon">
+              <PlusIcon />
+            </Button>
           </InputGroupAddon>
-          <div className="relative flex min-w-0 flex-1">
+          <div className="relative flex min-w-0 flex-1 py-[7.5px]">
             {highlighted && (
               <div
                 ref={overlay}
                 aria-hidden
-                className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1 text-[15px] leading-6 [scrollbar-gutter:stable]"
+                className="pointer-events-none absolute inset-x-0 inset-y-[7.5px] overflow-hidden whitespace-pre-wrap break-words p-0 text-[15px] leading-[21px] [scrollbar-gutter:stable]"
               >
                 <MentionText text={text} mentionables={colored} flat />
                 {/* A final line break takes a line in the field: the same here, so both scroll as far. */}
@@ -478,15 +482,21 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
                 }
               }}
               placeholder={placeholder}
-              className={cn("max-h-[200px] min-h-0 min-w-0 px-1 py-1 text-[15px] leading-6 [scrollbar-gutter:stable] md:text-[15px]", highlighted && "text-transparent caret-foreground")}
+              className={cn("max-h-[200px] min-h-0 min-w-0 p-0 text-[15px] leading-[21px] [scrollbar-gutter:stable] placeholder:text-subtle md:text-[15px]", highlighted && "text-transparent caret-foreground")}
             />
           </div>
-          <InputGroupAddon align="inline-end" className="cursor-default gap-1 py-0 pr-0 has-[>button]:mr-0">
+          <InputGroupAddon align="inline-end" className="cursor-default gap-1 p-0 has-[>button]:mr-0">
             {botTools && <ModelPicker conversationId={conversationId} open={modelOpen} onOpenChange={setModelOpen} />}
             {botTools && <ContextDialog conversationId={conversationId} open={contextOpen} onOpenChange={setContextOpen} />}
-            <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="rounded-full disabled:opacity-40">
-              <ArrowUpIcon strokeWidth={2.25} />
-            </Button>
+            {onStop && !canSend ? (
+              <Button type="button" size="icon" aria-label={stopLabel} title={stopLabel} onClick={onStop} className="size-[34px] [&_svg:not([class*='size-'])]:size-4">
+                <StopIcon />
+              </Button>
+            ) : (
+              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="size-[34px] disabled:opacity-40 [&_svg:not([class*='size-'])]:size-[18px]">
+                <ArrowUpIcon strokeWidth={2.25} />
+              </Button>
+            )}
           </InputGroupAddon>
         </InputGroup>
       </form>

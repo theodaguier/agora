@@ -29,7 +29,6 @@ export type Tab = (typeof tabs)[number];
 const messages = defineMessages<{
   tabs: Record<Tab, string>;
   agents: string;
-  profile: (name: string) => string;
   modelIntro: string;
   modelList: string;
   defaultModel: string;
@@ -60,7 +59,6 @@ const messages = defineMessages<{
   en: {
     tabs: { Profil: "Profile", Personnalité: "Personality", Modèle: "Model", Outils: "Tools", Skills: "Skills", Mémoire: "Memory" },
     agents: "Agents",
-    profile: (name) => `Hermes profile: ${name}`,
     modelIntro: "Default model for conversations with this agent. Each employee can pick another one for their thread.",
     modelList: "List provided by Hermes for the provider",
     defaultModel: "Default model",
@@ -92,7 +90,6 @@ const messages = defineMessages<{
   fr: {
     tabs: { Profil: "Profil", Personnalité: "Personnalité", Modèle: "Modèle", Outils: "Outils", Skills: "Skills", Mémoire: "Mémoire" },
     agents: "Agents",
-    profile: (name) => `profil Hermes : ${name}`,
     modelIntro: "Modèle utilisé par défaut dans les conversations avec cet agent. Chaque salarié peut en choisir un autre pour son fil.",
     modelList: "Liste fournie par Hermes pour le fournisseur",
     defaultModel: "Modèle par défaut",
@@ -140,10 +137,7 @@ export function AgentDetail({ agent, onBack }: { agent: AdminAgent; onBack: () =
       </Breadcrumb>
       <div className="mb-5 flex items-center gap-3">
         <AgentAvatar agent={{ avatar: { shape: agent.avatarShape, color: agent.avatarColor } }} className="size-11" />
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">{agent.name}</h2>
-          <p className="text-sm text-muted-foreground">{t.profile(agent.hermesProfile)}</p>
-        </div>
+        <h2 className="text-xl leading-[26px] font-medium">{agent.name}</h2>
       </div>
       <AgentEditor agent={agent} />
     </>
@@ -299,7 +293,7 @@ function McpSection({ agentId, isDefault }: { agentId: string; isDefault: boolea
       <FieldLegend>{t.mcpTitle}</FieldLegend>
       <FieldDescription>{isDefault ? t.mcpDefault : t.mcpIntro}</FieldDescription>
       {data.length === 0 ? (
-        <Empty className="border border-dashed">
+        <Empty className="p-4">
           <EmptyHeader>
             <EmptyDescription>{t.mcpEmpty}</EmptyDescription>
           </EmptyHeader>

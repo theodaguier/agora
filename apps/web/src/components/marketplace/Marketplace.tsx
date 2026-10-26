@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
-import { BookOpenIcon, CheckIcon, ChevronLeftIcon, PlugIcon, PuzzleIcon, SearchIcon, CloseIcon } from "@/components/icons";
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, PackageIcon, PlugIcon, PuzzleIcon, SearchIcon, CloseIcon } from "@/components/icons";
+import { BrandLogo } from "@/components/BrandLogo";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { RestartProvider } from "@/components/admin/ui";
 import { AgentAvatar } from "@/components/AgentAvatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription } from "@/components/ui/empty";
@@ -42,6 +42,8 @@ import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 
 type Section = "bots" | "mcp" | "registry" | "skill" | "skillsSh" | "plugin";
+type Filter = "all" | "mcp" | "skill" | "plugin" | "bots";
+const FILTERS: Filter[] = ["all", "mcp", "skill", "plugin", "bots"];
 type View = { kind: "home" } | { kind: "all"; section: Section; query?: string } | { kind: "installed" } | { kind: "add"; item: Item } | { kind: "custom" };
 
 const messages = defineMessages<{
@@ -58,8 +60,10 @@ const messages = defineMessages<{
   enabled: string;
   added: string;
   opening: string;
-  profile: (name: string) => string;
   custom: string;
+  open: string;
+  filterKinds: string;
+  filters: Record<Filter, string>;
 }>({
   en: {
     titles: { bots: "Team bots", mcp: "Connectors", registry: "MCP registry", skill: "Skills", skillsSh: "skills.sh", plugin: "Hermes plugins" },
@@ -75,8 +79,10 @@ const messages = defineMessages<{
     enabled: "Enabled",
     added: "Added",
     opening: "Opening…",
-    profile: (name) => `Profile ${name}`,
     custom: "Custom connector",
+    open: "Open",
+    filterKinds: "Show",
+    filters: { all: "All", mcp: "Connectors", skill: "Skills", plugin: "Plugins", bots: "Bots" },
   },
   fr: {
     titles: { bots: "Bots de l'équipe", mcp: "Connecteurs", registry: "Registre MCP", skill: "Skills", skillsSh: "skills.sh", plugin: "Plugins Hermes" },
@@ -92,8 +98,10 @@ const messages = defineMessages<{
     enabled: "Activé",
     added: "Ajouté",
     opening: "Ouverture…",
-    profile: (name) => `Profil ${name}`,
     custom: "Connecteur personnalisé",
+    open: "Ouvrir",
+    filterKinds: "Afficher",
+    filters: { all: "Tout", mcp: "Connecteurs", skill: "Skills", plugin: "Plugins", bots: "Bots" },
   },
 });
 
@@ -117,22 +125,23 @@ export function Marketplace({ onClose }: { onClose: () => void }) {
     >
       <DialogContent
         showCloseButton={false}
-        className="flex h-full max-w-[880px] flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[min(88vh,900px)] sm:max-w-[min(880px,calc(100%-3rem))] sm:rounded-2xl sm:border"
+        className="flex h-full max-w-[760px] flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[min(88vh,680px)] sm:max-w-[min(760px,calc(100%-3rem))] sm:rounded-[18px] sm:border"
       >
-        <DialogTitle className="sr-only">{t.title}</DialogTitle>
-        <div className="flex h-14 shrink-0 items-center justify-between px-4">
-          {history.length > 1 ? (
-            <Button variant="ghost" size="icon-lg" aria-label={c.back} onClick={back}>
+        {/* Figma « En-tête »: the title (back first, deeper in), the installed apps, close. */}
+        <div className="flex shrink-0 items-center gap-2.5 px-5 pt-6 pb-4 sm:px-8 sm:pt-7">
+          {history.length > 1 && (
+            <Button variant="ghost" size="icon-sm" aria-label={c.back} onClick={back} className="-ml-1.5">
               <ChevronLeftIcon />
             </Button>
-          ) : (
-            <span />
           )}
-          <DialogClose render={<Button variant="ghost" size="icon-lg" aria-label={c.close} />}>
+          <DialogTitle className="text-[15px] leading-5 font-medium">{t.title}</DialogTitle>
+          <span className="flex-1" />
+          {view.kind !== "installed" && <InstalledButton onClick={() => push({ kind: "installed" })} />}
+          <DialogClose render={<Button variant="ghost" size="icon-sm" aria-label={c.close} className="-mr-1.5" />}>
             <CloseIcon />
           </DialogClose>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-10 sm:px-10">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 sm:px-8">
           <RestartProvider>
             {view.kind === "home" && <Home push={push} onClose={onClose} />}
             {view.kind === "all" && <AllOf section={view.section} query={view.query} push={push} onClose={onClose} />}
@@ -174,7 +183,7 @@ function useMarket(query: string) {
     const indexPlugins = (index.data?.results ?? []).map(fromPluginIndex).filter((p) => !plugin.some((x) => x.name === p.name));
     const filter = <T extends { name: string; description: string }>(xs: T[]) => (q ? xs.filter((x) => matches(x, q)) : xs);
     return {
-      bots: filter((agents.data ?? []).map((a) => ({ ...a, description: a.hermesProfile }))),
+      bots: filter((agents.data ?? []).map((a) => ({ ...a, description: "" }))),
       mcp: filter(mcp),
       registry: reg,
       skill: q ? [...filter(skills), ...hubSkills] : skills,
@@ -205,20 +214,17 @@ function Home({ push, onClose }: { push: (v: View) => void; onClose: () => void 
   const [query, setQuery] = useState("");
   const market = useMarket(query);
   const searching = query.trim().length > 0;
+  const [filter, setFilter] = useState<Filter>("all");
   const firstUninstalled = (xs: Item[]) => [...xs.filter((x) => !x.installed), ...xs.filter((x) => x.installed)];
+
+  const show = (f: Filter) => filter === "all" || filter === f;
 
   return (
     <>
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold tracking-tight">{t.title}</h1>
-        <Button variant="link" className="h-auto px-0 font-normal text-muted-foreground hover:text-foreground hover:no-underline" onClick={() => push({ kind: "installed" })}>
-          {t.installed(market.installedCount)}
-        </Button>
-      </div>
-
-      <InputGroup className="mb-8 h-11 rounded-full bg-background/40 px-2">
-        <InputGroupAddon>
-          <SearchIcon className="size-[18px]" />
+      {/* Figma « Recherche »: a round field. */}
+      <InputGroup className="mb-4 h-10 rounded-full bg-background px-1.5">
+        <InputGroupAddon className="text-icon">
+          <SearchIcon className="size-4" />
         </InputGroupAddon>
         <InputGroupInput
           autoFocus
@@ -226,7 +232,7 @@ function Home({ push, onClose }: { push: (v: View) => void; onClose: () => void 
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t.searchPlaceholder}
           aria-label={t.searchLabel}
-          className="text-[15px] placeholder:text-muted-foreground md:text-[15px]"
+          className="text-sm placeholder:text-subtle md:text-sm"
         />
         {searching && market.searching && (
           <InputGroupAddon align="inline-end">
@@ -235,28 +241,47 @@ function Home({ push, onClose }: { push: (v: View) => void; onClose: () => void 
         )}
       </InputGroup>
 
-      {market.error ? <p className="-mt-4 mb-6 text-sm text-destructive">{market.error.message}</p> : null}
+      {/* Figma « Filtres »: which kinds the page shows. */}
+      <div role="radiogroup" aria-label={t.filterKinds} className="mb-6 flex flex-wrap gap-1.5">
+        {FILTERS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            role="radio"
+            aria-checked={filter === f}
+            onClick={() => setFilter(f)}
+            className={cn(
+              "h-[30px] rounded-full border border-border bg-background px-3 text-[13px] leading-[18px] outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30",
+              filter === f && "border-transparent bg-primary text-primary-foreground hover:bg-primary",
+            )}
+          >
+            {t.filters[f]}
+          </button>
+        ))}
+      </div>
 
-      {market.bots.length > 0 && (
-        <Block title={searching ? t.bots : t.featuredBots} onAll={market.bots.length > 4 ? () => push({ kind: "all", section: "bots" }) : undefined}>
+      {market.error ? <p className="-mt-2 mb-6 text-sm text-destructive">{market.error.message}</p> : null}
+
+      {show("bots") && market.bots.length > 0 && (
+        <Block title={t.titles.bots} onAll={market.bots.length > 4 ? () => push({ kind: "all", section: "bots" }) : undefined}>
           <BotCards agents={market.bots.slice(0, 4)} onClose={onClose} />
         </Block>
       )}
-      <ItemBlock
+      {show("mcp") && <ItemBlock
         section="mcp"
         loading={market.pending.mcp}
         items={searching ? market.mcp : firstUninstalled(market.mcp)}
         push={push}
         action={
-          <Button variant="link" className="h-auto px-0 font-normal text-muted-foreground hover:text-foreground hover:no-underline" onClick={() => push({ kind: "custom" })}>
+          <button type="button" className={linkClass} onClick={() => push({ kind: "custom" })}>
             {t.custom}
-          </Button>
+          </button>
         }
-      />
-      <ItemBlock section="registry" items={market.registry} push={push} query={query} />
-      <ItemBlock section="skill" loading={market.pending.skill} items={market.skill} push={push} query={query} />
-      <ItemBlock section="skillsSh" loading={market.pending.skillsSh} items={market.skillsSh} push={push} query={query} />
-      <ItemBlock section="plugin" loading={market.pending.plugin} items={searching ? market.plugin : firstUninstalled(market.plugin)} push={push} />
+      />}
+      {show("mcp") && <ItemBlock section="registry" items={market.registry} push={push} query={query} />}
+      {show("skill") && <ItemBlock section="skill" loading={market.pending.skill} items={market.skill} push={push} query={query} />}
+      {show("skill") && <ItemBlock section="skillsSh" loading={market.pending.skillsSh} items={market.skillsSh} push={push} query={query} />}
+      {show("plugin") && <ItemBlock section="plugin" loading={market.pending.plugin} items={searching ? market.plugin : firstUninstalled(market.plugin)} push={push} />}
 
       {searching && !market.searching && !market.bots.length && !market.mcp.length && !market.registry.length && !market.skill.length && !market.skillsSh.length && !market.plugin.length && (
         <Empty className="py-10">
@@ -273,22 +298,22 @@ function AllOf({ section, query = "", push, onClose }: { section: Section; query
   const [filter, setFilter] = useState("");
   return (
     <>
-      <h1 className="mb-5 text-2xl font-semibold tracking-tight">{t.titles[section]}</h1>
+      <h2 className="mb-3 text-[15px] leading-5 font-medium">{t.titles[section]}</h2>
       <Input
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         placeholder={t.filter}
         aria-label={t.filter}
-        className="mb-4 rounded-full bg-background/40 px-4 placeholder:text-muted-foreground"
+        className="mb-4 h-10 rounded-full px-4 text-sm md:text-sm"
       />
       {section === "bots" ? (
         <BotCards agents={market.bots.filter((a) => matches(a, filter))} onClose={onClose} />
       ) : (
-        <div className="flex flex-col">
+        <div className="grid gap-x-7 gap-y-1 sm:grid-cols-2">
           {market[section]
             .filter((i) => matches(i, filter))
             .map((item) => (
-              <Row key={item.key} item={item} onAdd={() => push({ kind: "add", item })} wide />
+              <Row key={item.key} item={item} onAdd={() => push({ kind: "add", item })} />
             ))}
         </div>
       )}
@@ -299,15 +324,16 @@ function AllOf({ section, query = "", push, onClose }: { section: Section; query
 function Block({ title, onAll, action, children }: { title: string; onAll?: () => void; action?: ReactNode; children: ReactNode }) {
   const t = useT(messages);
   return (
-    <section className="mb-9">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-[15px] font-medium">{title}</h2>
+    <section className="mb-7">
+      {/* Figma « Section »: its title, then « Tout afficher » in grey. */}
+      <div className="mb-3 flex items-baseline justify-between gap-4">
+        <h2 className="text-[15px] leading-5">{title}</h2>
         <div className="flex items-center gap-5">
           {action}
           {onAll && (
-            <Button variant="link" className="h-auto px-0 font-normal text-muted-foreground hover:text-foreground hover:no-underline" onClick={onAll}>
+            <button type="button" className={linkClass} onClick={onAll}>
               {t.showAll}
-            </Button>
+            </button>
           )}
         </div>
       </div>
@@ -322,7 +348,7 @@ function ItemBlock(props: { section: Exclude<Section, "bots">; items: Item[]; lo
   if (!items.length && props.loading) {
     return (
       <Block title={t.titles[section]} action={action}>
-        <div aria-busy className="grid gap-x-8 sm:grid-cols-2">
+        <div aria-busy className="grid gap-x-7 gap-y-1 sm:grid-cols-2">
           {[0, 1, 2, 3].map((i) => (
             <RowSkeleton key={i} />
           ))}
@@ -333,7 +359,7 @@ function ItemBlock(props: { section: Exclude<Section, "bots">; items: Item[]; lo
   if (!items.length) return action ? <Block title={t.titles[section]} action={action}>{null}</Block> : null;
   return (
     <Block title={t.titles[section]} action={action} onAll={items.length > 6 ? () => push({ kind: "all", section, query }) : undefined}>
-      <div className="grid gap-x-8 sm:grid-cols-2">
+      <div className="grid gap-x-7 gap-y-1 sm:grid-cols-2">
         {items.slice(0, 6).map((item) => (
           <Row key={item.key} item={item} onAdd={() => push({ kind: "add", item })} />
         ))}
@@ -342,50 +368,38 @@ function ItemBlock(props: { section: Exclude<Section, "bots">; items: Item[]; lo
   );
 }
 
-const badge = {
-  mcp: { icon: PlugIcon, label: "MCP" },
-  registry: { icon: PlugIcon, label: "MCP" },
-  skill: { icon: BookOpenIcon, label: "Skill" },
-  plugin: { icon: PuzzleIcon, label: "Plugin" },
-};
-
-function Row({ item, onAdd, wide }: { item: Item; onAdd: () => void; wide?: boolean }) {
+/** Figma « Élément »: the logo tile, the name and one grey line, then « Ajouter » or « ✓ Ajouté ». */
+function Row({ item, onAdd }: { item: Item; onAdd: () => void }) {
   const t = useT(messages);
   const c = useT(common);
-  const B = badge[item.kind];
   return (
-    <div className={cn("flex items-center gap-3.5 py-3", wide && "border-b border-border/50 last:border-0")}>
+    <div className="flex min-h-[53px] items-center gap-3 py-1.5">
       {item.kind === "mcp" || item.kind === "registry" ? (
         <IntegrationTile type={item.type ?? guessIntegrationType(item.name, item.description)} server={item.name} />
       ) : (
-        <InitialTile name={item.name} />
+        <InitialTile icon={item.kind === "plugin" ? <PuzzleIcon /> : <PackageIcon />} />
       )}
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          {(item.kind === "skill" || item.kind === "registry") && item.url ? (
-            <a href={item.url} target="_blank" rel="noreferrer" className="truncate text-[15px] underline-offset-4 hover:underline">
-              {item.name}
-            </a>
-          ) : (
-            <span className="truncate text-[15px]">{item.name}</span>
-          )}
-          <Badge variant="secondary" className="font-normal text-muted-foreground">
-            <B.icon data-icon="inline-start" /> {B.label}
-          </Badge>
-        </div>
-        <p className="truncate text-sm text-muted-foreground">{item.description}</p>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {(item.kind === "skill" || item.kind === "registry") && item.url ? (
+          <a href={item.url} target="_blank" rel="noreferrer" className="truncate text-[15px] leading-[21px] underline-offset-4 hover:underline">
+            {item.name}
+          </a>
+        ) : (
+          <span className="truncate text-[15px] leading-[21px]">{item.name}</span>
+        )}
+        {item.description && <p className="truncate text-[13px] leading-[18px] text-muted-foreground">{item.description}</p>}
       </div>
       {item.installed && item.kind === "skill" ? (
         // Skills are per bot: the sheet shows which ones have it and adds it to others.
-        <Button variant="ghost" size="sm" className="px-3.5 text-sm text-muted-foreground" onClick={onAdd}>
-          {t.added}
-        </Button>
+        <button type="button" onClick={onAdd} className={cn(linkClass, "inline-flex shrink-0 items-center gap-1")}>
+          <CheckIcon className="size-3.5" /> {t.added}
+        </button>
       ) : item.installed ? (
-        <span className="inline-flex h-8 shrink-0 items-center gap-1 px-3 text-sm text-muted-foreground">
-          <CheckIcon className="size-4" /> {item.kind === "plugin" ? t.enabled : t.added}
+        <span className="inline-flex shrink-0 items-center gap-1 text-[13px] text-muted-foreground">
+          <CheckIcon className="size-3.5" /> {item.kind === "plugin" ? t.enabled : t.added}
         </span>
       ) : (
-        <Button variant="secondary" size="sm" className="px-3.5 text-sm" onClick={onAdd}>
+        <Button variant="secondary" onClick={onAdd}>
           {c.add}
         </Button>
       )}
@@ -393,15 +407,41 @@ function Row({ item, onAdd, wide }: { item: Item; onAdd: () => void; wide?: bool
   );
 }
 
+/** Grey text button (« Tout afficher », « Connecteur personnalisé »). */
+const linkClass = "rounded-sm text-[13px] leading-[18px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30";
+
+/** Figma « Installés »: the first installed apps' logos, the count, a chevron. */
+function InstalledButton({ onClick }: { onClick: () => void }) {
+  const t = useT(messages);
+  const market = useMarket("");
+  const { data } = useQuery(mcpServersQuery);
+  const logos = (data?.servers ?? []).slice(0, 4);
+  return (
+    <button type="button" onClick={onClick} className={cn(linkClass, "mr-2 inline-flex items-center gap-1.5")}>
+      {logos.length > 0 && (
+        <span className="flex -space-x-1">
+          {logos.map((s) => (
+            <span key={s.name} className="grid size-5 place-items-center overflow-hidden rounded-full border border-border bg-background">
+              <BrandLogo server={s.name} fallback={<PlugIcon className="size-3 text-icon" />} className="size-3.5" />
+            </span>
+          ))}
+        </span>
+      )}
+      {t.installed(market.installedCount)}
+      <ChevronRightIcon className="size-3.5" />
+    </button>
+  );
+}
+
 function RowSkeleton() {
   return (
-    <div className="flex items-center gap-3.5 py-3">
-      <Skeleton className="size-11 shrink-0 rounded-xl" />
+    <div className="flex min-h-[53px] items-center gap-3 py-1.5">
+      <Skeleton className="size-10 shrink-0 rounded-[10px]" />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <Skeleton className="h-3.5 w-2/5" />
         <Skeleton className="h-3 w-4/5" />
       </div>
-      <Skeleton className="h-8 w-[72px] shrink-0 rounded-md" />
+      <Skeleton className="h-8 w-[76px] shrink-0 rounded-full" />
     </div>
   );
 }
@@ -429,18 +469,18 @@ function BotCards({ agents, onClose }: { agents: (AdminAgent & { description: st
   };
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="grid gap-x-7 gap-y-1 sm:grid-cols-2">
       {agents.map((a) => (
-        <Button
-          key={a.id}
-          variant="outline"
-          onClick={() => open(a)}
-          className="h-auto flex-col gap-0 whitespace-normal rounded-2xl px-3 pb-5 pt-6 text-center font-normal"
-        >
-          <AgentAvatar agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }} className="size-20" />
-          <span className="mt-3 text-sm text-muted-foreground">{opening === a.id ? t.opening : t.profile(a.hermesProfile)}</span>
-          <span className="text-[15px] font-medium">{a.name}</span>
-        </Button>
+        <div key={a.id} className="flex min-h-[53px] items-center gap-3 py-1.5">
+          <AgentAvatar agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }} className="size-10" />
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="truncate text-[15px] leading-[21px]">{a.name}</span>
+            {a.description && <p className="truncate text-[13px] leading-[18px] text-muted-foreground">{a.description}</p>}
+          </div>
+          <Button variant="secondary" onClick={() => open(a)} disabled={opening === a.id}>
+            {opening === a.id ? t.opening : t.open}
+          </Button>
+        </div>
       ))}
     </div>
   );

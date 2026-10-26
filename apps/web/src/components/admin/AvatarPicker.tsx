@@ -1,5 +1,5 @@
 import { AgentAvatar } from "@/components/AgentAvatar";
-import { avatarColors, avatarShapes, type AvatarShape } from "@/lib/agent-avatar";
+import { agentAccent, avatarColors, type AvatarShape } from "@/lib/agent-avatar";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ const messages = defineMessages<{ shapes: Record<AvatarShape, string>; shape: st
   },
 });
 
-/** Shape and color of an agent's creature. */
+/** An agent's clay mascot, picked by its colour (the shape is kept in the data but no longer drawn). */
 export function AvatarPicker(props: {
   shape: AvatarShape;
   color: string;
@@ -35,26 +35,17 @@ export function AvatarPicker(props: {
   return (
     <FieldGroup className={cn("gap-4", props.className)}>
       <Field>
-        <FieldLabel className={cn("font-normal text-muted-foreground", props.centered && "justify-center")}>{t.shape}</FieldLabel>
-        <ToggleGroup aria-label={t.shape} value={[props.shape]} onValueChange={(v) => pick(v as AvatarShape[], props.onShapeChange)} variant="outline" className={cn(props.centered && "justify-center")}>
-          {(Object.keys(avatarShapes) as AvatarShape[]).map((s) => (
-            <ToggleGroupItem key={s} value={s} aria-label={t.shapes[s]} title={t.shapes[s]} className="size-10 p-0">
-              <AgentAvatar agent={{ avatar: { shape: s, color: props.color } }} className="size-6" />
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </Field>
-      <Field>
         <FieldLabel className={cn("font-normal text-muted-foreground", props.centered && "justify-center")}>{t.color}</FieldLabel>
-        <ToggleGroup aria-label={t.color} value={[props.color]} onValueChange={(v) => pick(v as string[], props.onColorChange)} spacing={2} className={cn(props.centered && "justify-center")}>
+        <ToggleGroup aria-label={t.color} value={[agentAccent(props.color)]} onValueChange={(v) => pick(v as string[], props.onColorChange)} spacing={2} className={cn(props.centered && "justify-center")}>
           {avatarColors.map((c) => (
             <ToggleGroupItem
               key={c}
               value={c}
               aria-label={c}
-              className="size-7 min-w-7 rounded-full p-0 ring-offset-2 ring-offset-background aria-pressed:ring-2 aria-pressed:ring-ring"
-              style={{ background: c }}
-            />
+              className="size-10 min-w-10 rounded-full p-0 ring-offset-2 ring-offset-background aria-pressed:ring-2 aria-pressed:ring-foreground"
+            >
+              <AgentAvatar agent={{ avatar: { color: c } }} className="size-10" />
+            </ToggleGroupItem>
           ))}
         </ToggleGroup>
       </Field>

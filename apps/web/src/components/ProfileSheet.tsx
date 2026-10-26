@@ -1,7 +1,8 @@
+import { mascot } from "@/lib/agent-avatar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClockIcon, ToolIcon } from "@/components/icons";
 import { Link, useNavigate, useRouteContext } from "@tanstack/react-router";
-import { ConversationAvatar, PersonAvatar, StatusAvatar, useStatusLabel } from "@/components/ConversationAvatar";
+import { ConversationAvatar, PersonAvatar, useStatusLabel } from "@/components/ConversationAvatar";
 import { conversationTitle } from "@/lib/participants";
 import { WorkingOn } from "@/components/WorkingOn";
 import { RoutineActions, useToggleRoutine } from "@/components/RoutineDialog";
@@ -128,7 +129,7 @@ function Profile({ userId }: { userId: string }) {
             {person && <Details person={person} />}
             {!self && <CommonConversations userId={userId} />}
             <section className="flex flex-col gap-2">
-              <h3 className="text-xs font-medium text-muted-foreground">{t.tasks}</h3>
+              <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.tasks}</h3>
               <TaskList userId={userId} empty={t.noTasks} />
             </section>
           </div>
@@ -169,7 +170,7 @@ function BotProfile({ agentId }: { agentId: string }) {
           <div className="flex flex-col gap-6 px-5 pb-10 pt-4">
             <BotActivity agentId={agentId} />
             <section className="flex flex-col gap-2">
-              <h3 className="text-xs font-medium text-muted-foreground">{t.botTasks}</h3>
+              <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.botTasks}</h3>
               <TaskList agentId={agentId} empty={t.noBotTasks} />
             </section>
           </div>
@@ -193,7 +194,7 @@ function BotActivity({ agentId }: { agentId: string }) {
   return (
     <>
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted-foreground">{t.now}</h3>
+        <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.now}</h3>
         {activity.turns.length ? (
           <ItemGroup className="-mx-2 gap-0.5">
             {activity.turns.map((turn) => (
@@ -206,7 +207,7 @@ function BotActivity({ agentId }: { agentId: string }) {
         {activity.turns.length > 0 && activity.elsewhere > 0 && <p className="text-[13px] text-muted-foreground">{t.alsoElsewhere(activity.elsewhere)}</p>}
       </section>
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted-foreground">{t.routines}</h3>
+        <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.routines}</h3>
         {activity.routines.length ? (
           <ItemGroup className="-mx-2 gap-0.5">
             {activity.routines.map((r) => (
@@ -307,11 +308,12 @@ function BotHeader({ agent }: { agent: AgentProfile }) {
   });
   const since = dateFormat({ month: "long", year: "numeric" }).format(new Date(agent.createdAt));
 
+  // Figma « En-tête agent »: the bot's clay portrait, then its name.
   return (
-    <div className="flex items-center gap-3">
-      <StatusAvatar p={p} className="size-14" ring="ring-background" />
+    <div className="flex flex-col gap-3">
+      <img src={mascot(agent.avatar.color).figure} alt="" draggable={false} className="aspect-[7/5] w-full rounded-2xl bg-[#efe9e1] object-cover" />
       <div className="min-w-0">
-        <SheetTitle className="truncate text-base">
+        <SheetTitle className="truncate text-xl leading-[26px] font-medium">
           {agent.access && !agent.onboarding ? (
             <button
               type="button"
@@ -354,7 +356,7 @@ function PersonHeader({ person, self }: { person: UserProfile; self: boolean }) 
     <div className="flex items-center gap-3">
       <PersonAvatar person={person} className="size-14" />
       <div className="min-w-0">
-        <SheetTitle className="truncate text-base">
+        <SheetTitle className="truncate text-xl leading-[26px] font-medium">
           {self ? (
             person.name
           ) : (
@@ -407,7 +409,7 @@ export function CommonConversations({ userId }: { userId: string }) {
 
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium text-muted-foreground">{t.common(shared.length)}</h3>
+      <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.common(shared.length)}</h3>
       <ItemGroup className="-mx-2 gap-0.5">
         {shared.map((c) => (
           <Item

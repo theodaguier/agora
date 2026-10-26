@@ -12,6 +12,7 @@ import { Conversation } from "./screens/Conversation";
 import { CodeSessionRoute, PreviewRoute, ScreenRoute } from "./screens/ConversationTabs";
 import { Welcome } from "./screens/Welcome";
 import { Setup } from "./screens/Setup";
+import { Sessions } from "./screens/Sessions";
 import { Tasks } from "./screens/Tasks";
 import { Inbox } from "./screens/Inbox";
 import { TwoFactorRequired } from "./screens/TwoFactorRequired";
@@ -94,6 +95,7 @@ const appRoute = createRoute({
 const homeRoute = createRoute({ getParentRoute: () => appRoute, path: "/", component: Welcome });
 const newChatRoute = createRoute({ getParentRoute: () => appRoute, path: "/new", component: NewChat });
 const tasksRoute = createRoute({ getParentRoute: () => appRoute, path: "/tasks", component: Tasks });
+const sessionsRoute = createRoute({ getParentRoute: () => appRoute, path: "/sessions", component: Sessions });
 const inboxRoute = createRoute({ getParentRoute: () => appRoute, path: "/inbox", component: Inbox });
 /** `?m=<messageId>`: opens the conversation on that message (from the inbox). */
 const conversationRoute = createRoute({
@@ -126,7 +128,7 @@ const memoryRoute = createRoute({
   },
   component: MemoryWindow,
 });
-const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, memoryRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, inboxRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, memoryRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, sessionsRoute, inboxRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
 
 export const router = createRouter({ routeTree });
 

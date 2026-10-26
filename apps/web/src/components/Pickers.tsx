@@ -10,8 +10,8 @@ const messages = defineMessages({
 
 export type Option = { value: string; label: string };
 
-/** Same surface as text fields (Input). */
-export const fieldLook = "h-10 data-[size=default]:h-10 w-full rounded-lg border-input bg-secondary px-3 text-sm dark:bg-secondary dark:hover:bg-secondary";
+/** A select that sits with the inputs of a form (Figma « Select »: Relief, 28 px). */
+export const fieldLook = "w-full";
 
 /** Every half hour, plus `current` if it falls between; `end` adds midnight at the end of the day. */
 export function timeOptions(current: string, end = false) {
@@ -58,7 +58,7 @@ export function OptionSelect({
       <SelectTrigger id={id} aria-label={ariaLabel} title={title} className={cn(fieldLook, className)}>
         <SelectValue />
       </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false} align="start">
+      <SelectContent alignItemWithTrigger={false} align="end">
         {options.map((o) => (
           <SelectItem key={o.value} value={o.value}>
             {o.label}

@@ -31,7 +31,7 @@ function Rows<T extends { id?: string }>({ items, children }: { items: T[]; chil
       <ItemGroup className="gap-0 px-2">{contentKeys(shown, itemKey).map(([key, item]) => children(item, key))}</ItemGroup>
       {items.length > shown.length && (
         <CardFooter className="mt-1 bg-transparent p-0">
-          <Button variant="ghost" className="h-11 w-full justify-between rounded-none rounded-b-2xl px-5 font-normal" onClick={() => setAll(true)}>
+          <Button variant="ghost" className="h-11 w-full justify-between rounded-none rounded-b-[14px] px-5 font-normal" onClick={() => setAll(true)}>
             {t.more(items.length - shown.length)}
           </Button>
         </CardFooter>

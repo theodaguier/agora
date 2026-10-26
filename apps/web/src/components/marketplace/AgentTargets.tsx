@@ -30,7 +30,7 @@ export function AgentTargets(props: {
   return (
     <FieldSet className="gap-0">
       <FieldLegend variant="label">{props.legend}</FieldLegend>
-      <div className="overflow-hidden rounded-2xl border border-border">
+      <div className="overflow-hidden rounded-[14px] border border-border bg-background py-1">
         {choosable.map((a, i) => {
           const installed = props.installed?.includes(a.id) ?? false;
           return (
@@ -38,7 +38,7 @@ export function AgentTargets(props: {
               key={a.id}
               orientation="horizontal"
               data-disabled={installed || undefined}
-              className={cn("gap-3 px-4 py-2.5", !installed && "hover:bg-muted/60", i > 0 && "border-t border-border")}
+              className={cn("gap-3 px-4 py-2.5", !installed && "hover:bg-muted/60")}
             >
               <Checkbox
                 id={`target-${a.id}`}

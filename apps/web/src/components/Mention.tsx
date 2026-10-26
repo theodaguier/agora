@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { defineMessages, useT } from "@/i18n";
 import { api } from "@/lib/api";
-import { mentionStyle, type MentionTarget } from "@/lib/mentions";
+import { mentionClass, type MentionTarget } from "@/lib/mentions";
 import { openAgentProfile, openProfile } from "@/lib/profile";
 import { conversationsQuery, userProfileQuery } from "@/lib/queries";
 
@@ -15,21 +15,12 @@ const messages = defineMessages({
   fr: { bot: "Bot", viewProfile: "Voir le profil", message: "Envoyer un message" },
 });
 
-/** A colored "@Name" with the avatar of whoever it designates; hovering shows their card. */
-export function Mention({ text, color, target }: { text: string; color: string; target?: MentionTarget }) {
-  const pill = "rounded-[5px] px-[3px] font-medium";
-  if (!target) {
-    return (
-      <span className={pill} style={mentionStyle(color)}>
-        {text}
-      </span>
-    );
-  }
-  const avatar = "mr-[3px] inline-block size-[1.05em] align-[-0.18em]";
+/** "@Name" in blue; hovering shows the card of whoever it designates. */
+export function Mention({ text, target }: { text: string; color?: string; target?: MentionTarget }) {
+  if (!target) return <span className={mentionClass}>{text}</span>;
   return (
     <HoverCard>
-      <HoverCardTrigger delay={300} render={<span className={`${pill} cursor-default whitespace-nowrap`} style={mentionStyle(color)} />}>
-        {target.kind === "agent" ? <AgentAvatar agent={target.agent} className={avatar} /> : <PersonAvatar person={target.person} className={avatar} />}
+      <HoverCardTrigger delay={300} render={<span className={`${mentionClass} cursor-default whitespace-nowrap`} />}>
         {text}
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-72 p-3">

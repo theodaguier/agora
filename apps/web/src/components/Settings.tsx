@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext, useRouter } from "@tanstack/react-router";
-import { BotIcon, BuildingIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, ServerIcon, SlidersIcon, ShieldCheckIcon, SmartphoneIcon, UsersIcon, CloseIcon, type IconComponent } from "@/components/icons";
-import { lazy, Suspense, useState } from "react";
+import { BotIcon, BuildingIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, ServerIcon, SlidersIcon, ShieldCheckIcon, SmartphoneIcon, UsersIcon, CloseIcon, SearchIcon, type IconComponent } from "@/components/icons";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { useDesktop } from "@/lib/workspace";
 import { Access } from "@/components/admin/Access";
 import { AppIntegrations } from "@/components/admin/AppIntegrations";
 import { Agents } from "@/components/admin/Agents";
@@ -27,7 +29,7 @@ import { Field, FieldGroup, FieldLegend, FieldSeparator, FieldSet } from "@/comp
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { api, uploadAvatar, type ProfileInput } from "@/lib/api";
 import { authClient } from "@/lib/auth";
-import { closeSettings, type SettingsTab, useSettingsTab } from "@/lib/settings";
+import { closeSettings, openSettings, type SettingsTab, useSettingsTab } from "@/lib/settings";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 import { cn } from "@/lib/utils";
@@ -36,25 +38,27 @@ import { cn } from "@/lib/utils";
 const Usage = lazy(() => import("@/components/Usage").then((m) => ({ default: m.Usage })));
 const Server = lazy(() => import("@/components/admin/Server").then((m) => ({ default: m.Server })));
 
-const tabs: { id: SettingsTab; icon: IconComponent; admin?: true }[] = [
-  { id: "general", icon: SlidersIcon },
-  { id: "security", icon: ShieldCheckIcon },
-  { id: "availability", icon: CalendarClockIcon },
-  { id: "appearance", icon: PaletteIcon },
-  { id: "mobile", icon: SmartphoneIcon },
-  { id: "organization", icon: BuildingIcon, admin: true },
-  { id: "users", icon: UsersIcon, admin: true },
-  { id: "agents", icon: BotIcon, admin: true },
-  { id: "access", icon: KeyIcon, admin: true },
-  { id: "vault", icon: LockIcon, admin: true },
-  { id: "integrations", icon: PlugIcon, admin: true },
-  { id: "models", icon: LayersIcon, admin: true },
-  { id: "memory", icon: BrainIcon, admin: true },
-  { id: "digest", icon: FileTextIcon, admin: true },
-  { id: "usage", icon: ChartIcon },
-  { id: "status", icon: CheckCircleIcon, admin: true },
-  { id: "server", icon: ServerIcon, admin: true },
-  { id: "updates", icon: RefreshIcon, admin: true },
+type Group = "account" | "organization" | "instance";
+
+const tabs: { id: SettingsTab; icon: IconComponent; group: Group; admin?: true }[] = [
+  { id: "general", icon: SlidersIcon, group: "account" },
+  { id: "security", icon: ShieldCheckIcon, group: "account" },
+  { id: "availability", icon: CalendarClockIcon, group: "account" },
+  { id: "appearance", icon: PaletteIcon, group: "account" },
+  { id: "mobile", icon: SmartphoneIcon, group: "account" },
+  { id: "usage", icon: ChartIcon, group: "account" },
+  { id: "organization", icon: BuildingIcon, group: "organization", admin: true },
+  { id: "users", icon: UsersIcon, group: "organization", admin: true },
+  { id: "agents", icon: BotIcon, group: "organization", admin: true },
+  { id: "access", icon: KeyIcon, group: "organization", admin: true },
+  { id: "vault", icon: LockIcon, group: "organization", admin: true },
+  { id: "integrations", icon: PlugIcon, group: "organization", admin: true },
+  { id: "models", icon: LayersIcon, group: "organization", admin: true },
+  { id: "memory", icon: BrainIcon, group: "organization", admin: true },
+  { id: "digest", icon: FileTextIcon, group: "organization", admin: true },
+  { id: "status", icon: CheckCircleIcon, group: "instance", admin: true },
+  { id: "server", icon: ServerIcon, group: "instance", admin: true },
+  { id: "updates", icon: RefreshIcon, group: "instance", admin: true },
 ];
 
 const messages = defineMessages({
@@ -82,6 +86,9 @@ const messages = defineMessages({
     } as Record<SettingsTab, string>,
     profile: "Profile",
     account: "Account",
+    groups: { account: "Account", organization: "Organization", instance: "Instance" } as Record<Group, string>,
+    search: "Search settings",
+    noMatch: "No setting matches.",
     yourAccount: "Your account",
     organization: "Organization",
     admin: "Admin",
@@ -114,6 +121,9 @@ const messages = defineMessages({
     },
     profile: "Profil",
     account: "Compte",
+    groups: { account: "Compte", organization: "Organisation", instance: "Instance" },
+    search: "Rechercher un réglage",
+    noMatch: "Aucun réglage ne correspond.",
     yourAccount: "Ton compte",
     organization: "Organisation",
     admin: "Admin",
@@ -124,7 +134,10 @@ const messages = defineMessages({
   },
 });
 
-/** Mounted once in AppShell; opened via openSettings(). */
+/**
+ * Figma « Fenêtre · Paramètres »: a modal over the app (full screen on a phone), its navigation on the
+ * left. Mounted once in AppShell; opened via openSettings().
+ */
 export function Settings() {
   const tab = useSettingsTab();
   const t = useT(messages);
@@ -141,7 +154,7 @@ export function Settings() {
     <Dialog open={tab !== null} onOpenChange={(open) => !open && closeSettings()}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-dvh max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[min(88vh,900px)] sm:w-[calc(100%-3rem)] sm:max-w-[1040px] sm:flex-row sm:rounded-2xl sm:border"
+        className="flex h-dvh max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[min(88vh,720px)] sm:w-[calc(100%-3rem)] sm:max-w-[920px] sm:flex-row sm:rounded-[18px] sm:border"
       >
         <DialogTitle className="sr-only">{t.settings}</DialogTitle>
         <SettingsBody key={opened.n} initial={opened.tab} />
@@ -158,63 +171,97 @@ export function Settings() {
 
 function SettingsBody({ initial }: { initial: SettingsTab }) {
   const { user } = useRouteContext({ from: "/app" });
-  const m = useT(messages);
   const visible = tabs.filter((t) => !t.admin || user.role === "admin");
   const [tab, setTab] = useState(visible.some((t) => t.id === initial) ? initial : "general");
-
   return (
     <>
-      <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-sidebar p-2 pr-14 sm:w-56 sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
-        {visible.map((t) => (
-          <Button
-            key={t.id}
-            variant="ghost"
-            aria-current={tab === t.id ? "page" : undefined}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "h-9 justify-start gap-2.5 rounded-lg px-2.5 text-[15px] font-normal",
-              tab === t.id ? "bg-muted text-foreground" : "text-foreground/90 hover:bg-muted/60 hover:text-foreground/90",
-            )}
-          >
-            <t.icon className="size-[18px] text-muted-foreground" strokeWidth={1.75} /> {m.tabs[t.id]}
-          </Button>
-        ))}
+      <nav className="flex shrink-0 flex-col border-b border-border bg-sidebar pt-3 pr-12 sm:w-[210px] sm:border-r sm:border-b-0 sm:pr-0">
+        <SettingsNav tabs={visible} tab={tab} onSelect={setTab} />
       </nav>
-
-      {/* The memory graph fills the pane instead of scrolling it. */}
-      <div className={cn("min-h-0 flex-1 overflow-y-auto", tab === "memory" && "flex flex-col")}>
-        <div className={cn("mx-auto px-5 pt-6 sm:px-10 sm:pt-12", tab === "memory" ? "flex w-full flex-1 flex-col pb-5 sm:pb-8" : "max-w-3xl pb-16")}>
-          <RestartProvider>
-            {tab === "general" && <General />}
-            {tab === "security" && <Security />}
-            {tab === "availability" && <Availability />}
-            {tab === "appearance" && <Appearance />}
-            {tab === "mobile" && <Mobile />}
-            {tab === "organization" && <Organization />}
-            {tab === "users" && <Users />}
-            {tab === "agents" && <Agents />}
-            {tab === "access" && <Access />}
-            {tab === "vault" && <Vault />}
-            {tab === "integrations" && <AppIntegrations />}
-            {tab === "models" && <Models />}
-            {tab === "usage" && (
-              <Suspense fallback={<Loading />}>
-                <Usage />
-              </Suspense>
-            )}
-            {tab === "status" && <Status />}
-            {tab === "server" && (
-              <Suspense fallback={<Loading />}>
-                <Server />
-              </Suspense>
-            )}
-            {tab === "updates" && <Updates />}
-            {tab === "memory" && <WikiMemory />}
-            {tab === "digest" && <DigestSettings />}
-          </RestartProvider>
-        </div>
-      </div>
+      <SettingsContent tab={tab} />
     </>
+  );
+}
+
+/** The settings' navigation (Figma « Navigation »): a search, then the tabs in their groups, grey icons. */
+function SettingsNav({ tabs: visible, tab, onSelect }: { tabs: typeof tabs; tab: SettingsTab; onSelect: (tab: SettingsTab) => void }) {
+  const m = useT(messages);
+  const [q, setQ] = useState("");
+  const shown = visible.filter((x) => m.tabs[x.id].toLowerCase().includes(q.trim().toLowerCase()));
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-0.5 px-2">
+      <InputGroup className="mb-1 h-8 shrink-0 rounded-full bg-background">
+        <InputGroupInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={useT(common).search} aria-label={m.search} />
+        <InputGroupAddon className="text-subtle [&>svg:not([class*='size-'])]:size-[15px]">
+          <SearchIcon />
+        </InputGroupAddon>
+      </InputGroup>
+      <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+        {!shown.length && <p className="px-2 py-4 text-[13px] text-muted-foreground">{m.noMatch}</p>}
+        {(["account", "organization", "instance"] as Group[]).map((group) => {
+          const items = shown.filter((x) => x.group === group);
+          if (!items.length) return null;
+          return (
+            <div key={group} className="flex flex-col gap-px">
+              <p className="px-2 pt-4 pb-1.5 text-[13px] leading-[18px] tracking-[-0.05px] text-subtle">{m.groups[group]}</p>
+              {items.map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  aria-current={tab === x.id ? "page" : undefined}
+                  onClick={() => onSelect(x.id)}
+                  className={cn(
+                    "flex h-[34px] items-center gap-2.5 rounded-[10px] px-2.5 text-left text-sm outline-none transition-colors hover:bg-black/4 focus-visible:ring-3 focus-visible:ring-ring/30 dark:hover:bg-white/5",
+                    tab === x.id && "bg-accent hover:bg-accent dark:hover:bg-accent",
+                  )}
+                >
+                  <x.icon className="size-4 shrink-0 text-icon" />
+                  <span className="truncate">{m.tabs[x.id]}</span>
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** The open tab, in a centred column; the memory graph fills the pane instead of scrolling it. */
+function SettingsContent({ tab }: { tab: SettingsTab }) {
+  return (
+    <div className={cn("settings-page h-full min-h-0 flex-1 overflow-y-auto", tab === "memory" && "flex flex-col")}>
+      <div className={cn("mx-auto px-5 pt-6 sm:px-10 sm:pt-9", tab === "memory" ? "flex w-full flex-1 flex-col pb-5 sm:pb-8" : "max-w-[700px] pb-12")}>
+        <RestartProvider>
+          {tab === "general" && <General />}
+          {tab === "security" && <Security />}
+          {tab === "availability" && <Availability />}
+          {tab === "appearance" && <Appearance />}
+          {tab === "mobile" && <Mobile />}
+          {tab === "organization" && <Organization />}
+          {tab === "users" && <Users />}
+          {tab === "agents" && <Agents />}
+          {tab === "access" && <Access />}
+          {tab === "vault" && <Vault />}
+          {tab === "integrations" && <AppIntegrations />}
+          {tab === "models" && <Models />}
+          {tab === "usage" && (
+            <Suspense fallback={<Loading />}>
+              <Usage />
+            </Suspense>
+          )}
+          {tab === "status" && <Status />}
+          {tab === "server" && (
+            <Suspense fallback={<Loading />}>
+              <Server />
+            </Suspense>
+          )}
+          {tab === "updates" && <Updates />}
+          {tab === "memory" && <WikiMemory />}
+          {tab === "digest" && <DigestSettings />}
+        </RestartProvider>
+      </div>
+    </div>
   );
 }
 

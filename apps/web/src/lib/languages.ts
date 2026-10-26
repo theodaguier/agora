@@ -8,6 +8,6 @@ export const LANGUAGES: Record<Locale, { flag: string; label: string }> = {
   en: { flag: "🇬🇧", label: "English" },
 };
 
-export const languageLabel = (l: Locale) => `${LANGUAGES[l].flag}  ${LANGUAGES[l].label}`;
+export const languageLabel = (l: Locale) => `${LANGUAGES[l].flag}\u00a0${LANGUAGES[l].label}`;
 
 export const languageOptions = (Object.keys(LANGUAGES) as Locale[]).map((l) => ({ value: l, label: languageLabel(l) }));

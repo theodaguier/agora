@@ -45,7 +45,7 @@ export const MoreIcon = createIcon("more", {
 });
 
 export const SearchIcon = createIcon("search", {
-  solid: <circle cx="11" cy="11" r="8" />,
+  fill: <circle cx="11" cy="11" r="8" />,
   line: <path d="M17.5 17.5L21 21" />,
 });
 
@@ -97,7 +97,7 @@ export const RefreshIcon = createIcon("refresh", {
 export const LoaderIcon = createIcon("loader", { line: <path d="M21 12a9 9 0 1 1-6.2-8.56" /> });
 
 export const PinIcon = createIcon("pin", {
-  solid: <path d={pin} />,
+  fill: <path d={pin} />,
   line: <path d="M8 3h8M12 14.5v6.5" />,
 });
 
@@ -128,7 +128,7 @@ export const BranchIcon = createIcon("branch", {
   line: <path d="M6 7.5v9M18 9.5c0 5.5-12 2.5-12 7" />,
 });
 
-export const StopIcon = createIcon("stop", { fill: <rect x="6" y="6" width="12" height="12" rx="3" /> });
+export const StopIcon = createIcon("stop", { solid: <rect x="6" y="6" width="12" height="12" rx="3" /> });
 
 export const ChevronDownIcon = createIcon("chevron-down", { line: <path d="M18 9s-4.4 6-6 6-6-6-6-6" /> });
 export const ChevronUpIcon = createIcon("chevron-up", { line: <path d="M18 15s-4.4-6-6-6-6 6-6 6" /> });
@@ -156,7 +156,7 @@ export const MoonIcon = createIcon("moon", {
 });
 
 export const PlugIcon = createIcon("plug", {
-  solid: <path d="M6 8.5A1.5 1.5 0 0 1 7.5 7h9A1.5 1.5 0 0 1 18 8.5V11a6 6 0 0 1-12 0z" />,
+  fill: <path d="M6 8.5A1.5 1.5 0 0 1 7.5 7h9A1.5 1.5 0 0 1 18 8.5V11a6 6 0 0 1-12 0z" />,
   line: <path d="M9.5 7V2.5M14.5 7V2.5M12 16.5v5" />,
 });
 
@@ -166,7 +166,7 @@ export const PackageIcon = createIcon("package", {
 });
 
 export const LayersIcon = createIcon("layers", {
-  solid: (
+  fill: (
     <path d="M10.6 3.2a3.2 3.2 0 0 1 2.8 0l6.3 3.1c1 .5 1 1.9 0 2.4l-6.3 3.1a3.2 3.2 0 0 1-2.8 0L4.3 8.7c-1-.5-1-1.9 0-2.4z" />
   ),
   line: <path d="M3.5 12.5l7.1 3.5a3.2 3.2 0 0 0 2.8 0l7.1-3.5M3.5 17l7.1 3.5a3.2 3.2 0 0 0 2.8 0l7.1-3.5" />,
@@ -318,7 +318,7 @@ export const MailIcon = createIcon("mail", {
 });
 
 export const MicIcon = createIcon("mic", {
-  solid: <rect x="8" y="2" width="8" height="13" rx="4" />,
+  fill: <rect x="8" y="2" width="8" height="13" rx="4" />,
   line: <path d="M5 11a7 7 0 0 0 14 0M12 18v3.5" />,
 });
 
@@ -368,11 +368,15 @@ export const ServerIcon = createIcon("server", {
 });
 
 export const GridIcon = createIcon("grid", {
+  fill: (
+    <>
+      <rect x="13" y="2.5" width="8.5" height="8.5" rx="2.75" />
+      <rect x="2.5" y="13" width="8.5" height="8.5" rx="2.75" />
+    </>
+  ),
   solid: (
     <>
       <rect x="2.5" y="2.5" width="8.5" height="8.5" rx="2.75" />
-      <rect x="13" y="2.5" width="8.5" height="8.5" rx="2.75" />
-      <rect x="2.5" y="13" width="8.5" height="8.5" rx="2.75" />
       <rect x="13" y="13" width="8.5" height="8.5" rx="2.75" />
     </>
   ),
@@ -395,7 +399,7 @@ export const SettingsIcon = createIcon("settings", {
 });
 
 export const SlidersIcon = createIcon("sliders", {
-  solid: (
+  fill: (
     <>
       <circle cx="15" cy="7" r="3" />
       <circle cx="10" cy="17" r="3" />
@@ -420,12 +424,8 @@ export const CameraIcon = createIcon("camera", {
 });
 
 export const UserIcon = createIcon("user", {
-  solid: (
-    <>
-      <circle cx="12" cy="7.5" r="4.5" />
-      <path d="M4 20.5c0-4.3 3.6-7 8-7s8 2.7 8 7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
-    </>
-  ),
+  fill: <path d="M4 20.5c0-4.3 3.6-7 8-7s8 2.7 8 7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />,
+  solid: <circle cx="12" cy="7.5" r="4.5" />,
 });
 
 const person = (
@@ -470,7 +470,8 @@ export const InfoIcon = createIcon("info", {
 });
 
 export const UserPlusIcon = createIcon("user-plus", {
-  solid: person,
+  fill: <path d="M2 20c0-3.8 3.1-6.5 7-6.5s7 2.7 7 6.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" />,
+  solid: <circle cx="9" cy="7.5" r="4" />,
   line: <path d="M19 8v6M16 11h6" />,
 });
 
@@ -508,9 +509,9 @@ export const BrainIcon = createIcon("brain", {
 });
 
 export const SparklesIcon = createIcon("sparkles", {
+  fill: <path d="M10 4.5c.5 4.6 3.4 7.5 8 8-4.6.5-7.5 3.4-8 8-.5-4.6-3.4-7.5-8-8 4.6-.5 7.5-3.4 8-8z" />,
   solid: (
     <>
-      <path d="M10 4.5c.5 4.6 3.4 7.5 8 8-4.6.5-7.5 3.4-8 8-.5-4.6-3.4-7.5-8-8 4.6-.5 7.5-3.4 8-8z" />
       <path d="M18.5 2c.25 1.6 1 2.35 2.5 2.5-1.5.25-2.25 1-2.5 2.5-.25-1.5-1-2.25-2.5-2.5 1.5-.15 2.25-.9 2.5-2.5z" />
     </>
   ),

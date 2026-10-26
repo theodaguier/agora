@@ -209,7 +209,11 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       return;
     }
     case "message.deleted":
+      // A response already in flight may still contain the deleted message or its quotes.
+      // Cancel before updating the cache; the replacement GET starts after the deletion committed.
+      void qc.cancelQueries({ queryKey: ["messages", cid], exact: true }, { revert: false });
       qc.setQueryData<Message[]>(["messages", cid], (old) => old && removeMessage(old, ev.messageId));
+      qc.invalidateQueries({ queryKey: ["messages", cid], exact: true });
       // Its pins went with it, and the list shows the last message.
       qc.invalidateQueries({ queryKey: ["pins", cid] });
       qc.invalidateQueries({ queryKey: ["conversations"] });

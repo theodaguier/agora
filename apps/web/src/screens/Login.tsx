@@ -29,7 +29,7 @@ export function Login() {
   if (twoFactor) return <TwoFactorStep onBack={() => setTwoFactor(false)} onDone={() => navigate({ to: "/" })} />;
 
   return (
-    <div className="grid min-h-dvh place-items-center px-4">
+    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -47,11 +47,11 @@ export function Login() {
           else if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) setTwoFactor(true);
           else navigate({ to: "/" });
         }}
-        className="w-full max-w-sm"
+        className="w-full max-w-[400px] rounded-[18px] border border-border bg-background p-8"
       >
-        <OrgLogo className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{t.title(orgName)}</h1>
-        <p className="mt-1.5 text-center text-sm text-muted-foreground">{t.hint}</p>
+        <OrgLogo className="size-9" />
+        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.title(orgName)}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">{t.hint}</p>
         <FieldGroup className="mt-3 gap-3">
           <LoginField label={t.email} name="email" type="email" autoComplete="email" placeholder={t.emailPlaceholder} invalid={!!error} />
           <LoginField
@@ -95,7 +95,7 @@ function TwoFactorStep({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const [pending, setPending] = useState(false);
 
   return (
-    <div className="grid min-h-dvh place-items-center px-4">
+    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -109,11 +109,11 @@ function TwoFactorStep({ onBack, onDone }: { onBack: () => void; onDone: () => v
           if (error) setError(codeError(error));
           else onDone();
         }}
-        className="w-full max-w-sm"
+        className="w-full max-w-[400px] rounded-[18px] border border-border bg-background p-8"
       >
-        <OrgLogo className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{t.twoFactorTitle}</h1>
-        <p className="mt-1.5 text-center text-sm text-muted-foreground">{backup ? t.backupHint : t.twoFactorHint}</p>
+        <OrgLogo className="size-9" />
+        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.twoFactorTitle}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">{backup ? t.backupHint : t.twoFactorHint}</p>
         <FieldGroup className="mt-3 gap-3">
           {backup ? (
             <LoginField key="backup" label={t.backupCode} name="code" autoFocus autoComplete="one-time-code" maxLength={32} placeholder="xxxxx-xxxxx" invalid={!!error} />

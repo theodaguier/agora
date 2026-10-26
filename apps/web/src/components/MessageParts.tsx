@@ -130,14 +130,20 @@ export function ChatMessage(props: {
       {framed && rich && (
         <div
           className={cn(
-            "flex w-fit min-w-0 max-w-full flex-col gap-1 overflow-hidden rounded-2xl p-1",
-            mine ? "bg-accent" : "bg-secondary",
+            "flex w-fit min-w-0 max-w-full flex-col gap-1 overflow-hidden rounded-[14px] p-1",
+            mine ? "bubble-mine bg-primary text-primary-foreground" : "bg-secondary",
             attachments.some((a) => isImage(a.mime) || isVideo(a.mime)) ? "w-80" : "max-w-[min(100%,24rem)]",
             replyTo && "min-w-56",
           )}
         >
-          {forwarded && <p className="px-2.5 pt-1 text-[13px] text-muted-foreground">{t.forwardedFrom(forwarded.authorName)}</p>}
-          {replyTo && <QuoteBlock quote={replyTo} onClick={onQuote && (() => onQuote(replyTo.id))} className="bg-background/40 hover:bg-background/60" />}
+          {forwarded && <p className={cn("px-2.5 pt-1 text-[13px]", mine ? "text-primary-foreground/75" : "text-muted-foreground")}>{t.forwardedFrom(forwarded.authorName)}</p>}
+          {replyTo && (
+            <QuoteBlock
+              quote={replyTo}
+              onClick={onQuote && (() => onQuote(replyTo.id))}
+              className={mine ? "bg-white/15 hover:bg-white/22 [&_*]:text-primary-foreground!" : "bg-background/60 hover:bg-background/80"}
+            />
+          )}
           {attachments.length > 0 && <BubbleAttachments items={attachments} />}
           {text && (
             <MessageText plain text={text} mentionables={mentionables} className="min-w-0 break-words px-2.5 pb-1 pt-0.5 text-[15px] leading-[1.45]" />
@@ -200,6 +206,7 @@ export function PendingRow({ failed, children }: { failed?: boolean; children: R
  */
 export function MessageRow(props: {
   id: string;
+  className?: string;
   mine?: boolean;
   wide?: boolean;
   highlighted?: boolean;
@@ -265,6 +272,7 @@ export function MessageRow(props: {
         id={`msg-${props.id}`}
         className={cn(
           "group/msg -mx-2 flex scroll-my-24 select-text rounded-2xl px-2 transition-colors duration-700",
+          props.className,
           props.mine ? "justify-end" : "justify-start",
           props.highlighted && "bg-muted duration-150",
         )}
@@ -274,10 +282,10 @@ export function MessageRow(props: {
             "flex min-w-0 items-center gap-1",
             props.arriving && "chat-arrive",
             props.mine && "flex-row-reverse",
-            props.wide ? "max-w-[min(680px,88%)]" : "max-w-[min(560px,80%)]",
+            props.wide ? "w-full items-start" : "max-w-[min(560px,80%)]",
           )}
         >
-          <div className="min-w-0">{props.children}</div>
+          <div className={cn("min-w-0", props.wide && "flex-1")}>{props.children}</div>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={

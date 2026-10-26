@@ -189,22 +189,22 @@ export function DraftCard(props: {
         !props.answer &&
         (revising ? (
           <BlockFooter>
-            <Button size="sm" type="button" variant="ghost" disabled={!!sending} onClick={() => setNote(null)}>
+            <Button type="button" variant="secondary" disabled={!!sending} onClick={() => setNote(null)}>
               {t.cancel}
             </Button>
-            <Button size="sm" type="submit" form={id("revise")} disabled={!!sending || !note?.trim()}>
+            <Button type="submit" form={id("revise")} disabled={!!sending || !note?.trim()}>
               {t.sendRevision}
             </Button>
           </BlockFooter>
         ) : (
           <BlockFooter>
-            <Button size="sm" variant="ghost" className="mr-auto" disabled={!!sending} onClick={() => answer("cancel")}>
+            <Button variant="secondary" className="mr-auto" disabled={!!sending} onClick={() => answer("cancel")}>
               {t.cancel}
             </Button>
-            <Button size="sm" variant="outline" disabled={!!sending} onClick={() => setNote("")}>
+            <Button variant="secondary" disabled={!!sending} onClick={() => setNote("")}>
               {t.revise}
             </Button>
-            <Button size="sm" disabled={!!sending} onClick={() => answer("confirm")}>
+            <Button disabled={!!sending} onClick={() => answer("confirm")}>
               {props.view.confirm || t.confirm}
             </Button>
           </BlockFooter>
