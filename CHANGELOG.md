@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.45.0 — 2026-10-26
+
+### Features
+- **mobile**: new design from the Figma file, on every screen
+- **web**: new design from the Figma file (Grok Bot × Agora)
+- **code-sessions**: a session wakes the bot that started it
+
+### Fixes
+- message ordering, OAuth connector finalisation and backups reliability
+- **deps**: patch high-severity advisories (vite, zod, body-parser, undici)
+
 ## v0.44.1 — 2026-10-15
 
 ### Fixes
