@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.45.2 — 2026-10-26
+
+### Fixes
+- **mobile**: no blurred panel over the thread, composer as the Figma
+- **code-sessions**: open on the Journal, at its last step
+
 ## v0.45.1 — 2026-10-26
 
 ### Fixes
