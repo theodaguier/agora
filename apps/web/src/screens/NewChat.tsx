@@ -123,7 +123,7 @@ export function NewChat() {
     key: participantKey(p),
     label: participantName(p),
     hint: p.kind === "user" ? t.colleague : undefined,
-    icon: <StatusAvatar p={p} className="size-8" />,
+    icon: <StatusAvatar p={p} className="size-9" />,
     run: () => {
       if (groupMode) {
         setPicked((xs) => [...xs, p]);
@@ -145,7 +145,7 @@ export function NewChat() {
                 label: createBot.isPending ? t.creatingBot : t.createBot,
                 run: () => !createBot.isPending && createBot.mutate(),
                 icon: (
-                  <span className="grid size-8 place-items-center rounded-full bg-accent text-muted-foreground">
+                  <span className="grid size-9 place-items-center rounded-full bg-secondary text-icon">
                     {createBot.isPending ? <Spinner /> : <PlusIcon className="size-4" />}
                   </span>
                 ),
@@ -161,7 +161,7 @@ export function NewChat() {
             setSelected("");
           },
           icon: (
-            <span className="grid size-8 place-items-center rounded-full bg-accent text-muted-foreground">
+            <span className="grid size-9 place-items-center rounded-full bg-secondary text-icon">
               <UsersIcon className="size-4" />
             </span>
           ),
@@ -180,7 +180,9 @@ export function NewChat() {
       onValueChange={setSelected}
       className="h-full min-w-0 flex-1 rounded-none! bg-background p-0 text-foreground"
     >
-      <header className="flex min-h-12 shrink-0 items-center gap-1.5 border-b border-border/60 px-3 py-1.5">
+      <div className="mx-auto w-full max-w-[712px] px-4 pt-4 md:pt-10">
+      {/* Figma « Composer »: the recipients field is a pill (46 px), the matches below it without a frame. */}
+      <header className="flex min-h-[46px] shrink-0 items-center gap-1.5 rounded-[23px] border border-border bg-background py-[5px] pr-2 pl-4 shadow-card">
         <Button
           variant="ghost"
           size="icon"
@@ -191,9 +193,9 @@ export function NewChat() {
           <ChevronLeftIcon className="size-5" />
         </Button>
         <label className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[15px]">
-          <span className="text-muted-foreground">{t.to}</span>
+          <span className="text-[15px] text-muted-foreground">{t.to}</span>
           {picked.map((p) => (
-            <Badge key={participantKey(p)} variant="secondary" className="h-7 gap-1.5 px-1 text-[13px] font-normal">
+            <Badge key={participantKey(p)} variant="secondary" className="h-7 gap-1.5 rounded-full bg-secondary pr-1 pl-1 text-[13px] font-normal text-foreground">
               <span className="flex">
                 {p.kind === "agent" ? <AgentAvatar agent={p.agent} className="size-5" /> : <PersonAvatar person={p.person} className="size-5" />}
               </span>
@@ -203,7 +205,7 @@ export function NewChat() {
                 size="icon-xs"
                 aria-label={t.removeName(participantName(p))}
                 onClick={() => setPicked((xs) => xs.filter((x) => participantKey(x) !== participantKey(p)))}
-                className="hover:bg-border"
+                className="hover:bg-accent"
               >
                 <CloseIcon />
               </Button>
@@ -229,13 +231,13 @@ export function NewChat() {
               }
             }}
             placeholder={groupMode ? (picked.length ? t.addSomeone : t.groupMembers) : t.searchOrCreate}
-            className="min-w-[8rem] flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+            className="min-w-[8rem] flex-1 bg-transparent text-[15px] leading-[21px] outline-none placeholder:text-subtle"
           />
         </label>
       </header>
 
       {groupMode && (
-        <div className="flex max-w-lg items-center gap-2 px-3 pt-3 md:px-4">
+        <div className="flex items-center gap-2 pt-3">
           <Input
             value={title}
             maxLength={80}
@@ -247,21 +249,21 @@ export function NewChat() {
             }}
             placeholder={t.groupNamePlaceholder}
             aria-label={t.groupName}
-            className="h-9 border-transparent text-[15px] md:text-[15px]"
+            className="h-9 rounded-full px-3.5"
           />
           <Button
             disabled={!canCreate}
             onClick={() => createGroup.mutate()}
             title={picked.length < 2 ? t.pickTwo : undefined}
-            className="rounded-lg px-3 disabled:opacity-40"
+            className="disabled:opacity-40"
           >
             {createGroup.isPending ? c.creating : c.create}
           </Button>
         </div>
       )}
 
-      <div className="relative px-3 pt-2 md:px-4">
-        <CommandList className="max-h-[70vh] max-w-lg rounded-2xl border border-border bg-secondary p-1.5 shadow-2xl shadow-black/50">
+      <div className="relative pt-3">
+        <CommandList className="max-h-[70vh] bg-background">
           <CommandEmpty>{t.noMatch}</CommandEmpty>
           <CommandGroup>
             {rows.map((r) => (
@@ -269,15 +271,18 @@ export function NewChat() {
                 key={r.key}
                 value={r.key}
                 onSelect={r.run}
-                className={cn("h-12 cursor-pointer", r.key === "create" && createBot.isPending && "cursor-progress")}
+                className={cn("min-h-[54px] cursor-pointer gap-3 rounded-xl px-2 py-[9px]", r.key === "create" && createBot.isPending && "cursor-progress")}
               >
                 {r.icon}
-                <span className="min-w-0 flex-1 truncate">{r.label}</span>
-                {r.hint && <span className="shrink-0 text-[13px] text-subtle">{r.hint}</span>}
+                <span className="grid min-w-0 flex-1">
+                  <span className="truncate text-[15px] leading-[21px]">{r.label}</span>
+                  {r.hint && <span className="truncate text-sm leading-5 text-muted-foreground">{r.hint}</span>}
+                </span>
               </CommandItem>
             ))}
           </CommandGroup>
         </CommandList>
+      </div>
       </div>
     </Command>
   );

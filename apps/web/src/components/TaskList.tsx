@@ -1,9 +1,9 @@
 import { confirmAction } from "@/lib/confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { MoreIcon } from "@/components/icons";
-import { useState } from "react";
-import { AgentAvatar } from "@/components/AgentAvatar";
+import { CheckCircleIcon, ChevronDownIcon, CircleIcon, LoaderIcon, MoreIcon } from "@/components/icons";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useState, type ReactNode } from "react";
 import { PersonAvatar } from "@/components/ConversationAvatar";
 import { TaskDialog } from "@/components/TaskDialog";
 import { useWorkingOn } from "@/components/WorkingOn";
@@ -23,10 +23,11 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { EmptyFigure } from "@/components/EmptyFigure";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, type AgentSummary, type Task, type TaskPriority, type TaskStatus } from "@/lib/api";
@@ -34,7 +35,7 @@ import { formatDueDate, isOverdue } from "@/lib/dates";
 import { agentTasksQuery, tasksQuery } from "@/lib/queries";
 import { MentionText } from "@/lib/mentions";
 import { useMentionables, usePeople } from "@/lib/people";
-import { priorityMessages, priorityTone, statusText, statusTone, TASK_PRIORITIES, TASK_STATUSES } from "@/lib/task-status";
+import { priorityMessages, priorityTone, TASK_PRIORITIES, TASK_STATUSES } from "@/lib/task-status";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,8 @@ const messages = defineMessages({
     deleteTitle: (title: string) => `Delete "${title}"?`,
     deleteBody: "The task will be removed for everyone working on it.",
     done: (n: number) => `Done · ${n}`,
+    group: { todo: "To do", in_progress: "In progress", done: "Done" } as Record<TaskStatus, string>,
+    working: (names: string) => `${names} working on it`,
     all: "All",
     statusTab: { todo: "To do", in_progress: "In progress", done: "Done" } as Record<TaskStatus, string>,
     noneWithStatus: "No tasks with this status.",
@@ -58,7 +61,6 @@ const messages = defineMessages({
     edit: "Edit",
     failed: "Couldn't update the task.",
     participants: (names: string) => `Working on it: ${names}`,
-    now: "Working on it now",
     workOn: "I'm working on it",
     stopWorking: "I'm no longer working on it",
     editParticipants: (names: string) => `Working on it: ${names}. Change`,
@@ -69,6 +71,8 @@ const messages = defineMessages({
     deleteTitle: (title: string) => `Supprimer « ${title} » ?`,
     deleteBody: "La tâche disparaîtra pour toutes les personnes qui y travaillent.",
     done: (n: number) => `Terminées · ${n}`,
+    group: { todo: "À faire", in_progress: "En cours", done: "Terminées" },
+    working: (names: string) => `${names} y travaille`,
     all: "Toutes",
     statusTab: { todo: "À faire", in_progress: "En cours", done: "Terminées" },
     noneWithStatus: "Aucune tâche avec ce statut.",
@@ -83,7 +87,6 @@ const messages = defineMessages({
     edit: "Modifier",
     failed: "Modification impossible.",
     participants: (names: string) => `Sur la tâche : ${names}`,
-    now: "En ce moment",
     workOn: "Je travaille dessus",
     stopWorking: "Je ne travaille plus dessus",
     editParticipants: (names: string) => `Sur la tâche : ${names}. Modifier`,
@@ -98,7 +101,7 @@ type Filter = "all" | TaskStatus;
  * Tasks assigned to someone (`userId`) or created by a bot (`agentId`), filtered
  * by status in tabs; "all" = open ones first, then the done ones.
  */
-export function TaskList({ userId, agentId, empty }: ({ userId: string; agentId?: never } | { agentId: string; userId?: never }) & { empty: string }) {
+export function TaskList({ userId, agentId, empty, emptyTitle }: ({ userId: string; agentId?: never } | { agentId: string; userId?: never }) & { empty: string; emptyTitle?: string }) {
   const t = useT(messages);
   const [filter, setFilter] = useState<Filter>("all");
   const { data: tasks, isPending } = useQuery(agentId ? agentTasksQuery(agentId) : tasksQuery(userId!));
@@ -115,6 +118,8 @@ export function TaskList({ userId, agentId, empty }: ({ userId: string; agentId?
     return (
       <Empty className="py-10">
         <EmptyHeader>
+          {emptyTitle && <EmptyFigure mascot="green" />}
+          {emptyTitle && <EmptyTitle>{emptyTitle}</EmptyTitle>}
           <EmptyDescription>{empty}</EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -124,55 +129,72 @@ export function TaskList({ userId, agentId, empty }: ({ userId: string; agentId?
   const done = all.filter((x) => x.status === "done");
   const shown = filter === "all" ? [] : all.filter((x) => x.status === filter);
 
+  const inProgress = open.filter((x) => x.status === "in_progress");
+  const todo = open.filter((x) => x.status === "todo");
+  // Figma « Carte »: one white card with a hairline per group, its rows inside without frames of their own.
+  const rows = (items: Task[]) => (
+    <div className="flex flex-col overflow-hidden rounded-[14px] border border-border bg-background py-1">
+      {items.map((task) => (
+        <TaskRow key={task.id} task={task} owner={userId ?? null} />
+      ))}
+    </div>
+  );
+
   return (
-    <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="gap-3">
-      <TabsList className="max-w-full overflow-x-auto">
+    <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="gap-0">
+      <TabsList className={filterList}>
         {(["all", ...TASK_STATUSES] as Filter[]).map((f) => (
-          <TabsTrigger key={f} value={f} className="gap-1.5">
+          <TabsTrigger key={f} value={f} className={filterTrigger} aria-label={`${f === "all" ? t.all : t.statusTab[f]} (${count(f)})`}>
             {f === "all" ? t.all : t.statusTab[f]}
-            <span className={cn("tabular-nums", f === "all" ? "text-muted-foreground" : statusText[f])}>{count(f)}</span>
           </TabsTrigger>
         ))}
       </TabsList>
       {filter === "all" ? (
-        <div className="flex flex-col gap-4">
-          {open.length > 0 && (
-            <ItemGroup className="gap-1">
-              {open.map((task) => (
-                <TaskRow key={task.id} task={task} owner={userId ?? null} />
-              ))}
-            </ItemGroup>
-          )}
+        <>
+          {inProgress.length > 0 && <TaskGroup title={t.group.in_progress} count={inProgress.length}>{rows(inProgress)}</TaskGroup>}
+          {todo.length > 0 && <TaskGroup title={t.group.todo} count={todo.length}>{rows(todo)}</TaskGroup>}
           {done.length > 0 && (
-            <section>
-              <h3 className="mb-1 px-3 text-[13px] font-medium text-muted-foreground">{t.done(done.length)}</h3>
-              <ItemGroup className="gap-1">
-                {done.map((task) => (
-                  <TaskRow key={task.id} task={task} owner={userId ?? null} />
-                ))}
-              </ItemGroup>
-            </section>
+            <Collapsible className="pt-6">
+              <CollapsibleTrigger className="group/done flex items-center gap-1 rounded-md pl-0.5 text-[13px] leading-[18px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30">
+                {t.done(done.length)}
+                <ChevronDownIcon className="size-3.5 transition-transform group-data-panel-open/done:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2">{rows(done)}</CollapsibleContent>
+            </Collapsible>
           )}
-        </div>
+        </>
       ) : shown.length ? (
-        <ItemGroup className="gap-1">
-          {shown.map((task) => (
-            <TaskRow key={task.id} task={task} owner={userId ?? null} />
-          ))}
-        </ItemGroup>
+        <div className="pt-6">{rows(shown)}</div>
       ) : (
-        <p className="px-3 py-6 text-center text-sm text-muted-foreground">{t.noneWithStatus}</p>
+        <p className="px-3 py-10 text-center text-sm text-muted-foreground">{t.noneWithStatus}</p>
       )}
     </Tabs>
   );
 }
 
-/** `owner`: whose list it is, to flag the task they're working on right now. */
+/** A group: its title and count in grey above its card (Figma section titles). */
+function TaskGroup({ title, count, children }: { title: string; count: number; children: ReactNode }) {
+  return (
+    <section className="pt-6">
+      <h3 className="mb-2 flex items-baseline gap-1.5 pl-0.5 text-[13px] leading-[18px] text-muted-foreground">
+        {title}
+        <span className="text-subtle tabular-nums">{count}</span>
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/** Figma « Filtre »: grey pills, the active one in ink. Shared by the lists filtered by status (tasks, inbox). */
+export const filterList = "h-auto max-w-full gap-1.5 overflow-x-auto rounded-none bg-transparent p-0 dark:bg-transparent";
+export const filterTrigger =
+  "h-[30px] flex-none rounded-full border-0 bg-secondary px-3 text-[13px] font-normal text-foreground hover:bg-accent data-active:text-primary-foreground group-data-[variant=default]/tabs-list:data-active:border-transparent group-data-[variant=default]/tabs-list:data-active:bg-none group-data-[variant=default]/tabs-list:data-active:bg-primary dark:group-data-[variant=default]/tabs-list:data-active:border-transparent";
+
+/** `owner`: whose list it is (their own face is not repeated on each row). */
 function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
   const { user } = useRouteContext({ from: "/app" });
   const work = useWorkingOn();
   const mine = task.assignees.find((a) => a.id === user.id);
-  const now = task.assignees.some((a) => a.id === owner && a.current);
   const mentions = useMentionables(noBots);
   const qc = useQueryClient();
   const t = useT(messages);
@@ -198,27 +220,39 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
       ? t.byFor(task.assignedBy.name, task.requestedBy.name)
       : t.by(task.assignedBy.name)
     : null;
-  const meta = [from, task.dueOn && t.due(formatDueDate(task.dueOn))].filter(Boolean).join(" · ");
+
+  const overdue = !done && isOverdue(task.dueOn);
+  const workingNow = task.assignees.filter((a) => a.current && a.id !== owner);
+  const StatusIcon = done ? CheckCircleIcon : task.status === "in_progress" ? LoaderIcon : CircleIcon;
 
   return (
-    <Item size="sm" className="flex-nowrap items-start px-3 hover:bg-muted/60">
-      <ItemMedia className="pt-0.5">
-        <Checkbox
-          checked={done}
+    <Item
+      size="sm"
+      // Figma « Ligne de réglage »: a row of the group's card, no frame of its own.
+      className="flex-nowrap gap-3 rounded-none border-0 bg-transparent py-2.5 pr-2.5 pl-3.5 hover:bg-transparent"
+    >
+      <ItemMedia>
+        <button
+          type="button"
           disabled={!task.canEdit || setStatus.isPending}
-          onCheckedChange={(checked) => setStatus.mutate(checked ? "done" : "todo")}
+          onClick={() => setStatus.mutate(done ? "todo" : "done")}
           aria-label={done ? t.reopen : t.complete}
-          className="data-checked:border-success data-checked:bg-success"
-        />
+          aria-pressed={done}
+          className="flex size-5 items-center justify-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-default"
+        >
+          <StatusIcon
+            className={cn(
+              "size-5",
+              done ? "text-muted-foreground" : task.status === "in_progress" ? "animate-spin text-brand [animation-duration:2s]" : "text-subtle hover:text-muted-foreground",
+            )}
+          />
+        </button>
       </ItemMedia>
       <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className={cn("flex-wrap", done && "text-muted-foreground line-through")}>
+        <ItemTitle className={cn("flex-wrap text-sm leading-5 font-normal", done && "text-muted-foreground")}>
           <span>
             <MentionText text={task.title} mentionables={mentions} />
           </span>
-          <Badge variant="secondary" className={cn("font-normal", statusTone[task.status])}>
-            {now ? t.now : t.status[task.status]}
-          </Badge>
           {task.priority !== "normal" && !done && (
             <Badge variant="secondary" className={cn("font-normal", priorityTone[task.priority])}>
               {p.label[task.priority]}
@@ -226,25 +260,26 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
           )}
         </ItemTitle>
         {task.description && (
-          <ItemDescription className="whitespace-pre-line">
+          <ItemDescription className="line-clamp-2 text-xs leading-4 whitespace-pre-line">
             <MentionText text={task.description} mentionables={mentions} />
           </ItemDescription>
         )}
-        {meta && (
-          <p className={cn("flex items-center gap-1.5 text-[13px] text-subtle", !done && isOverdue(task.dueOn) && "text-destructive")}>
-            {task.assignedBy?.kind === "agent" && <AgentAvatar agent={task.assignedBy} className="size-3.5" />}
-            {task.assignedBy?.kind === "user" && (
-              <PersonAvatar person={{ id: task.assignedBy.id, name: task.assignedBy.name, image: task.assignedBy.image }} className="size-3.5" />
-            )}
-            <span className="truncate">{meta}</span>
+        {(from || task.dueOn) && (
+          <p className="flex min-w-0 items-center gap-2.5 text-xs leading-4 text-muted-foreground">
+            {from && <span className="truncate">{from}</span>}
+            {task.dueOn && <span className={cn("shrink-0", overdue && "text-destructive")}>{t.due(formatDueDate(task.dueOn))}</span>}
           </p>
         )}
       </ItemContent>
+      {workingNow.length > 0 && !done && (
+        <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{t.working(workingNow.map((a) => a.name).join(", "))}</span>
+      )}
       <ItemActions className="gap-1">
-        <Participants task={task} />
+        {/* On your own list, your face on every row says nothing: only shared tasks show who's on them. */}
+        {!(task.assignees.length === 1 && task.assignees[0]!.id === owner) && <Participants task={task} />}
         {(task.canEdit || task.canDelete) && (
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.actions} className="text-muted-foreground" />}>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t.actions} className="size-6 text-subtle" />}>
               <MoreIcon />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
@@ -335,7 +370,7 @@ function Participants({ task }: { task: Task }) {
     );
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<Button variant="ghost" size="sm" className="h-8 gap-0 rounded-full px-1.5" aria-label={t.editParticipants(names)} />}>
+      <PopoverTrigger render={<Button variant="ghost" size="sm" className="h-7 gap-0 rounded-full px-0.5" aria-label={t.editParticipants(names)} />}>
         {faces}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-0">

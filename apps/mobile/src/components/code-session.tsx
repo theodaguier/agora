@@ -47,7 +47,7 @@ export function CodeSessionCard({ conversationId, sessionId, title }: { conversa
   const status = session?.status ?? "running";
   const detail = session && codeDetailLine(session);
   return (
-    <Card className="w-full max-w-[92%] flex-row items-center gap-3 self-start rounded-[22px] border border-border bg-background p-3">
+    <Card className="w-full flex-row items-center gap-3 self-start rounded-[14px] border border-border bg-background p-3">
       <Surface variant="secondary" className="size-9 items-center justify-center rounded-[10px] p-0 shadow-none">
         <CodeIcon size={18} className="text-foreground" />
       </Surface>

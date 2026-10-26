@@ -9,7 +9,7 @@ import { admin } from "./routes/admin";
 import { agents } from "./routes/agents";
 import { attachments } from "./routes/attachments";
 import { conversations } from "./routes/conversations";
-import { codeSessions, internalCode } from "./routes/code-sessions";
+import { codeSessions, internalCode, mySessions } from "./routes/code-sessions";
 import { internalMcp } from "./mcp-gateway";
 import { digest } from "./routes/digest";
 import { events } from "./routes/events";
@@ -44,6 +44,7 @@ import { startUsageCollector } from "./usage";
 import { startServerSampler } from "./server";
 import { startDigest } from "./digest";
 import { recoverTurns } from "./bot-runner";
+import { startCodeWake } from "./code-wake";
 import { syncSessionSearch } from "./session-search";
 import { usage } from "./routes/usage";
 import { localeMiddleware } from "./i18n";
@@ -75,6 +76,7 @@ const app = new Hono()
   .route("/attachments", attachments)
   .route("/conversations", conversations)
   .route("/conversations/:id/code-sessions", codeSessions)
+  .route("/code-sessions", mySessions)
   .route("/digest", digest)
   .route("/events", events)
   .route("/inbox", inbox)
@@ -125,6 +127,7 @@ startUsageCollector();
 startServerSampler();
 startDigest();
 recoverTurns().catch((err) => console.error("bot-runner: recovery", err));
+startCodeWake();
 recoverCodeSessions().catch((err) => console.error("code sessions: recovery", err));
 startCodeSessionSweep();
 void syncSessionSearch();

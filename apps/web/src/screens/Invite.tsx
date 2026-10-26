@@ -82,9 +82,9 @@ export function Invite() {
   if (invitation.isError && !isDefinitive(invitation.error)) {
     return (
       <Centered>
-        <OrgLogo className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{t.unreachable}</h1>
-        <p className="mt-1.5 text-center text-sm text-muted-foreground">{t.unreachableHint}</p>
+        <OrgLogo className="size-9" />
+        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.unreachable}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">{t.unreachableHint}</p>
         <Button variant="outline" className="mx-auto mt-6 flex" disabled={invitation.isFetching} onClick={() => invitation.refetch()}>
           {invitation.isFetching ? t.retrying : c.retry}
         </Button>
@@ -94,9 +94,9 @@ export function Invite() {
   if (invitation.isError) {
     return (
       <Centered>
-        <OrgLogo className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{t.unavailable}</h1>
-        <p className="mt-1.5 text-center text-sm text-muted-foreground">{invitation.error.message}</p>
+        <OrgLogo className="size-9" />
+        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.unavailable}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">{invitation.error.message}</p>
         <Button variant="outline" className="mx-auto mt-6 flex" onClick={() => navigate({ to: "/login" })}>
           {t.goToLogin}
         </Button>
@@ -134,9 +134,9 @@ export function Invite() {
           navigate({ to: "/" });
         }}
       >
-        <OrgLogo className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{t.welcome(orgName)}</h1>
-        <p className="mt-1.5 text-center text-sm text-muted-foreground">{t.hint}</p>
+        <OrgLogo className="size-9" />
+        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.welcome(orgName)}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">{t.hint}</p>
 
         <div className="mt-4 flex flex-col gap-6">
           <AvatarField id={data.email} name={name} current={null} value={photo} onChange={setPhoto} />
@@ -177,8 +177,8 @@ function isDefinitive(err: unknown) {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-dvh place-items-center px-4">
-      <div className="w-full max-w-sm">{children}</div>
+    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
+      <div className="w-full max-w-[400px] rounded-[18px] border border-border bg-background p-8">{children}</div>
     </div>
   );
 }

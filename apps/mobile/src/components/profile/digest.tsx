@@ -16,6 +16,8 @@ import { digestQuery, markDigestSeen, type Digest, type DigestStats } from "@/li
 import { defineMessages, locale } from "@/lib/i18n";
 import { useMentionables } from "@/lib/people";
 import type { AgentSummary } from "@/lib/types";
+import { EmptyState } from "@/components/empty-state";
+import { FileTextIcon } from "@/components/icons";
 
 /* apps/web/src/components/MorningDigest.tsx: the latest recap, read in full (the web's "Learn more" state). */
 
@@ -115,9 +117,7 @@ export function DigestView() {
         ) : digest ? (
           <Recap digest={digest} />
         ) : (
-          <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-4 py-12">
-            {messages.none}
-          </Typography.Paragraph>
+          <EmptyState icon={FileTextIcon} description={messages.none} />
         )}
       </ScrollView>
     </>

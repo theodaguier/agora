@@ -179,7 +179,14 @@ export function AvatarField({
           over && "ring-3 ring-ring/60 ring-offset-2 ring-offset-background",
         )}
       >
-        <PersonAvatar person={{ id, name: name || "?", image: shown }} className="size-16" />
+        {/* No name yet: an empty disc with the camera, never a "?" placeholder. */}
+        {shown || name ? (
+          <PersonAvatar person={{ id, name, image: shown }} className="size-16" />
+        ) : (
+          <span className="grid size-16 place-items-center rounded-full bg-black/6 text-muted-foreground dark:bg-white/10">
+            <CameraIcon className="size-5" />
+          </span>
+        )}
         <span
           aria-hidden
           className={cn(

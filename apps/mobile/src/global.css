@@ -7,9 +7,9 @@
 @source "../node_modules/heroui-native/lib";
 
 /*
- * HeroUI Native's components, with the web's palette (apps/web/src/index.css) in its theme
- * variables: neutral grays, a near-black primary (`accent`), and the web's blue as the extra `brand`
- * token (unread dots, "working", links). Overridden the documented way (Theming: "Override colors",
+ * HeroUI Native's components, with Figma « Agora · Couleurs » in its theme variables: pure
+ * neutrals, a near-black primary (`accent`, the bot's colour inside a conversation with it), the
+ * extra `brand` (état/non-lu: unread, working, links), `waiting` (état/attente) and `icon` tokens. Overridden the documented way (Theming: "Override colors",
  * "Adding Custom Colors"), never per component.
  * Text uses the iOS type scale (Dynamic Type sizes at the default setting): `text-body` is 17 pt.
  */
@@ -50,55 +50,61 @@
 @layer theme {
   :root {
     @variant light {
-      --background: oklch(1 0 0);
-      --foreground: oklch(0.17 0 0);
+      /* fond/app, texte/principal */
+      --background: #ffffff;
+      --foreground: #111111;
 
-      --surface: oklch(0.97 0 0);
+      /* fond/sidebar, fond/bulle (= action/secondaire), fond/sélection */
+      --surface: #f5f5f5;
       --surface-foreground: var(--foreground);
-      --surface-secondary: oklch(0.955 0 0);
+      --surface-secondary: #f2f2f2;
       --surface-secondary-foreground: var(--foreground);
-      --surface-tertiary: oklch(0.93 0 0);
+      --surface-tertiary: #e8e8e8;
       --surface-tertiary-foreground: var(--foreground);
 
-      --overlay: oklch(1 0 0);
+      --overlay: #ffffff;
       --overlay-foreground: var(--foreground);
-      --backdrop: oklch(0% 0 0 / 20%);
+      --backdrop: oklch(0% 0 0 / 25%);
 
-      --muted: oklch(0.48 0 0);
-      --subtle: oklch(0.6 0 0);
+      /* texte/secondaire, texte/tertiaire */
+      --muted: #808080;
+      --subtle: #a0a0a0;
+      /* icône */
+      --icon: #6b6b6b;
 
-      --default: oklch(0.955 0 0);
-      --default-foreground: oklch(0.17 0 0);
+      --default: #f2f2f2;
+      --default-foreground: #111111;
 
-      /* The web's primary. */
-      --accent: oklch(0.17 0 0);
-      --accent-foreground: oklch(0.985 0 0);
+      /* action/primaire (Neutre); a conversation with a bot sets the bot's colour (Accent du bot). */
+      --accent: #161616;
+      --accent-foreground: #ffffff;
 
-      --brand: oklch(0.56 0.2 255);
+      /* état/non-lu */
+      --brand: #0a84ff;
+      /* état/attente */
+      --waiting: #f97316;
 
-      --field-background: oklch(0.955 0 0);
+      --field-background: #ffffff;
       --field-foreground: var(--foreground);
-      --field-placeholder: oklch(0.6 0 0);
-      --field-border: oklch(0.905 0 0);
+      --field-placeholder: #a0a0a0;
+      --field-border: #e8e8e8;
 
-      --success: oklch(0.58 0.15 150);
-      --success-foreground: oklch(1 0 0);
-      --warning: oklch(0.7 0.15 75);
-      --warning-foreground: oklch(0.17 0 0);
-      --danger: oklch(0.577 0.245 27.325);
-      --danger-foreground: oklch(1 0 0);
+      --success: #1fa855;
+      --success-foreground: #ffffff;
+      --warning: #f97316;
+      --warning-foreground: #ffffff;
+      --danger: #e5484d;
+      --danger-foreground: #ffffff;
 
-      --segment: oklch(1 0 0);
+      --segment: #ffffff;
       --segment-foreground: var(--foreground);
 
-      --border: oklch(0.905 0 0);
-      --separator: oklch(0.905 0 0);
-      --focus: oklch(0.6 0 0);
+      --border: #e8e8e8;
+      --separator: #e8e8e8;
+      --focus: #a0a0a0;
       --link: var(--foreground);
 
-      --surface-shadow:
-        0 2px 4px 0 rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.06),
-        0 0 1px 0 rgba(0, 0, 0, 0.06);
+      --surface-shadow: 0 0 0 0 transparent inset;
       --overlay-shadow:
         0 2px 8px 0 rgba(0, 0, 0, 0.02), 0 -6px 12px 0 rgba(0, 0, 0, 0.01),
         0 14px 28px 0 rgba(0, 0, 0, 0.03);
@@ -106,49 +112,51 @@
     }
 
     @variant dark {
-      --background: oklch(0.13 0 0);
-      --foreground: oklch(0.96 0 0);
+      --background: #141414;
+      --foreground: #f2f2f2;
 
-      --surface: oklch(0.155 0 0);
+      --surface: #1b1b1b;
       --surface-foreground: var(--foreground);
-      --surface-secondary: oklch(0.235 0 0);
+      --surface-secondary: #262626;
       --surface-secondary-foreground: var(--foreground);
-      --surface-tertiary: oklch(0.29 0 0);
+      --surface-tertiary: #2e2e2e;
       --surface-tertiary-foreground: var(--foreground);
 
-      --overlay: oklch(0.235 0 0);
+      --overlay: #1b1b1b;
       --overlay-foreground: var(--foreground);
-      --backdrop: oklch(0% 0 0 / 20%);
+      --backdrop: oklch(0% 0 0 / 50%);
 
-      --muted: oklch(0.68 0 0);
-      --subtle: oklch(0.52 0 0);
+      --muted: #9a9a9a;
+      --subtle: #6e6e6e;
+      --icon: #a0a0a0;
 
-      --default: oklch(0.235 0 0);
-      --default-foreground: oklch(0.96 0 0);
+      --default: #262626;
+      --default-foreground: #f2f2f2;
 
-      --accent: oklch(0.96 0 0);
-      --accent-foreground: oklch(0.13 0 0);
+      --accent: #f2f2f2;
+      --accent-foreground: #111111;
 
-      --brand: oklch(0.64 0.19 255);
+      --brand: #3b9bff;
+      --waiting: #fb8a3c;
 
-      --field-background: oklch(0.235 0 0);
+      --field-background: #1b1b1b;
       --field-foreground: var(--foreground);
-      --field-placeholder: oklch(0.52 0 0);
-      --field-border: oklch(0.26 0 0);
+      --field-placeholder: #6e6e6e;
+      --field-border: #2c2c2c;
 
-      --success: oklch(0.72 0.17 150);
-      --success-foreground: oklch(0.13 0 0);
-      --warning: oklch(0.879 0.169 91.605);
-      --warning-foreground: oklch(0.13 0 0);
-      --danger: oklch(0.704 0.191 22.216);
-      --danger-foreground: oklch(1 0 0);
+      --success: #2cc266;
+      --success-foreground: #111111;
+      --warning: #fb8a3c;
+      --warning-foreground: #111111;
+      --danger: #f2555a;
+      --danger-foreground: #ffffff;
 
-      --segment: oklch(0.13 0 0);
+      --segment: #141414;
       --segment-foreground: var(--foreground);
 
-      --border: oklch(0.26 0 0);
-      --separator: oklch(0.26 0 0);
-      --focus: oklch(0.68 0 0);
+      --border: #2c2c2c;
+      --separator: #2c2c2c;
+      --focus: #6e6e6e;
       --link: var(--foreground);
 
       --surface-shadow: 0 0 0 0 transparent inset;
@@ -165,6 +173,8 @@
  */
 @theme inline static {
   --color-brand: var(--brand);
+  --color-waiting: var(--waiting);
+  --color-icon: var(--icon);
   --color-brand-soft: color-mix(in oklab, var(--brand) 12%, transparent);
   --color-subtle: var(--subtle);
 
@@ -173,7 +183,6 @@
   --color-accent-soft-hover: color-mix(in oklab, var(--default) 92%, var(--default-foreground) 8%);
 
   --color-success-soft: color-mix(in oklab, var(--success) 12%, transparent);
-  /* Amber-500, as the web's warning tint. */
-  --color-warning-soft: color-mix(in oklab, oklch(0.769 0.188 70.08) 12%, transparent);
+  --color-warning-soft: color-mix(in oklab, var(--warning) 12%, transparent);
   --color-danger-soft: color-mix(in oklab, var(--danger) 12%, transparent);
 }

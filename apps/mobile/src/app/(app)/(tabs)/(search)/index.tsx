@@ -1,16 +1,17 @@
 import { common, conversations as conversationMessages } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Link, router, Stack, type Href } from "expo-router";
-import { Button, ListGroup, Separator, SkeletonGroup, Typography } from "heroui-native";
+import { ListGroup, Separator, SkeletonGroup } from "heroui-native";
 import { useMemo, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { ConversationAvatar, StatusAvatar } from "@/components/conversation-avatar";
 import { conversationTitle, type Participant } from "@/components/participants";
 import { PressableItem, Section } from "@/components/people/section";
 import { useMe } from "@/components/server-scope";
-import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
 import { agentsQuery, conversationsQuery, usersQuery } from "@/lib/queries";
+import { EmptyState } from "@/components/empty-state";
+import { SearchIcon } from "@/components/icons";
 
 /*
  * Search across the colleagues, the bots and your conversations, by name, handle and title.
@@ -25,6 +26,7 @@ const messages = defineMessages({
     bots: "Bots",
     colleagues: "Colleagues",
     conversations: "Conversations",
+    noMatchTitle: "No results",
     noMatch: "No one matches.",
   },
   fr: {
@@ -33,6 +35,7 @@ const messages = defineMessages({
     bots: "Bots",
     colleagues: "Collègues",
     conversations: "Conversations",
+    noMatchTitle: "Aucun résultat",
     noMatch: "Personne ne correspond.",
   },
 });
@@ -129,14 +132,7 @@ export default function Search() {
           </ListGroup>
         )}
         {empty && !!query && (
-          <View className="items-center gap-4 px-6 py-12">
-            <Typography color="muted" align="center">
-              {t.noMatch}
-            </Typography>
-            <Button variant="secondary" onPress={withTap(() => router.push("/new"))}>
-              {t.newConversation}
-            </Button>
-          </View>
+          <EmptyState icon={SearchIcon} title={t.noMatchTitle} description={t.noMatch} action={{ label: t.newConversation, onPress: () => router.push("/new") }} />
         )}
       </ScrollView>
     </>

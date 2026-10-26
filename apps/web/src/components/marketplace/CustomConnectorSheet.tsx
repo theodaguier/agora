@@ -125,7 +125,7 @@ function SheetHeader({ type, title }: { type: IntegrationType; title: string }) 
     <div className="mb-6 flex items-center gap-4">
       <IntegrationTile type={type} className="size-14 rounded-2xl [&_svg]:size-6" />
       <div className="min-w-0">
-        <h1 className="truncate text-xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="truncate text-xl leading-[26px] font-medium">{title}</h1>
         <p className="text-sm text-muted-foreground">
           {i.types[type]} · {t.subtitle}
         </p>
@@ -138,7 +138,7 @@ function SheetHeader({ type, title }: { type: IntegrationType; title: string }) 
 function InstalledCard({ tools, onDone }: { tools: number; onDone: () => void }) {
   const t = useT(messages);
   return (
-    <Card className="gap-4 bg-transparent py-5">
+    <Card className="gap-4 rounded-[14px] bg-background py-5">
       <CardContent className="px-5">
         <p className="text-[15px]">{t.installed(tools)}</p>
       </CardContent>

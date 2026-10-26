@@ -36,7 +36,8 @@ function SignedIn() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         {/* Reached from anywhere: pushed over the tabs, "back" returns where you were. */}
         <Stack.Screen name="c/[conversationId]" />
-        <Stack.Screen name="agents/[agentId]" />
+        {/* Figma « Fiche de l'agent »: from its conversation, the bot's page comes up as a sheet over it. */}
+        <Stack.Screen name="agents/[agentId]" options={({ route }) => ((route.params as { conversationId?: string } | undefined)?.conversationId ? sheetOptions() : {})} />
         <Stack.Screen name="people/[userId]" />
         <Stack.Screen name="info/[conversationId]" />
         <Stack.Screen name="code/[conversationId]/[sessionId]" />

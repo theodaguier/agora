@@ -1,5 +1,6 @@
+import { PanelBar } from "@/components/PaneHeader";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronsRightIcon, MoreIcon, FileTextIcon, PinIcon, SearchIcon } from "@/components/icons";
+import { MoreIcon, FileTextIcon, PinIcon, SearchIcon } from "@/components/icons";
 import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { AgentScreen } from "@/components/AgentScreen";
@@ -17,7 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { defineMessages, useT } from "@/i18n";
@@ -40,12 +41,15 @@ const messages = defineMessages({
     pins: "Pinned",
     searchPlaceholder: "Search the conversation",
     searchHint: "Messages and file names of this conversation.",
-    noMatch: "No messages match.",
+    noMatchTitle: "No results",
+    noMatch: "Try another word, or look in the files.",
     results: (n: number) => (n === 1 ? "1 result" : `${n} results`),
-    noFiles: "No files in this conversation yet.",
+    noFilesTitle: "No files yet",
+    noFiles: "Images, PDFs and documents shared in the conversation land here.",
     images: "Images",
     documents: "Documents",
-    noPins: "Nothing pinned yet. Pin a message or a file from its menu so everyone finds it here.",
+    noPinsTitle: "Nothing pinned",
+    noPins: "Pin a message or a file from its menu so everyone finds it here.",
     pin: "Pin",
     unpin: "Unpin",
     pinned: "Pinned.",
@@ -68,12 +72,15 @@ const messages = defineMessages({
     pins: "Épinglés",
     searchPlaceholder: "Rechercher dans la conversation",
     searchHint: "Messages et noms de fichiers de cette conversation.",
-    noMatch: "Aucun message ne correspond.",
+    noMatchTitle: "Aucun résultat",
+    noMatch: "Essaie un autre mot, ou cherche dans les fichiers.",
     results: (n: number) => (n <= 1 ? `${n} résultat` : `${n} résultats`),
-    noFiles: "Aucun fichier dans cette conversation pour l'instant.",
+    noFilesTitle: "Aucun fichier",
+    noFiles: "Les images, PDF et documents partagés dans la conversation arrivent ici.",
     images: "Images",
     documents: "Documents",
-    noPins: "Rien d'épinglé pour l'instant. Épingle un message ou un fichier depuis son menu pour que tout le monde le retrouve ici.",
+    noPinsTitle: "Rien d’épinglé",
+    noPins: "Épingle un message ou un fichier depuis son menu pour que tout le monde le retrouve ici.",
     pin: "Épingler",
     unpin: "Désépingler",
     pinned: "Épinglé.",
@@ -137,16 +144,10 @@ export function ConversationPanel({
   const labels = usePanelLabels();
   const c = useT(common);
   return (
-    <aside className="flex h-full w-full flex-col bg-sidebar">
-      <div className="flex h-12 shrink-0 items-center gap-1 px-3">
-        <span className="flex-1 text-[13px] font-medium text-muted-foreground">{labels[kind]}</span>
-        {onDetach && <BesideButton onClick={onDetach} />}
-        <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
-          <ChevronsRightIcon />
-        </Button>
-      </div>
+    <aside className="flex h-full w-full flex-col bg-background">
+      <PanelBar title={labels[kind]} actions={onDetach && <BesideButton onClick={onDetach} />} closeLabel={c.close} onClose={onClose} />
       {kind === "screen" && (
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
           <AgentScreen conversationId={conversationId} />
         </div>
       )}
@@ -305,7 +306,9 @@ function SearchPanel({ conversationId, onJump }: { conversationId: string; onJum
         {!deferred.trim() ? (
           <p className="px-1 text-sm text-subtle">{t.searchHint}</p>
         ) : hits.length === 0 ? (
-          <p className="px-1 text-sm text-subtle">{t.noMatch}</p>
+          <PanelEmpty icon={<SearchIcon />} title={t.noMatchTitle}>
+            {t.noMatch}
+          </PanelEmpty>
         ) : (
           <div className="-mx-2 flex flex-col">
             {hits.map((h) => (
@@ -386,7 +389,9 @@ function FilesPanel({ conversationId, onJump }: { conversationId: string; onJump
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
       {entries.length === 0 ? (
-        <PanelEmpty>{t.noFiles}</PanelEmpty>
+        <PanelEmpty icon={<FileTextIcon />} title={t.noFilesTitle}>
+          {t.noFiles}
+        </PanelEmpty>
       ) : (
         <>
           {section(t.images, images)}
@@ -483,7 +488,9 @@ function PinsPanel({ conversationId, onJump }: { conversationId: string; onJump:
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
       {pins.length === 0 ? (
-        <PanelEmpty>{t.noPins}</PanelEmpty>
+        <PanelEmpty icon={<PinIcon />} title={t.noPinsTitle}>
+          {t.noPins}
+        </PanelEmpty>
       ) : (
         <div className="-mx-2 flex flex-col">
           {[...pins].reverse().map((p) => {
@@ -519,11 +526,14 @@ function PinsPanel({ conversationId, onJump }: { conversationId: string; onJump:
   );
 }
 
-function PanelEmpty({ children }: { children: ReactNode }) {
+/** Figma « État vide », Petit: its icon in a grey tile, a title, one sentence. */
+function PanelEmpty({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
-    <Empty className="mt-6 p-0">
-      <EmptyHeader>
-        <EmptyDescription className="text-[13px]">{children}</EmptyDescription>
+    <Empty className="mt-10 p-0">
+      <EmptyHeader className="gap-1">
+        <EmptyMedia variant="icon">{icon}</EmptyMedia>
+        <EmptyTitle className="text-sm">{title}</EmptyTitle>
+        <EmptyDescription className="text-[13px] leading-[18px]">{children}</EmptyDescription>
       </EmptyHeader>
     </Empty>
   );

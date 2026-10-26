@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams } from "expo-router";
-import { Separator, Typography } from "heroui-native";
+import { Separator } from "heroui-native";
 import { useDeferredValue, useState } from "react";
 import { FlatList, View, type ListRenderItem } from "react-native";
 import { AdminGate, LoadingRows, SearchBox } from "@/components/admin/ui";
@@ -7,6 +7,8 @@ import { ItemRow } from "@/components/marketplace/item-row";
 import { sectionTitles, useMarket, type Section } from "@/components/marketplace/use-market";
 import { defineMessages } from "@/lib/i18n";
 import { matches, type Item } from "@/lib/marketplace";
+import { EmptyState } from "@/components/empty-state";
+import { SearchIcon } from "@/components/icons";
 
 /* AllOf of apps/web/src/components/marketplace/Marketplace.tsx: every item of a section, filtered. */
 
@@ -57,9 +59,7 @@ function All({ section, query }: { section: Section; query: string }) {
             <LoadingRows rows={6} />
           </View>
         ) : (
-          <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-8 py-10">
-            {t.nothing}
-          </Typography.Paragraph>
+          <EmptyState icon={SearchIcon} description={t.nothing} />
         )
       }
       contentInsetAdjustmentBehavior="automatic"

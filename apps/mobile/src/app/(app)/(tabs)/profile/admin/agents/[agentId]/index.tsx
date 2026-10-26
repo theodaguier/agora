@@ -4,7 +4,7 @@ import { ListGroup, Typography } from "heroui-native";
 import { View } from "react-native";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { AdminGate, SettingsScroll, LoadingRows, PressableRow, Section } from "@/components/admin/ui";
-import { BookOpenIcon, BrainIcon, KeyIcon, LayersIcon, PlugIcon, SparklesIcon, UserIcon, type IconComponent } from "@/components/icons";
+import { BookOpenIcon, BotIcon, BrainIcon, KeyIcon, LayersIcon, PlugIcon, SparklesIcon, UserIcon, type IconComponent } from "@/components/icons";
 import {
   adminAgentsQuery,
   adminUsersQuery,
@@ -16,6 +16,7 @@ import {
   type AgentSection,
 } from "@/lib/agents-admin";
 import { defineMessages } from "@/lib/i18n";
+import { EmptyState } from "@/components/empty-state";
 
 /* apps/web/src/components/admin/AgentDetail.tsx: the web's tabs become rows of an iOS settings screen. */
 
@@ -92,9 +93,7 @@ export default function AgentScreen() {
             <LoadingRows rows={4} />
           </SettingsScroll>
         ) : (
-          <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-8 pt-24">
-            {t.notFound}
-          </Typography.Paragraph>
+          <EmptyState icon={BotIcon} description={t.notFound} className="pt-24" />
         )}
       </AdminGate>
     </>

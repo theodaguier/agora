@@ -9,6 +9,8 @@ import { NodeDot, WikiRow } from "@/components/memory/wiki";
 import { wikiMessages } from "@/components/memory/wiki-messages";
 import { defineMessages } from "@/lib/i18n";
 import { LEGEND, wikiGraphQuery, type WikiNodeType } from "@/lib/memory";
+import { EmptyState } from "@/components/empty-state";
+import { BookOpenIcon, SearchIcon } from "@/components/icons";
 
 /*
  * apps/web/src/components/admin/WikiMemory.tsx. The web draws the pages as a force graph;
@@ -155,18 +157,9 @@ function Wiki() {
               <LoadingRows rows={6} avatar={false} />
             </View>
           ) : graph.data && !nodes.length ? (
-            <View className="items-center gap-1 px-8 py-12">
-              <Typography.Heading type="h6" align="center">
-                {t.empty}
-              </Typography.Heading>
-              <Typography.Paragraph type="body-sm" color="muted" align="center">
-                {t.emptyHint}
-              </Typography.Paragraph>
-            </View>
+            <EmptyState icon={BookOpenIcon} title={t.empty} description={t.emptyHint} />
           ) : graph.data ? (
-            <Typography.Paragraph color="muted" align="center" className="px-8 py-12">
-              {t.noPage}
-            </Typography.Paragraph>
+            <EmptyState icon={SearchIcon} description={t.noPage} />
           ) : null
         }
         contentContainerClassName="pb-16"

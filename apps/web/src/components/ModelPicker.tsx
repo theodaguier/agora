@@ -9,6 +9,7 @@ import { api, conversationPath } from "@/lib/api";
 import { modelsQuery } from "@/lib/queries";
 import { ModelLogo } from "./ProviderLogo";
 import { providerName } from "../lib/providers";
+import { modelName } from "@agora/core";
 import { defineMessages, useT } from "@/i18n";
 
 const messages = defineMessages({
@@ -78,7 +79,7 @@ export function ModelPicker({
   const engineModel = engine?.models.find((m) => m.id === data.selected);
   // Default model forbidden for this employee: their messages go to the first allowed model.
   const fallback = data.defaultAllowed ? data.defaultModel : (data.models[0]?.id ?? data.defaultModel);
-  const current = engine ? `${providerName(engine.provider)} · ${engineModel?.label ?? data.selected}` : (data.selected ?? fallback);
+  const current = engine ? `${providerName(engine.provider)} · ${engineModel?.label ?? modelName(data.selected ?? "")}` : modelName(data.selected ?? fallback);
   // cmdk values (also used for search); the current model is preselected on open.
   const defaultValue = `default ${data.defaultModel}`;
   const hermesValue = (id: string) => `${data.provider} ${providerName(data.provider)} ${id}`;
@@ -98,7 +99,7 @@ export function ModelPicker({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" />}>{current}</PopoverTrigger>
+      <PopoverTrigger render={<InputGroupButton size="sm" className="h-7 rounded-[7px] px-2 text-muted-foreground hover:text-foreground" />}>{current}</PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
         <Command defaultValue={activeValue}>
           <CommandInput placeholder={t.search} />
@@ -108,7 +109,7 @@ export function ModelPicker({
               {data.defaultAllowed && (
                 <ModelOption
                   value={defaultValue}
-                  label={t.byDefault(data.defaultModel)}
+                  label={t.byDefault(modelName(data.defaultModel))}
                   logo={<ModelLogo model={data.defaultModel} provider={data.provider} />}
                   active={!data.selected}
                   onSelect={() => select.mutate({ model: null })}
@@ -118,7 +119,7 @@ export function ModelPicker({
                 <ModelOption
                   key={m.id}
                   value={hermesValue(m.id)}
-                  label={m.id}
+                  label={modelName(m.id)}
                   logo={<ModelLogo model={m.id} provider={data.provider} />}
                   reasoning={m.reasoning}
                   active={!engine && !other && (data.selected ?? (data.defaultAllowed ? null : fallback)) === m.id}
@@ -134,7 +135,7 @@ export function ModelPicker({
                     <ModelOption
                       key={m.id}
                       value={otherValue(p.provider, m.id)}
-                      label={m.id}
+                      label={modelName(m.id)}
                       logo={<ModelLogo model={m.id} provider={p.provider} />}
                       reasoning={m.reasoning}
                       active={other === p.provider && data.selected === m.id}

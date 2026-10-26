@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Command, CommandGroup, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
@@ -186,11 +186,8 @@ export function Vault() {
             </ItemGroup>
           ) : (
             !error && (
-              <Empty className="border">
+              <Empty className="p-4">
                 <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <LockIcon />
-                  </EmptyMedia>
                   <EmptyTitle>{t.emptyTitle}</EmptyTitle>
                   <EmptyDescription>{t.emptyText}</EmptyDescription>
                 </EmptyHeader>

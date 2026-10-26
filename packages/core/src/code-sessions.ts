@@ -38,6 +38,25 @@ export type CodeStep =
   /** A git or GitHub action Agora ran for the session (clone, or the owner's from the panel); `text`: its outcome in one line. */
   | { id: string; kind: "git"; action: CodeGitAction; ok: boolean; text: string; by: string | null; detail?: string };
 
+/**
+ * What the session and the people or the bot driving it said to each other, in order: each
+ * instruction, its questions to its bot (ask_bot), and the answer that followed each question.
+ * Its own work (text, tools, git) is left out: that is its log.
+ */
+export type CodeExchange = { id: string; kind: "instruction" | "question" | "answer"; by: string | null; text: string };
+
+export function codeExchanges(steps: CodeStep[]): CodeExchange[] {
+  const out: CodeExchange[] = [];
+  for (const step of steps) {
+    if (step.kind === "tool" && step.name === "mcp__agora__ask_bot" && !step.parentId) {
+      out.push({ id: step.id, kind: "question", by: null, text: step.input || step.title });
+    } else if (step.kind === "user") {
+      out.push({ id: step.id, kind: out.at(-1)?.kind === "question" ? "answer" : "instruction", by: step.by, text: codeInstructionText(step) });
+    }
+  }
+  return out;
+}
+
 /** A file joined to an instruction: an attachment of the conversation (served by /api/attachments/:id), copied where Claude Code reads it. */
 export type CodeFile = { id: string; name: string; mime: string; size: number };
 

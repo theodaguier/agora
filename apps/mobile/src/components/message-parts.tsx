@@ -63,7 +63,7 @@ const messages = defineMessages({
 
 /**
  * The message being answered: in the bubble that answers it, and above the composer.
- * `onAccent`: drawn inside one of your bubbles (the `tertiary` surface), so on the `secondary` one.
+ * `onAccent`: drawn inside one of your bubbles (the accent), so on the `secondary` surface.
  */
 export function QuoteBlock({
   quote,
@@ -145,13 +145,15 @@ export function ChatMessage(props: {
           className={cn("max-w-full flex-col gap-1 p-1", attachments.some((a) => isImage(a.mime)) ? "w-64" : "max-w-80", replyTo && "min-w-52")}
  >
           {forwarded && (
-            <Typography type="body-sm" color="muted" className="px-2.5 pt-1">
+            <Typography type="body-sm" color="muted" className={cn("px-2.5 pt-1", mine && "text-accent-foreground opacity-75")}>
               {t.forwardedFrom(forwarded.authorName)}
             </Typography>
           )}
           {replyTo && <QuoteBlock quote={replyTo} onAccent={mine} onPress={onQuote && (() => onQuote(replyTo.id))} />}
           {attachments.length > 0 && <BubbleAttachments items={attachments} />}
-          {!!text && <MessageText plain text={text} mentionables={mentionables} className="min-w-0 px-2.5 pt-0.5 pb-1.5" />}
+          {!!text && (
+            <MessageText plain onAccent={mine} text={text} mentionables={mentionables} className="min-w-0 px-2.5 pt-0.5 pb-1.5" textClassName={mine ? "text-accent-foreground" : undefined} />
+          )}
         </Bubble>
       )}
     </View>

@@ -30,7 +30,9 @@ const LINK_SAFETY = { enabled: false };
 const REMARK_CHAT = [remarkChat];
 
 /** Lists, paragraphs and blocks of a message's markdown, spaced for a bubble. */
-const proseClass = "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_p]:my-0 [&>div>*+*]:mt-2.5";
+/** Code blocks and tables sit on white with a hairline: in the grey bubble (fond/bulle) a grey block would vanish. */
+const proseClass =
+  "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_p]:my-0 [&>div>*+*]:mt-2.5 [&_[data-streamdown=code-block]]:rounded-[10px] [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border [&_[data-streamdown=code-block]]:bg-background [&_[data-streamdown=table-wrapper]]:rounded-[10px] [&_[data-streamdown=table-wrapper]]:bg-background";
 
 /**
  * The text of a message, as markdown: tables, code, quotes, lists; links, emails,
@@ -181,7 +183,7 @@ function InlineCode({ node: _node, className, children, ...props }: ComponentPro
   if (!more.length && only && typeof only !== "string" && only.kind === "repo") return <RepoChip url={only.url} repo={only} label={only.text.startsWith("git@") ? only.text : undefined} />;
   const color = /^#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3})$/i.test(text.trim()) ? text.trim() : null;
   return (
-    <code {...props} className={cn("rounded bg-foreground/[0.07] px-1.5 py-0.5 font-mono text-[0.88em]", className)}>
+    <code {...props} className={cn("font-mono text-[0.85em]", className)}>
       {color && <Swatch color={color} />}
       {children}
     </code>

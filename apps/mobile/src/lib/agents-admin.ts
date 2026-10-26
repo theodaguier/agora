@@ -1,3 +1,4 @@
+import { AGENT_COLORS } from "@agora/core";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import type { Href } from "expo-router";
 import { useMe } from "@/components/server-scope";
@@ -55,7 +56,8 @@ export const agentHref = (id: string, section?: AgentSection) =>
     ? `/profile/admin/access/agent/${encodeURIComponent(id)}`
     : `/profile/admin/agents/${encodeURIComponent(id)}${section ? `/${section}` : ""}`) as Href;
 
-export const avatarColors = ["#9a6a4b", "#22b35e", "#f26b1d", "#2f7cf6", "#14a89a", "#9a7cf0", "#9ca3af", "#e5484d"];
+/** The 8 bot colours (Figma « Agora · Agents »), each with its clay mascot. */
+export const avatarColors: string[] = [...AGENT_COLORS];
 
 /** The main profile: sees every MCP server and every credential of the instance. */
 export const isDefaultProfile = (a: Pick<AdminAgent, "hermesProfile">) => a.hermesProfile === "default";

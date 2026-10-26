@@ -4,7 +4,6 @@ import { Link } from "@tanstack/react-router";
 import { Fragment } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { toolServer } from "@/lib/tools";
-import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import type { Mentionable } from "@/lib/mentions";
 import { brandsQuery } from "@/lib/queries";
@@ -45,25 +44,26 @@ export function BotBubble({
       text={text}
       streaming={streaming}
       mentionables={mentionables}
-      className={cn("w-fit min-w-0 max-w-[min(680px,88%)] rounded-2xl bg-secondary px-3.5 py-2.5 text-[15px] leading-[1.45]", className)}
+      className={cn("w-fit min-w-0 max-w-[min(520px,100%)] rounded-[14px] bg-secondary px-3 py-[9px] text-[15px] leading-[21px]", className)}
     />
   );
 }
 
+/** Figma « Bulle » Moi: the bot's colour (--primary in a conversation), white text. */
 export function UserBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
   return (
     <MessageText
       plain
       text={text}
       mentionables={mentionables}
-      className={cn("ml-auto w-fit min-w-0 max-w-[min(560px,80%)] break-words rounded-2xl bg-accent px-3.5 py-2 text-[15px] leading-[1.45]", className)}
+      className={cn("bubble-mine ml-auto w-fit min-w-0 max-w-[min(520px,80%)] break-words rounded-[14px] bg-primary px-3 py-[9px] text-[15px] leading-[21px] text-primary-foreground", className)}
     />
   );
 }
 
 export function TypingBubble({ label, className }: { label: string; className?: string }) {
   return (
-    <div className={cn("flex w-fit gap-1 rounded-2xl bg-secondary px-4 py-3.5", className)} aria-label={label}>
+    <div className={cn("flex w-fit gap-1 rounded-[14px] bg-secondary px-3.5 py-3", className)} aria-label={label}>
       {[0, 1, 2].map((d) => (
         <span key={d} className="typing-dot size-1.5 rounded-full bg-muted-foreground" style={{ animationDelay: `${d * 150}ms` }} />
       ))}
@@ -104,10 +104,10 @@ function ToolBadge({ name }: { name: string }) {
   const { data: brands } = useQuery(brandsQuery);
   const servers = Object.keys(brands?.servers ?? {});
   return (
-    <Badge variant="secondary" className="h-auto gap-1 rounded-md px-1.5 py-0.5 font-mono text-xs font-normal text-foreground/80">
+    <span className="inline-flex items-center gap-1 text-foreground/80">
       <BrandLogo server={toolServer(name, servers)} fallback={<ToolIcon name={name} className="size-3.5" />} className="size-3.5 rounded-[3px]" />
       {name}
-    </Badge>
+    </span>
   );
 }
 
@@ -170,7 +170,7 @@ export function PeerBubble({ text, mentionables, className }: { text: string; me
       plain
       text={text}
       mentionables={mentionables}
-      className={cn("w-fit min-w-0 max-w-[min(560px,80%)] break-words rounded-2xl bg-secondary px-3.5 py-2 text-[15px] leading-[1.45]", className)}
+      className={cn("w-fit min-w-0 max-w-[min(520px,80%)] break-words rounded-[14px] bg-secondary px-3 py-[9px] text-[15px] leading-[21px]", className)}
     />
   );
 }

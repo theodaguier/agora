@@ -61,7 +61,7 @@ export function ResetPassword() {
     return (
       <Centered>
         <AgentAvatar agent={{ avatar: { shape: "bean", color: "#9a6a4b" } }} className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{done ? t.doneTitle : t.invalidTitle}</h1>
+        <h1 className="mt-6 text-center text-[22px] leading-7 font-semibold">{done ? t.doneTitle : t.invalidTitle}</h1>
         <p className="mt-1.5 text-center text-sm text-muted-foreground">{done ? t.done : t.invalid}</p>
         <Button size="lg" nativeButton={false} render={<Link to={done ? "/login" : "/forgot-password"} />} className="mt-6 w-full">
           {done ? t.goToLogin : t.requestNew}
@@ -88,7 +88,7 @@ export function ResetPassword() {
         }}
       >
         <AgentAvatar agent={{ avatar: { shape: "bean", color: "#9a6a4b" } }} className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{t.title}</h1>
+        <h1 className="mt-6 text-center text-[22px] leading-7 font-semibold">{t.title}</h1>
         <p className="mt-1.5 text-center text-sm text-muted-foreground">{t.hint}</p>
         <FieldGroup className="mt-3 gap-3">
           <Field className="gap-1.5">

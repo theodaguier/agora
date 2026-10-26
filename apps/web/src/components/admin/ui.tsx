@@ -27,13 +27,14 @@ const messages = defineMessages({
 /** Title of a settings tab, with its intro and main action: the same header on every tab. */
 export function SectionHeader(props: { title: string; text?: ReactNode; action?: string; onAction?: () => void }) {
   return (
-    <div className="mb-5 flex items-end justify-between gap-4">
+    // Figma « Titre » of a settings window: Titre/Panneau (20, medium).
+    <div className="mb-6 flex min-h-[34px] items-center justify-between gap-4">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">{props.title}</h2>
-        {props.text && <p className="mt-0.5 text-sm text-muted-foreground">{props.text}</p>}
+        <h2 className="text-xl leading-[26px] font-medium">{props.title}</h2>
+        {props.text && <p className="mt-1 text-[13px] leading-[18px] tracking-[-0.05px] text-muted-foreground">{props.text}</p>}
       </div>
       {props.action && (
-        <Button onClick={props.onAction}>
+        <Button size="sm" onClick={props.onAction}>
           {props.action}
         </Button>
       )}
@@ -45,7 +46,7 @@ export function SectionHeader(props: { title: string; text?: ReactNode; action?:
 export function FormCard({ children, onClose, title }: { children: ReactNode; onClose?: () => void; title: string }) {
   const c = useT(common);
   return (
-    <Card className="mb-5">
+    <Card className="mb-5 rounded-[14px] bg-background">
       <CardHeader>
         <CardTitle className="text-sm">{title}</CardTitle>
         {onClose && (

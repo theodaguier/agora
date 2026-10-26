@@ -85,14 +85,14 @@ export const DatabaseIntegrationIcon = createIcon("database-integration", {
 });
 
 export const OtherIntegrationIcon = createIcon("other-integration", {
-  solid: (
+  fill: (
     <>
       <rect x="3" y="3" width="8" height="8" rx="2.5" />
       <rect x="13" y="3" width="8" height="8" rx="2.5" />
       <rect x="3" y="13" width="8" height="8" rx="2.5" />
-      <circle cx="17" cy="17" r="4" />
     </>
   ),
+  solid: <circle cx="17" cy="17" r="4" />,
 });
 
 const icons: Record<IntegrationType, IconComponent> = {

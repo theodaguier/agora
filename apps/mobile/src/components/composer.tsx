@@ -329,39 +329,13 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
         </View>
       )}
       {/*
-       * ChatGPT's composer: one card, the field on top (the quote and the files above it), the
-       * skills/connectors/routines called with the message, then a toolbar: "+", the model, the send arrow.
+       * Figma « Composer » (mobile): a white pill with a hairline, "+" then the field, the model, the
+       * microphone and the send button in the accent (the bot's colour); the quote, the files and the
+       * skills/connectors/routines called with the message stack above the line.
        */}
-      <Surface variant="secondary" className="gap-1 rounded-[22px] p-2">
+      <Surface variant="transparent" className="gap-1 rounded-[23px] border border-border bg-background p-1.5">
         {replyTo && <ReplyStrip quote={replyTo} onCancel={onCancelReply} />}
         <PendingFiles items={files} onRemove={removeFile} />
-        {/*
-         * The web lays a colored copy under a transparent field; a native field takes styled
-         * text as children instead (no `value`), so mentions are colored in the field itself.
-         */}
-        <Input
-          ref={area}
-          multiline
-          placeholder={placeholder}
-          aria-expanded={!!menu}
-          onChangeText={(value) => {
-            if (value.length > text.length) onTyping();
-            // Typing takes over from dictation (the text it writes itself is not an edit).
-            if (dictation.listening && value !== text) dictation.stop();
-            // Typing goes back to the message: the model palette gives way.
-            setModelOpen(false);
-            setText(value);
-          }}
-          onSelectionChange={(e) => setCaret(e.nativeEvent.selection.start)}
-          onKeyPress={(e) => {
-            if (e.nativeEvent.key === "Backspace" && text === "" && invocations.length) setInvocations((xs) => xs.slice(0, -1));
-          }}
-          // Part of the card rather than a field inside it: no fill, no border, no shadow, no focus outline (it is
-          // always the one being typed in). The messages' size (text-body), placeholder included. Six lines, then it scrolls.
-          className="max-h-[152px] border-transparent bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
-        >
-          <MentionText text={text} mentionables={colored} flat />
-        </Input>
         {invocations.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerClassName="gap-1.5 px-1">
             {invocations.map((v) => (
@@ -374,10 +348,36 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             ))}
           </ScrollView>
         )}
-        <View className="flex-row items-center gap-2">
+        <View className="flex-row items-end gap-1">
           <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
+          {/*
+           * The web lays a colored copy under a transparent field; a native field takes styled
+           * text as children instead (no `value`), so mentions are colored in the field itself.
+           */}
+          <Input
+            ref={area}
+            multiline
+            placeholder={placeholder}
+            aria-expanded={!!menu}
+            onChangeText={(value) => {
+              if (value.length > text.length) onTyping();
+              // Typing takes over from dictation (the text it writes itself is not an edit).
+              if (dictation.listening && value !== text) dictation.stop();
+              // Typing goes back to the message: the model palette gives way.
+              setModelOpen(false);
+              setText(value);
+            }}
+            onSelectionChange={(e) => setCaret(e.nativeEvent.selection.start)}
+            onKeyPress={(e) => {
+              if (e.nativeEvent.key === "Backspace" && text === "" && invocations.length) setInvocations((xs) => xs.slice(0, -1));
+            }}
+            // Part of the card rather than a field inside it: no fill, no border, no shadow, no focus outline (it is
+            // always the one being typed in). The messages' size (text-body), placeholder included. Six lines, then it scrolls.
+            className="max-h-[152px] min-w-0 flex-1 border-transparent bg-transparent px-1 py-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
+          >
+            <MentionText text={text} mentionables={colored} flat />
+          </Input>
           {models && <ModelButton conversationId={conversationId} bot={modelBot} several={modelBots.length > 1} open={modelOpen} onOpenChange={setModelOpen} />}
-          <View className="flex-1" />
           <Button
             isIconOnly
             size="sm"
@@ -385,7 +385,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             accessibilityLabel={dictation.listening ? t.stopDictation : t.dictate}
             onPress={() => (dictation.listening ? dictation.stop() : dictation.start(text))}
           >
-            <MicIcon size={20} className={dictation.listening ? "text-danger" : "text-foreground"} />
+            <MicIcon size={20} className={dictation.listening ? "text-danger" : "text-icon"} />
           </Button>
           <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.send} isDisabled={!canSend} onPress={send}>
             <ArrowUpIcon className="size-[18px] text-accent-foreground" strokeWidth={2.25} />

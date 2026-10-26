@@ -222,7 +222,7 @@ function Report({ report, range, onRange }: { report: ServerReport; range: Serve
       <ActivityChart report={report} />
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card>
+        <Card className="rounded-[14px] bg-background">
           <CardHeader>
             <CardTitle>{t.activeUsers}</CardTitle>
             <CardDescription>{t.activeIntro}</CardDescription>
@@ -233,7 +233,7 @@ function Report({ report, range, onRange }: { report: ServerReport; range: Serve
             />
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-[14px] bg-background">
           <CardHeader>
             <CardTitle>{t.content}</CardTitle>
           </CardHeader>
@@ -254,7 +254,7 @@ function Report({ report, range, onRange }: { report: ServerReport; range: Serve
 
       <Database report={report} />
 
-      <Card>
+      <Card className="rounded-[14px] bg-background">
         <CardHeader>
           <CardTitle>{t.machine}</CardTitle>
         </CardHeader>
@@ -278,10 +278,10 @@ function Report({ report, range, onRange }: { report: ServerReport; range: Serve
 /** A figure, and how full it is when it measures a capacity. */
 function Gauge({ label, value, note, share }: { label: string; value: string; note?: string; share?: number | null }) {
   return (
-    <Card>
+    <Card className="rounded-[14px] bg-background">
       <CardHeader>
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl font-semibold tabular-nums">{value}</CardTitle>
+        <CardTitle className="text-[22px] leading-7 font-semibold tabular-nums">{value}</CardTitle>
         {share != null && <Progress value={Math.round(share * 100)} aria-label={label} className="mt-1" />}
         {note && <CardDescription className="text-xs">{note}</CardDescription>}
       </CardHeader>
@@ -313,7 +313,7 @@ function LoadChart({ report, range, onRange }: { report: ServerReport; range: Se
   const config = { cpu: { ...colors.cpu, label: t.series.cpu }, mem: { ...colors.mem, label: t.series.mem } } satisfies ChartConfig;
 
   return (
-    <Card>
+    <Card className="rounded-[14px] bg-background">
       <CardHeader>
         <CardTitle>{t.history}</CardTitle>
         <CardDescription>{report.history.since ? t.since(f.dateTime(report.history.since)) : t.historyIntro}</CardDescription>
@@ -369,7 +369,7 @@ function ActivityChart({ report }: { report: ServerReport }) {
   const kinds = ["user", "bot"] as const;
 
   return (
-    <Card>
+    <Card className="rounded-[14px] bg-background">
       <CardHeader>
         <CardTitle>{t.activity}</CardTitle>
         <CardDescription>{t.activityIntro}</CardDescription>
@@ -407,7 +407,7 @@ function Database({ report }: { report: ServerReport }) {
   const { database } = report;
 
   return (
-    <Card>
+    <Card className="rounded-[14px] bg-background">
       <CardHeader>
         <CardTitle>{t.database}</CardTitle>
         <CardDescription>
@@ -436,7 +436,7 @@ function Database({ report }: { report: ServerReport }) {
                     <TableCell>
                       <span className="flex items-center gap-2">
                         <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                          <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.max(share * 100, share > 0 ? 2 : 0)}%` }} />
+                          <span className="block h-full rounded-full bg-foreground/80" style={{ width: `${Math.max(share * 100, share > 0 ? 2 : 0)}%` }} />
                         </span>
                         <span className="w-16 text-right text-xs tabular-nums text-muted-foreground">{f.bytes(table.bytes)}</span>
                       </span>

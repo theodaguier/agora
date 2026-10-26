@@ -3,9 +3,10 @@ import { PreviewUrls } from "@/lib/preview-urls";
 import { useEventText } from "@/i18n/events";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
-import { BrowserIcon, ChevronLeftIcon, ChevronsLeftIcon, FilesIcon, PinIcon, SearchIcon } from "@/components/icons";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
+import { BrowserIcon, ChevronLeftIcon, FilesIcon, PanelLeftIcon, PinIcon, SearchIcon } from "@/components/icons";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
+import { agentAccent } from "@/lib/agent-avatar";
 import { AuthorLine, BotBubble, DateDivider, ToolLine, TypingBubble, TypingLine } from "@/components/Bubbles";
 import { ApprovalCard, ApprovalLog } from "@/components/ApprovalCard";
 import { ChoiceCard } from "@/components/ChoiceCard";
@@ -46,6 +47,8 @@ import { ShortcutTooltip } from "@/components/Shortcuts";
 import { playSound } from "@/lib/sounds";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { EmptyFigure } from "@/components/EmptyFigure";
+import { agentMascot } from "@agora/core";
 import {
   api,
   ApiError,
@@ -126,6 +129,7 @@ const strings = defineMessages({
     dropTo: (name: string) => `Drop your files to send them to ${name}`,
     dropToGroup: "Drop your files to send them to the group",
     back: "Back",
+    waitingYou: "Waits for your answer",
     showPanel: "Show panel",
     emptyHint: "Send a first message to get started.",
     theBot: "The bot",
@@ -145,6 +149,7 @@ const strings = defineMessages({
     dropTo: (name: string) => `Dépose tes fichiers pour les envoyer à ${name}`,
     dropToGroup: "Dépose tes fichiers pour les envoyer au groupe",
     back: "Retour",
+    waitingYou: "Attend ta réponse",
     showPanel: "Afficher le panneau",
     emptyHint: "Envoie un premier message pour commencer.",
     theBot: "Le bot",
@@ -191,6 +196,21 @@ function BotViews({
   ));
 }
 
+/**
+ * A bot's message and what comes with it (tools, cards). `avatar` (direct conversation with the bot):
+ * the content sits right of a 28 px gutter, the avatar at its bottom (null: gutter left empty, the run
+ * goes on). Undefined (groups, colleagues): no gutter, as before.
+ */
+function BotRun({ avatar, className, children }: { avatar?: ReactNode; className?: string; children: ReactNode }) {
+  if (avatar === undefined || avatar === false) return <div className={cn("flex min-w-0 flex-col gap-1", className)}>{children}</div>;
+  return (
+    <div className={cn("relative flex min-w-0 flex-col gap-1 pl-9", className)}>
+      {children}
+      {avatar && <span className="absolute bottom-0 left-0">{avatar}</span>}
+    </div>
+  );
+}
+
 /** A reply being written: its tools, the streamed text or the typing dots, and a pending approval. */
 function LiveTurn({
   turn,
@@ -200,7 +220,10 @@ function LiveTurn({
   mentionables: mentions,
   onOpenCode,
   onOpenPreview,
+  avatar,
 }: {
+  /** Direct conversation with the bot: its avatar in the gutter (see BotRun). */
+  avatar?: ReactNode;
   turn: ActiveTurn;
   bot: AgentSummary | undefined;
   conversationId: string;
@@ -217,11 +240,11 @@ function LiveTurn({
   const quiet = !!turn.approval || previews.some((p) => !p.done);
   const typing = <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} className="chat-arrive" />;
   return (
-    <>
+    <BotRun avatar={avatar}>
       {group && bot && <AuthorLine name={bot.name} avatar={<AgentAvatar agent={bot} className="size-5" />} className="chat-arrive" />}
       <ToolLine tools={turn.tools} running={!visible} className="chat-arrive" />
       {turn.codeSessions?.length ? (
-        <div className="max-w-[min(680px,88%)]">
+        <div className="w-full">
           <ReplyWithSessions
             conversationId={conversationId}
             text={visible}
@@ -245,11 +268,12 @@ function LiveTurn({
           conversationId={conversationId}
           turnId={turn.turnId}
           botName={bot?.name ?? t.theBot}
+          bot={bot ?? undefined}
           approval={turn.approval}
           canAnswer={turn.requestedBy === user.id || user.role === "admin"}
         />
       )}
-    </>
+    </BotRun>
   );
 }
 
@@ -260,6 +284,7 @@ function HeaderTitle({
   title,
   directBot,
   directPerson,
+  waiting,
   onOpenInfo,
 }: {
   conv: ConversationDetail | undefined;
@@ -267,6 +292,8 @@ function HeaderTitle({
   title: string;
   directBot: AgentSummary | null;
   directPerson: Person | null;
+  /** A bot waits for an approval: said instead of "working". */
+  waiting: boolean;
   onOpenInfo: () => void;
 }) {
   const t = useT(strings);
@@ -283,25 +310,32 @@ function HeaderTitle({
       <ChevronLeftIcon className="size-5" />
     </Button>
     {directPerson || directBot ? (
-      <Button
-        variant="ghost"
+      <button
+        type="button"
         onClick={() => (directPerson ? openProfile(directPerson.id) : openAgentProfile(directBot!.id))}
         aria-label={t.openProfile((directPerson ?? directBot)!.name)}
-        className="h-8 min-w-0 gap-1.5 rounded-lg px-1.5 text-[15px] font-medium text-foreground hover:text-foreground"
+        className={cn(pill, "outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30")}
       >
-        <ConversationAvatar conversation={conv!} me={me} className="size-6" status="ring-background" />
-        <TitleWithStatus title={title} p={othersOf(conv!, me)[0]} />
-      </Button>
+        <TitleWithStatus title={title} p={othersOf(conv!, me)[0]} waiting={waiting} avatar={<ConversationAvatar conversation={conv!} me={me} className="size-6" />} />
+      </button>
     ) : (
-      <>
-        {conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-6" status="ring-background" />}
-        <TitleWithStatus title={title} p={conv && !group ? othersOf(conv, me)[0] : undefined} className="text-[15px] font-medium" />
-      </>
+      title && (
+        <span className={pill}>
+          <TitleWithStatus
+            title={title}
+            p={conv && !group ? othersOf(conv, me)[0] : undefined}
+            avatar={conv && <ConversationAvatar conversation={conv} me={me} className="size-6" />}
+          />
+        </span>
+      )
     )}
     {group && conv && <Facepile conversation={conv} onClick={onOpenInfo} />}
     </>
   );
 }
+
+/** Figma « Pilule agent »: white, hairline, a soft shadow, floating over the thread. */
+const pill = "flex h-9 min-w-0 items-center rounded-full border border-border bg-background py-[5px] pr-3.5 pl-[5px] shadow-[0_2px_10px_0_oklch(0_0_0/0.08)]";
 
 /** Search, files and pins toggles of the header, and the button that reopens the side panel. */
 function PanelButtons({
@@ -310,6 +344,7 @@ function PanelButtons({
   hasPanels,
   hasInfo,
   sessions,
+  className,
 }: {
   panel: PanelKind | "info" | null;
   setPanel: Dispatch<SetStateAction<PanelKind | "info" | null>>;
@@ -317,13 +352,14 @@ function PanelButtons({
   hasInfo: boolean;
   /** The Claude Code sessions button, first. */
   sessions?: ReactNode;
+  className?: string;
 }) {
   const t = useT(strings);
   const panelLabels = usePanelLabels();
   // Their panels open only beside the thread.
   const wide = useWide();
   return (
-    <div className="flex shrink-0 items-center justify-end gap-1">
+    <div className={cn("flex shrink-0 items-center justify-end", className)}>
       {sessions}
       {hasPanels &&
         wide &&
@@ -337,11 +373,11 @@ function PanelButtons({
           const button = (
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label={panelLabels[kind]}
               aria-pressed={panel === kind}
               onClick={() => setPanel((p) => (p === kind ? null : kind))}
-              className="aria-pressed:bg-muted"
+              className="aria-pressed:bg-black/5 aria-pressed:text-foreground dark:aria-pressed:bg-white/8"
             >
               <Icon />
             </Button>
@@ -359,8 +395,8 @@ function PanelButtons({
         })}
       {wide && panel !== "info" && hasInfo && (
         <ShortcutTooltip label={t.showPanel} shortcut={shortcuts.togglePanel}>
-          <Button variant="ghost" size="icon" aria-label={t.showPanel} onClick={() => setPanel("info")}>
-            <ChevronsLeftIcon />
+          <Button variant="ghost" size="icon-sm" aria-label={t.showPanel} onClick={() => setPanel("info")}>
+            <PanelLeftIcon />
           </Button>
         </ShortcutTooltip>
       )}
@@ -431,7 +467,7 @@ function useWindowFileDrop(root: RefObject<HTMLElement | null>, place: TabPlace,
 }
 
 /** Side panels' widths when first opened (then as last resized, per kind). */
-const SIDE_WIDTHS = { info: 320, search: 320, files: 320, pins: 320, screen: 560, code: 520, preview: 520 } as const;
+const SIDE_WIDTHS = { info: 320, search: 320, files: 320, pins: 320, screen: 560, code: 600, preview: 520 } as const;
 type SideKind = keyof typeof SIDE_WIDTHS;
 
 /** The conversation route (mobile: one screen at a time; on desktop, the workspace shows it in a tab). */
@@ -717,8 +753,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
     ) : panel === "info" && directBot ? (
       <RightPanel
         conversationId={conversationId}
-        agentId={directBot.id}
-        agentName={directBot.name}
+        agent={directBot}
         onMention={(r) =>
           composer.current?.addInvocation({
             kind: "routine",
@@ -750,11 +785,12 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
           {directBot ? t.dropTo(directBot.name) : group ? t.dropToGroup : t.dropTo(title)}
         </div>
       )}
-      <header className="@container/header flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <HeaderTitle conv={conv} me={user.id} title={title} directBot={directBot} directPerson={directPerson} onOpenInfo={() => setPanel("info")} />
+      <header className="@container/header grid h-16 shrink-0 grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-2 px-4 pt-1.5">
+        <div className="flex min-w-0 items-center justify-center gap-1.5 [grid-column:1/3] md:[grid-column:2]">
+          <HeaderTitle conv={conv} me={user.id} title={title} directBot={directBot} directPerson={directPerson} waiting={turns.some((x) => x.approval)} onOpenInfo={() => setPanel("info")} />
         </div>
         <PanelButtons
+          className="justify-self-end [grid-column:3]"
           panel={panel}
           setPanel={setPanel}
           hasPanels={!!conv}
@@ -787,12 +823,14 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
           // gets a blank area to scroll under the composer.
           className="relative min-h-0 flex-1 overflow-y-auto"
         >
-          <div className="flex flex-col gap-1.5 px-4 pb-6 pt-4">
-            {isPending && <Spinner className="chat-loading mx-auto mt-[20vh] size-5 text-muted-foreground" />}
+          <div className="mx-auto flex min-h-full w-full max-w-[712px] flex-col justify-end gap-1 px-4 pb-6 pt-4">
+            {isPending && <Spinner className="chat-loading m-auto size-5 text-muted-foreground" />}
             {!isPending && messages.length === 0 && !sending.length && (
-              <Empty className="mx-auto mt-[20vh] max-w-sm flex-none p-0">
+              <Empty className="m-auto max-w-sm flex-none p-0">
                 <EmptyHeader className="gap-1">
-                  <EmptyTitle className="text-[15px] tracking-normal">{title}</EmptyTitle>
+                  {/* Its portrait is already beside the thread when its panel is open. */}
+                  {directBot && panel !== "info" && <EmptyFigure mascot={agentMascot(directBot.avatar.color)} />}
+                  <EmptyTitle>{title}</EmptyTitle>
                   <EmptyDescription>{t.emptyHint}</EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -805,6 +843,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                 <Fragment key={entry.key}>
                   {divider && <DateDivider label={dividerLabel(at)} />}
                   <LiveTurn turn={entry.turn} bot={agentById(entry.turn.agentId)} conversationId={conversationId}
+                    avatar={directBot ? <AgentAvatar agent={directBot} className="size-7" /> : undefined}
                     group={group} mentionables={mentions} onOpenCode={openCodeSession} onOpenPreview={openPreview} />
                 </Fragment>
               );
@@ -815,6 +854,14 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
               const showAuthor = newAuthor && !fromMe && m.kind !== "event" && (group || (m.kind === "user" && !directBot)) && !!m.author;
               // A bot's reply takes the place of its live turn and ours of its pending copy: only others' messages arrive.
               const arriving = m.kind === "user" && !fromMe && arrived(m.id);
+              // Figma « Ligne · agent »: in a direct conversation with a bot, its messages sit right of a 28 px
+              // gutter, its avatar under the last one of a run; 16 px between runs, 4 px inside one.
+              const nextEntry = timeline[i + 1];
+              const next = nextEntry?.kind === "message" ? nextEntry.message : undefined;
+              const runEnds = next
+                ? next.kind !== "bot" || authorKey(next.author) !== authorKey(m.author) || needsDivider(at, new Date(nextEntry!.createdAt))
+                : nextEntry?.kind !== "turn" || m.author?.kind !== "agent" || nextEntry.turn.agentId !== m.author.id;
+              const gap = newAuthor && i > 0 && !divider && "mt-3";
               /** A Claude Code session started here: its card instead of the event line. */
               const codeStarted = m.kind === "event" && m.data?.event?.type === "code.started" ? m.data.event : null;
               return (
@@ -835,6 +882,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                   )}
                   {m.kind === "user" && (
                     <MessageRow
+                      className={gap || undefined}
                       id={m.id}
                       mine={fromMe}
                       arriving={arriving}
@@ -860,7 +908,10 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                     </MessageRow>
                   )}
                   {m.kind === "bot" && (
-                    <>
+                    <BotRun
+                      className={gap || undefined}
+                      avatar={directBot && m.author?.kind === "agent" ? runEnds ? <AgentAvatar agent={directBot} className="size-7" /> : null : undefined}
+                    >
                       {m.data?.tools && <ToolLine tools={m.data.tools} />}
                       {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
                       {(m.text || !!m.data?.codeSessions?.length) && (
@@ -881,10 +932,10 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                               text={m.text}
                               sessions={m.data.codeSessions}
                               onOpen={openCodeSession}
-                              bubble={(text) => <BotBubble text={text} mentionables={mentions} className="max-w-full" />}
+                              bubble={(text) => <BotBubble text={text} mentionables={mentions} />}
                             />
                           ) : (
-                            <BotBubble text={m.text} mentionables={mentions} className="max-w-full" />
+                            <BotBubble text={m.text} mentionables={mentions} />
                           )}
                         </MessageRow>
                       )}
@@ -894,7 +945,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                       {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
                       {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
                       {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}
-                    </>
+                    </BotRun>
                   )}
                   {codeStarted && (
                     <CodeSessionCard
@@ -953,7 +1004,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
           <Button
             variant="secondary"
             size="sm"
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow-md"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full "
             onClick={() => {
               atBottom.current = true;
               scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
@@ -964,14 +1015,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
         )}
       </div>
 
-      <div className="shrink-0 px-4 pb-3">
-        {mine.length > 0 && (
-          <div className="mb-2 flex justify-center">
-            <Button variant="outline" size="sm" onClick={() => mine.forEach((t) => stop(t.turnId))} className="text-muted-foreground hover:text-foreground">
-              {t.stop}
-            </Button>
-          </div>
-        )}
+      <div className="mx-auto w-full max-w-[712px] shrink-0 px-4 pb-5">
         {conv && (
           <Composer
             key={conversationId}
@@ -988,6 +1032,8 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
             onTyping={onTyping}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
+            onStop={mine.length ? () => mine.forEach((x) => stop(x.turnId)) : undefined}
+            stopLabel={t.stop}
           />
         )}
         <ForwardDialog conversationId={conversationId} message={forwarding} onClose={() => setForwarding(null)} />
@@ -998,7 +1044,8 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
   return (
     <ConversationFilesProvider messages={messages}>
       <WideProvider value={wide}>
-        <div ref={measured.ref} className="flex h-full min-w-0 flex-1">
+        {/* Figma « Agora · Accent du bot »: a conversation with a bot is dressed in its colour (your bubbles, send, primary buttons). */}
+        <div ref={measured.ref} className="flex h-full min-w-0 flex-1" style={directBot ? ({ "--primary": agentAccent(directBot.avatar.color), "--primary-foreground": "#fff" } as CSSProperties) : undefined}>
           {wide ? (
             // The thread and its side panel, the line between them dragged to share the width.
             <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">
@@ -1059,12 +1106,17 @@ function BotFiles({ message }: { message: Message }) {
   return files.length > 0 && <SentAttachments items={files} align="start" />;
 }
 
-/** Conversation name, followed in a direct conversation by the colleague's presence or the bot's activity, on the same baseline. */
-function TitleWithStatus({ title, p, className }: { title: string; p?: Participant; className?: string }) {
+/**
+ * Figma « Pilule agent »: avatar and name on one line; a status (the colleague's presence, the bot
+ * waiting for you) follows the name in grey.
+ */
+function TitleWithStatus({ title, p, avatar, waiting, className }: { title: string; p?: Participant; avatar?: ReactNode; waiting?: boolean; className?: string }) {
+  const t = useT(strings);
   return (
-    <span className={cn("flex min-w-0 items-baseline gap-2", className)}>
+    <span className={cn("flex min-w-0 items-center gap-2 text-sm leading-5 font-medium", className)}>
+      {avatar}
       <span className="truncate">{title}</span>
-      {p && <HeaderStatus p={p} />}
+      {waiting ? <span className="shrink-0 text-[13px] leading-[18px] font-normal text-warning-foreground">{t.waitingYou}</span> : p && <HeaderStatus p={p} />}
     </span>
   );
 }
@@ -1076,13 +1128,8 @@ function HeaderStatus({ p }: { p: Participant }) {
   return (
     <span
       className={cn(
-        "shrink-0 text-[13px] font-normal",
-        {
-          online: "text-success",
-          working: "text-brand",
-          away: "text-muted-foreground",
-          dnd: "text-destructive",
-        }[status.tone],
+        "shrink-0 text-[13px] leading-[18px] font-normal tracking-[-0.05px]",
+        status.tone === "dnd" ? "text-destructive" : "text-subtle",
       )}
     >
       {status.label}

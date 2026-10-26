@@ -10,7 +10,7 @@ import { infoHref } from "@/components/conversation/info-href";
 
 /*
  * The title of the conversation's native header, as in iOS Messages: the avatar, the name and, for
- * a direct conversation, the colleague's presence or the bot's activity. A tap opens the info
+ * a direct conversation with a colleague, their presence. A tap opens the info
  * screen (members of a group, the colleague's profile, the bot's page).
  */
 
@@ -26,13 +26,14 @@ export function HeaderTitle({ conversation: conv, me, title, label }: { conversa
       accessibilityLabel={label}
       className="max-w-64 flex-row items-center gap-2"
     >
-      {conv && <ConversationAvatar conversation={conv} me={me} className="size-8" status />}
+      {conv && <ConversationAvatar conversation={conv} me={me} className="size-[30px]" status={!conv.agents.length} />}
       <View className="min-w-0 shrink">
         <Typography weight="semibold" numberOfLines={1}>
           {title}
         </Typography>
+        {/* Figma « Conversation »: a bot is its avatar and its name; what it does shows in the thread. */}
         {other ? (
-          <Status p={other} />
+          other.kind === "user" && <Status p={other} />
         ) : (
           group && (
             <Typography type="body-xs" color="muted" numberOfLines={1}>

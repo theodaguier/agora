@@ -16,6 +16,8 @@ import { defineMessages } from "@/lib/i18n";
 import { customConnectorHref, installedHref, sectionHref, type Item } from "@/lib/marketplace";
 import { agentsQuery, conversationsQuery } from "@/lib/queries";
 import { MenuButton } from "@/components/menus";
+import { EmptyState } from "@/components/empty-state";
+import { SearchIcon } from "@/components/icons";
 
 /* apps/web/src/components/marketplace/Marketplace.tsx: its blocks become segments of inset grouped sections, its "Show all" a screen; the search is a HeroUI SearchField. */
 
@@ -118,9 +120,7 @@ function Marketplace() {
         ))}
       </View>
     ) : (
-      <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-8 py-6">
-        {t.nothingFound(query.trim())}
-      </Typography.Paragraph>
+      <EmptyState icon={SearchIcon} description={t.nothingFound(query.trim())} />
     ));
 
   return (

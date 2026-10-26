@@ -93,6 +93,10 @@ type Live = {
   bot: string | null;
   /** Its question to that bot (ask_bot), waiting for an answer. */
   question: PendingQuestion | null;
+  /** Moments its bot must hear of (a run ended, it failed, it asks a question), counted; see onCodeMilestone. */
+  milestone: number;
+  /** The last of them a report already gave the bot (it was waiting on the session): no need to wake it. */
+  delivered: number;
   activity: string | null;
   limit: CodeSession["limit"];
   stopping: boolean;
@@ -233,6 +237,8 @@ function fromRow(row: Row): Live {
     approval: null,
     bot: null,
     question: null,
+    milestone: 0,
+    delivered: 0,
     activity: null,
     limit: null,
     stopping: false,
@@ -278,6 +284,18 @@ export async function listCodeSessions(conversationId: string): Promise<CodeSess
   return rows.map((row) => summary(live.get(row.id) ?? fromRow(row)));
 }
 
+/** The latest sessions of these conversations, all together (the Sessions page): the last changed first. */
+export async function listCodeSessionsOf(conversationIds: string[], limit = 100): Promise<CodeSession[]> {
+  if (!conversationIds.length) return [];
+  const rows = await db
+    .select()
+    .from(schema.codeSession)
+    .where(inArray(schema.codeSession.conversationId, conversationIds))
+    .orderBy(desc(schema.codeSession.updatedAt))
+    .limit(limit);
+  return rows.map((row) => summary(live.get(row.id) ?? fromRow(row)));
+}
+
 /**
  * What a bot needs to follow a session: status, answer, the actions since the last instruction,
  * and the instructions and git actions of everyone (its owner drives it from the panel too).
@@ -300,7 +318,43 @@ export async function codeSessionReport(id: string) {
   const { question: _q, ...report } = rest;
   const q = s.question;
   const question = q && { text: q.text, ...(q.context && { context: q.context }), ...(q.options.length && { options: q.options }), asked_at: q.askedAt.toISOString() };
+  // The bot now knows where the session stands: what it waited for is no reason to wake it.
+  if (q || !s.running) s.delivered = s.milestone;
   return { session_id: id, ...report, ...(question && { question }), actions, history };
+}
+
+/* ---------- waking the bot ---------- */
+
+/** Why a session needs its bot: its run ended, it failed, or it asks the bot a question (ask_bot). */
+export type CodeMilestoneReason = "idle" | "failed" | "question";
+export type CodeMilestone = { sessionId: string; conversationId: string; agentId: string; requestedBy: string; title: string; reason: CodeMilestoneReason; seq: number };
+
+let milestoneHandler: ((m: CodeMilestone) => void) | null = null;
+/** Who hears of a session's milestones (code-wake.ts): set once at startup, kept out of here to avoid an import cycle with bot-runner. */
+export const onCodeMilestone = (handler: (m: CodeMilestone) => void) => {
+  milestoneHandler = handler;
+};
+
+/** Where the session's milestones stand: the latest, and the latest a report already gave the bot. */
+export const codeMilestoneState = (id: string) => {
+  const s = live.get(id);
+  return s ? { milestone: s.milestone, delivered: s.delivered, running: s.running } : null;
+};
+
+/**
+ * A moment the bot that started the session must hear of. Its own run ending wakes it only when the
+ * bot gave the last instruction: once the owner drives the session from its panel, the bot stays out of it.
+ * Its question is addressed to the bot whoever drives.
+ */
+function milestone(s: Live, reason: CodeMilestoneReason) {
+  const r = s.row;
+  if (!r.agentId || !r.requestedBy || !s.bot || s.deleted) return;
+  if (reason !== "question") {
+    const last = s.transcript.steps.findLast((st) => st.kind === "user");
+    if (last?.kind === "user" && last.by !== s.bot) return;
+  }
+  s.milestone += 1;
+  milestoneHandler?.({ sessionId: r.id, conversationId: r.conversationId, agentId: r.agentId, requestedBy: r.requestedBy, title: r.title, reason, seq: s.milestone });
 }
 
 /* ---------- broadcasting and saving ---------- */
@@ -368,6 +422,7 @@ async function settle(s: Live, status: CodeSessionStatus) {
   touch(s, [], true);
   await save(s);
   await flush(s);
+  if (status === "idle" || status === "failed") milestone(s, status);
 }
 
 function setStatus(s: Live, status: CodeSessionStatus) {
@@ -1020,9 +1075,32 @@ export const CODE_DELEGATION_PROMPT = [
   "Tout travail sur du code (corriger une issue, écrire une fonctionnalité, un correctif, un test, ouvrir une PR) passe par une session : claude_code_start avec repo (owner/nom), un titre qui nomme la tâche et un brief complet (but, contraintes, comment vérifier). La session clone le dépôt, a git et gh, et les membres de la conversation la suivent en direct.",
   "Ne code jamais toi-même : ni fichier créé, modifié ou poussé avec le connecteur GitHub (branches, commits, PR comprises), ni dans ton terminal. Lire une issue ou quelques fichiers pour écrire le brief reste permis, sans t'y attarder.",
   "Une session par tâche : chaque nouvelle issue ou fonctionnalité a sa propre session (claude_code_start), pour que la conversation la voie sous son propre titre. Chaque session sur un dépôt travaille dans son propre worktree, avec les credentials du projet déjà en place : plusieurs sessions sur le même dépôt ne se gênent pas. claude_code_send ne sert qu'à poursuivre ou corriger la tâche de la session, et il est refusé une fois sa PR mergée ou fermée.",
-  "Annonce la session en une phrase à la conversation, puis suis-la avec claude_code_wait. Relancer une session avec claude_code_send s'annonce aussi.",
-  "Une session que tu as lancée peut te poser une question pendant qu'elle travaille : claude_code_wait te la rend (champ question) et elle attend. Réponds avec claude_code_send (ta réponse lui arrive comme résultat de sa question), après avoir demandé au propriétaire si la décision lui revient.",
+  "Annonce la session en une phrase à la conversation, puis termine ta réponse : claude_code_start et claude_code_send rendent la main tout de suite. Tu seras réveillé automatiquement, avec son rapport, quand elle aura fini, échoué ou qu'elle te posera une question. N'attends avec claude_code_wait que pour une tâche courte dont tu as besoin du résultat dans cette réponse.",
+  "Une session que tu as lancée peut te poser une question pendant qu'elle travaille : tu es réveillé avec elle (champ question) et elle attend. Réponds avec claude_code_send (ta réponse lui arrive comme résultat de sa question), après avoir demandé au propriétaire si la décision lui revient.",
 ].join("\n");
+
+/**
+ * The prompt of a turn a session woke its bot for (code-wake.ts): not a message from anyone, the
+ * session's report (the same as claude_code_wait's) and what is expected of the bot now.
+ */
+export async function wakePrompt(wake: { sessionId: string; reason: CodeMilestoneReason }, owner: string | null) {
+  const report = await codeSessionReport(wake.sessionId).catch(() => null);
+  if (!report) return "Une session Claude Code que tu as lancée a été supprimée entre-temps. Ne réponds rien de plus qu'une phrase pour le dire.";
+  const who = owner ?? "le propriétaire de la session";
+  const what = {
+    idle: `vient de finir ce que tu lui as demandé. Vérifie son résultat (\`result\`, \`actions\`, \`git\`). S'il manque quelque chose, relance-la avec claude_code_send (wait: false) en disant à ${who} ce que tu lui redemandes. Sinon, écris à ${who} un message court : ce qui est fait, où le voir (PR, branche), ce qui reste à décider.`,
+    failed: `a échoué. Lis ses dernières actions pour comprendre pourquoi. Si tu peux corriger le tir, relance-la avec claude_code_send (wait: false) et dis-le à ${who}. Sinon, dis-lui clairement ce qui a échoué, sans inventer de cause.`,
+    question: `te pose une question (\`question\`) et attend ta réponse pour continuer. Si tu sais répondre, réponds-lui avec claude_code_send (wait: false) et dis en une phrase à ${who} ce que tu as répondu. Si la décision revient à ${who}, pose-lui la question ici et n'envoie rien à la session : sa réponse te reviendra.`,
+  }[wake.reason];
+  return [
+    `[Réveil automatique, ce n'est pas un message de ${who}] La session Claude Code « ${report.title} » ${what}`,
+    "Son rapport :",
+    "```json",
+    JSON.stringify(report, null, 2),
+    "```",
+    "N'appelle pas claude_code_wait : tu seras réveillé de nouveau quand elle aura besoin de toi.",
+  ].join("\n");
+}
 
 /**
  * The conversation's Claude Code sessions, as they stand, for the system prompt of every bot turn:
@@ -1775,6 +1853,7 @@ function onMcpMessage(s: Live, requestId: string, msg: Json) {
       };
       s.question = question;
       touch(s, [], true);
+      milestone(s, "question");
       return;
     }
     default:

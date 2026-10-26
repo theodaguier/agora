@@ -1,0 +1,764 @@
+diff --git a/apps/api/src/messages.ts b/apps/api/src/messages.ts
+--- a/apps/api/src/messages.ts
++++ b/apps/api/src/messages.ts
+@@ -1,5 +1,5 @@
+ import { unlink } from "node:fs/promises";
+-import { and, eq, inArray, ne, sql } from "drizzle-orm";
++import { and, desc, eq, getTableColumns, inArray, ne, sql } from "drizzle-orm";
+ import { db, schema } from "./db";
+ import { renderEvent, type ConversationEvent } from "@agora/core";
+ import { publishToConversation, publishToUser } from "./events";
+@@ -31,29 +31,32 @@
+   avatar: { shape: a.avatarShape, color: a.avatarColor },
+ });
+ 
+-export const toDto = (m: MessageRow, author: Author) => ({
++export const toDto = (m: MessageRow, author: Author, createdAt = m.createdAt.toISOString()) => ({
+   id: m.id,
+   kind: m.kind,
+   text: m.text,
+   data: m.data,
+-  createdAt: m.createdAt,
++  createdAt,
+   author,
+ });
+ 
+ export type MessageDto = ReturnType<typeof toDto>;
+ 
++// A JS Date truncates microseconds: REST and SSE must carry the same ordering precision.
++const preciseTimestamp = sql<string>`to_char(${message.createdAt}, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+ const authorColumns = {
+   message,
++  timestamp: preciseTimestamp,
+   userName: user.name,
+   userImage: user.image,
+   agent,
+ };
+ 
+-function withAuthor(r: { message: MessageRow; userName: string | null; userImage: string | null; agent: AgentRow | null }) {
++function withAuthor(r: { message: MessageRow; timestamp: string; userName: string | null; userImage: string | null; agent: AgentRow | null }) {
+   const m = r.message;
+-  if (m.authorUserId && r.userName) return toDto(m, userAuthor({ id: m.authorUserId, name: r.userName, image: r.userImage }));
+-  if (m.authorAgentId && r.agent) return toDto(m, agentAuthor(r.agent));
+-  return toDto(m, null);
++  if (m.authorUserId && r.userName) return toDto(m, userAuthor({ id: m.authorUserId, name: r.userName, image: r.userImage }), r.timestamp);
++  if (m.authorAgentId && r.agent) return toDto(m, agentAuthor(r.agent), r.timestamp);
++  return toDto(m, null, r.timestamp);
+ }
+ 
+ /** The latest messages of a conversation, oldest to newest, with their authors. */
+@@ -64,7 +67,7 @@
+     .leftJoin(user, eq(user.id, message.authorUserId))
+     .leftJoin(agent, eq(agent.id, message.authorAgentId))
+     .where(eq(message.conversationId, conversationId))
+-    .orderBy(sql`${message.createdAt} desc`)
++    .orderBy(desc(message.createdAt), desc(message.id))
+     .limit(limit);
+   return rows.reverse().map(withAuthor);
+ }
+@@ -83,7 +86,7 @@
+     .leftJoin(user, eq(user.id, message.authorUserId))
+     .leftJoin(agent, eq(agent.id, message.authorAgentId))
+     .where(and(eq(message.conversationId, conversationId), sql`${message.createdAt} <= ${until}`, sql`${message.createdAt} > ${after}`))
+-    .orderBy(sql`${message.createdAt} desc`)
++    .orderBy(desc(message.createdAt), desc(message.id))
+     .limit(limit);
+   return rows.reverse().map(withAuthor);
+ }
+@@ -108,14 +111,14 @@
+     .leftJoin(user, eq(user.id, message.authorUserId))
+     .leftJoin(agent, eq(agent.id, message.authorAgentId))
+     .where(and(eq(message.conversationId, conversationId), inArray(message.id, ids)))
+-    .orderBy(message.createdAt);
++    .orderBy(message.createdAt, message.id);
+   return rows.map(withAuthor);
+ }
+ 
+ /** Saves a message and pushes it to the conversation's members. */
+ export async function postMessage(values: typeof message.$inferInsert, author: Author) {
+-  const [row] = await db.insert(message).values(values).returning();
+-  const dto = toDto(row!, author);
++  const [row] = await db.insert(message).values(values).returning({ ...getTableColumns(message), timestamp: preciseTimestamp });
++  const dto = toDto(row!, author, row!.timestamp);
+   await db.update(schema.conversation).set({ updatedAt: new Date() }).where(eq(schema.conversation.id, row!.conversationId));
+   await publishToConversation(row!.conversationId, { type: "message.created", conversationId: row!.conversationId, message: dto });
+   await quietly(notifyMessage(row!));
+diff --git a/apps/api/src/mcp-requests.ts b/apps/api/src/mcp-requests.ts
+--- a/apps/api/src/mcp-requests.ts
++++ b/apps/api/src/mcp-requests.ts
+@@ -28,6 +28,7 @@
+ import { errors } from "./errors.messages";
+ import { engineConnectorsLines, engineMcpOrNone } from "./engine-mcp";
+ import { forgetOAuthToken } from "./mcp-oauth-token";
++import { createOAuthStatus, withOAuthLock, type OAuthFlow } from "./mcp-oauth-flows";
+ import { defineMessages, tr } from "./i18n";
+ 
+ const messages = defineMessages({
+@@ -38,6 +39,7 @@
+     cannotConnect: (reason: string) => `Can't connect: ${reason}`,
+     notResponding: "the server isn't responding",
+     nothingToAuthorize: "Nothing to authorize",
++    invalidFlow: "This authorization doesn't belong to this connector or has been replaced. Start the connection again.",
+     nameTaken: (name: string) => `A connector named “${name}” already exists`,
+     pluginManaged: (name: string) => `“${name}” comes from a Hermes plugin: it's configured in the plugin.`,
+   },
+@@ -48,6 +50,7 @@
+     cannotConnect: (reason: string) => `Connexion impossible : ${reason}`,
+     notResponding: "le serveur ne répond pas",
+     nothingToAuthorize: "Rien à autoriser",
++    invalidFlow: "Cette autorisation ne correspond pas à ce connecteur ou a été remplacée. Relance la connexion.",
+     nameTaken: (name: string) => `Un connecteur « ${name} » existe déjà`,
+     pluginManaged: (name: string) => `« ${name} » vient d'un plugin Hermes : il se configure dans le plugin.`,
+   },
+@@ -512,6 +515,10 @@
+ const flows = new Map<string, string>();
+ 
+ export async function cancelOAuth(name: string) {
++  return withOAuthLock(name, () => cancelOAuthFlow(name));
++}
++
++async function cancelOAuthFlow(name: string) {
+   const flow = flows.get(name);
+   if (!flow) return;
+   flows.delete(name);
+@@ -520,9 +527,14 @@
+ 
+ /** Starts OAuth authorization: returns the URL the employee opens in their browser. */
+ export async function startOAuth(id: string) {
++  const initial = await load(id);
++  return withOAuthLock(initial.name, () => startOAuthFlow(id));
++}
++
++async function startOAuthFlow(id: string) {
+   const row = await load(id);
+   if (row.status !== "authorizing") throw new HermesError(tr(messages).nothingToAuthorize, 409);
+-  await cancelOAuth(row.name);
++  await cancelOAuthFlow(row.name);
+   // A cancelled flow frees its slot once Hermes's worker thread has exited: retry for a few seconds.
+   for (let attempt = 0; ; attempt++) {
+     try {
+@@ -540,13 +552,14 @@
+ }
+ 
+ /** Tracks authorization; once granted, finishes the installation. */
+-export async function oauthStatus(id: string, flowId: string) {
+-  const row = await load(id);
+-  const flow = await dashboard<{ status: string; error: string | null; tools?: { name: string }[] }>(`/api/mcp/oauth/flows/${encodeURIComponent(flowId)}`);
+-  if (flow.status === "approved" && row.status === "authorizing") await finish(row, (flow.tools ?? []).map((t) => t.name));
+-  if (flow.status === "error") await db.update(mcpServer).set({ error: flow.error }).where(eq(mcpServer.id, row.id));
+-  return { status: flow.status, error: flow.error };
+-}
++export const oauthStatus = createOAuthStatus({
++  load,
++  currentFlow: (name) => flows.get(name),
++  read: (flowId) => dashboard<OAuthFlow>(`/api/mcp/oauth/flows/${encodeURIComponent(flowId)}`),
++  finish,
++  error: async (row, error) => { await db.update(mcpServer).set({ error }).where(eq(mcpServer.id, row.id)); },
++  invalidFlow: () => new HermesError(tr(messages).invalidFlow, 409),
++});
+ 
+ /** Relays the OAuth callback to the Hermes dashboard, which only listens locally. */
+ export async function relayOAuthCallback(name: string, query: string) {
+diff --git a/apps/api/src/routes/mcp-requests.ts b/apps/api/src/routes/mcp-requests.ts
+--- a/apps/api/src/routes/mcp-requests.ts
++++ b/apps/api/src/routes/mcp-requests.ts
+@@ -102,7 +102,8 @@
+ 
+   .get("/:id/oauth/:flow", async (c) => {
+     const id = c.req.param("id");
+-    await getRequest(id, c.get("user"));
++    const req = await getRequest(id, c.get("user"));
++    if (!req.canConnect && req.status !== "installed") throw new HermesError(tr(errors).notAllowed, 403);
+     return c.json(await oauthStatus(id, c.req.param("flow")));
+   });
+ 
+diff --git a/apps/updater/src/backup.ts b/apps/updater/src/backup.ts
+--- a/apps/updater/src/backup.ts
++++ b/apps/updater/src/backup.ts
+@@ -1,5 +1,5 @@
+-import { readdir, rm } from "node:fs/promises";
+-import { join } from "node:path";
++import { mkdir, mkdtemp, readdir, rename, rm, stat } from "node:fs/promises";
++import { basename, join } from "node:path";
+ import { config } from "./config";
+ import { compose, must, run, volumeName } from "./exec";
+ import { withHermesPaused } from "./prod";
+@@ -18,23 +18,30 @@
+ export async function backup(label: string) {
+   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${label}`;
+   const dir = join(config.backupsDir, id);
+-  await must(["mkdir", "-p", dir]);
+-  const dump = await compose(["exec", "-T", "postgres", "pg_dump", "-U", "agora", "--clean", "--if-exists", "agora"], {
+-    timeoutMs: 10 * 60_000,
+-  });
+-  await Bun.write(join(dir, "db.sql"), dump.stdout);
+-  // Named: a timeout kills the docker client, not the container, which would go on archiving.
++  await mkdir(config.backupsDir, { recursive: true });
++  const temporary = await mkdtemp(join(config.backupsDir, ".partial-"));
+   const container = `agora-backup-${id}`;
+-  await withHermesPaused(() => must([
+-    "docker", "run", "--rm", "--name", container,
+-    "-v", `${volumeName("hermes-data")}:/data:ro`,
+-    "-v", `${config.backupsVolume}:/backups`,
+-    "alpine", "tar", "czf", `/backups/${id}/hermes-data.tgz`, ...CACHES.map((c) => `--exclude=${c}`), "-C", "/data", ".",
+-  ], { timeoutMs: 20 * 60_000 })).catch(async (err) => {
+-    await run(["docker", "rm", "-f", container]);
++  try {
++    const dump = await compose(["exec", "-T", "postgres", "pg_dump", "-U", "agora", "--clean", "--if-exists", "agora"], {
++      timeoutMs: 10 * 60_000,
++    });
++    await Bun.write(join(temporary, "db.sql"), dump.stdout);
++    // A timeout kills the docker client, not its container: remove the writer before its files.
++    await withHermesPaused(() => must([
++      "docker", "run", "--rm", "--name", container,
++      "-v", `${volumeName("hermes-data")}:/data:ro`,
++      "-v", `${config.backupsVolume}:/backups`,
++      "alpine", "tar", "czf", `/backups/${basename(temporary)}/hermes-data.tgz`, ...CACHES.map((c) => `--exclude=${c}`), "-C", "/data", ".",
++    ], { timeoutMs: 20 * 60_000 }));
++    if (!(await complete(temporary))) throw new Error("Incomplete backup");
++    await rename(temporary, dir);
++  } catch (err) {
++    await run(["docker", "rm", "-f", container]).catch(() => {});
++    await rm(temporary, { recursive: true, force: true });
+     throw err;
+-  });
+-  await prune();
++  }
++  // A retention failure must not lose the id of a valid rollback backup.
++  await pruneBackups().catch((err) => console.error("backup retention", err));
+   return id;
+ }
+ 
+@@ -57,11 +64,37 @@
+ }
+ 
+ export async function listBackups() {
+-  const entries = await readdir(config.backupsDir).catch(() => []);
+-  return entries.sort().reverse();
++  const entries = await backupDirectories();
++  const valid = await Promise.all(entries.filter((name) => BACKUP_ID.test(name)).map(async (name) => await complete(join(config.backupsDir, name)) ? name : null));
++  return valid.filter((name): name is string => name !== null).sort().reverse();
+ }
+ 
+-async function prune() {
++const BACKUP_ID = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-(?:app|hermes)-/;
++const PARTIAL_MAX_AGE_MS = 24 * 60 * 60_000;
++
++async function backupDirectories() {
++  const entries = await readdir(config.backupsDir, { withFileTypes: true }).catch((err: NodeJS.ErrnoException) => {
++    if (err.code === "ENOENT") return [];
++    throw err;
++  });
++  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
++}
++
++async function complete(dir: string) {
++  return Promise.all(["db.sql", "hermes-data.tgz"].map((name) => stat(join(dir, name)).then((s) => s.isFile() && s.size > 0).catch((err: NodeJS.ErrnoException) => {
++    if (err.code === "ENOENT") return false;
++    throw err;
++  }))).then((files) => files.every(Boolean));
++}
++
++/** Runs independently of successful updates; interrupted attempts don't consume retention slots. */
++export async function pruneBackups() {
++  if (!Number.isSafeInteger(config.keepBackups) || config.keepBackups < 1) throw new Error("KEEP_BACKUPS must be a positive integer");
+   const all = await listBackups();
+   for (const old of all.slice(config.keepBackups)) await rm(join(config.backupsDir, old), { recursive: true, force: true });
++  for (const name of await backupDirectories()) {
++    if (!name.startsWith(".partial-") && (!BACKUP_ID.test(name) || await complete(join(config.backupsDir, name)))) continue;
++    const dir = join(config.backupsDir, name);
++    if (Date.now() - (await stat(dir)).mtimeMs > PARTIAL_MAX_AGE_MS) await rm(dir, { recursive: true, force: true });
++  }
+ }
+diff --git a/apps/updater/src/main.ts b/apps/updater/src/main.ts
+--- a/apps/updater/src/main.ts
++++ b/apps/updater/src/main.ts
+@@ -6,7 +6,7 @@
+  * - exposes a small (token-protected) API consumed by the Agora API for the admin.
+  */
+ import { updateApp } from "./app-update";
+-import { listBackups } from "./backup";
++import { listBackups, pruneBackups } from "./backup";
+ import { DISK_ALERT, diskUsage, reclaimDisk } from "./cleanup";
+ import { config, usesRegistry } from "./config";
+ import { compose, run } from "./exec";
+@@ -85,6 +85,7 @@
+ /** Automatic round: Hermes first, then the app (excluding majors), one version at a time. */
+ async function tick() {
+   if (running) return;
++  await pruneBackups().catch((err) => console.error("backup retention", err));
+   if ((await diskUsage().catch(() => 0)) >= DISK_ALERT) await reclaim({ allBuildCache: true });
+   await check().catch((e) => console.error("check", e));
+   const state = await loadState();
+@@ -186,6 +187,7 @@
+ });
+ 
+ console.log(`updater ready on :${config.port} (checking every ${config.checkEveryMinutes} min, timezone ${config.tz})`);
++await pruneBackups().catch((err) => console.error("backup retention", err));
+ await check().catch((e) => console.error("initial check", e));
+ // After an app update, this container is the new updater: the previous one's image is free now.
+ await reclaim();
+diff --git a/apps/web/src/lib/queries.ts b/apps/web/src/lib/queries.ts
+--- a/apps/web/src/lib/queries.ts
++++ b/apps/web/src/lib/queries.ts
+@@ -63,7 +63,11 @@
+ export const messagesQuery = (conversationId: string) =>
+   queryOptions({
+     queryKey: ["messages", conversationId],
+-    queryFn: async ({ client, queryKey }) => mergeMessages(await api<Message[]>(conversationPath(conversationId, "/messages")), client.getQueryData<Message[]>(queryKey)),
++    queryFn: async ({ client, queryKey, signal }) => {
++      const before = client.getQueryData<Message[]>(queryKey) ?? [];
++      const fresh = await api<Message[]>(conversationPath(conversationId, "/messages"), { signal });
++      return mergeMessages(fresh, client.getQueryData<Message[]>(queryKey), before);
++    },
+   });
+ 
+ export const pinsQuery = (conversationId: string) =>
+diff --git a/apps/web/src/lib/realtime.ts b/apps/web/src/lib/realtime.ts
+--- a/apps/web/src/lib/realtime.ts
++++ b/apps/web/src/lib/realtime.ts
+@@ -209,7 +209,11 @@
+       return;
+     }
+     case "message.deleted":
++      // A response already in flight may still contain the deleted message or its quotes.
++      // Cancel before updating the cache; the replacement GET starts after the deletion committed.
++      void qc.cancelQueries({ queryKey: ["messages", cid], exact: true }, { revert: false });
+       qc.setQueryData<Message[]>(["messages", cid], (old) => old && removeMessage(old, ev.messageId));
++      qc.invalidateQueries({ queryKey: ["messages", cid], exact: true });
+       // Its pins went with it, and the list shows the last message.
+       qc.invalidateQueries({ queryKey: ["pins", cid] });
+       qc.invalidateQueries({ queryKey: ["conversations"] });
+diff --git a/packages/core/src/messages.ts b/packages/core/src/messages.ts
+--- a/packages/core/src/messages.ts
++++ b/packages/core/src/messages.ts
+@@ -1,5 +1,12 @@
+ /** What ordering a thread needs from a message: dates are ISO strings, which sort as dates. */
+ type Timed = { id: string; createdAt: string };
++
++// Older responses used JS milliseconds; newer ones preserve Postgres microseconds.
++const timestamp = (value: string) => value.replace(/(?:\.(\d+))?Z$/, (_, fraction = "") => `.${fraction.padEnd(6, "0")}Z`);
++const compare = (a: Timed, b: Timed) => {
++  const at = timestamp(a.createdAt), bt = timestamp(b.createdAt);
++  return at < bt ? -1 : at > bt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
++};
+ 
+ /**
+  * `list` with `message` at its place by date, as GET /messages orders them; unchanged if it is
+@@ -9,7 +16,7 @@
+ export function insertMessage<T extends Timed>(list: T[], message: T): T[] {
+   if (list.some((m) => m.id === message.id)) return list;
+   let i = list.length;
+-  while (i > 0 && list[i - 1]!.createdAt > message.createdAt) i--;
++  while (i > 0 && compare(list[i - 1]!, message) > 0) i--;
+   return [...list.slice(0, i), message, ...list.slice(i)];
+ }
+ 
+@@ -17,9 +24,15 @@
+  * A refetch of the thread, with what the stream added while it was on its way: a message saved
+  * after the request left is missing from its answer and would disappear.
+  */
+-export function mergeMessages<T extends Timed>(fresh: T[], cached: T[] | undefined): T[] {
+-  const newest = fresh[fresh.length - 1]?.createdAt ?? "";
+-  return (cached ?? []).filter((m) => m.createdAt > newest).reduce(insertMessage, fresh);
++export function mergeMessages<T extends Timed>(fresh: T[], cached: T[] | undefined, before?: T[]): T[] {
++  const present = new Set((cached ?? []).map((m) => m.id));
++  const initial = before && new Set(before.map((m) => m.id));
++  const removed = new Set((before ?? []).filter((m) => !present.has(m.id)).map((m) => m.id));
++  const result = fresh.filter((m) => !removed.has(m.id));
++  const newest = fresh.at(-1);
++  // A request snapshot distinguishes deletion from a message streamed during the fetch.
++  // Legacy callers without a snapshot retain equal-date messages as well.
++  return (cached ?? []).filter((m) => initial ? !initial.has(m.id) : !newest || timestamp(m.createdAt) >= timestamp(newest.createdAt)).reduce(insertMessage, result);
+ }
+ 
+ /**
+diff --git a/infra/agora b/infra/agora
+--- a/infra/agora
++++ b/infra/agora
+@@ -84,7 +84,24 @@
+     # Never leave Hermes paused nor the copy on disk, even if this script fails.
+     # set +e: under errexit, the unpause of a running Hermes (always the case at
+     # the end) aborted the trap before the volume removal, and failed the run.
+-    trap 'set +e; [ -n "$hermes" ] && docker unpause "$hermes" >/dev/null 2>&1; docker volume rm -f "$staging" >/dev/null 2>&1; true' EXIT
++    # Failed file snapshots still leave a successful DB snapshot. Apply retention on failure too,
++    # after removing staging, and retain the original failure status for systemd/monitoring.
++    trap 'status=$?; set +e; [ -n "$hermes" ] && docker unpause "$hermes" >/dev/null 2>&1; docker volume rm -f "$staging" >/dev/null 2>&1; if (( status != 0 )); then restic_run "$RESTIC_IMAGE" forget --host agora --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune; fi; exit "$status"' EXIT
++    # Estimate the same files the archive includes, on the destination's filesystem.
++    # Do this while Hermes is running: a full staging disk must never freeze the agents.
++    space="$(docker run --rm -v agora_hermes-data:/from:ro -v "$staging:/to:ro" alpine timeout 120 sh -ec '
++      set -o pipefail
++      bytes=$(find /from \( -type d \( -name node_modules -o -path /from/.bun/install/cache -o -path /from/.npm -o -path /from/.cache -o -path /from/.local/share/pnpm \) \) -prune -o -type f -exec stat -c %s {} + | awk "{ n += \$1 } END { printf \"%.0f\", n }")
++      available=$(df -Pk /to | awk "END { print \$4 }")
++      # Ten percent and 64 MiB for metadata, block allocation and growth during the estimate.
++      awk -v bytes="$bytes" -v available="$available" "BEGIN { printf \"%.0f %.0f\\n\", int((bytes * 1.1 + 67108864) / 1024) + 1, available }"
++    ')" || { echo "Cannot estimate backup space: Hermes was not paused." >&2; exit 1; }
++    read -r needed available <<< "$space"
++    [[ "$needed" =~ ^[0-9]+$ && "$available" =~ ^[0-9]+$ ]] || { echo "Invalid backup space estimate." >&2; exit 1; }
++    if (( available < needed )); then
++      echo "Not enough space for the Hermes snapshot: need $needed KiB, available $available KiB. Hermes was not paused." >&2
++      exit 1
++    fi
+     [ -n "$hermes" ] && docker pause "$hermes" >/dev/null
+     copied=true
+     docker run --rm -v agora_hermes-data:/from:ro -v "$staging:/to" alpine sh -c '
+diff --git a/apps/api/src/mcp-oauth-flows.ts b/apps/api/src/mcp-oauth-flows.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/mcp-oauth-flows.ts
+@@ -0,0 +1,41 @@
++/** Serialize changes to one connector; the API and its event bus run in one process. */
++const operations = new Map<string, Promise<unknown>>();
++
++export async function withOAuthLock<T>(name: string, run: () => Promise<T>): Promise<T> {
++  const previous = operations.get(name);
++  const current = (previous ?? Promise.resolve()).catch(() => {}).then(run);
++  operations.set(name, current);
++  try {
++    return await current;
++  } finally {
++    if (operations.get(name) === current) operations.delete(name);
++  }
++}
++
++export type OAuthFlow = { server_name: string; status: string; error: string | null; tools?: { name: string }[] };
++type Request = { id: string; name: string; status: string };
++
++/** Hermes's snapshot owns the server identity, including after an Agora API restart. */
++export function createOAuthStatus<Row extends Request>(deps: {
++  load: (id: string) => Promise<Row>;
++  currentFlow: (name: string) => string | undefined;
++  read: (flowId: string) => Promise<OAuthFlow>;
++  finish: (row: Row, tools: string[]) => Promise<void>;
++  error: (row: Row, error: string | null) => Promise<void>;
++  invalidFlow: () => Error;
++}) {
++  return async (id: string, flowId: string) => {
++    const initial = await deps.load(id);
++    return withOAuthLock(initial.name, async () => {
++      // Re-read after acquiring the lock: another poll may already have finalized it.
++      const row = await deps.load(id);
++      const current = deps.currentFlow(row.name);
++      if (current && current !== flowId) throw deps.invalidFlow();
++      const flow = await deps.read(flowId);
++      if (flow.server_name !== row.name) throw deps.invalidFlow();
++      if (flow.status === "approved" && row.status === "authorizing") await deps.finish(row, (flow.tools ?? []).map((t) => t.name));
++      if (flow.status === "error" && row.status === "authorizing") await deps.error(row, flow.error);
++      return { status: flow.status, error: flow.error };
++    });
++  };
++}
+diff --git a/apps/api/src/mcp-oauth-flows.test.ts b/apps/api/src/mcp-oauth-flows.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/mcp-oauth-flows.test.ts
+@@ -0,0 +1,58 @@
++import { expect, test } from "bun:test";
++import { createOAuthStatus, withOAuthLock, type OAuthFlow } from "./mcp-oauth-flows";
++
++function setup() {
++  const row = { id: crypto.randomUUID(), name: crypto.randomUUID(), status: "authorizing" };
++  let finished = 0;
++  let errors = 0;
++  let current: string | undefined = "current";
++  let flow: OAuthFlow = { server_name: row.name, status: "approved", error: null, tools: [{ name: "read" }] };
++  const status = createOAuthStatus({
++    load: async () => ({ ...row }),
++    currentFlow: () => current,
++    read: async () => flow,
++    finish: async (_, tools) => {
++      expect(tools).toEqual(["read"]);
++      await Bun.sleep(5);
++      row.status = "installed";
++      finished++;
++    },
++    error: async () => { errors++; },
++    invalidFlow: () => new Error("invalid flow"),
++  });
++  return { row, status, finished: () => finished, errors: () => errors, setFlow: (next: OAuthFlow) => { flow = next; }, forget: () => { current = undefined; } };
++}
++
++test("an unrelated approved OAuth flow cannot finalize a connector", async () => {
++  const s = setup();
++  s.setFlow({ server_name: "another-connector", status: "approved", error: null });
++  await expect(s.status(s.row.id, "current")).rejects.toThrow("invalid flow");
++  expect(s.finished()).toBe(0);
++});
++
++test("concurrent status polls finalize and restart only once", async () => {
++  const s = setup();
++  await Promise.all([s.status(s.row.id, "current"), s.status(s.row.id, "current")]);
++  expect(s.finished()).toBe(1);
++});
++
++test("a replaced flow is rejected and Hermes's identity still works after an API restart", async () => {
++  const s = setup();
++  await expect(s.status(s.row.id, "old")).rejects.toThrow("invalid flow");
++  s.forget();
++  await s.status(s.row.id, "current");
++  expect(s.finished()).toBe(1);
++});
++
++test("an error from another connector cannot change this connector", async () => {
++  const s = setup();
++  s.setFlow({ server_name: "another-connector", status: "error", error: "denied" });
++  await expect(s.status(s.row.id, "current")).rejects.toThrow("invalid flow");
++  expect(s.errors()).toBe(0);
++});
++
++test("an operation failure releases its connector lock", async () => {
++  const name = crypto.randomUUID();
++  await expect(withOAuthLock(name, async () => { throw new Error("failed"); })).rejects.toThrow("failed");
++  expect(await withOAuthLock(name, async () => "retry")).toBe("retry");
++});
+diff --git a/apps/api/src/messages-order.test.ts b/apps/api/src/messages-order.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/api/src/messages-order.test.ts
+@@ -0,0 +1,38 @@
++import { expect, test } from "bun:test";
++import { insertMessage, mergeMessages, removeMessage } from "@agora/core";
++
++const a = { id: "a", createdAt: "2026-10-26T12:00:00.123000Z" };
++const b = { id: "b", createdAt: a.createdAt };
++const ids = (rows: typeof a[]) => rows.map((m) => m.id);
++
++test("equal timestamps use the same id order regardless of event arrival", () => {
++  expect(ids([a, b].reduce<typeof a[]>(insertMessage, []))).toEqual(["a", "b"]);
++  expect(ids([b, a].reduce<typeof a[]>(insertMessage, []))).toEqual(["a", "b"]);
++});
++
++test("Postgres microseconds survive ordering, including older millisecond responses", () => {
++  const earlier = { ...b, createdAt: "2026-10-26T12:00:00.123Z" };
++  const later = { ...a, createdAt: "2026-10-26T12:00:00.123001Z" };
++  expect(ids(insertMessage([later], earlier))).toEqual(["b", "a"]);
++});
++
++test("a stale refetch retains equal-date and out-of-order messages streamed after it started", () => {
++  expect(ids(mergeMessages([a], [a, b], [a]))).toEqual(["a", "b"]);
++  const earlier = { ...b, createdAt: "2026-10-26T12:00:00.122999Z" };
++  expect(ids(mergeMessages([a], [earlier, a], [a]))).toEqual(["b", "a"]);
++  expect(ids(mergeMessages([a], [a, b]))).toEqual(["a", "b"]);
++});
++
++test("a stale refetch cannot resurrect a message deleted while it was in flight", () => {
++  expect(ids(mergeMessages([a, b], removeMessage([a, b], b.id), [a, b]))).toEqual(["a"]);
++});
++
++test("an authoritative refetch still removes messages already absent on the server", () => {
++  expect(ids(mergeMessages([a], [a, b], [a, b]))).toEqual(["a"]);
++  expect(mergeMessages([], [a], [a])).toEqual([]);
++});
++
++test("stream duplicates are ignored without changing the cached array", () => {
++  const cached = [a];
++  expect(insertMessage(cached, a)).toBe(cached);
++});
+diff --git a/apps/updater/src/backup.test.ts b/apps/updater/src/backup.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/updater/src/backup.test.ts
+@@ -0,0 +1,81 @@
++import { afterAll, beforeEach, expect, mock, test } from "bun:test";
++import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { basename, join } from "node:path";
++
++const root = await mkdtemp(join(tmpdir(), "agora-backups-test-"));
++const settings = { backupsDir: root, backupsVolume: "test-backups", keepBackups: 2 };
++let fail = false;
++mock.module("./config", () => ({ config: settings }));
++mock.module("./prod", () => ({ withHermesPaused: (fn: () => Promise<unknown>) => fn() }));
++mock.module("./exec", () => ({
++  compose: async () => ({ stdout: "-- test dump" }),
++  volumeName: () => "test-data",
++  run: async () => ({ code: 0 }),
++  must: async (cmd: string[]) => {
++    if (fail) throw new Error("archive failed");
++    const archive = cmd.find((arg) => arg.endsWith("/hermes-data.tgz"))!;
++    await writeFile(join(root, basename(join(archive, "..")), "hermes-data.tgz"), "test archive");
++  },
++}));
++const { backup, listBackups, pruneBackups } = await import("./backup");
++
++beforeEach(async () => {
++  fail = false;
++  settings.keepBackups = 2;
++  for (const name of await readdir(root)) await rm(join(root, name), { recursive: true, force: true });
++});
++afterAll(() => rm(root, { recursive: true, force: true }));
++
++async function fixture(day: string, complete = true) {
++  const id = `2026-10-${day}T00-00-00-000Z-app-0.44.1`;
++  const dir = join(root, id);
++  await mkdir(dir);
++  await writeFile(join(dir, "db.sql"), "dump");
++  if (complete) await writeFile(join(dir, "hermes-data.tgz"), "archive");
++  return id;
++}
++
++test("an archive failure removes its partial files and preserves usable backups", async () => {
++  const kept = await fixture("01");
++  fail = true;
++  await expect(backup("app-0.44.2")).rejects.toThrow("archive failed");
++  expect(await readdir(root)).toEqual([kept]);
++  expect(await listBackups()).toEqual([kept]);
++});
++
++test("a successful backup becomes visible only as a complete backup", async () => {
++  const id = await backup("app-0.44.2");
++  expect(await listBackups()).toEqual([id]);
++  expect((await readdir(join(root, id))).sort()).toEqual(["db.sql", "hermes-data.tgz"]);
++});
++
++test("retention counts complete backups and ignores unrelated files", async () => {
++  const old = await fixture("01");
++  const recent = await fixture("02");
++  const newest = await fixture("03");
++  await fixture("04", false);
++  await writeFile(join(root, "notes.txt"), "keep");
++  await pruneBackups();
++  expect(await listBackups()).toEqual([newest, recent]);
++  expect(await readdir(root)).not.toContain(old);
++  expect(await readdir(root)).toContain("notes.txt");
++});
++
++test("a stale interrupted attempt is cleaned without a successful new backup", async () => {
++  const stale = await fixture("01", false);
++  const partial = join(root, ".partial-interrupted");
++  await mkdir(partial);
++  const old = new Date(Date.now() - 2 * 24 * 60 * 60_000);
++  await utimes(join(root, stale), old, old);
++  await utimes(partial, old, old);
++  await pruneBackups();
++  expect(await readdir(root)).toEqual([]);
++});
++
++test("an invalid retention value cannot delete rollback backups", async () => {
++  const kept = await fixture("01");
++  settings.keepBackups = 0;
++  await expect(pruneBackups()).rejects.toThrow("positive integer");
++  expect(await listBackups()).toEqual([kept]);
++});
+diff --git a/apps/web/tests/message-cache.test.ts b/apps/web/tests/message-cache.test.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/web/tests/message-cache.test.ts
+@@ -0,0 +1,54 @@
++import { afterEach, expect, mock, test } from "bun:test";
++import { QueryClient } from "@tanstack/react-query";
++
++mock.module("../src/i18n", () => ({ defineMessages: (m: unknown) => m, getLocale: () => "fr", tr: (m: any) => m.fr }));
++const { messagesQuery } = await import("../src/lib/queries");
++const originalFetch = globalThis.fetch;
++const clients: QueryClient[] = [];
++afterEach(() => { globalThis.fetch = originalFetch; clients.splice(0).forEach((client) => client.clear()); });
++
++const a = { id: "a", createdAt: "2026-10-26T12:00:00.123000Z" };
++const b = { id: "b", createdAt: a.createdAt };
++
++function pending() {
++  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
++  clients.push(client);
++  let respond!: (r: Response) => void;
++  let signal: AbortSignal | null | undefined;
++  globalThis.fetch = ((_: unknown, init: RequestInit) => {
++    signal = init.signal;
++    return new Promise<Response>((resolve) => { respond = resolve; });
++  }) as typeof fetch;
++  const options = messagesQuery("conversation");
++  return { client, options, respond: (rows: unknown[]) => respond(Response.json(rows)), signal: () => signal };
++}
++
++test("an actual REST refetch retains a same-date message streamed while it waited", async () => {
++  const p = pending();
++  p.client.setQueryData(p.options.queryKey, [a]);
++  const request = p.client.fetchQuery(p.options);
++  p.client.setQueryData(p.options.queryKey, [a, b]);
++  p.respond([a]);
++  expect((await request).map((m) => m.id)).toEqual(["a", "b"]);
++});
++
++test("the request snapshot prevents resurrection of a deleted message", async () => {
++  const p = pending();
++  p.client.setQueryData(p.options.queryKey, [a, b]);
++  const request = p.client.fetchQuery(p.options);
++  p.client.setQueryData(p.options.queryKey, [a]);
++  p.respond([a, b]);
++  expect((await request).map((m) => m.id)).toEqual(["a"]);
++});
++
++test("canceling a stale request aborts its signal without rolling back a stream update", async () => {
++  const p = pending();
++  p.client.setQueryData(p.options.queryKey, [a, b]);
++  const request = p.client.fetchQuery(p.options).catch(() => null);
++  await p.client.cancelQueries({ queryKey: p.options.queryKey, exact: true }, { revert: false });
++  p.client.setQueryData(p.options.queryKey, [a]);
++  expect(p.signal()?.aborted).toBe(true);
++  p.respond([a, b]);
++  await request;
++  expect(p.client.getQueryData(p.options.queryKey)).toEqual([a]);
++});
+diff --git a/infra/backup-space.test.ts b/infra/backup-space.test.ts
+new file mode 100644
+--- /dev/null
++++ b/infra/backup-space.test.ts
+@@ -0,0 +1,58 @@
++import { afterAll, expect, test } from "bun:test";
++import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++
++const scratch = await mkdtemp(join(tmpdir(), "agora-offsite-test-"));
++afterAll(() => rm(scratch, { recursive: true, force: true }));
++
++async function run(space: string, fail = false) {
++  const dir = await mkdtemp(join(scratch, "case-"));
++  const bin = join(dir, "bin");
++  await mkdir(bin);
++  await copyFile(new URL("./agora", import.meta.url), join(dir, "agora"));
++  await writeFile(join(dir, ".env"), "RESTIC_REPOSITORY=test\nRESTIC_PASSWORD=test\n");
++  const trace = join(dir, "trace");
++  await writeFile(join(bin, "docker"), `#!/usr/bin/env bash
++printf '%s\\n' "$1" >> "$AUDIT_TRACE"
++if [[ "$1" == "compose" ]]; then
++  if [[ " $* " == *" ps -q hermes "* ]]; then echo test-hermes; else echo test-dump; fi
++elif [[ "$1" == "run" ]]; then
++  [[ " $* " != *" forget "* ]] || printf 'retention\\n' >> "$AUDIT_TRACE"
++  if [[ " $* " == *" timeout 120 "* ]]; then
++    [[ "$AUDIT_FAIL" == "0" ]] || exit 1
++    echo "$AUDIT_SPACE"
++  elif [[ " $* " == *" --stdin "* ]]; then cat >/dev/null; fi
++fi
++`, { mode: 0o755 });
++  const proc = Bun.spawn(["bash", join(dir, "agora"), "backup-offsite"], {
++    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AUDIT_TRACE: trace, AUDIT_SPACE: space, AUDIT_FAIL: fail ? "1" : "0" },
++    stdout: "pipe", stderr: "pipe",
++  });
++  const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
++  return { code, stdout, stderr, commands: (await readFile(trace, "utf8")).trim().split("\n") };
++}
++
++test("insufficient snapshot space fails before pausing Hermes and cleans its staging volume", async () => {
++  const r = await run("100 50");
++  expect(r.code).toBe(1);
++  expect(r.stderr).toContain("Not enough space");
++  expect(r.commands).not.toContain("pause");
++  expect(r.commands).toContain("volume");
++  expect(r.commands).toContain("retention");
++});
++
++test("an unavailable space estimate also leaves Hermes running", async () => {
++  const r = await run("", true);
++  expect(r.code).toBe(1);
++  expect(r.stderr).toContain("Cannot estimate backup space");
++  expect(r.commands).not.toContain("pause");
++  expect(r.commands).toContain("retention");
++});
++
++test("adequate space permits the existing snapshot and off-site flow", async () => {
++  const r = await run("100 200");
++  expect(r.code).toBe(0);
++  expect(r.commands.filter((command) => command === "pause")).toHaveLength(1);
++  expect(r.stdout).toContain("Off-site backup done");
++});

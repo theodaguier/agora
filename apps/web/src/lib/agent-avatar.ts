@@ -1,3 +1,5 @@
+import { AGENT_COLORS, agentAccentColor, agentMascot } from "@agora/core";
+
 export type AvatarShape = "bean" | "pill" | "triangle" | "shield" | "circle" | "cloud" | "drop";
 
 export const avatarShapes: Record<AvatarShape, string> = {
@@ -10,5 +12,14 @@ export const avatarShapes: Record<AvatarShape, string> = {
   drop: "M16 3.5s10 10.4 10 16.5a10 10 0 0 1-20 0C6 13.9 16 3.5 16 3.5Z",
 };
 
-export const avatarColors = ["#9a6a4b", "#22b35e", "#f26b1d", "#2f7cf6", "#14a89a", "#9a7cf0", "#9ca3af", "#e5484d"];
+/** Figma « Agora · Agents »: the 8 bot colours and their clay mascots (public/mascots), shared with mobile. */
+export const avatarColors: readonly string[] = AGENT_COLORS;
 
+/** The bot's accent in a conversation: its own colour, snapped to the palette. */
+export const agentAccent = agentAccentColor;
+
+/** The clay mascot of a colour: its head for avatars, the whole figure for the profile portrait. */
+export function mascot(color: string) {
+  const name = agentMascot(color);
+  return { head: `/mascots/${name}.webp`, figure: `/mascots/${name}-figure.webp` };
+}

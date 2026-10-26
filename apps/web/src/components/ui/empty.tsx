@@ -30,7 +30,9 @@ const emptyMediaVariants = cva(
     variants: {
       variant: {
         default: "bg-transparent",
-        icon: "flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground [&_svg:not([class*='size-'])]:size-4",
+        icon: "flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-secondary text-icon [&_svg:not([class*='size-'])]:size-[22px]",
+        /* A clay mascot, cut out (public/mascots/*-solo.webp), its feet fading out: the large empty states (Figma « État vide », Grand). */
+        figure: "mb-1 w-56 [&_img]:aspect-[7/5] [&_img]:w-full [&_img]:object-contain [&_img]:[mask-image:linear-gradient(to_bottom,black_80%,transparent)]",
       },
     },
     defaultVariants: {
@@ -59,7 +61,7 @@ function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="empty-title"
       className={cn(
-        "font-heading text-sm font-medium tracking-tight",
+        "font-heading text-[15px] leading-5 font-medium",
         className
       )}
       {...props}

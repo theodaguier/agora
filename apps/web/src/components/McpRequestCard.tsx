@@ -158,7 +158,7 @@ export function McpRequestCard({ id }: { id: string }) {
   return (
     <BlockCard>
       <CardHeader>
-        <CardTitle className="font-semibold">{t.connector(req.title)}</CardTitle>
+        <CardTitle className="text-[15px] leading-[21px] font-medium">{t.connector(req.title)}</CardTitle>
         {req.description && <CardDescription>{req.description}</CardDescription>}
         <StatusLine tone={STATUS_TONE[req.status]} className="mt-1">
           {t.status[req.status]}
@@ -205,7 +205,7 @@ export function McpRequestCard({ id }: { id: string }) {
                 />
               )}
               <div className="flex flex-wrap items-center gap-3">
-                <Button size="sm" type="submit" disabled={busy}>
+                <Button type="submit" disabled={busy}>
                   {authorize.isPending ? c.inProgress : t.connectTo(req.title)}
                 </Button>
                 {oauth.status && <span className="text-sm text-muted-foreground">{oauth.status}</span>}
@@ -265,7 +265,7 @@ export function McpRequestCard({ id }: { id: string }) {
                 ))}
                 <FieldDescription className="text-xs">{t.secretsNote}</FieldDescription>
                 <div>
-                  <Button size="sm" type="submit" disabled={busy}>
+                  <Button type="submit" disabled={busy}>
                     {install.isPending ? t.connecting : t.connect}
                   </Button>
                 </div>
@@ -273,7 +273,7 @@ export function McpRequestCard({ id }: { id: string }) {
             </form>
           ) : req.error ? (
             <div>
-              <Button size="sm" disabled={busy} onClick={() => install.mutate({ env: {} })}>
+              <Button disabled={busy} onClick={() => install.mutate({ env: {} })}>
                 {install.isPending ? c.inProgress : c.retry}
               </Button>
             </div>
@@ -297,16 +297,16 @@ export function McpRequestCard({ id }: { id: string }) {
       {(decides || req.docsUrl) && (
         <BlockFooter>
           {req.docsUrl && (
-            <Button size="sm" variant="ghost" className="mr-auto" nativeButton={false} render={<a href={req.docsUrl} target="_blank" rel="noreferrer" />}>
+            <Button variant="ghost" className="mr-auto" nativeButton={false} render={<a href={req.docsUrl} target="_blank" rel="noreferrer" />}>
               {t.docs}
             </Button>
           )}
           {decides && (
             <>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => decide.mutate(false)}>
+              <Button variant="secondary" disabled={busy} onClick={() => decide.mutate(false)}>
                 {t.reject}
               </Button>
-              <Button size="sm" disabled={busy} onClick={() => decide.mutate(true)}>
+              <Button disabled={busy} onClick={() => decide.mutate(true)}>
                 {decide.isPending && decide.variables ? c.inProgress : t.approve}
               </Button>
             </>

@@ -28,12 +28,21 @@ export async function backup(label: string) {
       timeoutMs: 10 * 60_000,
     });
     await Bun.write(join(temporary, "db.sql"), dump.stdout);
+    const space = await must([
+      "docker", "run", "--rm", "--network=none", "-v", `${config.backupsVolume}:/backups:ro`,
+      "alpine", "sh", "-ec", "df -Pk /backups | awk 'END { print $4 }'",
+    ]);
+    const availableKiB = Number(space.stdout.trim());
+    const reserveKiB = 1024 * 1024;
+    if (!Number.isSafeInteger(availableKiB) || availableKiB <= reserveKiB) throw new Error("Not enough backup space (1 GiB reserve required)");
+    const limit = (availableKiB - reserveKiB) * 1024;
     // A timeout kills the docker client, not its container: remove the writer before its files.
     await withHermesPaused(() => must([
-      "docker", "run", "--rm", "--name", container,
+      "docker", "run", "--rm", "--name", container, "--cpus=1", "--memory=256m", "--ulimit", `fsize=${limit}:${limit}`,
       "-v", `${volumeName("hermes-data")}:/data:ro`,
       "-v", `${config.backupsVolume}:/backups`,
-      "alpine", "tar", "czf", `/backups/${basename(temporary)}/hermes-data.tgz`, ...CACHES.map((c) => `--exclude=${c}`), "-C", "/data", ".",
+      "alpine", "sh", "-c", 'set -o pipefail; tar -cf - "$@" -C /data . | gzip -1 > "$0"',
+      `/backups/${basename(temporary)}/hermes-data.tgz`, ...CACHES.map((c) => `--exclude=${c}`),
     ], { timeoutMs: 20 * 60_000 }));
     if (!(await complete(temporary))) throw new Error("Incomplete backup");
     await rename(temporary, dir);

@@ -6,13 +6,16 @@ import { basename, join } from "node:path";
 const root = await mkdtemp(join(tmpdir(), "agora-backups-test-"));
 const settings = { backupsDir: root, backupsVolume: "test-backups", keepBackups: 2 };
 let fail = false;
+let spaceKiB = "2097152";
+let pauses = 0;
 mock.module("./config", () => ({ config: settings }));
-mock.module("./prod", () => ({ withHermesPaused: (fn: () => Promise<unknown>) => fn() }));
+mock.module("./prod", () => ({ withHermesPaused: (fn: () => Promise<unknown>) => { pauses++; return fn(); } }));
 mock.module("./exec", () => ({
   compose: async () => ({ stdout: "-- test dump" }),
   volumeName: () => "test-data",
   run: async () => ({ code: 0 }),
   must: async (cmd: string[]) => {
+    if (cmd.includes("--network=none")) return { stdout: spaceKiB };
     if (fail) throw new Error("archive failed");
     const archive = cmd.find((arg) => arg.endsWith("/hermes-data.tgz"))!;
     await writeFile(join(root, basename(join(archive, "..")), "hermes-data.tgz"), "test archive");
@@ -22,6 +25,8 @@ const { backup, listBackups, pruneBackups } = await import("./backup");
 
 beforeEach(async () => {
   fail = false;
+  spaceKiB = "2097152";
+  pauses = 0;
   settings.keepBackups = 2;
   for (const name of await readdir(root)) await rm(join(root, name), { recursive: true, force: true });
 });
@@ -42,6 +47,16 @@ test("an archive failure removes its partial files and preserves usable backups"
   await expect(backup("app-0.44.2")).rejects.toThrow("archive failed");
   expect(await readdir(root)).toEqual([kept]);
   expect(await listBackups()).toEqual([kept]);
+});
+
+test("insufficient or invalid disk capacity fails before pausing Hermes", async () => {
+  const kept = await fixture("01");
+  for (const space of ["524288", "invalid", ""]) {
+    spaceKiB = space;
+    await expect(backup("app-0.45.1")).rejects.toThrow("backup space");
+  }
+  expect(pauses).toBe(0);
+  expect(await readdir(root)).toEqual([kept]);
 });
 
 test("a successful backup becomes visible only as a complete backup", async () => {

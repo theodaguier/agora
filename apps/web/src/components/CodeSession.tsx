@@ -1,9 +1,11 @@
+import { modelName } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { createContext, Fragment, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
+import { createContext, Fragment, memo, useCallback, useMemo, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
 import {
   CODE_ENGINE_NAMES,
   codeDetailLine,
+  codeExchanges,
   codeEngineModes,
   codeStatusText,
   nextCodeMode,
@@ -13,8 +15,9 @@ import {
   rankByQuery,
   type CodeApproval,
   type CodeBotQuestion,
+  type CodeExchange,
+  type CodeSessionDetail,
   type CodeEngine,
-  type CodeGit,
   type CodePermissionMode,
   type CodeQuestion,
   type CodeSession,
@@ -34,11 +37,9 @@ import {
   ChevronDownIcon,
   ClockIcon,
   ChevronRightIcon,
-  ChevronsRightIcon,
   CloseCircleIcon,
   CodeIcon,
   CopyIcon,
-  ExternalLinkIcon,
   MoreIcon,
   PlusIcon,
   ShieldAlertIcon,
@@ -58,11 +59,11 @@ import { GroupHeading, ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
-import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { ButtonGroup } from "@/components/ui/button-group";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Badge } from "@/components/ui/badge";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -83,7 +84,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormLabel } from "@/components/FormLabel";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -91,6 +92,12 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SlashMenu, type SlashItem } from "@/components/SlashMenu";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AgentAvatar } from "@/components/AgentAvatar";
+import { PersonAvatar } from "@/components/ConversationAvatar";
+import { BrandLogo } from "@/components/BrandLogo";
+import { conversationQuery } from "@/lib/queries";
+import type { AgentSummary, Person } from "@/lib/api";
 import { useT } from "@/i18n";
 import {
   answerCodeApproval,
@@ -129,12 +136,12 @@ const messages = codeSessions;
 
 const active = (s: CodeSessionStatus) => s === "running" || s === "waiting";
 
-/** A status's color, for its icon and its name: working in blue, waiting on someone in amber, done in green, failed in red. */
+/** A status's color, for its icon and its name: working in blue, waiting on someone in amber, failed in red; the rest neutral. */
 const statusTone: Record<CodeSessionStatus, string> = {
   running: "text-brand",
-  waiting: "text-warning",
+  waiting: "text-warning-foreground",
   idle: "text-foreground",
-  done: "text-success",
+  done: "text-muted-foreground",
   stopped: "text-muted-foreground",
   failed: "text-destructive",
 };
@@ -176,29 +183,40 @@ export function CodeSessionCard({
   const gone = !!data && !session;
   const status = session?.status ?? "running";
   const detail = session && codeDetailLine(session);
-  return (
-    <Item variant="outline" className={cn("my-1 w-full max-w-[min(680px,88%)] gap-3 rounded-2xl bg-background px-4 py-3 shadow-xs", className)}>
-      <ItemMedia className="size-9 rounded-[10px] bg-muted" title={session ? CODE_ENGINE_NAMES[session.engine] : t.claudeCode}>
-        <CodeIcon className="size-[18px]" />
-      </ItemMedia>
-      <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className="w-full truncate font-semibold">{session?.title ?? title}</ItemTitle>
-        <ItemDescription className="flex items-center gap-1.5 text-[13px]">
-          {session && <StatusIcon status={status} asking={!!session.question} className="size-3" />}
+  const card = (
+    // Figma « Carte de PR »: white, hairline, the engine's logo in a bordered tile, the title, where it stands, one grey pill.
+    <div className={cn("flex w-full max-w-[520px] items-center gap-3 rounded-[14px] border border-border bg-background p-3", !session?.question && className)}>
+      <EngineTile engine={session?.engine} />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <p className="truncate text-[15px] leading-[21px]">{session?.title ?? title}</p>
+        <p className="flex min-w-0 items-center gap-1.5 text-[13px] leading-[18px] text-muted-foreground">
+          {session && active(status) && <StatusIcon status={status} asking={!!session.question} className="size-3" />}
           <span className="truncate">
             {session ? codeStatusText(t, session) : gone ? t.gone : t.status[status]}
             {detail ? ` · ${detail}` : ""}
           </span>
-        </ItemDescription>
-      </ItemContent>
+        </p>
+      </div>
       {!gone && (
-        <ItemActions>
-          <Button variant="outline" size="sm" onClick={onOpen}>
-            {active(status) ? t.follow : t.open}
-          </Button>
-        </ItemActions>
+        <Button variant="secondary" onClick={onOpen}>
+          {active(status) ? t.follow : t.open}
+        </Button>
       )}
-    </Item>
+    </div>
+  );
+  if (!session?.question) return card;
+  // Figma « Échange »: its question to its bot, under the card, until it is answered.
+  return (
+    <div className={cn("flex w-full max-w-[520px] flex-col gap-1.5", className)}>
+      {card}
+      <p className="flex min-w-0 items-center gap-1.5 px-3 text-[13px] leading-[18px]">
+        <ModelLogo provider={session.engine === "codex" ? "codex" : session.engine === "cursor" ? "cursor" : "claude-code"} className="size-3.5 shrink-0" />
+        <span className="shrink-0 font-medium">{CODE_ENGINE_NAMES[session.engine]}</span>
+        <span className="min-w-0 truncate text-muted-foreground">
+          {t.view.asks} {session.question.text}
+        </span>
+      </p>
+    </div>
   );
 }
 
@@ -226,7 +244,7 @@ export function ReplyWithSessions({
   const parts = placeCodeSessions(text, sessions);
   const last = parts.at(-1);
   return (
-    <div className="flex min-w-0 flex-col gap-2">
+    <div className="flex min-w-0 flex-col gap-1">
       {parts.map((p) =>
         p.kind === "text" ? (
           <Fragment key={`text:${p.text.slice(0, 40)}:${p.text.length}`}>{bubble(p.text, !!streaming && p === last)}</Fragment>
@@ -237,7 +255,6 @@ export function ReplyWithSessions({
             sessionId={p.session.id}
             title={p.session.title}
             onOpen={() => onOpen(p.session.id)}
-            className="my-0 max-w-full"
           />
         ),
       )}
@@ -309,7 +326,7 @@ export function CodeSessionsButton({
         <TooltipTrigger
           render={
             <PopoverTrigger
-              render={<Button variant="ghost" size="icon" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden aria-pressed:bg-muted lg:inline-flex" />}
+              render={<Button variant="ghost" size="icon-sm" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden aria-pressed:bg-black/5 lg:inline-flex" />}
             />
           }
         >
@@ -494,7 +511,8 @@ export function CodeSessionPanel({
   const wide = useWide();
   const view = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <CodeSessionTabs conversationId={conversationId} tabs={tabs} active={active} onSelect={onSelect} onOpen={onOpen} onCloseTab={onCloseTab} />
+      {/* One session: no tab bar (the header button opens the others); two or more: their tabs. */}
+      {tabs.length > 1 && <CodeSessionTabs conversationId={conversationId} tabs={tabs} active={active} onSelect={onSelect} onOpen={onOpen} onCloseTab={onCloseTab} />}
       {tabs.map((id) => {
         const detach = wide && onDetach ? () => onDetach(id) : undefined;
         return (
@@ -512,14 +530,14 @@ export function CodeSessionPanel({
   if (!wide) {
     return (
       <Sheet open onOpenChange={(open) => !open && onClose()}>
-        <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:sm:max-w-xl">
+        <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:sm:max-w-2xl">
           <SheetTitle className="sr-only">{t.claudeCode}</SheetTitle>
           {view}
         </SheetContent>
       </Sheet>
     );
   }
-  return <aside className="flex h-full w-full flex-col bg-sidebar">{view}</aside>;
+  return <aside className="flex h-full w-full flex-col bg-background">{view}</aside>;
 }
 
 /**
@@ -548,7 +566,7 @@ function CodeSessionTabs({
   const canStart = engines.length > 0;
   const others = sessions.filter((s) => !tabs.includes(s.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return (
-    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b px-1.5">
+    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-1.5">
       {tabs.map((id) => {
         const session = sessions.find((s) => s.id === id);
         const title = session?.title ?? t.newSession;
@@ -686,13 +704,13 @@ function NewSessionView({
             {onDetach && <BesideButton onClick={onDetach} />}
             {onClose && (
               <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
-                {page ? <CloseIcon /> : <ChevronsRightIcon />}
+                <CloseIcon />
               </Button>
             )}
           </>
         }
       />
-      <div className="flex min-h-0 flex-1 border-t">
+      <div className="flex min-h-0 flex-1">
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">{start.isPending ? <Spinner /> : <ModelLogo provider={engine} />}</EmptyMedia>
@@ -701,16 +719,17 @@ function NewSessionView({
           </EmptyHeader>
         </Empty>
       </div>
-      <div className="shrink-0 px-3 pb-3 pt-2">
+      <div className="shrink-0 px-4 pb-4 pt-2">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             submit();
           }}
-          className="rounded-[22px] bg-secondary p-1.5"
+          // Like the conversation's composer (Figma « Composer »): white, hairline, a soft shadow.
+          className="rounded-[23px] border border-border bg-background p-1.5 shadow-card transition-[border-color] focus-within:border-black/15 dark:focus-within:border-white/20"
         >
           <PendingFiles items={files.files} onRemove={files.remove} />
-          <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent">
+          <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0">
             <InputGroupTextarea
               rows={2}
               value={text}
@@ -953,8 +972,15 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
   );
 }
 
-/** Everything the session did, live; its pending approval and the owner's field stay in view at the bottom. */
-/** `page`: a tab of its own, the close button closes it. */
+type SessionTab = "overview" | "changes" | "journal";
+
+/**
+ * A session, as wide as the conversation beside it: its header (state, branch, the bot that started
+ * it), then three tabs. Aperçu says where it stands: what it does now or its answer, its tasks, and
+ * what it and its bot said to each other. Modifications: its files and its pull request. Journal:
+ * every step. Its pending approval or question comes first in Aperçu and last in Journal; the
+ * owner's field stays at the bottom. `page`: a tab of its own, the close button closes it.
+ */
 function CodeSessionView({
   conversationId,
   sessionId,
@@ -972,16 +998,18 @@ function CodeSessionView({
   const c = useT(common);
   const { user } = useRouteContext({ from: "/app" });
   const { data: session } = useQuery(codeSessionQuery(conversationId, sessionId));
+  const { data: conv } = useQuery(conversationQuery(conversationId));
+  const agent = session?.agentId ? conv?.agents.find((a) => a.id === session.agentId) : undefined;
+  const [tab, setTab] = useState<SessionTab>("overview");
   const scroller = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   const follow = useRef(true);
-  // Follows the work while the reader stays at the bottom.
+  // The log follows the work while the reader stays at its bottom.
   useLayoutEffect(() => {
-    if (follow.current) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-  }, [session?.steps]);
+    if (tab === "journal" && follow.current) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+  }, [session?.steps, tab]);
 
   const owner = !!session && session.requestedBy === user.id;
-  // What the run waits for, after its last step: scrolled with them, so a long question never hides the steps.
   const approval = session?.approval;
   const pending =
     session && (approval || session.question) ? (
@@ -996,44 +1024,67 @@ function CodeSessionView({
         {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
       </>
     ) : null;
-  // A new one comes into view, even scrolled up: the run waits for it.
+  // A new one comes into view: Aperçu shows it first, the log scrolls to it.
   const waitingFor = approval?.id ?? session?.question?.text;
   useLayoutEffect(() => {
     if (!waitingFor) return;
     follow.current = true;
-    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+    if (tab === "journal") scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+    else setTab("overview");
   }, [waitingFor]);
   const composer = useRef<{ addFiles: (files: FileList) => void }>(null);
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
+  const changed = session?.git ? (session.git.files?.length ?? session.git.changes) : 0;
+  const branch = session?.git?.branch ?? session?.worktree?.branch;
+
   return (
     <div {...(owner && fileDrop((files) => composer.current?.addFiles(files)))} className="flex min-h-0 flex-1 flex-col">
       <PaneHeader
-        media={session && <StatusIcon status={session.status} asking={!!session.question} />}
+        media={<EngineTile engine={session?.engine} />}
         title={session?.title ?? t.claudeCode}
-        description={
-          session && (
-            <>
-              <StatusText session={session} />
-              {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
-              {session.activity && active(session.status) ? ` · ${session.activity}` : <UsageLine session={session} />}
-            </>
-          )
-        }
+        description={agent && t.view.launchedBy(agent.name)}
         actions={
           <>
             {session && <SessionDetails conversationId={conversationId} session={session} showModel={!owner} owner={owner} />}
             {onDetach && <BesideButton onClick={onDetach} />}
             {onClose && (
               <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
-                {page ? <CloseIcon /> : <ChevronsRightIcon />}
+                <CloseIcon />
               </Button>
             )}
           </>
         }
-      />
+      >
+        {session && (
+          <div className="flex min-w-0 flex-wrap gap-1.5 pt-1">
+            <Badge variant="secondary">
+              <StatusIcon status={session.status} asking={!!session.question} className="size-3" />
+              <StatusText session={session} />
+            </Badge>
+            {branch && (
+              <Badge variant="outline" className="max-w-full font-mono">
+                <BranchIcon />
+                <span className="truncate">{branch}</span>
+              </Badge>
+            )}
+          </div>
+        )}
+      </PaneHeader>
+      {session && (
+        <Tabs value={tab} onValueChange={(v) => setTab(v as SessionTab)} className="shrink-0 px-5 pb-2">
+          <TabsList>
+            <TabsTrigger value="overview">{t.view.overview}</TabsTrigger>
+            <TabsTrigger value="changes">
+              {t.view.changes}
+              {changed > 0 && <span className="tabular-nums text-muted-foreground">{changed}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="journal">{t.view.journal}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
 
       {!session ? (
-        <div className="flex min-h-0 flex-1 border-t">
+        <div className="flex min-h-0 flex-1">
           <Empty>
             <Spinner className="size-5 text-muted-foreground" />
           </Empty>
@@ -1042,19 +1093,24 @@ function CodeSessionView({
         <>
           {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
 
-          <div className="relative min-h-0 flex-1 border-t">
+          <div className="relative min-h-0 flex-1">
             <div
               ref={scroller}
               onScroll={(e) => {
+                if (tab !== "journal") return;
                 const el = e.currentTarget;
                 const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
                 follow.current = bottom;
                 setAtBottom(bottom);
               }}
               // Positioned, like the conversation's thread: its absolute elements stay within it.
-              className="relative h-full overflow-y-auto px-4 py-4"
+              className="relative h-full overflow-y-auto px-5 pt-2 pb-4"
             >
-              {session.steps.length === 0 && !pending ? (
+              {tab === "overview" ? (
+                <Overview conversationId={conversationId} session={session} agent={agent} members={conv?.members ?? []} owner={owner} pending={pending} />
+              ) : tab === "changes" ? (
+                <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
+              ) : session.steps.length === 0 && !pending ? (
                 <Empty className="h-full">
                   <EmptyHeader>
                     <EmptyMedia variant="icon">
@@ -1070,7 +1126,7 @@ function CodeSessionView({
                 </div>
               )}
             </div>
-            {!atBottom && (
+            {tab === "journal" && !atBottom && (
               <Button
                 variant="secondary"
                 size="sm"
@@ -1085,19 +1141,137 @@ function CodeSessionView({
             )}
           </div>
 
-          <div className="shrink-0 px-3 pb-3 pt-2">
-            {session.todos.length > 0 && <TodoBar todos={session.todos} running={session.status === "running"} />}
-            {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
-            {session.git && <ChangesBar conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} />}
-            {owner ? (
-              <SessionComposer ref={composer} conversationId={conversationId} session={session} />
-            ) : (
-              <p className="px-1 text-[13px] text-muted-foreground">{t.readOnly}</p>
-            )}
+          <div className="shrink-0 px-4 pt-2 pb-4">
+            {owner ? <SessionComposer ref={composer} conversationId={conversationId} session={session} /> : <p className="px-1 text-[13px] text-muted-foreground">{t.readOnly}</p>}
           </div>
         </>
       )}
     </div>
+  );
+}
+
+/** The engine's logo in a bordered tile (Figma « Carte de PR »). */
+function EngineTile({ engine, className }: { engine?: CodeEngine; className?: string }) {
+  return (
+    <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-border bg-background", className)} title={engine ? CODE_ENGINE_NAMES[engine] : undefined}>
+      <ModelLogo provider={engine === "codex" ? "codex" : engine === "cursor" ? "cursor" : "claude-code"} className="size-[22px]" />
+    </span>
+  );
+}
+
+/** A part of a tab: its legend, then what it holds. */
+function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
+  return (
+    <FieldSet className="gap-2">
+      <FieldLegend variant="label" className="mb-0 font-normal text-muted-foreground">
+        {title}
+      </FieldLegend>
+      {children}
+    </FieldSet>
+  );
+}
+
+/** Aperçu: what waits for an answer, what it does now (or its answer, once it rests), its tasks, its exchanges. */
+function Overview({
+  conversationId,
+  session,
+  agent,
+  members,
+  owner,
+  pending,
+}: {
+  conversationId: string;
+  session: CodeSessionDetail;
+  agent?: AgentSummary;
+  members: Person[];
+  owner: boolean;
+  pending: ReactNode;
+}) {
+  const t = useT(messages);
+  const v = t.view;
+  const running = session.status === "running";
+  const done = session.todos.filter((x) => x.status === "completed").length;
+  const exchanges = useMemo(() => codeExchanges(session.steps), [session.steps]);
+  const now = active(session.status) ? (session.activity ?? codeStatusText(t, session)) : session.status === "failed" || session.status === "stopped" ? codeStatusText(t, session) : null;
+  return (
+    <div className="flex flex-col gap-6">
+      {pending && <div className="flex flex-col gap-3">{pending}</div>}
+      {!pending && now && (
+        <Section title={v.now}>
+          <Item variant="muted" size="sm">
+            <ItemMedia variant="icon">
+              <StatusIcon status={session.status} asking={!!session.question} />
+            </ItemMedia>
+            <ItemContent className="min-w-0">
+              <ItemTitle className="line-clamp-2 font-normal">{now}</ItemTitle>
+            </ItemContent>
+          </Item>
+        </Section>
+      )}
+      {!active(session.status) && session.result && (
+        <Section title={v.answer}>
+          <MessageText text={session.result} className="text-[15px] leading-[21px]" />
+        </Section>
+      )}
+      {session.todos.length > 0 && (
+        <Section title={v.tasks(done, session.todos.length)}>
+          <ItemGroup className="gap-0 has-data-[size=xs]:gap-0">
+            {session.todos.map((todo) => (
+              <Item key={todo.id} size="xs" className="px-0 py-1.5">
+                <ItemMedia variant="icon">
+                  <TodoMark status={todo.status} running={running} />
+                </ItemMedia>
+                <ItemContent className="min-w-0">
+                  <ItemTitle className={cn("line-clamp-2 font-normal", todo.status === "completed" && "text-muted-foreground")}>
+                    {todo.status === "in_progress" && todo.activeForm && running ? todo.activeForm : todo.content}
+                  </ItemTitle>
+                </ItemContent>
+              </Item>
+            ))}
+          </ItemGroup>
+        </Section>
+      )}
+      {exchanges.length > 0 && (
+        <Section title={agent ? v.exchangesWith(agent.name) : v.instructions}>
+          <ItemGroup className="gap-1 has-data-[size=xs]:gap-1">
+            {exchanges.map((x) => (
+              <ExchangeRow key={x.id} exchange={x} engine={session.engine} agent={agent} members={members} />
+            ))}
+          </ItemGroup>
+        </Section>
+      )}
+      {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
+    </div>
+  );
+}
+
+/** One exchange: who, what it was (instruction, question, answer), then its words; a long one unfolds on a click. */
+function ExchangeRow({ exchange, engine, agent, members }: { exchange: CodeExchange; engine: CodeEngine; agent?: AgentSummary; members: Person[] }) {
+  const t = useT(messages);
+  const [open, setOpen] = useState(false);
+  const fromCode = exchange.kind === "question";
+  const person = !fromCode && exchange.by !== agent?.name ? members.find((m) => m.name === exchange.by) : undefined;
+  const who = fromCode ? CODE_ENGINE_NAMES[engine] : (exchange.by ?? t.claudeCode);
+  return (
+    <Item size="xs" className="items-start px-0">
+      <ItemMedia className="mt-0.5 size-5">
+        {fromCode ? (
+          <ModelLogo provider={engine === "codex" ? "codex" : engine === "cursor" ? "cursor" : "claude-code"} className="size-4" />
+        ) : person ? (
+          <PersonAvatar person={person} className="size-5 text-[8px]" />
+        ) : agent && exchange.by === agent.name ? (
+          <AgentAvatar agent={agent} className="size-5" />
+        ) : null}
+      </ItemMedia>
+      <ItemContent className="min-w-0">
+        <ItemDescription className="text-xs">
+          {who} · {t.view.kinds[exchange.kind]}
+        </ItemDescription>
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger className={cn("w-full text-left text-sm whitespace-pre-wrap break-words", !open && "line-clamp-3")}>{exchange.text}</CollapsibleTrigger>
+        </Collapsible>
+      </ItemContent>
+    </Item>
   );
 }
 
@@ -1135,12 +1309,6 @@ const usageTime = (u: NonNullable<CodeSession["usage"]>) => {
 };
 
 /** After the status: what the session cost and how long it ran; the detail in its details. */
-function UsageLine({ session }: { session: CodeSession }) {
-  const f = useFormat();
-  const u = session.usage;
-  return u ? <span className="tabular-nums">{` · ${f.cost(u.costUsd)} · ${usageTime(u)}`}</span> : null;
-}
-
 /**
  * The session's details, out of the header: its folder, what it consumed, the model for those who
  * cannot change it; for its owner, the account and the repository's credentials.
@@ -1178,7 +1346,7 @@ function SessionDetails({ conversationId, session, showModel, owner }: { convers
             <Item size="sm">
               <ItemContent className="min-w-0">
                 <ItemTitle>{t.model}</ItemTitle>
-                <ItemDescription>{session.model}</ItemDescription>
+                <ItemDescription>{session.model && modelName(session.model)}</ItemDescription>
               </ItemContent>
             </Item>
           )}
@@ -1233,7 +1401,7 @@ function WorktreeBanner({ conversationId, session, worktree }: { conversationId:
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { loading: t.removing, success: t.removed },
   });
-  if (worktree.removedAt) return active(session.status) ? null : <p className="mb-2 px-1 text-[13px] text-muted-foreground">{t.gone(worktree.branch)}</p>;
+  if (worktree.removedAt) return active(session.status) ? null : <p className="px-4 py-2.5 text-[13px] text-muted-foreground">{t.gone(worktree.branch)}</p>;
   // Its task is over: its PR merged, or closed without being merged.
   const closed = session.status === "idle" && session.git?.pr?.state === "closed";
   if (session.status !== "done" && !closed) return null;
@@ -1299,15 +1467,16 @@ const FILE_STATE = { added: "A", modified: "M", deleted: "D", renamed: "R" } as 
 const FILE_TONE = { added: "text-success", modified: "text-warning", deleted: "text-destructive", renamed: "text-muted-foreground" } as const;
 
 /**
- * Where the clone stands, docked above the field as in an IDE's agent panel: the branch, the files
- * changed with their lines, the pull request, and for the owner the next git action (commit, push,
- * PR, merge). A commit without a message gets one written by Claude Code from the diff.
+ * Modifications: the files changed and not committed, with their lines, and for the owner the field
+ * of the commit message (written by Claude Code from the diff when left empty); then the branch and
+ * its pull request, with the next git action (push, open the PR, pull, merge).
  */
-function ChangesBar({ conversationId, session, git, owner }: { conversationId: string; session: CodeSession; git: CodeGit; owner: boolean }) {
-  const t = useT(messages).git;
+function ChangesView({ conversationId, session, owner }: { conversationId: string; session: CodeSession; owner: boolean }) {
+  const all = useT(messages);
+  const t = all.git;
+  const v = all.view;
   const c = useT(common);
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [prDialog, setPrDialog] = useState(false);
   const run = useMutation({
@@ -1330,16 +1499,24 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
   });
   const generate = useMutation({
     mutationFn: () => writeCommitMessage(conversationId, session.id),
-    onSuccess: (m) => {
-      setMessage(m);
-      setOpen(true);
-    },
+    onSuccess: setMessage,
     meta: { error: t.failed },
   });
 
+  const git = session.git;
+  if (!git)
+    return (
+      <Empty className="pt-10">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <BranchIcon />
+          </EmptyMedia>
+          <EmptyTitle>{v.noChanges}</EmptyTitle>
+          <EmptyDescription>{v.noChangesHelp}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
   const files = git.files ?? [];
-  const added = files.reduce((n, f) => n + (f.added ?? 0), 0);
-  const removed = files.reduce((n, f) => n + (f.removed ?? 0), 0);
   const onBase = !!git.branch && git.branch === git.base;
   const pr = git.pr;
   const openPr = pr?.state === "open" ? pr : null;
@@ -1352,145 +1529,112 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
     }
   };
 
-  // The next thing to do with the branch, and what else can be done with it.
   type Action = { label: string; onSelect: () => void };
-  const canPush = git.github && !onBase && git.ahead > 0;
-  const canOpenPr = git.github && !onBase && !openPr && (git.ahead > 0 || git.pushed);
-  const actions: Action[] = !owner
-    ? []
-    : git.changes > 0
+  const commitActions: Action[] =
+    owner && git.changes > 0
       ? [
           { label: t.commit, onSelect: () => run.mutate([commitReq()]) },
           ...(git.github && !onBase ? [{ label: openPr ? t.commitPushPr(openPr.number) : t.commitPush, onSelect: () => run.mutate([commitReq(), { action: "push" }]) }] : []),
         ]
-      : [
-          ...(canOpenPr ? [{ label: t.openPr, onSelect: () => setPrDialog(true) }] : []),
-          ...(canPush ? [{ label: openPr ? t.pushPr(openPr.number) : t.push, onSelect: () => run.mutate([{ action: "push" }]) }] : []),
-          ...(git.pushed && git.behind > 0 ? [{ label: t.pull, onSelect: () => run.mutate([{ action: "pull" }]) }] : []),
-          ...(git.github && openPr && !canPush ? [{ label: t.merge, onSelect: () => void merge() }] : []),
-        ];
-  const [primary, ...more] = actions;
+      : [];
+  const canPush = git.github && !onBase && git.ahead > 0;
+  const canOpenPr = git.github && !onBase && !openPr && (git.ahead > 0 || git.pushed);
+  const branchActions: Action[] = !owner
+    ? []
+    : [
+        ...(canPush ? [{ label: t.push, onSelect: () => run.mutate([{ action: "push" }]) }] : []),
+        ...(canOpenPr ? [{ label: t.openPr, onSelect: () => setPrDialog(true) }] : []),
+        ...(git.pushed && git.behind > 0 ? [{ label: t.pull, onSelect: () => run.mutate([{ action: "pull" }]) }] : []),
+        ...(git.github && openPr && !canPush ? [{ label: t.merge, onSelect: () => void merge() }] : []),
+      ];
 
-  const summary = [
-    git.changes ? t.changes(git.changes) : null,
-    git.ahead ? t.ahead(git.ahead, git.pushed) : null,
+  const where = [
+    pr ? `${t.pr(pr.number)} · ${t.prState[pr.state]}` : git.branch,
+    git.ahead ? (git.pushed ? v.commits(git.ahead) : t.ahead(git.ahead, false)) : null,
     git.behind ? t.behind(git.behind) : null,
+    !pr && !git.ahead && !git.behind && !git.changes ? t.clean : null,
   ].filter(Boolean);
 
   return (
-    <Card size="sm" className="mb-2">
-      <Collapsible open={open} onOpenChange={setOpen} className="contents">
-        <CardHeader>
-          <CardTitle className="min-w-0">
-            <CollapsibleTrigger
-              disabled={!files.length && !(owner && git.changes)}
-              render={<Button variant="ghost" size="xs" className="-mx-2 max-w-full font-mono text-xs text-foreground" />}
-            >
-              {files.length > 0 && <ChevronRightIcon className={cn("text-muted-foreground transition-transform", open && "rotate-90")} />}
-              <BranchIcon className="text-muted-foreground" />
-              <span className="truncate">{git.branch ?? "?"}</span>
-            </CollapsibleTrigger>
-          </CardTitle>
-          <CardDescription className="truncate text-xs">
-            {summary.length ? summary.join(" · ") : t.clean}
-            {(added > 0 || removed > 0) && (
-              <span className="ml-2 font-mono tabular-nums">
-                <span className="text-success">+{added}</span> <span className="text-destructive">−{removed}</span>
-              </span>
-            )}
-          </CardDescription>
-          {(pr || primary) && (
-            <CardAction className="flex items-center gap-1.5">
-              {pr && (
-                <Badge variant="outline" render={<a href={pr.url} target="_blank" rel="noreferrer" title={pr.title} />}>
-                  {t.pr(pr.number)} · {t.prState[pr.state]}
-                  <ExternalLinkIcon />
-                </Badge>
-              )}
-              {primary && (
-                <Tooltip>
-                  <TooltipTrigger render={<ButtonGroup />}>
-                    <Button size="xs" disabled={busy} onClick={primary.onSelect}>
-                      {run.isPending ? c.inProgress : primary.label}
-                    </Button>
-                    {more.length > 0 && (
-                      <>
-                        <ButtonGroupSeparator />
-                        <DropdownMenu>
-                          <DropdownMenuTrigger render={<Button size="xs" aria-label={t.more} disabled={busy} />}>
-                            <ChevronDownIcon />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="min-w-52">
-                            {more.map((a) => (
-                              <DropdownMenuItem key={a.label} onClick={a.onSelect}>
-                                {a.label}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </>
-                    )}
-                  </TooltipTrigger>
-                  {working && <TooltipContent>{t.busy}</TooltipContent>}
-                </Tooltip>
-              )}
-            </CardAction>
-          )}
-        </CardHeader>
-
-        <CollapsibleContent render={<CardContent className="flex flex-col gap-3" />}>
+    <div className="flex flex-col gap-6">
+      {(git.changes > 0 || files.length > 0) && (
+        <Section title={v.uncommitted(git.changes)}>
           {files.length > 0 && (
-            <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
-              {files.map((f) => {
-                const slash = f.path.lastIndexOf("/");
-                return (
-                  <li key={f.path} className="flex items-center gap-2 text-xs" title={f.path}>
-                    <span className={cn("w-3 shrink-0 text-center font-mono font-medium", FILE_TONE[f.state])}>{FILE_STATE[f.state]}</span>
-                    <span className="min-w-0 flex-1 truncate font-mono">
-                      {f.path.slice(slash + 1)}
-                      {slash > 0 && <span className="ml-2 text-muted-foreground">{f.path.slice(0, slash)}</span>}
-                    </span>
-                    {f.added !== null && (
-                      <span className="shrink-0 font-mono tabular-nums">
-                        {f.added > 0 && <span className="text-success">+{f.added}</span>} {!!f.removed && <span className="text-destructive">−{f.removed}</span>}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-              {git.changes > files.length && <li className="text-xs text-muted-foreground">{t.moreFiles(git.changes - files.length)}</li>}
-            </ul>
+            <ItemGroup className="gap-0 has-data-[size=xs]:gap-0">
+              {files.map((f) => (
+                <Item key={f.path} size="xs" className="px-0" title={f.path}>
+                  <ItemMedia className={cn("w-3 font-mono text-xs font-medium", FILE_TONE[f.state])}>{FILE_STATE[f.state]}</ItemMedia>
+                  <ItemContent className="min-w-0">
+                    <ItemTitle className="w-full font-mono text-xs font-normal" dir="rtl">
+                      <bdi className="truncate">{f.path}</bdi>
+                    </ItemTitle>
+                  </ItemContent>
+                  {f.added !== null && (
+                    <ItemActions className="font-mono text-xs tabular-nums">
+                      {f.added > 0 && <span className="text-success">+{f.added}</span>}
+                      {!!f.removed && <span className="text-destructive">−{f.removed}</span>}
+                    </ItemActions>
+                  )}
+                </Item>
+              ))}
+              {git.changes > files.length && <ItemDescription className="text-xs">{t.moreFiles(git.changes - files.length)}</ItemDescription>}
+            </ItemGroup>
           )}
-          {owner && git.changes > 0 && (
-            <InputGroup className="items-end">
-              <InputGroupTextarea
-                rows={1}
-                value={message}
-                aria-label={t.message}
-                placeholder={t.messagePlaceholder}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !busy) {
-                    e.preventDefault();
-                    run.mutate([commitReq()]);
-                  }
-                }}
-                className="max-h-32 min-h-0 font-mono text-xs leading-5 md:text-xs"
-              />
-              <InputGroupAddon align="inline-end">
-                <Tooltip>
-                  <TooltipTrigger render={<InputGroupButton size="icon-xs" aria-label={t.generate} disabled={busy} onClick={() => generate.mutate()} />}>
-                    {generate.isPending ? <Spinner className="size-3.5" /> : <SparklesIcon />}
-                  </TooltipTrigger>
-                  <TooltipContent>{t.generate}</TooltipContent>
-                </Tooltip>
-              </InputGroupAddon>
-            </InputGroup>
+          {commitActions.length > 0 && (
+            <div className="flex items-end gap-2">
+              <InputGroup className="flex-1 items-end">
+                <InputGroupTextarea
+                  rows={1}
+                  value={message}
+                  aria-label={t.message}
+                  placeholder={t.messagePlaceholder}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !busy) {
+                      e.preventDefault();
+                      run.mutate([commitReq()]);
+                    }
+                  }}
+                  className="max-h-32 min-h-0 font-mono text-xs leading-5 md:text-xs"
+                />
+                <InputGroupAddon align="inline-end">
+                  <Tooltip>
+                    <TooltipTrigger render={<InputGroupButton size="icon-xs" aria-label={t.generate} disabled={busy} onClick={() => generate.mutate()} />}>
+                      {generate.isPending ? <Spinner className="size-3.5" /> : <SparklesIcon />}
+                    </TooltipTrigger>
+                    <TooltipContent>{t.generate}</TooltipContent>
+                  </Tooltip>
+                </InputGroupAddon>
+              </InputGroup>
+              <GitActions actions={commitActions} busy={busy} pending={run.isPending} working={working} />
+            </div>
           )}
-        </CollapsibleContent>
-      </Collapsible>
+        </Section>
+      )}
 
-      {owner && !git.github && <CardFooter className="text-xs text-muted-foreground">{t.noGithub}</CardFooter>}
+      <Section title={pr ? v.pullRequest : v.branch}>
+        <Item variant="outline">
+          <ItemMedia variant="image" className="rounded-[10px] border border-border">
+            <BrandLogo domain="github.com" fallback={<BranchIcon className="size-5 text-muted-foreground" />} className="size-[22px] dark:invert" />
+          </ItemMedia>
+          <ItemContent className="min-w-0">
+            <ItemTitle className={cn("w-full font-normal", !pr && "font-mono text-xs")}>
+              <span className="truncate">{pr?.title ?? git.branch ?? "?"}</span>
+            </ItemTitle>
+            <ItemDescription className="line-clamp-1">{where.join(" · ")}</ItemDescription>
+          </ItemContent>
+          <ItemActions>
+            {branchActions.length > 0 && <GitActions actions={branchActions} busy={busy} pending={run.isPending} working={working} />}
+            {pr && (
+              <Button variant="secondary" nativeButton={false} render={<a href={pr.url} target="_blank" rel="noreferrer" />}>
+                {all.open}
+              </Button>
+            )}
+          </ItemActions>
+        </Item>
+        {owner && !git.github && <FieldDescription>{t.noGithub}</FieldDescription>}
+      </Section>
+
       <PullRequestDialog
         open={prDialog}
         onClose={() => setPrDialog(false)}
@@ -1501,7 +1645,39 @@ function ChangesBar({ conversationId, session, git, owner }: { conversationId: s
         defaultBody={session.result ?? ""}
         onSubmit={(title, body) => run.mutate([{ action: "pr", title, body, draft: false }])}
       />
-    </Card>
+    </div>
+  );
+}
+
+/** The next git action as a grey pill, the others behind its arrow; unavailable while Claude Code works. */
+function GitActions({ actions, busy, pending, working }: { actions: { label: string; onSelect: () => void }[]; busy: boolean; pending: boolean; working: boolean }) {
+  const t = useT(messages).git;
+  const c = useT(common);
+  const [primary, ...more] = actions;
+  if (!primary) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<ButtonGroup />}>
+        <Button variant="secondary" disabled={busy} onClick={primary.onSelect}>
+          {pending ? c.inProgress : primary.label}
+        </Button>
+        {more.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="secondary" size="icon" aria-label={t.more} disabled={busy} />}>
+              <ChevronDownIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-52">
+              {more.map((a) => (
+                <DropdownMenuItem key={a.label} onClick={a.onSelect}>
+                  {a.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </TooltipTrigger>
+      {working && <TooltipContent>{t.busy}</TooltipContent>}
+    </Tooltip>
   );
 }
 
@@ -1559,6 +1735,8 @@ function PullRequestDialog(props: {
 /* ---------- steps ---------- */
 
 type ToolStepT = Extract<CodeStep, { kind: "tool" }>;
+/** Its question to its bot, a tool call for Claude Code: named in words here. */
+const ASK_BOT = "mcp__agora__ask_bot";
 type Block = { kind: "step"; step: Exclude<CodeStep, ToolStepT> } | { kind: "tools"; steps: ToolStepT[] };
 
 /** Consecutive tool calls read as one block; a subagent's steps go under its Task call. */
@@ -1658,8 +1836,8 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const row = (
     <>
       <ToolIcon name={step.name} className="size-3.5" />
-      <span className="shrink-0">{step.name}</span>
-      <span className="min-w-0 flex-1 truncate text-left font-mono text-xs text-foreground/80">{step.title !== step.name ? step.title : ""}</span>
+      <span className="shrink-0">{step.name === ASK_BOT ? t.view.kinds.question.replace(/^./, (c) => c.toUpperCase()) : step.name}</span>
+      <span className={cn("min-w-0 flex-1 truncate text-left text-foreground/80", step.name !== ASK_BOT && "font-mono text-xs")}>{step.title !== step.name ? step.title : ""}</span>
       <ToolStatus status={step.status} />
     </>
   );
@@ -2059,11 +2237,12 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
         e.preventDefault();
         submit();
       }}
-      className="relative rounded-[22px] bg-secondary p-1.5"
+      // Like the conversation's composer (Figma « Composer »): white, hairline, a soft shadow.
+      className="relative rounded-[23px] border border-border bg-background p-1.5 shadow-card transition-[border-color] focus-within:border-black/15 dark:focus-within:border-white/20"
     >
       {query !== null && items.length > 0 && <SlashMenu items={items} active={Math.min(highlight, items.length - 1)} onHover={setHighlight} onPick={pick} />}
       <PendingFiles items={files.files} onRemove={files.remove} />
-      <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent">
+      <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0">
         <InputGroupTextarea
           ref={area}
           rows={1}
@@ -2203,46 +2382,6 @@ function ModePicker({ engine, value, onSelect, disabled }: { engine: CodeEngine;
 
 /* ---------- task list ---------- */
 
-/**
- * Claude Code's task list, docked above the field as in its terminal: where it stands in one line,
- * each task on unfolding. Hidden once every task is done and the session rests.
- */
-function TodoBar({ todos, running }: { todos: CodeTodo[]; running: boolean }) {
-  const t = useT(messages).todos;
-  const [open, setOpen] = useState(true);
-  const done = todos.filter((x) => x.status === "completed").length;
-  const current = todos.find((x) => x.status === "in_progress");
-  if (done === todos.length && !running) return null;
-  return (
-    <Card size="sm" className="mb-2">
-      <Collapsible open={open} onOpenChange={setOpen} className="contents">
-        <CardHeader>
-          <CardTitle>
-            <CollapsibleTrigger aria-label={t.label(done, todos.length)} render={<Button variant="ghost" size="xs" className="-mx-2 text-foreground" />}>
-              <ChevronRightIcon className={cn("text-muted-foreground transition-transform", open && "rotate-90")} />
-              {t.title}
-              <span className="tabular-nums text-muted-foreground">{t.progress(done, todos.length)}</span>
-            </CollapsibleTrigger>
-          </CardTitle>
-          {current && !open && <CardDescription className="truncate text-xs">{current.activeForm ?? current.content}</CardDescription>}
-        </CardHeader>
-        <CollapsibleContent render={<CardContent />}>
-          <ul className="flex max-h-48 flex-col gap-1.5 overflow-y-auto">
-            {todos.map((todo) => (
-              <li key={todo.id} className="flex items-start gap-2 text-[13px]">
-                <TodoMark status={todo.status} running={running} />
-                <span className={cn("min-w-0 break-words", todo.status === "completed" && "text-muted-foreground line-through", todo.status === "in_progress" && "font-medium")}>
-                  {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </CollapsibleContent>
-      </Collapsible>
-    </Card>
-  );
-}
-
 function TodoMark({ status, running }: { status: CodeTodo["status"]; running: boolean }) {
   if (status === "completed") return <CheckCircleIcon className="mt-0.5 size-3.5 shrink-0 text-success" />;
   if (status === "in_progress" && running) return <Spinner className="mt-0.5 size-3.5 shrink-0" />;
@@ -2258,14 +2397,17 @@ function SessionModelPicker({ conversationId, session }: { conversationId: strin
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { success: t.modelChanged },
   });
-  return <CodeModelPicker conversationId={conversationId} engine={session.engine} value={session.model} onSelect={(model) => change.mutate(model)} />;
+  const { mutate } = change;
+  const onSelect = useCallback((model: string) => mutate(model), [mutate]);
+  return <CodeModelPicker conversationId={conversationId} engine={session.engine} value={session.model} onSelect={onSelect} />;
 }
 
 /**
  * A Claude Code model among the ones the owner may use: searchable, each with its vendor's logo, as
  * in the conversation's picker. Null: Claude Code's default.
  */
-function CodeModelPicker({ conversationId, engine, value, onSelect }: { conversationId: string; engine: CodeEngine; value: string | null; onSelect: (model: string) => void }) {
+// Memoized: a session at work updates at each step, and the open list must not be redrawn with it.
+const CodeModelPicker = memo(function CodeModelPicker({ conversationId, engine, value, onSelect }: { conversationId: string; engine: CodeEngine; value: string | null; onSelect: (model: string) => void }) {
   const t = useT(messages);
   const [open, setOpen] = useState(false);
   const { data: models = [] } = useQuery(codeModelsQuery(conversationId, engine));
@@ -2280,7 +2422,7 @@ function CodeModelPicker({ conversationId, engine, value, onSelect }: { conversa
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger render={<InputGroupButton size="sm" />} className="min-w-0 shrink gap-1.5">
         <ModelLogo provider={vendor} model={value ?? undefined} className="size-3.5" />
-        <span className="truncate">{current?.label ?? value ?? t.model}</span>
+        <span className="truncate">{current?.label ?? (value ? modelName(value) : t.model)}</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
         <Command defaultValue={key(current ?? list[0] ?? { id: "" })}>
@@ -2292,7 +2434,7 @@ function CodeModelPicker({ conversationId, engine, value, onSelect }: { conversa
                 <ModelOption
                   key={m.id}
                   value={key(m)}
-                  label={"label" in m && m.label ? m.label : m.id}
+                  label={"label" in m && m.label ? m.label : modelName(m.id)}
                   description={"description" in m ? m.description : undefined}
                   reasoning={"reasoning" in m ? m.reasoning : undefined}
                   logo={<ModelLogo model={m.id} provider={vendor} />}
@@ -2309,4 +2451,4 @@ function CodeModelPicker({ conversationId, engine, value, onSelect }: { conversa
       </PopoverContent>
     </Popover>
   );
-}
+});

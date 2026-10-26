@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { Typography } from "heroui-native";
 import { useState } from "react";
 import { useSaveAccess } from "@/components/admin/access";
 import { accessMessages } from "@/components/admin/access-summary";
@@ -8,6 +7,8 @@ import { AdminGate, ErrorAlert, LoadingRows, SearchBox, Section, SettingsScroll,
 import { PersonAvatar } from "@/components/conversation-avatar";
 import { adminAgentsQuery, adminUsersQuery } from "@/lib/admin";
 import { MenuButton } from "@/components/menus";
+import { EmptyState } from "@/components/empty-state";
+import { SearchIcon } from "@/components/icons";
 
 /* Access seen from one agent: who can use it. Same API as the web (each employee's agent list). */
 
@@ -60,7 +61,7 @@ export default function AgentAccess() {
               <LoadingRows rows={4} />
             )
           ) : shown.length === 0 ? (
-            <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-4 py-8">{t.noMatch}</Typography.Paragraph>
+            <EmptyState icon={SearchIcon} description={t.noMatch} />
           ) : (
             <Section title={t.people} footer={n === 0 ? t.nobody : n === people.length ? t.everyone : t.somePeople(n, people.length)}>
               {shown.map((u) => (

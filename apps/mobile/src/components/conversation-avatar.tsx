@@ -7,7 +7,6 @@ import { Animated, View } from "react-native";
 import Svg, { Circle, Defs, Mask, Path, Rect } from "react-native-svg";
 import { useResolveClassNames } from "uniwind";
 import { AgentAvatar, useSize } from "@/components/agent-avatar";
-import { avatarShapes } from "@/components/agent-avatar-shapes";
 import { Marble } from "@/components/marble";
 import { apiUrl, authHeaders } from "@/lib/api";
 import { availabilityLabel, isAway, useAvailability } from "@/lib/availability";
@@ -192,7 +191,8 @@ function GroupAvatar({ others, agentIds, size, status }: { others: Participant[]
   // The back avatar is cut along the silhouette of the front one, widened by a thin border.
   const small = size * 0.7;
   const front = others[1]!;
-  const d = front.kind === "agent" ? (avatarShapes[front.agent.avatar.shape] ?? avatarShapes.bean) : circlePath;
+  // Every avatar is a disc now (the agents' mascots too).
+  const d = circlePath;
   return (
     <View className="relative shrink-0" style={{ width: size, height: size }}>
       <MaskedView

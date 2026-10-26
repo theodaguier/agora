@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack } from "expo-router";
-import { Avatar, Button, Chip, ListGroup, Separator, SkeletonGroup, Tabs, Typography, useToast } from "heroui-native";
+import { Avatar, ListGroup, Separator, SkeletonGroup, Typography, useToast } from "heroui-native";
 import { Fragment, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { FilterTags } from "@/components/filter-tags";
 import { ColorDot, PersonAvatar } from "@/components/conversation-avatar";
 import { conversationTitle } from "@/components/participants";
 import { MentionText } from "@/components/mention";
@@ -21,6 +22,7 @@ import { PressableItem } from "@/components/people/section";
 import { CheckIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { usePullToRefresh, withTap } from "@/lib/haptics";
+import { EmptyState } from "@/components/empty-state";
 
 /* apps/web/src/screens/Inbox.tsx: the "…" menu of a row becomes a HeroUI Menu opened by a long press. */
 
@@ -43,8 +45,9 @@ const messages = defineMessages({
       "task.assigned": "assigned you a task",
       "task.done": "completed a task you created",
     } as Record<InboxKind, string>,
-    empty: "Nothing yet. Mentions, replies and tasks that concern you land here.",
-    emptyUnread: "You're all caught up.",
+    emptyTitle: "Nothing yet",
+    empty: "Mentions, replies and tasks that concern you land here.",
+    emptyUnread: "You're all caught up",
     showAll: "Show all",
     markedRead: "Marked as read",
     markedUnread: "Marked as unread",
@@ -68,8 +71,9 @@ const messages = defineMessages({
       "task.assigned": "t'a assigné une tâche",
       "task.done": "a terminé une tâche que tu as créée",
     },
-    empty: "Rien pour l'instant. Les mentions, réponses et tâches qui te concernent arrivent ici.",
-    emptyUnread: "Tout est lu.",
+    emptyTitle: "Rien pour l'instant",
+    empty: "Les mentions, réponses et tâches qui te concernent arrivent ici.",
+    emptyUnread: "Tout est lu",
     showAll: "Tout afficher",
     markedRead: "Marqué comme lu",
     markedUnread: "Marqué comme non lu",
@@ -126,16 +130,13 @@ export default function InboxScreen() {
       ))}
     </ListGroup>
   ) : !data?.items.length ? (
-    <View className="items-center gap-4 px-4 py-12">
-      <Typography color="muted" align="center">
-        {filter === "unread" ? t.emptyUnread : t.empty}
-      </Typography>
-      {filter === "unread" && (
-        <Button variant="secondary" onPress={withTap(() => setFilter("all"))}>
-          {t.showAll}
-        </Button>
-      )}
-    </View>
+    // Figma « État vide », Grand (web Inbox.tsx): the teal figurine with its notebook.
+    <EmptyState
+      mascot="teal"
+      title={filter === "unread" ? t.emptyUnread : t.emptyTitle}
+      description={filter === "unread" ? undefined : t.empty}
+      action={filter === "unread" ? { label: t.showAll, onPress: () => setFilter("all") } : undefined}
+    />
   ) : (
     <ListGroup className="overflow-hidden">
       {data.items.map((item, i) => (
@@ -163,32 +164,18 @@ export default function InboxScreen() {
           />
         }
       >
-        {/* The filter, as HeroUI's tabs example: List › Indicator › Triggers, then one Content per tab. */}
-        <Tabs
-          value={filter}
-          onValueChange={(v) => {
-            void Haptics.selectionAsync();
-            setFilter(v as Filter);
-          }}
-          className="gap-4 px-4"
-        >
-          <Tabs.List>
-            <Tabs.Indicator />
-            <Tabs.Trigger value="all">
-              <Tabs.Label>{t.all}</Tabs.Label>
-            </Tabs.Trigger>
-            <Tabs.Trigger value="unread">
-              <Tabs.Label>{t.unread}</Tabs.Label>
-              {unread > 0 && (
-                <Chip size="sm" variant="secondary" color="default">
-                  <Chip.Label>{unread}</Chip.Label>
-                </Chip>
-              )}
-            </Tabs.Trigger>
-          </Tabs.List>
-          <Tabs.Content value="all">{list}</Tabs.Content>
-          <Tabs.Content value="unread">{list}</Tabs.Content>
-        </Tabs>
+        <View className="gap-4">
+          <FilterTags
+            accessibilityLabel={t.title}
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { id: "all", label: t.all },
+              { id: "unread", label: unread > 0 ? `${t.unread} · ${unread}` : t.unread },
+            ]}
+          />
+          <View className="px-4">{list}</View>
+        </View>
       </ScrollView>
     </>
   );

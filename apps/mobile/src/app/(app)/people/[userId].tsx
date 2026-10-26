@@ -15,6 +15,8 @@ import { defineMessages, locale, tr } from "@/lib/i18n";
 import { useOpenDirect } from "@/lib/profile";
 import { userProfileQuery } from "@/lib/queries";
 import { dateFormat } from "@/lib/intl";
+import { EmptyState } from "@/components/empty-state";
+import { WarningIcon } from "@/components/icons";
 
 /* apps/web/src/components/ProfileSheet.tsx (Profile) and PersonPanel.tsx */
 
@@ -57,14 +59,7 @@ export default function PersonProfile() {
       <Stack.Screen options={{ title: "", headerTransparent: true, headerShadowVisible: false }} />
       <ScrollView contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="gap-6 px-4 pb-12">
         {error ? (
-          <View className="items-center gap-4 py-12">
-            <Typography color="muted" align="center">
-              {t.unavailable}
-            </Typography>
-            <Button variant="secondary" onPress={withTap(() => refetch())}>
-              {c.retry}
-            </Button>
-          </View>
+          <EmptyState icon={WarningIcon} description={t.unavailable} action={{ label: c.retry, onPress: () => refetch() }} />
         ) : !person ? (
           <SkeletonGroup isLoading isSkeletonOnly className="items-center gap-3 pt-2">
             <SkeletonGroup.Item className="size-24 rounded-full" />

@@ -1,5 +1,5 @@
 import GitHubLogo from "@lobehub/icons-static-svg/icons/github.svg?react";
-import { CheckIcon, CodeIcon, FolderIcon, GlobeIcon } from "@/components/icons";
+import { CheckIcon, CodeIcon, FolderIcon } from "@/components/icons";
 import { FILE_ICONS } from "@/lib/file-icons";
 import { useState, type ReactNode } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -16,9 +16,9 @@ const messages = defineMessages({
   fr: { copyPath: "Copier le chemin", copyName: "Copier le nom", copied: "Copié" },
 });
 
-const chipClass =
-  "rounded-[5px] bg-foreground/[0.07] px-1 py-px text-left font-mono text-[0.88em] box-decoration-clone hover:bg-foreground/[0.12]";
-const chipIcon = "mr-1 inline size-[1.05em] align-[-0.17em] text-muted-foreground";
+// Plain mono in the sentence, like the Figma thread: no tile, no icon; a light ground on hover says it can be clicked.
+const chipClass = "-mx-0.5 rounded-[4px] px-0.5 text-left font-mono text-[0.85em] box-decoration-clone hover:bg-foreground/[0.07]";
+const chipIcon = "hidden";
 
 /**
  * A file named in a message: a path, a name ("rapport.pdf") or a web address of a file.
@@ -138,9 +138,8 @@ export function PortChip({ url, children }: { url: string; children: ReactNode }
       target="_blank"
       rel="noreferrer noopener"
       title={url}
-      className="whitespace-nowrap rounded-[5px] bg-foreground/[0.07] px-1 py-px font-mono text-[0.88em] hover:bg-foreground/[0.12]"
+      className="-mx-0.5 whitespace-nowrap rounded-[4px] px-0.5 font-mono text-[0.85em] underline decoration-foreground/20 underline-offset-2 hover:bg-foreground/[0.07]"
     >
-      <GlobeIcon className="mr-1 inline size-[1.05em] align-[-0.17em] text-muted-foreground" />
       {children}
     </a>
   );
@@ -153,7 +152,7 @@ export function Swatch({ color }: { color: string }) {
 
 export function ColorValue({ color, children }: { color: string; children: ReactNode }) {
   return (
-    <span className="whitespace-nowrap font-mono text-[0.88em]">
+    <span className="whitespace-nowrap font-mono text-[0.85em]">
       {/^#[0-9a-f]{6,8}$/i.test(color) && <Swatch color={color} />}
       {children}
     </span>

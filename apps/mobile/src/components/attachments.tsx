@@ -252,7 +252,7 @@ export function FileCard({ a, className }: { a: Shown; className?: string }) {
       accessibilityLabel={t.download(a.name)}
       className={cn("w-64 max-w-full", className)}
     >
-      <Card className="rounded-[22px] border border-border bg-background p-3">
+      <Card className="rounded-[14px] border border-border bg-background p-3">
         <PressableFeedback.Highlight />
         <Card.Body className="flex-row items-center gap-3">
           <Surface variant="secondary" className="size-9 items-center justify-center rounded-[10px] p-0 shadow-none">

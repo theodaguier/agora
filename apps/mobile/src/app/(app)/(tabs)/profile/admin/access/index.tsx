@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, Stack } from "expo-router";
-import { ListGroup, Tabs, Typography } from "heroui-native";
+import { ListGroup, Tabs } from "heroui-native";
 import { useState } from "react";
 import { AgentStack } from "@/components/admin/access";
 import { accessMessages, accessSummary, agentSpec } from "@/components/admin/access-summary";
@@ -9,6 +9,8 @@ import { AgentAvatar } from "@/components/agent-avatar";
 import { PersonAvatar } from "@/components/conversation-avatar";
 import { adminAgentsQuery, adminUsersQuery } from "@/lib/admin";
 import { haptic } from "@/lib/haptics";
+import { EmptyState } from "@/components/empty-state";
+import { BotIcon } from "@/components/icons";
 
 /* apps/web/src/components/admin/Access.tsx: by person (like the web) or by agent. */
 
@@ -71,7 +73,7 @@ function AccessLists() {
           ))}
         </Section>
       ) : agents.data.length === 0 ? (
-        <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-4 py-8">{t.noAgents}</Typography.Paragraph>
+        <EmptyState icon={BotIcon} description={t.noAgents} />
       ) : (
         <Section>
           {agents.data.map((a) => {

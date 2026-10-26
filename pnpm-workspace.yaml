@@ -12,6 +12,9 @@ allowBuilds:
 # - source-map-js <1.2.2 (GHSA-68fv-2mgg-jv7q), through postcss. Drop once postcss requires it.
 # - shell-quote <1.11.0 (GHSA-pqg4-j6r4-53mv), through react-native's react-devtools-core. Drop once it requires it.
 # - @modelcontextprotocol/sdk <1.31.0 (GHSA-6qxp-vccf-f47h), through shadcn. Drop once shadcn requires it.
+# - body-parser <2.4.0, through the MCP SDK's express. Drop once express requires it.
+# - undici <7.30.1, through shadcn. Drop once shadcn requires it.
+# - zod <4.6.6, the MCP SDK's own (it accepts zod 3 or 4). Drop once the SDK resolves a fixed one by itself.
 overrides:
   source-map-js@<1.2.2: ^1.2.2
   shell-quote@<1.11.0: ^1.11.0
@@ -21,6 +24,8 @@ overrides:
   "undici@>=7.18.0 <7.30.1": ^7.30.1
   "ip-address@>=10.0.0 <10.7.4": ^10.7.4
   "fast-uri@>=3.0.0 <3.1.9": ^3.1.9
+  "@modelcontextprotocol/sdk>zod": ^4.6.7
+  "zod-to-json-schema>zod": ^4.6.7
 
 # Advisories with no published fix, that only come in through the mobile build tooling, never
 # the shipped app or the API. Drop each one once a fix ships.

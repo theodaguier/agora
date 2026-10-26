@@ -1,6 +1,7 @@
+import { PanelBar } from "@/components/PaneHeader";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
-import { ChevronsRightIcon, CloseIcon } from "@/components/icons";
+import { CloseIcon } from "@/components/icons";
 import { useRef, useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { confirmAction } from "@/lib/confirm";
@@ -8,8 +9,6 @@ import { useCurrentTaskTitle } from "@/components/WorkingOn";
 import { PersonAvatar, StatusAvatar, useStatusLabel } from "@/components/ConversationAvatar";
 import { conversationTitle, type Participant } from "@/lib/participants";
 import { Button } from "@/components/ui/button";
-import { ShortcutTooltip } from "@/components/Shortcuts";
-import { shortcuts } from "@/lib/shortcuts";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -139,17 +138,10 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
   });
 
   return (
-    <aside className="flex h-full w-full flex-col bg-sidebar">
-      <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-3">
-        <span className="text-[13px] font-medium text-muted-foreground">{t.group}</span>
-        <ShortcutTooltip label={t.hidePanel} shortcut={shortcuts.togglePanel}>
-          <Button variant="ghost" size="icon" aria-label={t.hidePanel} onClick={onClose}>
-            <ChevronsRightIcon />
-          </Button>
-        </ShortcutTooltip>
-      </div>
+    <aside className="flex h-full w-full flex-col bg-background">
+      <PanelBar title={t.group} closeLabel={t.hidePanel} onClose={onClose} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
         {editing ? (
           // Inline editing in the title's exact spot: Enter or clicking away saves, Escape cancels.
           <Input
@@ -183,7 +175,7 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
         )}
 
         <div className="mb-2 mt-5 flex items-center justify-between">
-          <h2 className="text-[13px] font-medium text-muted-foreground">{t.members(conv.members.length + conv.agents.length)}</h2>
+          <h2 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.members(conv.members.length + conv.agents.length)}</h2>
           <AddMembers conversation={conv} />
         </div>
 
