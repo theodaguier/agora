@@ -84,7 +84,24 @@ case "${1:-}" in
     # Never leave Hermes paused nor the copy on disk, even if this script fails.
     # set +e: under errexit, the unpause of a running Hermes (always the case at
     # the end) aborted the trap before the volume removal, and failed the run.
-    trap 'set +e; [ -n "$hermes" ] && docker unpause "$hermes" >/dev/null 2>&1; docker volume rm -f "$staging" >/dev/null 2>&1; true' EXIT
+    # Failed file snapshots still leave a successful DB snapshot. Apply retention on failure too,
+    # after removing staging, and retain the original failure status for systemd/monitoring.
+    trap 'status=$?; set +e; [ -n "$hermes" ] && docker unpause "$hermes" >/dev/null 2>&1; docker volume rm -f "$staging" >/dev/null 2>&1; if (( status != 0 )); then restic_run "$RESTIC_IMAGE" forget --host agora --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune; fi; exit "$status"' EXIT
+    # Estimate the same files the archive includes, on the destination's filesystem.
+    # Do this while Hermes is running: a full staging disk must never freeze the agents.
+    space="$(docker run --rm -v agora_hermes-data:/from:ro -v "$staging:/to:ro" alpine timeout 120 sh -ec '
+      set -o pipefail
+      bytes=$(find /from \( -type d \( -name node_modules -o -path /from/.bun/install/cache -o -path /from/.npm -o -path /from/.cache -o -path /from/.local/share/pnpm \) \) -prune -o -type f -exec stat -c %s {} + | awk "{ n += \$1 } END { printf \"%.0f\", n }")
+      available=$(df -Pk /to | awk "END { print \$4 }")
+      # Ten percent and 64 MiB for metadata, block allocation and growth during the estimate.
+      awk -v bytes="$bytes" -v available="$available" "BEGIN { printf \"%.0f %.0f\\n\", int((bytes * 1.1 + 67108864) / 1024) + 1, available }"
+    ')" || { echo "Cannot estimate backup space: Hermes was not paused." >&2; exit 1; }
+    read -r needed available <<< "$space"
+    [[ "$needed" =~ ^[0-9]+$ && "$available" =~ ^[0-9]+$ ]] || { echo "Invalid backup space estimate." >&2; exit 1; }
+    if (( available < needed )); then
+      echo "Not enough space for the Hermes snapshot: need $needed KiB, available $available KiB. Hermes was not paused." >&2
+      exit 1
+    fi
     [ -n "$hermes" ] && docker pause "$hermes" >/dev/null
     copied=true
     docker run --rm -v agora_hermes-data:/from:ro -v "$staging:/to" alpine sh -c '

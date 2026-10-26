@@ -1,5 +1,5 @@
 import { unlink } from "node:fs/promises";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import { renderEvent, type ConversationEvent } from "@agora/core";
 import { publishToConversation, publishToUser } from "./events";
@@ -31,29 +31,32 @@ export const agentAuthor = (a: AgentRow): Author => ({
   avatar: { shape: a.avatarShape, color: a.avatarColor },
 });
 
-export const toDto = (m: MessageRow, author: Author) => ({
+export const toDto = (m: MessageRow, author: Author, createdAt = m.createdAt.toISOString()) => ({
   id: m.id,
   kind: m.kind,
   text: m.text,
   data: m.data,
-  createdAt: m.createdAt,
+  createdAt,
   author,
 });
 
 export type MessageDto = ReturnType<typeof toDto>;
 
+// A JS Date truncates microseconds: REST and SSE must carry the same ordering precision.
+const preciseTimestamp = sql<string>`to_char(${message.createdAt}, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 const authorColumns = {
   message,
+  timestamp: preciseTimestamp,
   userName: user.name,
   userImage: user.image,
   agent,
 };
 
-function withAuthor(r: { message: MessageRow; userName: string | null; userImage: string | null; agent: AgentRow | null }) {
+function withAuthor(r: { message: MessageRow; timestamp: string; userName: string | null; userImage: string | null; agent: AgentRow | null }) {
   const m = r.message;
-  if (m.authorUserId && r.userName) return toDto(m, userAuthor({ id: m.authorUserId, name: r.userName, image: r.userImage }));
-  if (m.authorAgentId && r.agent) return toDto(m, agentAuthor(r.agent));
-  return toDto(m, null);
+  if (m.authorUserId && r.userName) return toDto(m, userAuthor({ id: m.authorUserId, name: r.userName, image: r.userImage }), r.timestamp);
+  if (m.authorAgentId && r.agent) return toDto(m, agentAuthor(r.agent), r.timestamp);
+  return toDto(m, null, r.timestamp);
 }
 
 /** The latest messages of a conversation, oldest to newest, with their authors. */
@@ -64,7 +67,7 @@ export async function listMessages(conversationId: string, limit = 500) {
     .leftJoin(user, eq(user.id, message.authorUserId))
     .leftJoin(agent, eq(agent.id, message.authorAgentId))
     .where(eq(message.conversationId, conversationId))
-    .orderBy(sql`${message.createdAt} desc`)
+    .orderBy(desc(message.createdAt), desc(message.id))
     .limit(limit);
   return rows.reverse().map(withAuthor);
 }
@@ -83,7 +86,7 @@ export async function unseenMessages(conversationId: string, agentId: string, tr
     .leftJoin(user, eq(user.id, message.authorUserId))
     .leftJoin(agent, eq(agent.id, message.authorAgentId))
     .where(and(eq(message.conversationId, conversationId), sql`${message.createdAt} <= ${until}`, sql`${message.createdAt} > ${after}`))
-    .orderBy(sql`${message.createdAt} desc`)
+    .orderBy(desc(message.createdAt), desc(message.id))
     .limit(limit);
   return rows.reverse().map(withAuthor);
 }
@@ -108,14 +111,14 @@ export async function getMessages(conversationId: string, ids: string[]) {
     .leftJoin(user, eq(user.id, message.authorUserId))
     .leftJoin(agent, eq(agent.id, message.authorAgentId))
     .where(and(eq(message.conversationId, conversationId), inArray(message.id, ids)))
-    .orderBy(message.createdAt);
+    .orderBy(message.createdAt, message.id);
   return rows.map(withAuthor);
 }
 
 /** Saves a message and pushes it to the conversation's members. */
 export async function postMessage(values: typeof message.$inferInsert, author: Author) {
-  const [row] = await db.insert(message).values(values).returning();
-  const dto = toDto(row!, author);
+  const [row] = await db.insert(message).values(values).returning({ ...getTableColumns(message), timestamp: preciseTimestamp });
+  const dto = toDto(row!, author, row!.timestamp);
   await db.update(schema.conversation).set({ updatedAt: new Date() }).where(eq(schema.conversation.id, row!.conversationId));
   await publishToConversation(row!.conversationId, { type: "message.created", conversationId: row!.conversationId, message: dto });
   await quietly(notifyMessage(row!));
