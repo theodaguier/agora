@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.1 — 2026-10-26
+
+### Fixes
+- stabiliser les réponses, les intégrations MCP et les sauvegardes web
+
 ## v0.45.0 — 2026-10-26
 
 ### Features
