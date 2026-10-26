@@ -89,7 +89,7 @@ export function ViewCard(props: {
     <BlockCard className={cn(view.kind === "list" && "gap-3")}>
       <CardHeader>
         {/* A chart's title is its conclusion, a sentence: it wraps rather than being cut. */}
-        <CardTitle className={cn("font-semibold text-pretty", view.kind === "chart" || view.kind === "stats" ? "line-clamp-2" : "truncate")}>
+        <CardTitle className={cn("text-[15px] leading-[21px] font-medium text-pretty", view.kind === "chart" || view.kind === "stats" ? "line-clamp-2" : "truncate")}>
           {view.title || t.types[view.type]}
         </CardTitle>
         {subtitle && <CardDescription className="text-pretty">{subtitle}</CardDescription>}

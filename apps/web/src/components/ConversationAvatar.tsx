@@ -1,9 +1,7 @@
 import type { AgentSummary, Person } from "../lib/api";
-import BoringAvatar from "boring-avatars";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "./AgentAvatar";
-import { avatarShapes } from "../lib/agent-avatar";
-import { othersOf, type Participant } from "@/lib/participants";
+import { initials, othersOf, type Participant } from "@/lib/participants";
 import { defineMessages, useT } from "@/i18n";
 import { conversations } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
@@ -16,10 +14,14 @@ const messages = defineMessages({
   fr: { justYou: conversations.fr.justYou, online: "En ligne", working: "Au travail", workingNow: "Au travail…" },
 });
 
-/** Colleague: photo if there is one, otherwise a marble generated from their id. */
+/** Colleague: photo if there is one, otherwise their initials on a neutral disc (never a coloured gradient). */
 export function PersonAvatar({ person, className }: { person: Person; className?: string }) {
   if (person.image) return <img src={person.image} alt="" className={cn("shrink-0 rounded-full object-cover", className ?? "size-10")} />;
-  return <BoringAvatar variant="marble" name={person.id} size="100%" className={cn("shrink-0 rounded-full", className ?? "size-10")} aria-hidden />;
+  return (
+    <span aria-hidden className={cn("@container inline-flex shrink-0 items-center justify-center rounded-full bg-black/6 font-medium dark:bg-white/10 text-[oklch(0.43_0.01_286)] dark:text-muted-foreground", className ?? "size-10")}>
+      <span className="text-[clamp(8px,calc(18cqw+6px),15px)] leading-none">{initials(person.name)}</span>
+    </span>
+  );
 }
 
 export function ParticipantAvatar({ p, className }: { p: Participant; className?: string }) {
@@ -94,12 +96,15 @@ export function ConversationAvatar({
   className,
   status,
 }: {
-  conversation: { kind: string; members: Person[]; agents: AgentSummary[] };
+  conversation: { kind: string; title?: string | null; members: Person[]; agents: AgentSummary[] };
   me: string;
   className?: string;
   status?: string;
 }) {
   const others = othersOf(conversation, me);
+  // A named group: its initials on a neutral disc, like a colleague without a photo.
+  if (conversation.kind === "group" && conversation.title)
+    return <PersonAvatar person={{ id: conversation.title, name: conversation.title, image: null }} className={className} />;
   if (conversation.kind !== "group" || others.length < 2) {
     const first = others[0];
     if (!first) return <span className={cn("shrink-0 rounded-full bg-secondary", className ?? "size-10")} />;
@@ -134,8 +139,8 @@ const circlePath = "M16 0a16 16 0 1 1 0 32a16 16 0 0 1 0-32Z";
  * whatever the background (hovered row, selected…); a colored ring would not follow it.
  * Coordinates: back avatar = 100 × 100, front one offset by 42.9 at the same scale (70% each).
  */
-function cutout(front: Participant) {
-  const d = front.kind === "agent" ? (avatarShapes[front.agent.avatar.shape] ?? avatarShapes.bean) : circlePath;
+function cutout(_front: Participant) {
+  const d = circlePath;
   const svg =
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><mask id='m'>" +
     "<rect width='100' height='100' fill='white'/>" +

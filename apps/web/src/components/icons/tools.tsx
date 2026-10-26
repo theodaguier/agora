@@ -103,7 +103,7 @@ export const BrowserIcon = createIcon("browser", {
 });
 
 export const CursorClickIcon = createIcon("cursor-click", {
-  solid: (
+  fill: (
     <path d="M10.3 10.9c-.3-.8.5-1.6 1.3-1.3l8.3 3.1c.9.3.9 1.6 0 1.9l-3.2 1.1a1.2 1.2 0 0 0-.8.8l-1.1 3.2c-.3.9-1.6.9-1.9 0z" />
   ),
   line: <path d="M9 2.5V5M3.8 4.8L5.6 6.6M2.5 9H5" />,
@@ -127,12 +127,12 @@ export const ImageGenerateIcon = createIcon("image-generate", {
 });
 
 export const SpeakerIcon = createIcon("speaker", {
-  solid: <path d="M2.5 10a2 2 0 0 1 2-2h2.3L11 4.2c.6-.5 1.5-.1 1.5.7v14.2c0 .8-.9 1.2-1.5.7L6.8 16H4.5a2 2 0 0 1-2-2z" />,
+  fill: <path d="M2.5 10a2 2 0 0 1 2-2h2.3L11 4.2c.6-.5 1.5-.1 1.5.7v14.2c0 .8-.9 1.2-1.5.7L6.8 16H4.5a2 2 0 0 1-2-2z" />,
   line: <path d="M16 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11" />,
 });
 
 export const IdeaIcon = createIcon("idea", {
-  solid: <path d="M15.3 17c0-1.6.8-2.4 1.9-3.6a6.8 6.8 0 1 0-10.4 0C7.9 14.6 8.7 15.4 8.7 17z" />,
+  fill: <path d="M15.3 17c0-1.6.8-2.4 1.9-3.6a6.8 6.8 0 1 0-10.4 0C7.9 14.6 8.7 15.4 8.7 17z" />,
   line: <path d="M9 19.5h6M10.5 22h3" />,
 });
 
@@ -159,7 +159,7 @@ export const ClipboardCheckIcon = createIcon("clipboard-check", {
 });
 
 export const MagicWandIcon = createIcon("magic-wand", {
-  solid: <path d="M17 2.5c.35 2.2 1.3 3.15 3.5 3.5-2.2.35-3.15 1.3-3.5 3.5-.35-2.2-1.3-3.15-3.5-3.5 2.2-.35 3.15-1.3 3.5-3.5z" />,
+  fill: <path d="M17 2.5c.35 2.2 1.3 3.15 3.5 3.5-2.2.35-3.15 1.3-3.5 3.5-.35-2.2-1.3-3.15-3.5-3.5 2.2-.35 3.15-1.3 3.5-3.5z" />,
   line: <path d="M3 21l10-10M9 3v2.5M7.75 4.25h2.5M19.5 13v2.5M18.25 14.25h2.5" />,
 });
 
@@ -176,13 +176,13 @@ export const ChatQuestionIcon = createIcon("chat-question", {
 });
 
 export const DelegateIcon = createIcon("delegate", {
-  solid: (
+  fill: (
     <>
-      <circle cx="12" cy="5" r="3" />
       <circle cx="5.5" cy="19" r="3" />
       <circle cx="18.5" cy="19" r="3" />
     </>
   ),
+  solid: <circle cx="12" cy="5" r="3" />,
   line: <path d="M12 8v4M5.5 16v-1a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v1" />,
 });
 

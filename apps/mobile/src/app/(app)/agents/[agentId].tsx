@@ -6,16 +6,18 @@ import { Button, SkeletonGroup, Typography, useToast } from "heroui-native";
 import { ScrollView, View } from "react-native";
 import { AgentActivity, ConversationRoutines } from "@/components/agents/agent-activity";
 import { AgentScreen } from "@/components/agents/agent-screen";
-import { ProfileHeader } from "@/components/people/profile-header";
+import { Image } from "expo-image";
+import { mascotOf } from "@/components/agent-avatar";
+import { headerIcon } from "@/components/header-button";
 import { TaskSection } from "@/components/people/task-section";
 import { useMe } from "@/components/server-scope";
 import { agentHref } from "@/lib/agents-admin";
 import { defineMessages, locale, tr } from "@/lib/i18n";
 import { agentProfileQuery, useOpenDirect } from "@/lib/profile";
-import { SlidersIcon } from "@/components/icons";
-import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 import { dateFormat } from "@/lib/intl";
+import { EmptyState } from "@/components/empty-state";
+import { WarningIcon } from "@/components/icons";
 
 /*
  * apps/web/src/components/ProfileSheet.tsx (BotProfile). Opened from a conversation with the bot
@@ -31,7 +33,7 @@ const messages = defineMessages({
     botSince: (date: string) => `Bot · since ${date}`,
     botTasks: "Tasks it created",
     noBotTasks: "It hasn't created any tasks yet.",
-    editBot: "Edit the bot",
+    edit: "Edit",
   },
   fr: {
     unavailable: "Profil indisponible.",
@@ -40,7 +42,7 @@ const messages = defineMessages({
     botSince: (date: string) => `Bot · depuis ${date}`,
     botTasks: "Tâches qu'il a créées",
     noBotTasks: "Il n'a encore créé aucune tâche.",
-    editBot: "Modifier le bot",
+    edit: "Modifier",
   },
 });
 
@@ -56,22 +58,15 @@ export default function BotProfile() {
   return (
     <>
       <Stack.Screen options={{ title: "", headerTransparent: true, headerShadowVisible: false }} />
-      {/* Admins jump to the bot's settings (Profile › Administration › Agents). */}
-      {admin && (
+      {/* Opened from its conversation, the page is a sheet (Figma « Fiche de l'agent »): a close button. */}
+      {!!conversationId && (
         <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button icon={headerIcon.sliders} iconRenderingMode="template" accessibilityLabel={t.editBot} onPress={withTap(() => router.push(agentHref(agentId)))} />
+          <Stack.Toolbar.Button icon={headerIcon.close} iconRenderingMode="template" accessibilityLabel={c.close} onPress={withTap(() => router.back())} />
         </Stack.Toolbar>
       )}
       <ScrollView contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="gap-6 px-4 pb-12">
         {error ? (
-          <View className="items-center gap-4 py-12">
-            <Typography color="muted" align="center">
-              {t.unavailable}
-            </Typography>
-            <Button variant="secondary" onPress={withTap(() => refetch())}>
-              {c.retry}
-            </Button>
-          </View>
+          <EmptyState icon={WarningIcon} description={t.unavailable} action={{ label: c.retry, onPress: () => refetch() }} />
         ) : !agent ? (
           <SkeletonGroup isLoading isSkeletonOnly className="items-center gap-3 pt-2">
             <SkeletonGroup.Item className="size-24 rounded-full" />
@@ -81,26 +76,42 @@ export default function BotProfile() {
           </SkeletonGroup>
         ) : (
           <>
-            <ProfileHeader
-              p={{ kind: "agent", agent }}
-              name={agent.name}
-              subtitle={t.botSince(dateFormat(locale, { month: "long", year: "numeric" }).format(new Date(agent.createdAt)))}
-            >
-              {/* You may write to it, once it's configured. */}
-              {agent.access && !agent.onboarding && (
-                <View className="mt-4 w-full">
-                  <Button
-                    isDisabled={open.isPending}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      open.mutate({ agentId: agent.id }, { onError: () => toast.show({ variant: "danger", label: t.openFailed }) });
-                    }}
-                  >
-                    {t.message}
-                  </Button>
+            {/* Figma « Fiche de l'agent »: its clay portrait, its name, its actions as grey pills. */}
+            <View className="flex-row items-center gap-4 pt-2">
+              <Image source={mascotOf(agent.avatar.color).figure} contentFit="cover" className="size-[104px] rounded-2xl" accessibilityIgnoresInvertColors />
+              <View className="min-w-0 flex-1 gap-2">
+                <View className="gap-0.5">
+                  <Typography.Heading type="h4" numberOfLines={1}>
+                    {agent.name}
+                  </Typography.Heading>
+                  <Typography type="body-sm" color="muted" numberOfLines={1}>
+                    {t.botSince(dateFormat(locale, { month: "long", year: "numeric" }).format(new Date(agent.createdAt)))}
+                  </Typography>
                 </View>
-              )}
-            </ProfileHeader>
+                <View className="flex-row flex-wrap gap-2">
+                  {/* You may write to it, once it's configured; not from its own conversation. */}
+                  {!conversationId && agent.access && !agent.onboarding && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      isDisabled={open.isPending}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        open.mutate({ agentId: agent.id }, { onError: () => toast.show({ variant: "danger", label: t.openFailed }) });
+                      }}
+                    >
+                      {t.message}
+                    </Button>
+                  )}
+                  {/* Admins jump to the bot's settings (Profile › Administration › Agents). */}
+                  {admin && (
+                    <Button size="sm" variant="secondary" onPress={withTap(() => router.push(agentHref(agentId)))}>
+                      {t.edit}
+                    </Button>
+                  )}
+                </View>
+              </View>
+            </View>
 
             {conversationId ? (
               <>

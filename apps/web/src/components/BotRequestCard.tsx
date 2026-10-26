@@ -51,7 +51,7 @@ export function BotRequestCard({ id }: { id: string }) {
   return (
     <BlockCard>
       <CardHeader>
-        <CardTitle className="font-semibold">{t.title(req.bots.length)}</CardTitle>
+        <CardTitle className="text-[15px] leading-[21px] font-medium">{t.title(req.bots.length)}</CardTitle>
         {req.reason && <CardDescription>{req.reason}</CardDescription>}
         <StatusLine tone={STATUS_TONE[req.status]} className="mt-1">
           {t.status[req.status]}
@@ -76,10 +76,10 @@ export function BotRequestCard({ id }: { id: string }) {
       </CardContent>
       {decides && (
         <BlockFooter>
-          <Button size="sm" variant="ghost" disabled={decide.isPending} onClick={() => decide.mutate(false)}>
+          <Button variant="secondary" disabled={decide.isPending} onClick={() => decide.mutate(false)}>
             {t.reject}
           </Button>
-          <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate(true)}>
+          <Button disabled={decide.isPending} onClick={() => decide.mutate(true)}>
             {decide.isPending && decide.variables ? c.inProgress : req.error ? c.retry : t.approve}
           </Button>
         </BlockFooter>

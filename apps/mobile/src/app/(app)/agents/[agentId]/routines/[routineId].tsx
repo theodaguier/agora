@@ -2,7 +2,7 @@ import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { Button, Chip, Description, Input, Label, ListGroup, Radio, RadioGroup, Separator, SkeletonGroup, Surface, TextField, Typography, useToast } from "heroui-native";
+import { Chip, Description, Input, Label, ListGroup, Radio, RadioGroup, Separator, SkeletonGroup, Surface, TextField, Typography, useToast } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -13,9 +13,10 @@ import { refreshRoutines, routinePath } from "@/lib/profile";
 import { routinesQuery, type Routine } from "@/lib/queries";
 import { parseFrequency, scheduleOf, weekdays, type Frequency } from "@/lib/routines";
 import { OptionPicker } from "@/components/menus";
-import { CheckIcon, CloseIcon } from "@/components/icons";
+import { CheckIcon, ClockIcon, CloseIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { haptic, withTap } from "@/lib/haptics";
+import { EmptyState } from "@/components/empty-state";
 
 /* RoutineDialog of apps/web/src/components/RoutineDialog.tsx, as a sheet. */
 
@@ -69,14 +70,7 @@ export default function RoutineSheet() {
           <SkeletonGroup.Item className="h-48 w-full rounded-2xl" />
         </SkeletonGroup>
       ) : (
-        <View className="items-center gap-4 px-6 py-12">
-          <Typography color="muted" align="center">
-            {messages.gone}
-          </Typography>
-          <Button variant="secondary" onPress={withTap(() => router.back())}>
-            {tr(common).close}
-          </Button>
-        </View>
+        <EmptyState icon={ClockIcon} description={messages.gone} action={{ label: tr(common).close, onPress: () => router.back() }} />
       )}
     </>
   );

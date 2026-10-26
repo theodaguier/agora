@@ -39,6 +39,20 @@ export function dividerLabel(date: Date) {
   return `${prefix} ${time.format(date)}`;
 }
 
+const weekday = new Intl.DateTimeFormat(locale, { weekday: "short" });
+
+/** Time of a conversation list row: "10:44" today, "ven." this week, "24 oct." before. */
+export function listTime(date: Date) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - d.getTime()) / 86_400_000);
+  if (diff <= 0) return time.format(date);
+  if (diff < 7) return weekday.format(date);
+  return day.format(date);
+}
+
 /** A separator when more than an hour separates two messages. */
 export const needsDivider = (prev: Date | undefined, next: Date) => !prev || next.getTime() - prev.getTime() > 3_600_000;
 

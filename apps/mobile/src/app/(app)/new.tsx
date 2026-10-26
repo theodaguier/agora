@@ -3,13 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Avatar, Checkbox, Chip, Input, Label, ListGroup, ScrollShadow, SearchField, Spinner, TextField, Typography, useToast } from "heroui-native";
+import { Avatar, Checkbox, Chip, Input, Label, ListGroup, ScrollShadow, SearchField, Spinner, TextField, useToast } from "heroui-native";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { ParticipantAvatar, StatusAvatar } from "@/components/conversation-avatar";
 import { type Participant } from "@/components/participants";
-import { CheckIcon, ChevronLeftIcon, CloseIcon, PlusIcon, UsersIcon } from "@/components/icons";
+import { CheckIcon, ChevronLeftIcon, CloseIcon, PlusIcon, SearchIcon, UsersIcon } from "@/components/icons";
 import { PressableItem, Section } from "@/components/people/section";
 import { useMe } from "@/components/server-scope";
 import { api } from "@/lib/api";
@@ -17,6 +17,7 @@ import { defineMessages, tr } from "@/lib/i18n";
 import { agentsQuery, conversationsQuery, usersQuery } from "@/lib/queries";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
+import { EmptyState } from "@/components/empty-state";
 
 /* apps/web/src/screens/NewChat.tsx: same rows, same calls; the group is composed with checkboxes. */
 
@@ -256,9 +257,7 @@ export default function NewChat() {
           </Section>
         )}
         {!botsShown.length && !colleaguesShown.length && (
-          <Typography color="muted" align="center" className="px-6 py-12">
-            {t.noMatch}
-          </Typography>
+          <EmptyState icon={SearchIcon} description={t.noMatch} />
         )}
       </KeyboardAwareScrollView>
     </>

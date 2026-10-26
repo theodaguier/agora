@@ -70,7 +70,6 @@ export function Agents() {
             </ItemMedia>
             <ItemContent className="text-left">
               <ItemTitle>{a.name}</ItemTitle>
-              <ItemDescription>{a.hermesProfile}</ItemDescription>
             </ItemContent>
             <ItemActions>
               <ChevronRightIcon className="size-4 text-muted-foreground" />

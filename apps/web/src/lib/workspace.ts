@@ -21,11 +21,11 @@ export type TabTarget =
   | { kind: "screen"; conversationId: string }
   | { kind: "code"; conversationId: string; sessionId: string }
   | { kind: "preview"; conversationId: string; previewKey: string }
-  | { kind: "new" | "tasks" | "inbox" };
+  | { kind: "new" | "tasks" | "inbox" | "sessions" };
 
 /** What a path shows in a tab; null for a path that is not one (home, settings routes…). */
 export function parseTab(path: string): TabTarget | null {
-  if (path === "/new" || path === "/tasks" || path === "/inbox") return { kind: path.slice(1) as "new" | "tasks" | "inbox" };
+  if (path === "/new" || path === "/tasks" || path === "/inbox" || path === "/sessions") return { kind: path.slice(1) as "new" | "tasks" | "inbox" | "sessions" };
   const m = /^\/c\/([^/]+)(?:\/(screen)|\/code\/([^/]+)|\/preview\/([^/]+))?$/.exec(path);
   if (!m) return null;
   const conversationId = decodeURIComponent(m[1]!);

@@ -1,8 +1,7 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import { ListGroup, Typography } from "heroui-native";
-import { View } from "react-native";
+import { ListGroup } from "heroui-native";
 import { confirmAction } from "@/components/confirm-action";
 import { AdminGate, ErrorAlert, SettingsScroll, Intro, LoadingRows, PressableRow, RowMenu, Section, useAdminToast } from "@/components/admin/ui";
 import { LockIcon, PlusIcon } from "@/components/icons";
@@ -15,6 +14,7 @@ import { secretHref, vaultQuery, vaultRawHref, type Secret } from "@/lib/memory"
 import { headerIcon } from "@/components/header-button";
 import { MenuButton } from "@/components/menus";
 import { withTap } from "@/lib/haptics";
+import { EmptyState } from "@/components/empty-state";
 
 /* apps/web/src/components/admin/Vault.tsx: the list; the dialog is the secret sheet, the developer view its own screen. */
 
@@ -134,15 +134,7 @@ function Vault() {
         </Section>
       ) : (
         !secrets.error && (
-          <View className="items-center gap-2 px-8 py-12">
-            <LockIcon className="size-10 text-muted" />
-            <Typography.Heading type="h6" align="center">
-              {t.emptyTitle}
-            </Typography.Heading>
-            <Typography.Paragraph type="body-sm" color="muted" align="center">
-              {t.emptyText}
-            </Typography.Paragraph>
-          </View>
+          <EmptyState icon={LockIcon} title={t.emptyTitle} description={t.emptyText} />
         )
       )}
     </SettingsScroll>

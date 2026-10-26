@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, Stack, useRouter } from "expo-router";
-import { ListGroup, Typography } from "heroui-native";
+import { ListGroup } from "heroui-native";
 import { useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { AdminGate, ErrorAlert, SettingsScroll, Intro, LoadingRows, PressableRow, SearchBox, Section } from "@/components/admin/ui";
@@ -8,6 +8,8 @@ import { adminAgentsQuery, agentHref, newAgentHref, type AdminAgent } from "@/li
 import { defineMessages } from "@/lib/i18n";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
+import { EmptyState } from "@/components/empty-state";
+import { SearchIcon } from "@/components/icons";
 
 /* apps/web/src/components/admin/Agents.tsx */
 
@@ -64,9 +66,7 @@ function Agents() {
           </Section>
         ) : (
           !!q && (
-            <Typography.Paragraph type="body-sm" color="muted" align="center" className="px-4">
-              {t.noMatch}
-            </Typography.Paragraph>
+            <EmptyState icon={SearchIcon} description={t.noMatch} />
           )
         )}
       </SettingsScroll>

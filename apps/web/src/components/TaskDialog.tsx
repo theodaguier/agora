@@ -117,7 +117,7 @@ function TaskForm({ task, onDone }: { task: Task; onDone: () => void }) {
         <Field>
           <FormLabel htmlFor={`${id}-due`}>{t.due}</FormLabel>
           <Popover open={picking} onOpenChange={setPicking}>
-            <PopoverTrigger render={<Button id={`${id}-due`} type="button" variant="outline" className="justify-start font-normal" />}>
+            <PopoverTrigger render={<Button id={`${id}-due`} type="button" variant="outline" className="justify-start rounded-lg px-2.5 font-normal" />}>
               {due ? formatDueDate(due) : <span className="text-muted-foreground">{t.noDue}</span>}
             </PopoverTrigger>
             <PopoverContent align="start" className="w-auto p-0">

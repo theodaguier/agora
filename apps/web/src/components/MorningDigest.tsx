@@ -1,3 +1,4 @@
+import { modelName } from "@agora/core";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
@@ -9,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFormat } from "@/lib/usage-format";
-import { coverGradient } from "@/components/WhatsNew";
 import { getLocale, useT } from "@/i18n";
 import { messages } from "./MorningDigest.messages";
 import { api, type AgentSummary, type Digest, type DigestStats } from "@/lib/api";
@@ -104,25 +104,9 @@ export function MorningDigest() {
       {/* Title and buttons stay put; everything between them, cover included, scrolls on a short screen. */}
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl" initialFocus={false}>
         <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
-          <DialogTitle className="pr-8 text-xl font-semibold tracking-tight">{title}</DialogTitle>
+          <DialogTitle className="pr-8 text-xl leading-[26px] font-medium">{title}</DialogTitle>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-6 pb-6">
-          {/* Capped so it never takes the whole screen; shrinks once the details are shown. */}
-          <div
-            className={cn(
-              "relative w-full shrink-0 overflow-hidden rounded-lg bg-muted transition-[aspect-ratio] duration-200 ease-out",
-              expanded ? "aspect-[4/1]" : "aspect-video max-h-[32dvh]",
-            )}
-          >
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ backgroundImage: coverGradient }}>
-              <span className={cn("font-mono text-xs tracking-[0.2em] text-muted-foreground uppercase", expanded && "hidden")}>
-                {weekly ? t.weeklyLabel : t.dailyLabel}
-              </span>
-              <span className={cn("font-medium tracking-tight tabular-nums", expanded ? "text-3xl" : "text-4xl sm:text-5xl")}>
-                {multiDay ? range : day(digest.periodStart, { day: "numeric", month: "short" })}
-              </span>
-            </div>
-          </div>
           {personal && (
             // Stays in view while the details scroll under it.
             <Tabs value={current} onValueChange={(v) => setTab(v as Tab)} className="sticky -top-px z-10 -my-2 bg-background py-2">
@@ -141,7 +125,7 @@ export function MorningDigest() {
               .filter((s) => s.items.length)
               .map((s) => (
                 <section key={s.label} className="flex flex-col gap-2">
-                  <h3 className="text-sm font-medium">{s.label}</h3>
+                  <h3 className="text-[15px] leading-5 font-medium">{s.label}</h3>
                   <ul className="flex list-disc flex-col gap-2 pl-5 text-muted-foreground marker:text-muted-foreground/50">
                     {s.items.map((line) => (
                       <li key={line} className="text-pretty">
@@ -206,11 +190,11 @@ function UsageBlock({ usage, you }: { usage: NonNullable<DigestStats["usage"]>; 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium">{t.usage}</h3>
+        <h3 className="text-[15px] leading-5 font-medium">{t.usage}</h3>
         <p className="text-xs text-muted-foreground">{you ? t.usageYou : t.usageTeam}</p>
       </div>
       <div className="flex items-baseline gap-4">
-        <span className="text-2xl font-medium tracking-tight tabular-nums">{f.compact(usage.tokens)}</span>
+        <span className="text-[22px] leading-7 font-medium tabular-nums">{f.compact(usage.tokens)}</span>
         <span className="text-muted-foreground tabular-nums">{f.cost(usage.cost)}</span>
       </div>
       {usage.byAgent.length > 0 && (
@@ -234,7 +218,7 @@ function UsageBlock({ usage, you }: { usage: NonNullable<DigestStats["usage"]>; 
           {usage.byModel.map((m) => (
             <Badge key={`${m.provider}:${m.model}`} variant="outline" className="tabular-nums">
               <ModelLogo model={m.model} provider={m.provider} className="size-3" />
-              {m.model} · {f.compact(m.tokens)}
+              {modelName(m.model)} · {f.compact(m.tokens)}
             </Badge>
           ))}
         </div>
@@ -248,7 +232,7 @@ function People({ people }: { people: NonNullable<DigestStats["people"]> }) {
   const t = useT(messages);
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium">{t.people}</h3>
+      <h3 className="text-[15px] leading-5 font-medium">{t.people}</h3>
       <ul className="flex flex-col gap-2">
         {people.map((p) => (
           <li key={p.id} className="flex items-center gap-2 text-sm">

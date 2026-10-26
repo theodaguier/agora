@@ -1,7 +1,7 @@
 import { confirmAction } from "@/lib/confirm";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { TrashIcon } from "@/components/icons";
+import { PackageIcon, PuzzleIcon, TrashIcon } from "@/components/icons";
 import { Loading, useRestartNeeded } from "@/components/admin/ui";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -129,15 +129,15 @@ export function Installed() {
 
   return (
     <>
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">{t.title}</h1>
+      <h1 className="mb-5 text-[15px] leading-5 font-medium">{t.title}</h1>
 
       {pendingSkills.length > 0 && (
         <>
           <h2 className="mb-2 text-[15px] font-medium">{t.skillRequests}</h2>
           <div className="mb-8 flex flex-col">
             {pendingSkills.map((r) => (
-              <div key={r.id} className="flex items-center gap-3.5 border-b border-border/50 py-3 last:border-0">
-                <InitialTile name={r.name} />
+              <div key={r.id} className="flex items-center gap-3.5 py-2.5">
+                <InitialTile icon={<PackageIcon />} />
                 <div className="min-w-0 flex-1">
                   <div className="text-[15px]">{r.name}</div>
                   {(r.kind === "create" ? r.description : r.reason) && (
@@ -168,7 +168,7 @@ export function Installed() {
           <h2 className="mb-2 text-[15px] font-medium">{t.mcpRequests}</h2>
           <div className="mb-8 flex flex-col">
             {pending.map((r) => (
-              <div key={r.id} className="flex items-center gap-3.5 border-b border-border/50 py-3 last:border-0">
+              <div key={r.id} className="flex items-center gap-3.5 py-2.5">
                 <IntegrationTile type={r.type} server={r.name} />
                 <div className="min-w-0 flex-1">
                   <div className="text-[15px]">{r.title}</div>
@@ -193,7 +193,7 @@ export function Installed() {
       {servers.data?.servers.length === 0 && <p className="mb-8 text-sm text-muted-foreground">{t.noServers}</p>}
       <div className="mb-8 flex flex-col">
         {servers.data?.servers.map((s) => (
-          <div key={s.name} className="flex items-center gap-3.5 border-b border-border/50 py-3 last:border-0">
+          <div key={s.name} className="flex items-center gap-3.5 py-2.5">
             <IntegrationTile type={s.type} server={s.name} />
             <div className="min-w-0 flex-1">
               <div className="text-[15px]">{s.name}</div>
@@ -232,8 +232,8 @@ export function Installed() {
       {plugins.data && enabledPlugins.length === 0 && <p className="mb-8 text-sm text-muted-foreground">{t.noPlugins}</p>}
       <div className="mb-8 flex flex-col">
         {enabledPlugins.map((p) => (
-          <div key={p.name} className="flex items-center gap-3.5 border-b border-border/50 py-3 last:border-0">
-            <InitialTile name={p.name} />
+          <div key={p.name} className="flex items-center gap-3.5 py-2.5">
+            <InitialTile icon={<PuzzleIcon />} />
             <div className="min-w-0 flex-1">
               <div className="text-[15px]">{p.name}</div>
               <div className="truncate text-sm text-muted-foreground">{p.description}</div>
@@ -248,8 +248,8 @@ export function Installed() {
       {!skills.pending && skills.installed.length === 0 && <p className="mb-2 text-sm text-muted-foreground">{t.noSkills}</p>}
       <div className="mb-2 flex flex-col">
         {skills.installed.map((s) => (
-          <div key={s.name} className="flex items-center gap-3.5 border-b border-border/50 py-3 last:border-0">
-            <InitialTile name={s.name} />
+          <div key={s.name} className="flex items-center gap-3.5 py-2.5">
+            <InitialTile icon={<PackageIcon />} />
             <div className="min-w-0 flex-1">
               <div className="text-[15px]">{s.name}</div>
               <div className="truncate text-sm text-muted-foreground">{s.description}</div>

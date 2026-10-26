@@ -102,7 +102,8 @@ export const mcpRequests = new Hono<AppEnv>()
 
   .get("/:id/oauth/:flow", async (c) => {
     const id = c.req.param("id");
-    await getRequest(id, c.get("user"));
+    const req = await getRequest(id, c.get("user"));
+    if (!req.canConnect && req.status !== "installed") throw new HermesError(tr(errors).notAllowed, 403);
     return c.json(await oauthStatus(id, c.req.param("flow")));
   });
 

@@ -291,7 +291,7 @@ function ScreenView({
         className={cn(
           "overflow-hidden rounded-lg border border-border bg-background outline-none focus-visible:ring-2 focus-visible:ring-ring",
           fill && "relative min-h-0 flex-1 border-transparent bg-transparent",
-          controlling ? "cursor-default ring-2 ring-primary focus-visible:ring-primary" : onEnlarge && "cursor-zoom-in",
+          controlling ? "cursor-default ring-2 ring-brand focus-visible:ring-brand" : onEnlarge && "cursor-zoom-in",
         )}
       >
         <img
@@ -357,14 +357,8 @@ export function AgentScreen({ conversationId, agentName }: { conversationId: str
       {frame ? (
         <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={canControl} onEnlarge={() => setEnlarged(true)} />
       ) : (
-        <>
-          <Empty className="aspect-[16/10] gap-2 rounded-lg border border-solid border-border bg-background/60 p-4">
-            <EmptyHeader>
-              <EmptyDescription>{t.noScreen}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-          {agentName && <p className="mt-2 truncate text-center text-[13px] text-muted-foreground">{t.screenOf(agentName)}</p>}
-        </>
+        // No screen: one line, not an empty frame reserving the space.
+        <p className="pl-0.5 text-[13px] text-subtle">{t.noScreen}.</p>
       )}
 
       {/* The whole window, the page fitted in it. */}
@@ -404,7 +398,7 @@ export function ScreenPage({ conversationId, title, onClose }: { conversationId:
         {frame ? (
           <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={user.role === "admin"} fill />
         ) : (
-          <Empty className="flex-1 rounded-lg border border-solid border-border bg-muted/30">
+          <Empty className="flex-1">
             <EmptyHeader>
               <EmptyDescription>{t.noScreen}</EmptyDescription>
             </EmptyHeader>

@@ -30,7 +30,7 @@ export function DigestActivity({ stats, byDay }: { stats: DigestStats; byDay: bo
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">{t.activity}</h3>
+        <h3 className="text-[15px] leading-5 font-medium">{t.activity}</h3>
         {stats.usage && (
           <ToggleGroup aria-label={t.activity} value={[shown]} onValueChange={(v) => v[0] && setMetric(v[0] as Metric)} variant="outline" size="sm">
             <ToggleGroupItem value="messages" className="px-3">

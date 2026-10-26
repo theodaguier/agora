@@ -8,32 +8,18 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 
-/** Tint of each integration type, so a connector's kind of data reads at a glance. */
-const TYPE_TINT: Record<IntegrationType, string> = {
-  mail: "bg-sky-500/12 text-sky-600 dark:text-sky-400",
-  calendar: "bg-rose-500/12 text-rose-600 dark:text-rose-400",
-  chat: "bg-violet-500/12 text-violet-600 dark:text-violet-400",
-  tasks: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
-  files: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  contacts: "bg-fuchsia-500/12 text-fuchsia-600 dark:text-fuchsia-400",
-  finance: "bg-cyan-500/12 text-cyan-700 dark:text-cyan-400",
-  code: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
-  database: "bg-orange-500/12 text-orange-600 dark:text-orange-400",
-  other: "bg-accent text-foreground/80",
-};
+/** Figma « Logo » tile of the Marketplace: 40 px, white, hairline, the icon or logo inside in grey. */
+export const tileClass = "grid size-10 shrink-0 place-items-center overflow-hidden rounded-[10px] border border-border bg-background text-icon";
 
-/** Tile of a skill or plugin: the first letter of its name, same size as IntegrationTile. */
-export function InitialTile({ name, className }: { name: string; className?: string }) {
-  return (
-    <span className={cn("grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-[15px] font-semibold text-foreground/85", className)}>
-      {name.replace(/^[^a-z0-9]+/i, "").charAt(0).toUpperCase()}
-    </span>
-  );
+/** Tile of a skill or plugin: its kind's icon in the neutral tile (never a letter). */
+export function InitialTile({ icon, className }: { icon: ReactNode; className?: string }) {
+  return <span className={cn(tileClass, "[&_svg]:size-5", className)}>{icon}</span>;
 }
 
 /**
- * Icon tile of a connector, tinted by its integration type; the brand's logo
+ * Icon tile of a connector: its integration type's icon in grey; the brand's logo
  * instead when `server` (or `domain`) names one logo.dev knows.
  */
 export function IntegrationTile({
@@ -47,14 +33,17 @@ export function IntegrationTile({
   domain?: string | null;
   className?: string;
 }) {
-  const tile = cn("grid size-11 shrink-0 place-items-center overflow-hidden rounded-xl", className);
   const icon = (
-    <span className={cn(tile, TYPE_TINT[type ?? "other"])}>
+    <span className={cn(tileClass, className)}>
       <IntegrationIcon type={type} className="size-5" />
     </span>
   );
   if (!server && !domain) return icon;
-  return <BrandLogo server={server} domain={domain} fallback={icon} className={cn(tile, "bg-white outline outline-1 -outline-offset-1 outline-black/5")} />;
+  return (
+    <span className={cn(tileClass, className)}>
+      <BrandLogo server={server} domain={domain} fallback={<IntegrationIcon type={type} className="size-5" />} className="size-[22px] rounded-[4px]" />
+    </span>
+  );
 }
 
 /** Integration type picker of a connector form. */

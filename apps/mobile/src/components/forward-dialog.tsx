@@ -3,7 +3,7 @@ import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import { BottomSheet, Button, Checkbox, ListGroup, Separator, Typography, useToast } from "heroui-native";
+import { BottomSheet, Button, Checkbox, ListGroup, Separator, useToast } from "heroui-native";
 import { Fragment, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,6 +16,8 @@ import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
 import { conversationsQuery } from "@/lib/queries";
 import type { Message } from "@/lib/types";
+import { EmptyState } from "@/components/empty-state";
+import { SearchIcon } from "@/components/icons";
 
 /* apps/web/src/components/ForwardDialog.tsx, as a bottom sheet. */
 
@@ -107,9 +109,7 @@ export function ForwardDialog({ conversationId, message, onClose }: { conversati
           <View className="min-h-0 flex-1">
           <BottomSheetScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerClassName="py-3">
             {rows.length === 0 ? (
-              <Typography type="body-sm" color="muted" align="center" className="py-8">
-                {t.empty}
-              </Typography>
+              <EmptyState icon={SearchIcon} description={t.empty} />
             ) : (
               <ListGroup>
                 {rows.map(({ c, title }, i) => {

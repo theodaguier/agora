@@ -67,11 +67,11 @@ export function MentionText({ text, mentionables, flat }: { text: string; mentio
         <EntityText key={key} text={s} />
       )
     ) : flat ? (
-      <span key={key} style={{ color: s.color }}>
+      <span key={key} className="text-brand">
         {s.text}
       </span>
     ) : (
-      <Mention key={key} text={s.text} color={s.color} target={s.target} />
+      <Mention key={key} text={s.text} target={s.target} />
     ),
   );
 }
@@ -118,8 +118,7 @@ export function rehypeMentions(list: Mentionable[]) {
                 tagName: "span",
                 properties: {
                   dataMention: s.name.toLowerCase(),
-                  className: ["rounded-[5px]", "px-[3px]", "font-medium"],
-                  style: `color: ${s.color}; background-color: color-mix(in oklch, ${s.color} 16%, transparent)`,
+                  className: ["font-medium", "text-brand"],
                 },
                 children: [{ type: "text", value: s.text }],
               },
@@ -130,8 +129,10 @@ export function rehypeMentions(list: Mentionable[]) {
   };
 }
 
-export const mentionStyle = (color: string) => ({
-  color,
-  backgroundColor: `color-mix(in oklch, ${color} 16%, transparent)`,
-});
+/**
+ * A mention is plain blue medium text: no tinted tile, no avatar, and never the bot's own colour
+ * (an agent's colour lives only in its orb).
+ */
+/** Blue (état/non-lu), never the bot's colour; white and underlined in your own bubble (index.css). */
+export const mentionClass = "mention font-medium text-brand";
 

@@ -48,8 +48,8 @@ export function ForgotPassword() {
     return (
       <Centered>
         <AgentAvatar agent={{ avatar: { shape: "bean", color: "#9a6a4b" } }} className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{t.sentTitle}</h1>
-        <p className="mt-1.5 text-center text-sm text-muted-foreground">{t.sent(sentTo)}</p>
+        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.sentTitle}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">{t.sent(sentTo)}</p>
         <Button variant="outline" size="lg" nativeButton={false} render={<Link to="/login" />} className="mt-6 w-full">
           {t.backToLogin}
         </Button>
@@ -71,8 +71,8 @@ export function ForgotPassword() {
         }}
       >
         <AgentAvatar agent={{ avatar: { shape: "bean", color: "#9a6a4b" } }} className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{t.title}</h1>
-        <p className="mt-1.5 text-center text-sm text-muted-foreground">{t.hint}</p>
+        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.title}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">{t.hint}</p>
         <Field className="mt-3 gap-1.5">
           <FormLabel htmlFor="forgot-email" required className="font-normal text-foreground/85">
             {t.email}
@@ -103,8 +103,8 @@ export function ForgotPassword() {
 
 export function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-dvh place-items-center px-4">
-      <div className="w-full max-w-sm">{children}</div>
+    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
+      <div className="w-full max-w-[400px] rounded-[18px] border border-border bg-background p-8">{children}</div>
     </div>
   );
 }

@@ -31,10 +31,6 @@ const messages = defineMessages({
   },
 });
 
-/** Background of a cover without an image; shared with the morning recap. */
-export const coverGradient =
-  "radial-gradient(ellipse at 20% 0%, oklch(0.62 0.16 285 / 0.28), transparent 60%), radial-gradient(ellipse at 90% 100%, oklch(0.7 0.12 210 / 0.2), transparent 55%)";
-
 /** Remembered on the account, so the same release doesn't open again on another device. */
 const markSeen = (version: string) => api("/me/release-notes", { method: "PUT", body: JSON.stringify({ id: version }) }).catch(() => {});
 
@@ -75,29 +71,25 @@ export function WhatsNew() {
       {/* Same frame as the morning recap: title and buttons stay put, everything between them scrolls on a short screen. */}
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl" initialFocus={false}>
         <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
-          <DialogTitle className="pr-8 text-xl font-semibold tracking-tight">{t.title(date)}</DialogTitle>
+          <DialogTitle className="pr-8 text-xl leading-[26px] font-medium">{t.title(date)}</DialogTitle>
+          <p className="text-[13px] text-muted-foreground tabular-nums">v{release.version}</p>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-6 pb-6">
-          {/* Capped so it never takes the whole screen; shrinks once the details are shown. */}
-          <div
-            className={cn(
-              "relative w-full shrink-0 overflow-hidden rounded-lg bg-muted transition-[aspect-ratio] duration-200 ease-out",
-              expanded ? "aspect-[4/1]" : "aspect-video max-h-[32dvh]",
-            )}
-          >
-            {release.cover ? (
+          {/* A real cover only: no decorative placeholder when the release has none. */}
+          {release.cover && (
+            <div
+              className={cn(
+                "relative w-full shrink-0 overflow-hidden rounded-lg bg-muted transition-[aspect-ratio] duration-200 ease-out",
+                expanded ? "aspect-[4/1]" : "aspect-video max-h-[32dvh]",
+              )}
+            >
               <img src={release.cover} alt="" className="absolute inset-0 size-full object-cover" />
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ backgroundImage: coverGradient }}>
-                <span className={cn("font-mono text-xs tracking-[0.2em] text-muted-foreground uppercase", expanded && "hidden")}>{t.release}</span>
-                <span className={cn("font-medium tracking-tight tabular-nums", expanded ? "text-3xl" : "text-4xl sm:text-5xl")}>v{release.version}</span>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
           <DialogDescription className="text-base text-pretty text-foreground">{release.summary[locale]}</DialogDescription>
           <div className="flex flex-wrap gap-1.5">
             {release.tags.map((tag) => (
-              <Badge key={tag} variant="outline">
+              <Badge key={tag} variant="secondary">
                 {t.tags[tag]}
               </Badge>
             ))}

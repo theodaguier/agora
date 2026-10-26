@@ -40,7 +40,7 @@ export function ChoiceCard(props: { choices: Choices; onAnswer: (text: string) =
   return (
     <BlockCard className="gap-3">
       <CardHeader>
-        <CardTitle className="font-semibold">{choices.question}</CardTitle>
+        <CardTitle className="text-[15px] leading-[21px] font-medium">{choices.question}</CardTitle>
         {choices.hint && <CardDescription>{choices.hint}</CardDescription>}
         <CardAction>
           <Button variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss} className="-mr-2 -mt-1">

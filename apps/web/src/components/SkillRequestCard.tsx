@@ -64,7 +64,7 @@ export function SkillRequestCard({ id }: { id: string }) {
   return (
     <BlockCard>
       <CardHeader>
-        <CardTitle className="font-semibold">{t.skill(req.name)}</CardTitle>
+        <CardTitle className="text-[15px] leading-[21px] font-medium">{t.skill(req.name)}</CardTitle>
         {req.kind === "create" && req.description && <CardDescription>{req.description}</CardDescription>}
         {req.reason && <CardDescription>{req.reason}</CardDescription>}
         <StatusLine tone={STATUS_TONE[req.status]} className="mt-1">
@@ -93,15 +93,15 @@ export function SkillRequestCard({ id }: { id: string }) {
       </CardContent>
       {decides && (
         <BlockFooter>
-          <Button size="sm" variant="ghost" disabled={decide.isPending} onClick={() => decide.mutate(false)}>
+          <Button variant="secondary" disabled={decide.isPending} onClick={() => decide.mutate(false)}>
             {t.reject}
           </Button>
           {req.kind === "create" ? (
-            <Button size="sm" disabled={decide.isPending} onClick={() => setReviewing(true)}>
+            <Button disabled={decide.isPending} onClick={() => setReviewing(true)}>
               {req.error ? c.retry : t.review}
             </Button>
           ) : (
-            <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate(true)}>
+            <Button disabled={decide.isPending} onClick={() => decide.mutate(true)}>
               {decide.isPending && decide.variables ? c.inProgress : req.error ? c.retry : t.approve}
             </Button>
           )}

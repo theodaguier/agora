@@ -182,8 +182,8 @@ export function Setup() {
   const [agentId, setAgentId] = useState<string | null>(null);
 
   return (
-    <div className="grid min-h-dvh place-items-center px-4 py-10">
-      <div className="w-full max-w-md">
+    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
+      <div className="w-full max-w-[480px] rounded-[18px] border border-border bg-background p-8">
         {step !== "done" && <Progress current={step} />}
         {step === "welcome" && (
           <Welcome
@@ -228,9 +228,9 @@ function Progress({ current }: { current: Step }) {
 
 function Header({ title, text }: { title: string; text: ReactNode }) {
   return (
-    <div className="mb-8 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      <p className="mt-1.5 text-sm text-muted-foreground">{text}</p>
+    <div className="mb-6">
+      <h1 className="text-[22px] leading-7 font-semibold">{title}</h1>
+      <p className="mt-1 text-[13px] text-muted-foreground">{text}</p>
     </div>
   );
 }

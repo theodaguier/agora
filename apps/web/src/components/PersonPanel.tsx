@@ -1,8 +1,7 @@
+import { PanelBar } from "@/components/PaneHeader";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronsRightIcon } from "@/components/icons";
-import { PersonAvatar, useStatusLabel } from "@/components/ConversationAvatar";
+import { PersonAvatar } from "@/components/ConversationAvatar";
 import { CommonConversations, Details } from "@/components/ProfileSheet";
-import { ShortcutTooltip } from "@/components/Shortcuts";
 import { WorkingOn } from "@/components/WorkingOn";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,7 +9,6 @@ import { defineMessages, useT } from "@/i18n";
 import type { UserProfile } from "@/lib/api";
 import { openProfile } from "@/lib/profile";
 import { userProfileQuery } from "@/lib/queries";
-import { shortcuts } from "@/lib/shortcuts";
 
 const messages = defineMessages({
   en: {
@@ -32,33 +30,28 @@ export function PersonPanel({ userId, onClose }: { userId: string; onClose: () =
   const t = useT(messages);
   const { data: person, error } = useQuery(userProfileQuery(userId));
   return (
-    <aside className="flex h-full w-full flex-col bg-sidebar">
-      <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-3">
-        <span className="text-[13px] font-medium text-muted-foreground">{t.profile}</span>
-        <ShortcutTooltip label={t.hidePanel} shortcut={shortcuts.togglePanel}>
-          <Button variant="ghost" size="icon" aria-label={t.hidePanel} onClick={onClose}>
-            <ChevronsRightIcon />
-          </Button>
-        </ShortcutTooltip>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
+    <aside className="flex h-full w-full flex-col bg-background">
+      <PanelBar closeLabel={t.hidePanel} onClose={onClose} />
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {t.unavailable}
           </p>
         ) : person ? (
           <div className="flex flex-col gap-5">
-            <Identity person={person} />
+            <div className="flex flex-col gap-3">
+              <Identity person={person} />
+              <Button variant="secondary" onClick={() => openProfile(userId)} className="self-start">
+                {t.seeProfile}
+              </Button>
+            </div>
             <WorkingOn userId={userId} />
             <Details person={person} />
             <CommonConversations userId={userId} />
-            <Button variant="outline" size="sm" onClick={() => openProfile(userId)} className="self-start">
-              {t.seeProfile}
-            </Button>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2 pt-2">
-            <Skeleton className="size-20 rounded-full" />
+          <div className="flex flex-col items-start gap-2">
+            <Skeleton className="size-16 rounded-full" />
             <Skeleton className="h-4 w-36" />
             <Skeleton className="h-3 w-24" />
           </div>
@@ -68,16 +61,15 @@ export function PersonPanel({ userId, onClose }: { userId: string; onClose: () =
   );
 }
 
-/** Photo, name, role, handle and presence. */
+/** Photo, name, role and handle, aligned like the bot's panel (Figma « En-tête agent »). */
 function Identity({ person }: { person: UserProfile }) {
-  const status = useStatusLabel({ kind: "user", person });
   const subtitle = [person.title, person.username && `@${person.username}`].filter(Boolean).join(" · ");
   return (
-    <div className="flex flex-col items-center gap-1 pt-2 text-center">
-      <PersonAvatar person={person} className="mb-2 size-20" />
-      <h2 className="max-w-full truncate text-base font-semibold">{person.name}</h2>
-      {subtitle && <p className="max-w-full truncate text-sm text-muted-foreground">{subtitle}</p>}
-      {status && <p className="text-[13px] text-subtle">{status}</p>}
+    <div className="flex flex-col items-start gap-0.5">
+      <PersonAvatar person={person} className="mb-3 size-16" />
+      <h2 className="max-w-full truncate text-xl leading-[26px] font-medium">{person.name}</h2>
+      {subtitle && <p className="max-w-full truncate text-[13px] leading-[18px] text-muted-foreground">{subtitle}</p>}
+      {/* The status is already under the name in the conversation's header. */}
     </div>
   );
 }

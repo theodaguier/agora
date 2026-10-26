@@ -15,7 +15,8 @@ import { readSize, useDesktop } from "@/lib/workspace";
 import { MorningDigest } from "@/components/MorningDigest";
 
 /**
- * Desktop: the list (its width dragged) beside the workspace, its panes and tabs.
+ * Desktop (Figma « Conversation »): the grey sidebar (its width dragged) beside the workspace; a
+ * second tab or pane only shows its tab bar when there is one.
  * Mobile: the list is the home screen, the thread opens full screen.
  */
 export function AppShell() {
@@ -28,11 +29,24 @@ export function AppShell() {
   return (
     <SidebarProvider
       defaultOpen={!document.cookie.includes("sidebar_state=false")}
-      style={{ "--sidebar-width": `${sidebarWidth}px`, "--sidebar-width-icon": "4rem" } as CSSProperties}
+      style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
       className="h-dvh min-h-0 overflow-hidden"
     >
-      <AppSidebar width={sidebarWidth} onWidthChange={setSidebarWidth} />
-      <SidebarInset className={cn("min-w-0", atRoot && "max-md:hidden")}>{desktop ? <Workspace /> : <Outlet />}</SidebarInset>
+      {desktop ? (
+        <div className="flex min-w-0 flex-1 bg-background">
+          <AppSidebar width={sidebarWidth} onWidthChange={setSidebarWidth} />
+          <main className="flex min-w-0 flex-1">
+            <Workspace />
+          </main>
+        </div>
+      ) : (
+        <>
+          <AppSidebar width={sidebarWidth} onWidthChange={setSidebarWidth} />
+          <SidebarInset className={cn("min-w-0", atRoot && "max-md:hidden")}>
+            <Outlet />
+          </SidebarInset>
+        </>
+      )}
       <Settings />
       <ProfileSheet />
       <ConfirmHost />

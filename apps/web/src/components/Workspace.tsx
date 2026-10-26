@@ -1,14 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { useLocation, useRouteContext, useRouter, useSearch } from "@tanstack/react-router";
+import { Link, useLocation, useRouteContext, useRouter, useSearch } from "@tanstack/react-router";
+import { OrgLogo } from "@/components/OrgLogo";
 import { Fragment, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { ScreenPage } from "@/components/AgentScreen";
 import { CodeSessionPage, isNewCodeSession } from "@/components/CodeSession";
+import { AgentAvatar } from "@/components/AgentAvatar";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
 import { TabChip } from "@/components/TabChip";
 import { findPreview, PreviewPage } from "@/components/Preview";
 import { ModelLogo } from "@/components/ProviderLogo";
-import { BrowserIcon, CloseIcon, FileCodeIcon, InboxIcon, PlusIcon, SplitIcon, TaskListIcon } from "@/components/icons";
+import { BrowserIcon, ChatIntegrationIcon, CloseIcon, FileCodeIcon, InboxIcon, PlusIcon, SplitIcon, TaskListIcon, TerminalIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -23,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { ConversationView } from "@/screens/Conversation";
 import { Inbox } from "@/screens/Inbox";
 import { NewChat } from "@/screens/NewChat";
+import { Sessions } from "@/screens/Sessions";
 import { Tasks } from "@/screens/Tasks";
 import {
   activateTab,
@@ -59,6 +62,7 @@ const messages = defineMessages({
     closeTab: (title: string) => `Close ${title}`,
     newChat: "New conversation",
     tasks: "My tasks",
+    sessions: "Sessions",
     inbox: "Inbox",
     screen: "Screen",
     mockup: "Mockup",
@@ -71,6 +75,7 @@ const messages = defineMessages({
     none: "No conversation found.",
     conversations: "Conversations",
     dropHint: "Or drag a conversation or a tab here.",
+    homeHint: "Pick a conversation in the list, or start one.",
   },
   fr: {
     tabs: "Onglets",
@@ -80,6 +85,7 @@ const messages = defineMessages({
     closeTab: (title: string) => `Fermer ${title}`,
     newChat: "Nouvelle conversation",
     tasks: "Mes tâches",
+    sessions: "Sessions",
     inbox: "Boîte de réception",
     screen: "Écran",
     mockup: "Maquette",
@@ -92,6 +98,7 @@ const messages = defineMessages({
     none: "Aucune conversation trouvée.",
     conversations: "Conversations",
     dropHint: "Ou glisse ici une conversation ou un onglet.",
+    homeHint: "Choisis une conversation dans la liste, ou démarres-en une.",
   },
 });
 
@@ -119,7 +126,12 @@ const layoutStorage = {
  */
 export function Workspace() {
   const { user } = useRouteContext({ from: "/app" });
-  useState(() => loadWorkspace(user.id));
+  useState(() => {
+    loadWorkspace(user.id);
+    // Loaded on a page's URL: it takes the place of the tab in front before anything mounts. Swapping
+    // it after the first render unmounts a conversation mid-layout (react-resizable-panels then loops).
+    openHere(window.location.pathname);
+  });
   const w = useWorkspace();
   useLocationSync();
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: "agora-workspace", panelIds: w.panes.map((p) => p.id), storage: layoutStorage });
@@ -139,7 +151,7 @@ export function Workspace() {
     <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1" defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
       {w.panes.map((pane, i) => (
         <Fragment key={pane.id}>
-          {i > 0 && <ResizableHandle className="bg-border" />}
+          {i > 0 && <ResizableHandle className="w-px bg-border after:w-1.5 focus-visible:ring-0 hover:bg-ring/50 data-[separator=active]:bg-ring/60" />}
           {/* A pane never scrolls itself (the panel's box is overflow: auto): each tab has its own scroller. */}
           <ResizablePanel id={pane.id} minSize={360} style={{ overflow: "clip" }}>
             <PaneView pane={pane} focused={pane.id === w.focused} multiple={w.panes.length > 1} canSplit={w.panes.length < MAX_PANES} />
@@ -168,7 +180,7 @@ function useLocationSync() {
         if (current) router.history.replace(current);
         return;
       }
-      return openHere(path, true);
+      return openHere(path);
     }
     if (path === "/") clearActive();
     else openHere(path);
@@ -195,11 +207,12 @@ function PaneView({ pane, focused, multiple, canSplit }: { pane: Pane; focused: 
   return (
     <div
       data-pane={pane.id}
-      className="flex h-full min-w-0 flex-col"
+      className="flex h-full min-w-0 flex-col overflow-hidden bg-background"
       onPointerDownCapture={() => focusPane(pane.id)}
       onFocusCapture={() => focusPane(pane.id)}
     >
-      <TabBar pane={pane} focused={focused} multiple={multiple} canSplit={canSplit} />
+      {/* One conversation at a time, as in the Figma: the bar shows once a second tab or pane is opened (⌘-click, drag). */}
+      {(multiple || pane.tabs.length > 1) && <TabBar pane={pane} focused={focused} multiple={multiple} canSplit={canSplit} />}
       <div className="relative flex min-h-0 flex-1">
         {pane.tabs
           .filter((path) => shown.current.has(path))
@@ -215,7 +228,7 @@ function PaneView({ pane, focused, multiple, canSplit }: { pane: Pane; focused: 
           })}
         {!pane.active && (
           <TabPlaceContext.Provider value={{ paneId: pane.id, current: focused, visible: true }}>
-            <EmptyPane paneId={pane.id} />
+            {multiple ? <EmptyPane paneId={pane.id} /> : <Home />}
           </TabPlaceContext.Provider>
         )}
         <DropZones paneId={pane.id} />
@@ -250,6 +263,8 @@ function TabContent({ path, focus }: { path: string; focus?: string }) {
       return <NewChat />;
     case "tasks":
       return <Tasks />;
+    case "sessions":
+      return <Sessions />;
     case "inbox":
       return <Inbox />;
     default:
@@ -293,7 +308,7 @@ function TabBar({ pane, focused, multiple, canSplit }: { pane: Pane; focused: bo
       onDragOver={onDragOver}
       onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setOver(false)}
       onDrop={onDrop}
-      className={cn("flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 bg-sidebar px-1.5", over && "bg-muted")}
+      className={cn("flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-background px-1.5 py-[5px]", over && "bg-muted")}
     >
       {pane.tabs.map((path) => (
         <TabItem key={path} path={path} paneId={pane.id} active={path === pane.active} focused={focused} />
@@ -325,7 +340,7 @@ function TabBar({ pane, focused, multiple, canSplit }: { pane: Pane; focused: bo
 function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} className="shrink-0" />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} onClick={onClick} className="size-6 shrink-0 rounded-[6px] [&_svg:not([class*='size-'])]:size-4" />}>{children}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
@@ -364,7 +379,9 @@ function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: bo
   const { data: thread } = useQuery({ ...messagesQuery(conversationId), enabled: target?.kind === "preview" });
   switch (target?.kind) {
     case "conversation":
-      return { title: name, icon: conv && <ConversationAvatar conversation={conv} me={user.id} className="size-4" />, unread: conv?.unread };
+      // A bot shows its orb; people and groups the conversation icon (initials can't be read at this size).
+      const bot = conv && conv.kind === "direct" && conv.agents.length ? conv.agents[0] : null;
+      return { title: name, icon: bot ? <AgentAvatar agent={bot} className="size-4" /> : <ChatIntegrationIcon className="text-muted-foreground" />, unread: conv?.unread };
     case "screen":
       return { title: `${t.screen} · ${name}`, icon: <BrowserIcon /> };
     case "code":
@@ -378,6 +395,8 @@ function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: bo
       return { title: t.newChat, icon: <PlusIcon /> };
     case "tasks":
       return { title: t.tasks, icon: <TaskListIcon /> };
+    case "sessions":
+      return { title: t.sessions, icon: <TerminalIcon /> };
     case "inbox":
       return { title: t.inbox, icon: <InboxIcon /> };
     default:
@@ -387,7 +406,23 @@ function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: bo
 
 /* ---------- empty pane, drop zones ---------- */
 
-/** A pane with nothing in front: the conversations, to open one here. */
+/** Nothing open, one pane: the organisation, and a new conversation. */
+function Home() {
+  const t = useT(messages);
+  const org = useOrgTitle();
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background px-4 pb-[8vh]">
+      <OrgLogo className="size-16" />
+      <p className="text-[15px] leading-[21px]">{org}</p>
+      <p className="text-sm text-muted-foreground">{t.homeHint}</p>
+      <Button nativeButton={false} render={<Link to="/new" />} className="mt-1">
+        {t.newChat}
+      </Button>
+    </div>
+  );
+}
+
+/** A pane beside others with nothing in front: the conversations, to open one here. */
 function EmptyPane({ paneId }: { paneId: string }) {
   const t = useT(messages);
   const { user } = useRouteContext({ from: "/app" });

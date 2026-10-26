@@ -2,107 +2,151 @@
 @import "tw-animate-css";
 @import "streamdown/styles.css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist-mono";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
 
 @custom-variant dark (&:is(.dark *));
 @source "../node_modules/streamdown/dist/*.js";
 
 /*
  * Two palettes: light on :root, dark on <html class="dark"> (set by src/lib/theme.ts,
- * or before the first paint by index.html). shadcn tokens + four app-specific
- * tokens (subtle, brand, success, warning).
+ * or before the first paint by index.html). shadcn tokens + app-specific tokens, mapped on
+ * the Figma « Agora · Couleurs » collection: pure neutrals, a near-black primary. Colour comes
+ * from the bots: inside a conversation, --primary is the bot's own colour (lib/agent-avatar.ts,
+ * Figma « Agora · Accent du bot »). Orange = waits for you, blue = unread, red = danger.
  */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.17 0 0);
-  --card: oklch(0.985 0 0);
-  --card-foreground: oklch(0.17 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.17 0 0);
-  --primary: oklch(0.17 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.955 0 0);
-  --secondary-foreground: oklch(0.17 0 0);
-  --muted: oklch(0.955 0 0);
-  --muted-foreground: oklch(0.48 0 0);
-  --accent: oklch(0.93 0 0);
-  --accent-foreground: oklch(0.17 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.905 0 0);
-  --input: oklch(0.905 0 0);
-  --ring: oklch(0.6 0 0);
-  --chart-1: oklch(0.3 0 0);
-  --chart-2: oklch(0.5 0 0);
-  --chart-3: oklch(0.62 0 0);
-  --chart-4: oklch(0.74 0 0);
-  --chart-5: oklch(0.85 0 0);
+  /* fond/app */
+  --background: #ffffff;
+  /* texte/principal */
+  --foreground: #111111;
+  /* fond/groupe: grey cards and groups */
+  --card: #f6f6f6;
+  --card-foreground: #111111;
+  --popover: #ffffff;
+  --popover-foreground: #111111;
+  /* action/primaire (Neutre); a conversation sets the bot's colour */
+  --primary: #161616;
+  --primary-foreground: #ffffff;
+  /* action/secondaire, fond/bulle */
+  --secondary: #f2f2f2;
+  --secondary-foreground: #111111;
+  /* fond/code */
+  --muted: #f5f5f5;
+  /* texte/secondaire */
+  --muted-foreground: #808080;
+  /* fond/sélection */
+  --accent: #e8e8e8;
+  --accent-foreground: #111111;
+  /* état/danger */
+  --destructive: #e5484d;
+  /* bordure */
+  --border: #e8e8e8;
+  --input: #e8e8e8;
+  --ring: oklch(0.86 0 0);
+  /* Data is ink, share by intensity. */
+  --chart-1: #111111;
+  --chart-2: #4d4d4d;
+  --chart-3: #808080;
+  --chart-4: #a0a0a0;
+  --chart-5: #d0d0d0;
   --radius: 0.5rem;
-  --sidebar: oklch(0.97 0 0);
-  --sidebar-foreground: oklch(0.17 0 0);
-  --sidebar-primary: oklch(0.17 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.925 0 0);
-  --sidebar-accent-foreground: oklch(0.17 0 0);
-  --sidebar-border: oklch(0.905 0 0);
-  --sidebar-ring: oklch(0.6 0 0);
+  /* fond/sidebar */
+  --sidebar: #f5f5f5;
+  --sidebar-foreground: #111111;
+  --sidebar-primary: #161616;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8e8e8;
+  --sidebar-accent-foreground: #111111;
+  --sidebar-border: #e8e8e8;
+  --sidebar-ring: oklch(0.86 0 0);
+
+  /* Light tone of the two-tone icons: at 16–20 px a heavier body reads as a blob. */
+  --icon-tone: 0.25;
 
   /* Strong ease-out: things entering the chat (messages, streamed words). */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 
-  /* Tertiary text (dates, hints, placeholders). */
-  --subtle: oklch(0.6 0 0);
-  /* Blue accent: unread, file drop, restart banner. */
-  --brand: oklch(0.56 0.2 255);
-  --success: oklch(0.58 0.15 150);
-  --warning: oklch(0.7 0.15 75);
+  /* texte/tertiaire: dates, hints, placeholders. */
+  --subtle: #a0a0a0;
+  /* icône */
+  --icon: #6b6b6b;
+  /* état/non-lu: unread, links, file drop. */
+  --brand: #0a84ff;
+  /* état/succès */
+  --success: #1fa855;
+  /* état/attente: waits for you. */
+  --warning: #f97316;
+  --warning-foreground: #e8650c;
+
+  /* Controls are flat: no gradient, highlight or shadow. */
+  --relief-highlight: 0 0 #0000;
+  --relief-raised: 0 0 #0000;
+  --relief-primary: 0 0 #0000;
+  --relief-inset: 0 0 #0000;
+  --relief-surface: #ffffff;
+  --relief-surface-end: #ffffff;
+  --relief-top: 0 0 #0000;
+  /* Floating layers (the agent pill, the composer): one soft shadow. */
+  --card-shadow: 0 2px 8px 0 oklch(0 0 0 / 0.05);
 }
 
 .dark {
-  --background: oklch(0.13 0 0);
-  --foreground: oklch(0.96 0 0);
-  --card: oklch(0.155 0 0);
-  --card-foreground: oklch(0.96 0 0);
-  --popover: oklch(0.235 0 0);
-  --popover-foreground: oklch(0.96 0 0);
-  --primary: oklch(0.96 0 0);
-  --primary-foreground: oklch(0.13 0 0);
-  --secondary: oklch(0.235 0 0);
-  --secondary-foreground: oklch(0.96 0 0);
-  --muted: oklch(0.235 0 0);
-  --muted-foreground: oklch(0.68 0 0);
-  --accent: oklch(0.29 0 0);
-  --accent-foreground: oklch(0.96 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.26 0 0);
-  --input: oklch(0.26 0 0);
-  --ring: oklch(0.68 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --background: #141414;
+  --foreground: #f2f2f2;
+  --card: #1e1e1e;
+  --card-foreground: #f2f2f2;
+  --popover: #1b1b1b;
+  --popover-foreground: #f2f2f2;
+  --primary: #f2f2f2;
+  --primary-foreground: #111111;
+  --secondary: #262626;
+  --secondary-foreground: #f2f2f2;
+  --muted: #202020;
+  --muted-foreground: #9a9a9a;
+  --accent: #2e2e2e;
+  --accent-foreground: #f2f2f2;
+  --destructive: #f2555a;
+  --border: #2c2c2c;
+  --input: #2c2c2c;
+  --ring: oklch(0.45 0 0);
+  --chart-1: #f2f2f2;
+  --chart-2: #c0c0c0;
+  --chart-3: #9a9a9a;
+  --chart-4: #6e6e6e;
+  --chart-5: #444444;
   --radius: 0.5rem;
-  --sidebar: oklch(0.155 0 0);
-  --sidebar-foreground: oklch(0.96 0 0);
-  --sidebar-primary: oklch(0.96 0 0);
-  --sidebar-primary-foreground: oklch(0.13 0 0);
-  --sidebar-accent: oklch(0.235 0 0);
-  --sidebar-accent-foreground: oklch(0.96 0 0);
-  --sidebar-border: oklch(0.26 0 0);
-  --sidebar-ring: oklch(0.68 0 0);
+  --sidebar: #1b1b1b;
+  --sidebar-foreground: #f2f2f2;
+  --sidebar-primary: #f2f2f2;
+  --sidebar-primary-foreground: #111111;
+  --sidebar-accent: #2e2e2e;
+  --sidebar-accent-foreground: #f2f2f2;
+  --sidebar-border: #2c2c2c;
+  --sidebar-ring: oklch(0.45 0 0);
 
-  /* Tertiary text (dates, hints, placeholders). */
-  --subtle: oklch(0.52 0 0);
-  /* Blue accent: unread, file drop, restart banner. */
-  --brand: oklch(0.64 0.19 255);
-  --success: oklch(0.72 0.17 150);
-  --warning: oklch(0.879 0.169 91.605);
+  --subtle: #6e6e6e;
+  --icon: #a0a0a0;
+  --brand: #3b9bff;
+  --success: #2cc266;
+  --warning: #fb8a3c;
+  --warning-foreground: #fb8a3c;
+
+  --relief-highlight: 0 0 #0000;
+  --relief-raised: 0 0 #0000;
+  --relief-primary: 0 0 #0000;
+  --relief-inset: 0 0 #0000;
+  --relief-surface: #1b1b1b;
+  --relief-surface-end: #1b1b1b;
+  --relief-top: 0 0 #0000;
+  --card-shadow: 0 2px 8px 0 oklch(0 0 0 / 0.3);
 }
 
 @theme inline {
+  /* SF Pro (Figma text styles): the system face on Apple platforms, the closest one elsewhere. */
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
   --font-heading: var(--font-sans);
-  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -136,9 +180,12 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-subtle: var(--subtle);
+  --color-icon: var(--icon);
   --color-brand: var(--brand);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --shadow-card: var(--card-shadow);
 
   /* Same scale as Tailwind's default radii, derived from --radius. */
   --radius-sm: calc(var(--radius) * 0.5);
@@ -158,6 +205,7 @@
   }
   html {
     @apply font-sans antialiased;
+    letter-spacing: -0.003em;
   }
   body {
     @apply bg-background text-foreground;
@@ -191,8 +239,87 @@
   }
 }
 
+/*
+ * Settings pages (Figma « Fenêtre · Paramètres »): each section's title above in grey, its content
+ * in a white card with a hairline, no separators. Scoped to the settings so the same field
+ * primitives stay plain in dialogs.
+ */
+@layer components {
+  .settings-page [data-slot="field-separator"] {
+    display: none;
+  }
+  /* A section is one card; its title sits above it, outside. */
+  .settings-page [data-slot="field-set"] {
+    position: relative;
+    margin-top: 1.625rem;
+    border: 1px solid var(--border);
+    border-radius: 0.875rem;
+    background: var(--background);
+    padding: 1rem;
+  }
+  .settings-page [data-slot="field-set"] > [data-slot="field-legend"] {
+    position: absolute;
+    top: -1.625rem;
+    left: 2px;
+    margin: 0;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 400;
+    color: var(--muted-foreground);
+  }
+  /* A form that isn't split in sections is one card as well. */
+  .settings-page [data-slot="field-group"]:not([data-slot="field-set"] *, :has([data-slot="field-set"], [data-slot="field-group"])) {
+    border: 1px solid var(--border);
+    border-radius: 0.875rem;
+    background: var(--background);
+    padding: 1rem;
+  }
+  .settings-page [data-slot="field-set"] > :empty,
+  .settings-page [data-slot="field-group"]:empty {
+    display: none;
+  }
+  /* A list is one card; its rows are plain, separated by space, with a hover. */
+  .settings-page [data-slot="item-group"]:has(> [data-slot="item"]) {
+    gap: 0 !important;
+    border: 1px solid var(--border);
+    border-radius: 0.875rem;
+    background: var(--background);
+    padding: 0.25rem;
+  }
+  .settings-page [data-slot="item-group"] > [data-slot="item"] {
+    border-color: transparent !important;
+    border-radius: 0.625rem !important;
+    background: transparent !important;
+  }
+  .settings-page [data-slot="item-group"] > [data-slot="item"]:is(a, button):hover {
+    background: var(--secondary) !important;
+  }
+  .settings-page [data-slot="field-set"] [data-slot="item-group"],
+  .settings-page [data-slot="field-set"] [data-slot="item"][data-variant="outline"] {
+    margin-inline: -0.75rem;
+    border: 0 !important;
+    background: transparent !important;
+    padding-block: 0.25rem;
+  }
+  .settings-page [data-slot="item-separator"] {
+    display: none;
+  }
+  .settings-page :not([data-slot="item-group"]) > [data-slot="item"][data-variant="outline"] {
+    border-color: var(--border) !important;
+    border-radius: 0.875rem !important;
+    background: var(--background) !important;
+  }
+}
+
 /* A message arriving while the conversation is open: rises into place. */
 @layer components {
+  /* Your own bubble is in the bot's colour: links and mentions in it are white, underlined. */
+  .bubble-mine :is(.mention, a) {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
   .chat-arrive {
     transition:
       opacity 200ms var(--ease-out),

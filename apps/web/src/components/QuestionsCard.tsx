@@ -69,7 +69,7 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
     >
       <BlockCard className="max-w-full">
         <CardHeader>
-          <CardTitle className="font-semibold">{questions.title ?? t.title}</CardTitle>
+          <CardTitle className="text-[15px] leading-[21px] font-medium">{questions.title ?? t.title}</CardTitle>
           <CardAction>
             <Button type="button" variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss} className="-mr-2 -mt-1">
               <CloseIcon />
@@ -152,10 +152,10 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
         </CardContent>
 
         <BlockFooter>
-          <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>
+          <Button type="button" variant="secondary" onClick={onDismiss}>
             {t.dismiss}
           </Button>
-          <Button type="submit" size="sm">
+          <Button type="submit">
             {t.submit}
           </Button>
         </BlockFooter>

@@ -28,6 +28,7 @@ import {
 import { errors } from "./errors.messages";
 import { engineConnectorsLines, engineMcpOrNone } from "./engine-mcp";
 import { forgetOAuthToken } from "./mcp-oauth-token";
+import { createOAuthStatus, withOAuthLock, type OAuthFlow } from "./mcp-oauth-flows";
 import { defineMessages, tr } from "./i18n";
 
 const messages = defineMessages({
@@ -38,6 +39,7 @@ const messages = defineMessages({
     cannotConnect: (reason: string) => `Can't connect: ${reason}`,
     notResponding: "the server isn't responding",
     nothingToAuthorize: "Nothing to authorize",
+    invalidFlow: "This authorization doesn't belong to this connector or has been replaced. Start the connection again.",
     nameTaken: (name: string) => `A connector named “${name}” already exists`,
     pluginManaged: (name: string) => `“${name}” comes from a Hermes plugin: it's configured in the plugin.`,
   },
@@ -48,6 +50,7 @@ const messages = defineMessages({
     cannotConnect: (reason: string) => `Connexion impossible : ${reason}`,
     notResponding: "le serveur ne répond pas",
     nothingToAuthorize: "Rien à autoriser",
+    invalidFlow: "Cette autorisation ne correspond pas à ce connecteur ou a été remplacée. Relance la connexion.",
     nameTaken: (name: string) => `Un connecteur « ${name} » existe déjà`,
     pluginManaged: (name: string) => `« ${name} » vient d'un plugin Hermes : il se configure dans le plugin.`,
   },
@@ -512,6 +515,10 @@ export const oauthRedirectUri = (name: string) => `${env.WEB_ORIGIN.replace(/\/$
 const flows = new Map<string, string>();
 
 export async function cancelOAuth(name: string) {
+  return withOAuthLock(name, () => cancelOAuthFlow(name));
+}
+
+async function cancelOAuthFlow(name: string) {
   const flow = flows.get(name);
   if (!flow) return;
   flows.delete(name);
@@ -520,9 +527,14 @@ export async function cancelOAuth(name: string) {
 
 /** Starts OAuth authorization: returns the URL the employee opens in their browser. */
 export async function startOAuth(id: string) {
+  const initial = await load(id);
+  return withOAuthLock(initial.name, () => startOAuthFlow(id));
+}
+
+async function startOAuthFlow(id: string) {
   const row = await load(id);
   if (row.status !== "authorizing") throw new HermesError(tr(messages).nothingToAuthorize, 409);
-  await cancelOAuth(row.name);
+  await cancelOAuthFlow(row.name);
   // A cancelled flow frees its slot once Hermes's worker thread has exited: retry for a few seconds.
   for (let attempt = 0; ; attempt++) {
     try {
@@ -540,13 +552,14 @@ export async function startOAuth(id: string) {
 }
 
 /** Tracks authorization; once granted, finishes the installation. */
-export async function oauthStatus(id: string, flowId: string) {
-  const row = await load(id);
-  const flow = await dashboard<{ status: string; error: string | null; tools?: { name: string }[] }>(`/api/mcp/oauth/flows/${encodeURIComponent(flowId)}`);
-  if (flow.status === "approved" && row.status === "authorizing") await finish(row, (flow.tools ?? []).map((t) => t.name));
-  if (flow.status === "error") await db.update(mcpServer).set({ error: flow.error }).where(eq(mcpServer.id, row.id));
-  return { status: flow.status, error: flow.error };
-}
+export const oauthStatus = createOAuthStatus({
+  load,
+  currentFlow: (name) => flows.get(name),
+  read: (flowId) => dashboard<OAuthFlow>(`/api/mcp/oauth/flows/${encodeURIComponent(flowId)}`),
+  finish,
+  error: async (row, error) => { await db.update(mcpServer).set({ error }).where(eq(mcpServer.id, row.id)); },
+  invalidFlow: () => new HermesError(tr(messages).invalidFlow, 409),
+});
 
 /** Relays the OAuth callback to the Hermes dashboard, which only listens locally. */
 export async function relayOAuthCallback(name: string, query: string) {

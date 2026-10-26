@@ -152,9 +152,10 @@ function TaskForm({ task }: { task: Task }) {
         </ListGroup>
 
         <View className="gap-2">
-          <Typography type="body-xs" color="muted" className="px-4 uppercase">
+          {/* Figma section title (« Bots », « Collègues »): sentence case, like the Section headers. */}
+          <Typography.Paragraph type="body-sm" color="muted" className="px-4">
             {messages.people}
-          </Typography>
+          </Typography.Paragraph>
           <ListGroup>
             {task.assignees.map((a, i) => (
               <Fragment key={a.id}>

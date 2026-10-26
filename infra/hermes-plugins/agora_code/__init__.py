@@ -5,13 +5,14 @@ runs it (apps/api/src/code-sessions.ts). Every step Claude Code takes shows up
 live in the conversation; its owner can write to it while it works, approve
 or deny the actions it asks about, and stop it.
 
-    claude_code_start(task, title, repo, branch, project, engine, model)   start, then wait
-    claude_code_wait(session_id)                     wait for it to finish its work
-    claude_code_send(session_id, message)            another instruction, then wait
+    claude_code_start(task, title, repo, branch, project, engine, model)   start, return right away
+    claude_code_wait(session_id)                     wait for it (short tasks only)
+    claude_code_send(session_id, message)            another instruction, return right away
     claude_code_stop(session_id)
 
-A session can ask the agent a question while it works (its ask_bot tool):
-claude_code_wait returns on it (`question`), and claude_code_send answers it.
+The agent does not hold its reply open while a session works: the API wakes it
+(a turn of its own, with the session's report) when the session finishes,
+fails or asks it a question (its ask_bot tool); claude_code_send answers it.
 
 The API listens on 127.0.0.1 (same network as the gateway) and wrote its URL
 and a token to `<root HERMES_HOME>/agora-code/api.json` when it started. Each
@@ -92,8 +93,9 @@ def _report(report: dict) -> str:
                           "goes on. Answer it with claude_code_send: your message is the answer it gets. If the decision "
                           "belongs to the user, ask them first, then answer.")
     elif status == "running":
-        report["note"] = ("Claude Code is still working. The members follow it live in the conversation. "
-                          "Call claude_code_wait again to keep waiting, or answer the user now.")
+        report["note"] = ("Claude Code is working. The members follow it live in the conversation. Tell them in one "
+                          "sentence what you launched and end your reply: you will be woken up with its report when it "
+                          "finishes, fails or asks you a question.")
     elif status == "waiting":
         report["note"] = ("Claude Code is waiting for its owner, in the conversation's Claude Code card: to approve an "
                           "action, answer its questions or approve its plan (`approval.kind`: tool, question or plan). "
@@ -137,7 +139,7 @@ def claude_code_start(args: dict, session_id: str = "", **_: Any) -> str:
             body[key] = str(args[key])
     try:
         report = _call("POST", "/sessions", body)
-        if args.get("wait", True) is False:
+        if not args.get("wait", False):
             return _report(report)
         return _wait(report["session_id"], session_id, _minutes(args), report)
     except Exception as exc:
@@ -161,7 +163,7 @@ def claude_code_send(args: dict, session_id: str = "", **_: Any) -> str:
         return _error("session_id and message are required")
     try:
         report = _call("POST", f"/sessions/{urllib.parse.quote(target)}/messages", {"hermes_session": session_id, "text": message})
-        if args.get("wait", True) is False:
+        if not args.get("wait", False):
             return _report(report)
         return _wait(target, session_id, _minutes(args))
     except Exception as exc:
@@ -196,12 +198,12 @@ START = {
         "from a clone of the repository shared by its sessions, on a working branch, with the project's credentials (.env) already in place, "
         "using the organization's GitHub access; Claude Code can then commit, push and use `gh`, and the owner can commit, "
         "push, open and merge the pull request from the session's panel. Do not copy code into its directory yourself. "
-        "Once started, the session does the work: do not do it yourself in parallel; follow it with claude_code_wait. "
+        "Once started, the session does the work: do not do it yourself in parallel. "
         "One session per task: a new issue or feature gets its own session, with a title naming it, even on the "
         "same repository (each gets its own worktree, sessions on one repository never get in each other's way); claude_code_send is only for following up on "
         "the task a session was started for. Start several sessions for independent tasks. Write a complete brief: goal, constraints, how to check the "
-        "result. Waits for it to finish, then returns its answer and the actions it took. Only available in replies "
-        "to the subscription's owner."
+        "result. Returns right away: say in one sentence what you launched and end your reply. You are woken up automatically, "
+        "with its report, when it finishes, fails or asks you a question. Only available in replies to the subscription's owner."
     ),
     "parameters": {
         "type": "object",
@@ -228,7 +230,7 @@ START = {
                                "Codex and Cursor sessions cannot ask you questions, and a message sent while they work waits for the end of their run.",
             },
             "model": {"type": "string", "description": "Model for the engine (Claude: an alias like opus or sonnet, or a full id; Codex/Cursor: their model id). Default: the engine's own."},
-            "wait": {"type": "boolean", "description": "Wait for the result (default true). False: return right away with its id."},
+            "wait": {"type": "boolean", "description": "Hold this reply until it finishes (default false). Only for a short task whose result you need in this very reply."},
             "timeout_minutes": _WAIT,
         },
         "required": ["task"],
@@ -238,7 +240,7 @@ START = {
 
 WAIT = {
     "name": "claude_code_wait",
-    "description": "Wait for a Claude Code session to finish its current work (or to need an approval, or to ask you a question), then return its status, answer and recent actions.",
+    "description": "Wait for a Claude Code session to finish its current work (or to need an approval, or to ask you a question), then return its status, answer and recent actions. Rarely needed: you are woken up with its report anyway. Use it only for a short task whose result you need in this reply.",
     "parameters": {
         "type": "object",
         "properties": {"session_id": {"type": "string"}, "timeout_minutes": _WAIT},
@@ -253,14 +255,14 @@ SEND = {
         "Send another instruction to a Claude Code session (it keeps its context): a follow-up or a correction of "
         "the task it was started for. Never a new task (another issue, another feature): start a new session for it "
         "with claude_code_start (it gets a worktree of its own). Refused once its pull request is merged or closed. If it is working, it reads it at its "
-        "next step; if it waits on its question to you, the message is your answer. Then waits like claude_code_wait."
+        "next step; if it waits on its question to you, the message is your answer. Returns right away; you are woken up with its report when it needs you."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "session_id": {"type": "string"},
             "message": {"type": "string"},
-            "wait": {"type": "boolean", "description": "Wait for the result (default true)."},
+            "wait": {"type": "boolean", "description": "Hold this reply until it finishes (default false)."},
             "timeout_minutes": _WAIT,
         },
         "required": ["session_id", "message"],

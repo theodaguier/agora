@@ -30,11 +30,11 @@ export function TwoFactorRequired() {
   const [step, setStep] = useState<TwoFactorStep | null>(null);
 
   return (
-    <div className="grid min-h-dvh place-items-center px-4">
-      <div className="w-full max-w-sm">
-        <OrgLogo className="mx-auto size-14" />
-        <h1 className="mt-6 text-center text-2xl font-semibold tracking-tight">{t.title}</h1>
-        <p className="mt-1.5 text-center text-sm text-muted-foreground">{t.text(orgName)}</p>
+    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
+      <div className="w-full max-w-[400px] rounded-[18px] border border-border bg-background p-8">
+        <OrgLogo className="size-9" />
+        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.title}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">{t.text(orgName)}</p>
         <Button size="lg" className="mt-6 w-full" onClick={() => setStep({ kind: "password", intent: "enable" })}>
           {t.turnOn}
         </Button>

@@ -222,7 +222,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
           </span>
         )}
         <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold tracking-tight">{item.name}</h1>
+          <h1 className="truncate text-xl leading-[26px] font-medium">{item.name}</h1>
           <p className="text-sm text-muted-foreground">
             {item.kind === "mcp" && t.mcpSubtitle}
             {reg && t.registrySubtitle(reg.transport === "remote")}
@@ -234,7 +234,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
       <p className="mb-6 text-[15px] leading-relaxed text-foreground/90">{item.description}</p>
 
       {done ? (
-        <Card className="gap-4 bg-transparent py-5">
+        <Card className="gap-4 rounded-[14px] bg-background py-5">
           <CardContent className="flex flex-col gap-2 px-5">
             <p className="text-[15px]">
               {item.kind === "skill" ? t.skillInstalled : t.added}

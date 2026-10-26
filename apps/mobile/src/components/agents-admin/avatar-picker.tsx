@@ -2,7 +2,7 @@ import * as Haptics from "expo-haptics";
 import { Card, Label, TagGroup } from "heroui-native";
 import { View } from "react-native";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { avatarShapes } from "@/components/agent-avatar-shapes";
+import { agentAccentColor } from "@agora/core";
 import { avatarColors } from "@/lib/agents-admin";
 import { defineMessages } from "@/lib/i18n";
 import type { AvatarShape } from "@/lib/types";
@@ -23,8 +23,8 @@ const t = defineMessages<{ shapes: Record<AvatarShape, string>; shape: string; c
 });
 
 /**
- * Shape and color of an agent's creature, as two single-choice tag groups (a card of the grouped form).
- * Each color tag shows the creature in that color, so the swatch is the avatar itself.
+ * An agent's clay mascot, picked by its colour: a single-choice tag group (a card of the grouped form)
+ * whose tags are the mascots themselves. The shape stays in the data but is no longer drawn.
  */
 export function AvatarPicker(props: {
   shape: AvatarShape;
@@ -42,35 +42,17 @@ export function AvatarPicker(props: {
     <Card>
       <Card.Body className="gap-4">
         <View className="gap-2">
-          <Label>{t.shape}</Label>
-          <TagGroup
-            selectionMode="single"
-            selectedKeys={[props.shape]}
-            onSelectionChange={(keys) => pick(props.onShapeChange, keys, props.shape)}
-            accessibilityLabel={t.shape}
-          >
-            <TagGroup.List>
-              {(Object.keys(avatarShapes) as AvatarShape[]).map((s) => (
-                <TagGroup.Item key={s} id={s} accessibilityLabel={t.shapes[s]}>
-                  <AgentAvatar agent={{ avatar: { shape: s, color: props.color } }} size={22} />
-                  <TagGroup.ItemLabel>{t.shapes[s]}</TagGroup.ItemLabel>
-                </TagGroup.Item>
-              ))}
-            </TagGroup.List>
-          </TagGroup>
-        </View>
-        <View className="gap-2">
           <Label>{t.color}</Label>
           <TagGroup
             selectionMode="single"
-            selectedKeys={[props.color]}
+            selectedKeys={[agentAccentColor(props.color)]}
             onSelectionChange={(keys) => pick(props.onColorChange, keys, props.color)}
             accessibilityLabel={t.color}
           >
             <TagGroup.List>
               {avatarColors.map((c) => (
                 <TagGroup.Item key={c} id={c} accessibilityLabel={c}>
-                  <AgentAvatar agent={{ avatar: { shape: props.shape, color: c } }} size={26} />
+                  <AgentAvatar agent={{ avatar: { color: c } }} size={32} />
                 </TagGroup.Item>
               ))}
             </TagGroup.List>
