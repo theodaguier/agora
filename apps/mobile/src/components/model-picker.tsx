@@ -1,13 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Button, SearchField, Tabs } from "heroui-native";
+import { SearchField, Tabs } from "heroui-native";
 import { useState } from "react";
 import { FlatList, View } from "react-native";
 import { CheckIcon } from "@/components/icons";
 import { ModelLogo } from "@/components/model-logo";
 import { FloatingMenu, MENU_MAX_HEIGHT, MenuEmpty, MenuRow } from "@/components/slash-menu";
 import { api, conversationPath } from "@/lib/api";
-import { withTap } from "@/lib/haptics";
 import { useAdminToast } from "@/components/admin/ui";
 import { defineMessages } from "@/lib/i18n";
 import { modelsQuery } from "@/lib/queries";
@@ -100,37 +99,6 @@ function current(data: ModelOptions) {
   return { engines, engine, fallback, label, short, other };
 }
 
-type ButtonProps = { conversationId: string; bot?: Bot; several: boolean; open: boolean; onOpenChange: (open: boolean) => void };
-
-/**
- * The toolbar's trigger: the current model (in a group, "Models": each bot has its own). Always there,
- * even before the list arrives or when it failed: a tap then tries again. `open` is controlled: the "/"
- * menu's "Choose model" opens the palette too.
- */
-export function ModelButton({ conversationId, bot, several, open, onOpenChange }: ButtonProps) {
-  const t = messages;
-  const { data, isError, refetch } = useQuery({ ...modelsQuery(conversationId, bot?.id), placeholderData: keepPreviousData });
-  if (!data)
-    return (
-      <Button variant="outline" size="sm" isDisabled={!isError} accessibilityLabel={t.title} onPress={withTap(() => refetch())}>
-        <Button.Label numberOfLines={1}>{isError ? t.retry : t.model}</Button.Label>
-      </Button>
-    );
-  const { label, short } = current(data);
-  return (
-    // Next to the "+" and ringed like it (ChatGPT's tool pills); a second tap closes the palette.
-    <Button
-      variant={open ? "secondary" : "outline"}
-      size="sm"
-      accessibilityLabel={`${t.title}: ${label}`}
-      accessibilityState={{ expanded: open }}
-      onPress={withTap(() => onOpenChange(!open))}
-      className="max-w-[200px]"
-    >
-      <Button.Label numberOfLines={1}>{several ? t.models : short}</Button.Label>
-    </Button>
-  );
-}
 
 /** `source`: the provider, as shown under the model. */
 type Option = { key: string; label: string; model?: string; provider: string; source: string; reasoning?: boolean; active: boolean; select: () => void };

@@ -1,8 +1,6 @@
-import { GlassView as LiquidGlassView, isGlassEffectAPIAvailable } from "expo-glass-effect";
-import { GlassView, ListGroup, PressableFeedback, Separator, Typography } from "heroui-native";
+import { ListGroup, PressableFeedback, Separator, Surface, Typography } from "heroui-native";
 import { Fragment, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
-import { useUniwind } from "uniwind";
 import { AtIcon, ClockIcon, CommandIcon, PackageIcon, PlugIcon } from "@/components/icons";
 import { withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
@@ -10,8 +8,8 @@ import { defineMessages } from "@/lib/i18n";
 /*
  * apps/web/src/components/SlashMenu.tsx. On the phone the palette is a list group above the field,
  * rows sized for a finger; no keyboard navigation (a tap picks), so no "active" row.
- * It floats over the thread on HeroUI's glass: the list group goes transparent over a GlassView background
- * (a native blur on iOS, the overlay color flattened elsewhere), or Liquid Glass on iOS 26. The model picker floats the same way.
+ * It floats over the thread on an opaque surface (the overlay colour, a hairline, one soft shadow), like the
+ * web's menus. The model picker floats the same way.
  */
 
 export type SlashItem = {
@@ -76,21 +74,16 @@ export function SlashMenu({ items, onPick }: { items: SlashItem[]; onPick: (item
   );
 }
 
-/** iOS 26: the menus are Liquid Glass; elsewhere HeroUI's frosted GlassView (expo-blur). */
-const liquid = isGlassEffectAPIAvailable();
-
 /**
  * The floating palette over the thread, shared by the "/" and "@" menus and the model picker.
- * On iOS 26 the glass is the container itself, never clipped nor behind an overflow-hidden parent
- * (as a background layer in a clipping view it drew nothing); its content clips to the same corners.
- * Elsewhere, HeroUI's standalone glass: a rounded, clipping container, the GlassView, the content above it.
+ * Opaque: Liquid Glass drew its blur over the thread but not its own rows on iOS 26, leaving a blurred,
+ * empty panel with the search field focused under it.
  * `header`: what stays above the scrolling rows (the model picker's search). `list`: a virtualized list
  * of its own, in place of the plain scroll view around `children` (the model picker: hundreds of models).
  */
 export function FloatingMenu({ label, header, list, children }: { label: string; header?: ReactNode; list?: ReactNode; children?: ReactNode }) {
-  const { theme } = useUniwind();
-  const content = (
-    <>
+  return (
+    <Surface className="overflow-hidden rounded-3xl border border-border bg-overlay p-0 shadow-lg" style={{ borderCurve: "continuous" }}>
       {header}
       <ListGroup variant="transparent" accessibilityLabel={label}>
         {list ?? (
@@ -99,22 +92,7 @@ export function FloatingMenu({ label, header, list, children }: { label: string;
           </ScrollView>
         )}
       </ListGroup>
-    </>
-  );
-  if (liquid)
-    return (
-      // The app's theme, not the phone's appearance ("auto" drew a white glass over the dark theme).
-      <LiquidGlassView glassEffectStyle="regular" colorScheme={theme.endsWith("dark") ? "dark" : "light"} style={{ borderRadius: 24, borderCurve: "continuous" }}>
-        <View className="overflow-hidden rounded-3xl" style={{ borderCurve: "continuous" }}>
-          {content}
-        </View>
-      </LiquidGlassView>
-    );
-  return (
-    <View className="relative overflow-hidden rounded-3xl" style={{ borderCurve: "continuous" }}>
-      <GlassView intensity={80} />
-      {content}
-    </View>
+    </Surface>
   );
 }
 
