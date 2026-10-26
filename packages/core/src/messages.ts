@@ -3,7 +3,7 @@ type Timed = { id: string; createdAt: string };
 
 // Older responses used JS milliseconds; newer ones preserve Postgres microseconds.
 const timestamp = (value: string) => value.replace(/(?:\.(\d+))?Z$/, (_, fraction = "") => `.${fraction.padEnd(6, "0")}Z`);
-const compare = (a: Timed, b: Timed) => {
+export const compareMessageOrder = (a: Timed, b: Timed) => {
   const at = timestamp(a.createdAt), bt = timestamp(b.createdAt);
   return at < bt ? -1 : at > bt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 };
@@ -16,7 +16,7 @@ const compare = (a: Timed, b: Timed) => {
 export function insertMessage<T extends Timed>(list: T[], message: T): T[] {
   if (list.some((m) => m.id === message.id)) return list;
   let i = list.length;
-  while (i > 0 && compare(list[i - 1]!, message) > 0) i--;
+  while (i > 0 && compareMessageOrder(list[i - 1]!, message) > 0) i--;
   return [...list.slice(0, i), message, ...list.slice(i)];
 }
 

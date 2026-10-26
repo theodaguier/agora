@@ -48,6 +48,7 @@ export async function dashboard<T>(path: string, init?: RequestInit & { profile?
   if (init?.profile && !isDefaultProfile(init.profile)) url.searchParams.set("profile", init.profile);
   const res = await fetch(url, {
     ...init,
+    signal: init?.signal ?? AbortSignal.timeout(120_000),
     headers: { "Content-Type": "application/json", "X-Hermes-Session-Token": env.HERMES_DASHBOARD_TOKEN, ...init?.headers },
   });
   const body = await res.text();
@@ -281,6 +282,12 @@ async function loadYaml(path: string) {
 async function instanceMcpServers(): Promise<Record<string, McpConfig>> {
   const doc = await loadYaml(join(env.HERMES_HOME, "config.yaml"));
   return (doc.toJS()?.mcp_servers ?? {}) as Record<string, McpConfig>;
+}
+
+/** Presence only; the form can keep existing values without sending secrets to the browser. */
+export async function configuredMcpEnvNames(server: string) {
+  const cfg = (await instanceMcpServers())[server];
+  return Object.entries((cfg?.env ?? {}) as Record<string, unknown>).filter(([, value]) => typeof value === "string" && value.length > 0).map(([name]) => name);
 }
 
 export async function agentMcpServers(profile: string) {

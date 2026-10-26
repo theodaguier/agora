@@ -1,4 +1,5 @@
 node_modules
+infra/.backup-offsite.lock
 dist
 .turbo
 .env

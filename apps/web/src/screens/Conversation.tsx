@@ -1,4 +1,5 @@
 import { defineMessages, useT } from "@/i18n";
+import { PreviewUrls } from "@/lib/preview-urls";
 import { useEventText } from "@/i18n/events";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
@@ -14,7 +15,7 @@ import { QuestionsCard } from "@/components/QuestionsCard";
 import { SkillRequestCard } from "@/components/SkillRequestCard";
 import { BotRequestCard } from "@/components/BotRequestCard";
 import { ViewCard } from "@/components/views/ViewCard";
-import { insertMessage, readPreviews, withoutMediaTags, withoutPreviews, type ViewAction } from "@agora/core";
+import { conversationTimeline, insertMessage, readPreviews, withoutMediaTags, withoutPreviews, type ViewAction } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { Composer, type ComposerHandle } from "@/components/Composer";
 import { ConversationAvatar, ParticipantAvatar, PersonAvatar, useStatus } from "@/components/ConversationAvatar";
@@ -194,9 +195,6 @@ function BotViews({
     />
   ));
 }
-
-/** A reply with nothing to show yet (no text, session, mockup or approval): it goes on the typing line. */
-const beforeReply = (turn: ActiveTurn) => !hideBlocks(turn.text) && !turn.codeSessions?.length && !turn.approval && !readPreviews(turn.text).length;
 
 /**
  * A bot's message and what comes with it (tools, cards). `avatar` (direct conversation with the bot):
@@ -499,11 +497,15 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
   const mentions = useMentionables(conv?.agents ?? noAgents);
 
   const [sent, setSending] = useState<Sending[]>([]);
+  const [pendingPreviews] = useState(() => new PreviewUrls());
   const sending = sent.filter((s) => !s.id || !messages.some((m) => m.id === s.id));
+  useEffect(() => () => pendingPreviews.clear(), [pendingPreviews, conversationId]);
   // Once in the thread, a sent message is on its own: deleted later, it must not come back as a pending copy.
   useEffect(() => {
-    if (sending.length !== sent.length) setSending((xs) => xs.filter((s) => !s.id || !messages.some((m) => m.id === s.id)));
-  }, [messages, sent]);
+    const pending = sent.filter((s) => !s.id || !messages.some((m) => m.id === s.id));
+    pendingPreviews.keep(pending.flatMap((s) => s.attachments.map((a) => a.previewUrl)));
+    if (pending.length !== sent.length) setSending((xs) => xs.filter((s) => !s.id || !messages.some((m) => m.id === s.id)));
+  }, [messages, sent, pendingPreviews]);
   const arrived = useArrivals(conversationId, messages, isPending);
   /**
    * Beside the thread, as this conversation was left (lib/conversation-side.ts). `panel`: the bot's or the
@@ -660,6 +662,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
     : null;
 
   const send = async (text: string, attachments: Sending["attachments"], invocations: Invocation[], mentions: string[], reply?: ReplyTo, viewAction?: ViewAction) => {
+    for (const attachment of attachments) pendingPreviews.adopt(attachment.previewUrl);
     const key = crypto.randomUUID();
     // Sending brings the reader back to the bottom, where their message and the reply appear.
     atBottom.current = true;
@@ -721,6 +724,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
     !turns.length && !sending.length && last?.kind === "bot" && (last.data?.choices || last.data?.questions) && dismissed !== last.id ? last : null;
   const mine = turns.filter((t) => t.requestedBy === user.id);
   const placeholder = directBot ? t.messageTo(directBot.name) : group ? (conv.agents.length ? t.writeGroupMention : t.writeGroup) : t.messageTo(title);
+  const timeline = conversationTimeline(messages, turns);
 
   const sideKind: SideKind | null = codeSession ? "code" : previewKey ? "preview" : panel && conv ? panel : null;
   const sideView =
@@ -831,10 +835,20 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                 </EmptyHeader>
               </Empty>
             )}
-            {messages.map((m, i) => {
-              const at = new Date(m.createdAt);
-              const prev = messages[i - 1];
-              const divider = needsDivider(prev && new Date(prev.createdAt), at);
+            {timeline.map((entry, i) => {
+              const at = new Date(entry.createdAt);
+              const previous = timeline[i - 1];
+              const divider = needsDivider(previous && new Date(previous.createdAt), at);
+              if (entry.kind === "turn") return (
+                <Fragment key={entry.key}>
+                  {divider && <DateDivider label={dividerLabel(at)} />}
+                  <LiveTurn turn={entry.turn} bot={agentById(entry.turn.agentId)} conversationId={conversationId}
+                    avatar={directBot ? <AgentAvatar agent={directBot} className="size-7" /> : undefined}
+                    group={group} mentionables={mentions} onOpenCode={openCodeSession} onOpenPreview={openPreview} />
+                </Fragment>
+              );
+              const m = entry.message;
+              const prev = previous?.kind === "message" ? previous.message : undefined;
               const newAuthor = divider || !prev || authorKey(prev.author) !== authorKey(m.author);
               const fromMe = m.kind === "user" && m.author?.kind === "user" && m.author.id === user.id;
               const showAuthor = newAuthor && !fromMe && m.kind !== "event" && (group || (m.kind === "user" && !directBot)) && !!m.author;
@@ -842,13 +856,16 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
               const arriving = m.kind === "user" && !fromMe && arrived(m.id);
               // Figma « Ligne · agent »: in a direct conversation with a bot, its messages sit right of a 28 px
               // gutter, its avatar under the last one of a run; 16 px between runs, 4 px inside one.
-              const next = messages[i + 1];
-              const runEnds = next ? next.kind !== "bot" || authorKey(next.author) !== authorKey(m.author) || needsDivider(at, new Date(next.createdAt)) : !turns.length;
+              const nextEntry = timeline[i + 1];
+              const next = nextEntry?.kind === "message" ? nextEntry.message : undefined;
+              const runEnds = next
+                ? next.kind !== "bot" || authorKey(next.author) !== authorKey(m.author) || needsDivider(at, new Date(nextEntry!.createdAt))
+                : nextEntry?.kind !== "turn" || m.author?.kind !== "agent" || nextEntry.turn.agentId !== m.author.id;
               const gap = newAuthor && i > 0 && !divider && "mt-3";
               /** A Claude Code session started here: its card instead of the event line. */
               const codeStarted = m.kind === "event" && m.data?.event?.type === "code.started" ? m.data.event : null;
               return (
-                <Fragment key={m.id}>
+                <Fragment key={entry.key}>
                   {divider && <DateDivider label={dividerLabel(at)} />}
                   {showAuthor && m.author && group && (
                     <AuthorLine
@@ -975,32 +992,9 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                 )}
               </Fragment>
             ))}
-            {/* With the bot alone, its reply-to-be is its dots in the gutter, by its avatar; elsewhere, the typing line. */}
-            {turns.filter((turn) => directBot || !beforeReply(turn)).map((turn) => (
-              <LiveTurn
-                key={turn.turnId}
-                avatar={directBot ? <AgentAvatar agent={directBot} className="size-7" /> : undefined}
-                turn={turn}
-                bot={agentById(turn.agentId)}
-                conversationId={conversationId}
-                group={group}
-                mentionables={mentions}
-                onOpenCode={openCodeSession}
-                onOpenPreview={openPreview}
-              />
-            ))}
             <TypingLine
               className="chat-arrive"
               entries={[
-                ...turns.filter((turn) => !directBot && beforeReply(turn)).map((turn) => {
-                  const bot = agentById(turn.agentId);
-                  return {
-                    key: turn.turnId,
-                    name: bot?.name ?? t.theBot,
-                    avatar: group && bot && <AgentAvatar agent={bot} className="size-4" />,
-                    tool: turn.tools.at(-1)?.name,
-                  };
-                }),
                 ...typing.map((p) => ({ key: p.userId, name: p.name.split(" ")[0]! })),
               ]}
             />

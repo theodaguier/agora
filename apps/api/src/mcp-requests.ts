@@ -15,6 +15,7 @@ import { env } from "./env";
 import {
   agentMcpServers,
   carryMcpSettings,
+  configuredMcpEnvNames,
   dashboard,
   HermesError,
   refreshAgentMcp,
@@ -29,6 +30,8 @@ import { errors } from "./errors.messages";
 import { engineConnectorsLines, engineMcpOrNone } from "./engine-mcp";
 import { forgetOAuthToken } from "./mcp-oauth-token";
 import { createOAuthStatus, withOAuthLock, type OAuthFlow } from "./mcp-oauth-flows";
+import { previousMcpSecrets } from "./mcp-secrets";
+import { probeStdio } from "./mcp-probe";
 import { defineMessages, tr } from "./i18n";
 
 const messages = defineMessages({
@@ -171,7 +174,7 @@ export async function connectorsPrompt(profile: string, engine: "hermes" | "clau
 
 export type McpRequestDto = ReturnType<typeof toDto>;
 
-function toDto(row: Row, viewer: { id: string; role?: string | null }, types: Record<string, IntegrationType>) {
+function toDto(row: Row, viewer: { id: string; role?: string | null }, types: Record<string, IntegrationType>, configuredEnv: string[] = []) {
   const admin = viewer.role === "admin";
   return {
     type: types[row.name] ?? guessIntegrationType(row.name, row.title, row.description),
@@ -183,6 +186,7 @@ function toDto(row: Row, viewer: { id: string; role?: string | null }, types: Re
     url: row.url,
     command: row.command ? [row.command, ...row.args].join(" ") : null,
     env: row.env,
+    configuredEnv,
     auth: row.auth,
     docsUrl: row.docsUrl,
     status: row.status,
@@ -219,7 +223,8 @@ export async function getRequest(id: string, viewer: { id: string; role?: string
       : [];
     if (!member.length) throw new HermesError(tr(errors).requestNotFound, 404);
   }
-  return toDto(row, viewer, await getTypes());
+  const [types, configured] = await Promise.all([getTypes(), configuredMcpEnvNames(row.name)]);
+  return toDto(row, viewer, types, configured);
 }
 
 export async function listRequests(viewer: { id: string; role?: string | null }) {
@@ -444,11 +449,18 @@ export type OAuthClient = { client_id: string; client_secret?: string; scope?: s
 /** Hermes .env variable holding a server's OAuth client secret (never in the database or config.yaml). */
 const clientSecretVar = (name: string) => `MCP_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_CLIENT_SECRET`;
 
+type InstallSecrets = { env?: Record<string, string>; bearer_token?: string; oauth_client?: OAuthClient; auth?: Row["auth"] };
+
 export async function install(
   rowOrId: Row | string,
-  secrets: { env?: Record<string, string>; bearer_token?: string; oauth_client?: OAuthClient; auth?: Row["auth"] },
+  secrets: InstallSecrets,
 ) {
-  let row = typeof rowOrId === "string" ? await load(rowOrId) : rowOrId;
+  const initial = typeof rowOrId === "string" ? await load(rowOrId) : rowOrId;
+  return withOAuthLock(initial.name, () => installLocked(initial.id, secrets));
+}
+
+async function installLocked(id: string, secrets: InstallSecrets) {
+  let row = await load(id);
   if (row.status !== "approved" && row.status !== "authorizing" && row.status !== "installed") throw new HermesError(tr(messages).notApproved, 409);
   // A remote server can change how it authenticates when it's reconfigured.
   if (secrets.auth && row.url && secrets.auth !== row.auth) {
@@ -457,27 +469,28 @@ export async function install(
   const reconfiguring = row.status === "installed";
   // The declaration in place: a field left empty keeps its value, and a failed reconfiguration puts it back.
   const previous = await snapshotMcpServer(row.name);
-  const kept = Object.entries((previous?.cfg.env ?? {}) as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string" && !!e[1]);
-  const values = { ...Object.fromEntries(kept), ...Object.fromEntries(Object.entries(secrets.env ?? {}).filter(([, v]) => v)) };
+  const kept = previousMcpSecrets(previous);
+  const values = { ...kept.env, ...Object.fromEntries(Object.entries(secrets.env ?? {}).filter(([, v]) => v)) };
   const missing = row.env.filter((e) => e.required && !values[e.name]);
   if (missing.length) throw new HermesError(tr(messages).missing(missing.map((e) => e.name).join(", ")), 400);
-  if (row.auth === "header" && !secrets.bearer_token) throw new HermesError(tr(errors).accessTokenRequired, 400);
+  const bearer = secrets.bearer_token || kept.bearer;
+  if (row.auth === "header" && !bearer) throw new HermesError(tr(errors).accessTokenRequired, 400);
 
   const body = row.url
-    ? { name: row.name, url: row.url, auth: row.auth, ...(row.auth === "header" && { bearer_token: secrets.bearer_token }) }
+    ? { name: row.name, url: row.url, auth: row.auth, ...(row.auth === "header" && { bearer_token: bearer }) }
     : { name: row.name, command: row.command, args: row.args, env: values };
   // New attempt: start from a clean declaration.
   await dashboard(`/api/mcp/servers/${row.name}`, { method: "DELETE" }).catch(() => {});
   try {
     await dashboard("/api/mcp/servers", { method: "POST", body: JSON.stringify(body) });
   } catch (err) {
-    if (reconfiguring && previous) await restoreMcpServer(row.name, previous).catch((e) => console.error("mcp: restore", e));
+    if (previous) await restoreMcpServer(row.name, previous).catch((e) => console.error("mcp: restore", e));
     throw err;
   }
   if (previous) await carryMcpSettings(row.name, previous.cfg);
 
   if (row.auth === "oauth") {
-    const client = secrets.oauth_client;
+    const client = secrets.oauth_client ? { ...kept.client, ...secrets.oauth_client, client_secret: secrets.oauth_client.client_secret || kept.client?.client_secret } : kept.client;
     if (client?.client_secret) {
       await dashboard("/api/env", { method: "PUT", body: JSON.stringify({ key: clientSecretVar(row.name), value: client.client_secret }) });
     } else {
@@ -493,16 +506,19 @@ export async function install(
     await db.update(mcpServer).set({ status: "authorizing", error: null }).where(eq(mcpServer.id, row.id));
     return;
   }
-  const test = await dashboard<{ ok?: boolean; tools?: { name: string }[]; error?: string }>(`/api/mcp/servers/${row.name}/test`, { method: "POST" }).catch(
-    (err: Error) => ({ ok: false, error: err.message, tools: undefined }),
-  );
+  const test = row.command
+    ? await probeStdio({ command: row.command, args: row.args, env: values }, env.HERMES_HOME || undefined)
+    : await dashboard<{ ok?: boolean; tools?: { name: string }[]; error?: string }>(`/api/mcp/servers/${row.name}/test`, { method: "POST" }).catch(
+        (err: Error) => ({ ok: false, error: err.message, tools: undefined }),
+      );
   if (!test.ok) {
-    await dashboard(`/api/mcp/servers/${row.name}`, { method: "DELETE" }).catch(() => {});
     // The connector worked before: a mistyped key mustn't take it away.
     if (reconfiguring && previous) await restoreMcpServer(row.name, previous).catch((e) => console.error("mcp: restore", e));
+    else await dashboard(`/api/mcp/servers/${row.name}/enabled`, { method: "PUT", body: JSON.stringify({ enabled: false }) });
     await db.update(mcpServer).set({ error: test.error ?? tr(messages).connectionFailed }).where(eq(mcpServer.id, row.id));
     throw new HermesError(tr(messages).cannotConnect(test.error ?? tr(messages).notResponding), 400);
   }
+  if (!reconfiguring) await dashboard(`/api/mcp/servers/${row.name}/enabled`, { method: "PUT", body: JSON.stringify({ enabled: true }) });
   await finish(row, (test.tools ?? []).map((t) => t.name));
 }
 

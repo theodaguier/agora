@@ -1,11 +1,11 @@
 import { useAccountLocale } from "@/lib/org";
-import { useState, type CSSProperties } from "react";
+import { lazy, Suspense, useState, type CSSProperties } from "react";
 import { Outlet, useLocation, useRouteContext } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { useEvents } from "@/lib/realtime";
 import { ConfirmHost } from "@/components/ConfirmDialog";
 import { ProfileSheet } from "@/components/ProfileSheet";
-import { Settings } from "@/components/Settings";
+import { useSettingsRequested } from "@/lib/settings";
 import { Shortcuts } from "@/components/Shortcuts";
 import { AppSidebar, SIDEBAR_WIDTH } from "@/components/Sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -13,6 +13,8 @@ import { WhatsNew } from "@/components/WhatsNew";
 import { Workspace } from "@/components/Workspace";
 import { readSize, useDesktop } from "@/lib/workspace";
 import { MorningDigest } from "@/components/MorningDigest";
+
+const Settings = lazy(() => import("@/components/Settings").then((m) => ({ default: m.Settings })));
 
 /**
  * Desktop (Figma « Conversation »): the grey sidebar (its width dragged) beside the workspace; a
@@ -23,6 +25,7 @@ export function AppShell() {
   const atRoot = useLocation({ select: (l) => l.pathname === "/" });
   const { user } = useRouteContext({ from: "/app" });
   const desktop = useDesktop();
+  const settingsRequested = useSettingsRequested();
   const [sidebarWidth, setSidebarWidth] = useState(() => readSize("sidebar", SIDEBAR_WIDTH));
   useEvents(user.id);
   useAccountLocale(user.locale);
@@ -47,7 +50,7 @@ export function AppShell() {
           </SidebarInset>
         </>
       )}
-      <Settings />
+      {settingsRequested && <Suspense fallback={null}><Settings /></Suspense>}
       <ProfileSheet />
       <ConfirmHost />
       <Shortcuts />

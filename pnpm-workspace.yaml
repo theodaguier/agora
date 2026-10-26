@@ -19,18 +19,19 @@ overrides:
   source-map-js@<1.2.2: ^1.2.2
   shell-quote@<1.11.0: ^1.11.0
   "@modelcontextprotocol/sdk@<1.31.0": ^1.31.0
-  body-parser@>=2.0.0 <2.4.0: ^2.4.0
-  undici@>=7.18.0 <7.30.1: ^7.30.1
-  "@modelcontextprotocol/sdk>zod": ^4.6.6
-  "zod-to-json-schema>zod": ^4.6.6
+  "zod@>=4.0.0 <4.6.6": ^4.6.7
+  "body-parser@>=2.0.0 <2.4.0": ^2.4.0
+  "undici@>=7.18.0 <7.30.1": ^7.30.1
+  "ip-address@>=10.0.0 <10.7.4": ^10.7.4
+  "fast-uri@>=3.0.0 <3.1.9": ^3.1.9
+  "@modelcontextprotocol/sdk>zod": ^4.6.7
+  "zod-to-json-schema>zod": ^4.6.7
 
 # Advisories with no published fix, that only come in through the mobile build tooling, never
 # the shipped app or the API. Drop each one once a fix ships.
 # - node-forge <=1.4.0 (latest is 1.4.0), through @expo/cli.
 # - braces <=3.0.3 (latest is 3.0.3, the advisory's 3.0.4 isn't published), through metro's micromatch.
-# - zod <4.6.6 (the fix is zod 4 only), through @expo/cli, which is written against zod 3.
 auditConfig:
   ignoreGhsas:
     - GHSA-86w9-cpqp-85rv
     - GHSA-vfj7-8cjw-p6xm
-    - GHSA-mrhx-c7xc-m3w5

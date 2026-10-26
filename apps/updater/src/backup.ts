@@ -9,7 +9,9 @@ import { withHermesPaused } from "./prod";
  * and Claude Code sessions' installs, and rebuilt by the next one. A bun cache of several GB made
  * the archive outlast its timeout, Hermes paused all along.
  */
-const CACHES = ["node_modules", "./.bun/install/cache", "./.npm", "./.cache", "./.local/share/pnpm"];
+// Dependencies and framework caches at every depth, including coding-session worktrees.
+// Keep in sync with infra/agora; source files, lockfiles and Git history remain included.
+const CACHES = ["node_modules", ".venv", ".npm", ".cache", ".next", ".nuxt", ".svelte-kit", ".expo", ".turbo", "*/.bun/install/cache", "*/.local/share/pnpm"];
 
 /**
  * Pre-update backup: Postgres dump + archive of the Hermes volume.
@@ -26,12 +28,21 @@ export async function backup(label: string) {
       timeoutMs: 10 * 60_000,
     });
     await Bun.write(join(temporary, "db.sql"), dump.stdout);
+    const space = await must([
+      "docker", "run", "--rm", "--network=none", "-v", `${config.backupsVolume}:/backups:ro`,
+      "alpine", "sh", "-ec", "df -Pk /backups | awk 'END { print $4 }'",
+    ]);
+    const availableKiB = Number(space.stdout.trim());
+    const reserveKiB = 1024 * 1024;
+    if (!Number.isSafeInteger(availableKiB) || availableKiB <= reserveKiB) throw new Error("Not enough backup space (1 GiB reserve required)");
+    const limit = (availableKiB - reserveKiB) * 1024;
     // A timeout kills the docker client, not its container: remove the writer before its files.
     await withHermesPaused(() => must([
-      "docker", "run", "--rm", "--name", container,
+      "docker", "run", "--rm", "--name", container, "--cpus=1", "--memory=256m", "--ulimit", `fsize=${limit}:${limit}`,
       "-v", `${volumeName("hermes-data")}:/data:ro`,
       "-v", `${config.backupsVolume}:/backups`,
-      "alpine", "tar", "czf", `/backups/${basename(temporary)}/hermes-data.tgz`, ...CACHES.map((c) => `--exclude=${c}`), "-C", "/data", ".",
+      "alpine", "sh", "-c", 'set -o pipefail; tar -cf - "$@" -C /data . | gzip -1 > "$0"',
+      `/backups/${basename(temporary)}/hermes-data.tgz`, ...CACHES.map((c) => `--exclude=${c}`),
     ], { timeoutMs: 20 * 60_000 }));
     if (!(await complete(temporary))) throw new Error("Incomplete backup");
     await rename(temporary, dir);
@@ -59,7 +70,8 @@ export async function restoreHermesData(id: string) {
     "docker", "run", "--rm",
     "-v", `${volumeName("hermes-data")}:/data`,
     "-v", `${config.backupsVolume}:/backups:ro`,
-    "alpine", "sh", "-c", `find /data -mindepth 1 -delete && tar xzf /backups/${id}/hermes-data.tgz -C /data`,
+    // Validate the whole archive before removing any production file.
+    "alpine", "sh", "-c", `tar tzf /backups/${id}/hermes-data.tgz >/dev/null && find /data -mindepth 1 -delete && tar xzf /backups/${id}/hermes-data.tgz -C /data`,
   ], { timeoutMs: 20 * 60_000 });
 }
 

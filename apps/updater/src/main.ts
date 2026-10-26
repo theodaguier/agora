@@ -65,10 +65,11 @@ async function apply(target: "hermes" | "app", to: string, trigger: "auto" | "ma
   if (running) throw new Error(`Mise à jour déjà en cours (${running.target} → ${running.to})`);
   if (reclaiming) throw new Error("Nettoyage du disque en cours, réessaie dans quelques minutes");
   if (!parseVersion(to)) throw new Error("Version invalide");
-  // Only forward: a downgrade (to a version with a known flaw) goes through the automatic rollback, never through the API.
-  if (compare(to, (await current())[target]) <= 0) throw new Error("Version antérieure ou identique à la version en place");
+  // Reserve before the first await: two requests must never run backups/updates together.
   running = { target, to };
   try {
+    // Only forward: a downgrade goes through automatic rollback, never through the API.
+    if (compare(to, (await current())[target]) <= 0) throw new Error("Version antérieure ou identique à la version en place");
     return target === "hermes" ? await updateHermes(to, trigger) : await updateApp(to, trigger);
   } finally {
     running = null;

@@ -148,6 +148,7 @@ export function McpRequestCard({ id }: { id: string }) {
   }
 
   const busy = decide.isPending || install.isPending || authorize.isPending;
+  const configuredEnv = new Set(req.configuredEnv);
   const needsForm = req.env.length > 0 || req.auth === "header";
   const failure = decide.error ?? install.error ?? authorize.error;
 
@@ -214,7 +215,7 @@ export function McpRequestCard({ id }: { id: string }) {
             <form
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
-                const missing = new Set(req.env.filter((v) => v.required && !values[v.name]?.trim()).map((v) => v.name));
+                const missing = new Set(req.env.filter((v) => v.required && !configuredEnv.has(v.name) && !values[v.name]?.trim()).map((v) => v.name));
                 if (req.auth === "header" && !values.bearer_token?.trim()) missing.add("bearer_token");
                 setInvalid(missing);
                 if (missing.size) return;
@@ -246,7 +247,7 @@ export function McpRequestCard({ id }: { id: string }) {
                   <ConnectorField
                     key={v.name}
                     id={`${id}-${v.name}`}
-                    field={v}
+                    field={{ ...v, required: v.required && !configuredEnv.has(v.name) }}
                     value={values[v.name] ?? ""}
                     fileName={fileNames[v.name]}
                     invalid={invalid.has(v.name)}

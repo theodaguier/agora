@@ -1,4 +1,4 @@
-import { Children, isValidElement, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { Children, isValidElement, memo, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { defaultRehypePlugins, Streamdown, type CustomRendererProps } from "streamdown";
 import { CHAT_LINE, prepareMarkdown, rehypeQuotes, remarkChat } from "@/lib/chat-markdown";
 import { asFile, asPath, fileOfUrl, linkClass, linkLabel, parseRepo, rehypeLinks, splitEntities } from "@/lib/links";
@@ -27,6 +27,7 @@ const streamedWords = { animation: "fadeIn", duration: 180, easing: "var(--ease-
  */
 const SHIKI_THEME = ["github-dark", "github-dark"] as ["github-dark", "github-dark"];
 const LINK_SAFETY = { enabled: false };
+const REMARK_CHAT = [remarkChat];
 
 /** Lists, paragraphs and blocks of a message's markdown, spaced for a bubble. */
 /** Code blocks and tables sit on white with a hairline: in the grey bubble (fond/bulle) a grey block would vanish. */
@@ -38,7 +39,7 @@ const proseClass =
  * phone numbers, file paths, colors and mentions are recognized in it.
  * `plain`: written by a person, so a line break stays a line break and HTML shows as typed.
  */
-export function MessageText({
+export const MessageText = memo(function MessageText({
   text,
   streaming,
   plain,
@@ -94,7 +95,7 @@ export function MessageText({
         animated={streaming ? streamedWords : undefined}
         shikiTheme={SHIKI_THEME}
         linkSafety={LINK_SAFETY}
-        remarkPlugins={plain ? [remarkChat] : undefined}
+        remarkPlugins={plain ? REMARK_CHAT : undefined}
         rehypePlugins={rehypePlugins}
         components={components}
         plugins={plugins}
@@ -103,7 +104,7 @@ export function MessageText({
       </Streamdown>
     </div>
   );
-}
+});
 
 /** A link in a message, blue like the others; web pages open in a new tab, "mailto:" and "tel:" in their app. */
 function MessageLink({ node: _node, className: _className, href, ...props }: ComponentProps<"a"> & { node?: unknown }) {

@@ -32,7 +32,7 @@ restic_run() {
   # SFTP repository: the server's SSH keys and known_hosts.
   [[ "$RESTIC_REPOSITORY" == sftp:* ]] && ssh=(-v "$HOME/.ssh:/root/.ssh:ro")
   # Fixed --host: snapshots group by host, and a container's hostname is random.
-  docker run --rm -i ${envs[@]+"${envs[@]}"} ${ssh[@]+"${ssh[@]}"} -v agora_restic-cache:/root/.cache/restic --hostname agora "$@"
+  docker run --rm -i --cpus=1 --memory=512m -e GOGC=50 ${envs[@]+"${envs[@]}"} ${ssh[@]+"${ssh[@]}"} -v agora_restic-cache:/root/.cache/restic --hostname agora "$@"
 }
 
 case "${1:-}" in
@@ -65,55 +65,68 @@ case "${1:-}" in
     echo "$code"
     ;;
   backup-offsite)
+    # systemd and manual runs must not share or delete each other's staging.
+    # Keep the lock in this trusted directory, with no truncation of an existing file.
+    # A read-only fd also lets the repo owner lock a file first created by root.
+    lock="$INFRA/.backup-offsite.lock"
+    (umask 022; set -o noclobber; : > "$lock") 2>/dev/null || [ -f "$lock" ]
+    exec 9<"$lock"
+    flock -n 9 || { echo "An off-site backup is already running." >&2; exit 75; }
     # Repository created on first use.
     restic_run "$RESTIC_IMAGE" cat config >/dev/null 2>&1 || restic_run "$RESTIC_IMAGE" init
     echo "Database…"
     compose exec -T postgres pg_dump -U agora --clean --if-exists agora \
       | restic_run "$RESTIC_IMAGE" backup --host agora --tag db --stdin --stdin-filename agora-db.sql
     echo "Hermes data, update backups and .env…"
-    # Frozen copy of the Hermes data, so its SQLite databases (sessions, cron,
-    # kanban) are consistent: Hermes is paused for the local copy only (seconds,
-    # as for the updater's backups), the upload then runs from the copy.
-    # Needs free disk space for one more copy of the volume, while it runs.
+    # A compressed local snapshot keeps SQLite consistent without requiring space
+    # for a second uncompressed Hermes volume. Hermes resumes before the upload.
     # Package caches are left out, as in the updater's backups
     # (apps/updater/src/backup.ts): several GB rebuilt by the next install. With
     # them, the copy filled the disk, Hermes stayed paused and Postgres went down.
     staging=agora_restic-staging
+    archive_container="agora-offsite-archive-$$"
     docker volume create "$staging" >/dev/null
     hermes="$(compose ps -q hermes)"
+    paused=false
     # Never leave Hermes paused nor the copy on disk, even if this script fails.
     # set +e: under errexit, the unpause of a running Hermes (always the case at
     # the end) aborted the trap before the volume removal, and failed the run.
     # Failed file snapshots still leave a successful DB snapshot. Apply retention on failure too,
     # after removing staging, and retain the original failure status for systemd/monitoring.
-    trap 'status=$?; set +e; [ -n "$hermes" ] && docker unpause "$hermes" >/dev/null 2>&1; docker volume rm -f "$staging" >/dev/null 2>&1; if (( status != 0 )); then restic_run "$RESTIC_IMAGE" forget --host agora --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune; fi; exit "$status"' EXIT
-    # Estimate the same files the archive includes, on the destination's filesystem.
-    # Do this while Hermes is running: a full staging disk must never freeze the agents.
+    trap 'status=$?; set +e; docker rm -f "$archive_container" >/dev/null 2>&1; $paused && docker unpause "$hermes" >/dev/null 2>&1; docker volume rm -f "$staging" >/dev/null 2>&1; if (( status != 0 )); then restic_run "$RESTIC_IMAGE" forget --host agora --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune; fi; exit "$status"' EXIT
+    # Reserve 1 GiB for Postgres and other writers. The kernel file-size limit
+    # aborts the archive before it can consume this reserve, even if compression is poor.
     space="$(docker run --rm -v agora_hermes-data:/from:ro -v "$staging:/to:ro" alpine timeout 120 sh -ec '
-      set -o pipefail
-      bytes=$(find /from \( -type d \( -name node_modules -o -path /from/.bun/install/cache -o -path /from/.npm -o -path /from/.cache -o -path /from/.local/share/pnpm \) \) -prune -o -type f -exec stat -c %s {} + | awk "{ n += \$1 } END { printf \"%.0f\", n }")
-      available=$(df -Pk /to | awk "END { print \$4 }")
-      # Ten percent and 64 MiB for metadata, block allocation and growth during the estimate.
-      awk -v bytes="$bytes" -v available="$available" "BEGIN { printf \"%.0f %.0f\\n\", int((bytes * 1.1 + 67108864) / 1024) + 1, available }"
+      df -Pk /to | awk "END { print \$4 }"
     ')" || { echo "Cannot estimate backup space: Hermes was not paused." >&2; exit 1; }
-    read -r needed available <<< "$space"
-    [[ "$needed" =~ ^[0-9]+$ && "$available" =~ ^[0-9]+$ ]] || { echo "Invalid backup space estimate." >&2; exit 1; }
-    if (( available < needed )); then
-      echo "Not enough space for the Hermes snapshot: need $needed KiB, available $available KiB. Hermes was not paused." >&2
+    available="$space"
+    [[ "$available" =~ ^[0-9]+$ ]] || { echo "Invalid backup space estimate." >&2; exit 1; }
+    if (( available <= 1048576 )); then
+      echo "Not enough space for the Hermes snapshot: 1 GiB reserve required, available $available KiB. Hermes was not paused." >&2
       exit 1
     fi
-    [ -n "$hermes" ] && docker pause "$hermes" >/dev/null
+    max_bytes=$(( (available - 1048576) * 1024 ))
+    if [ -n "$hermes" ]; then
+      docker pause "$hermes" >/dev/null
+      paused=true
+    fi
     copied=true
-    docker run --rm -v agora_hermes-data:/from:ro -v "$staging:/to" alpine sh -c '
+    docker run --rm --name "$archive_container" --cpus=1 --memory=256m --ulimit "fsize=$max_bytes:$max_bytes" \
+      -v agora_hermes-data:/from:ro -v "$staging:/to" alpine timeout 1200 sh -c '
       set -o pipefail
       find /to -mindepth 1 -delete
-      tar -C /from -cf - --exclude=node_modules --exclude=./.bun/install/cache --exclude=./.npm \
-        --exclude=./.cache --exclude=./.local/share/pnpm . | tar -C /to -xpf -' || copied=false
-    [ -n "$hermes" ] && { docker unpause "$hermes" >/dev/null 2>&1 || true; }
+      mkdir -p /to/backups /to/env
+      touch /to/env/.env
+      tar -C /from -cf - --exclude=node_modules --exclude=.venv --exclude=.npm --exclude=.cache \
+        --exclude=.next --exclude=.nuxt --exclude=.svelte-kit --exclude=.expo --exclude=.turbo \
+        --exclude="*/.bun/install/cache" --exclude="*/.local/share/pnpm" . | gzip -1 > /to/hermes-data.tgz' || copied=false
+    if $paused; then
+      docker unpause "$hermes" >/dev/null
+      paused=false
+    fi
     $copied || { echo "Copy of the Hermes data failed: nothing sent." >&2; exit 1; }
-    # Same path as the live volume (/data/hermes-data): restores are unchanged.
-    # The copy has new inodes and ctimes: compare on mtime and size only.
-    restic_run -v "$staging:/data/hermes-data:ro" -v agora_backups:/data/backups:ro -v "$INFRA/.env:/data/env/.env:ro" \
+    # New snapshots contain /data/hermes-data.tgz; old directory snapshots remain restorable.
+    restic_run -v "$staging:/data:ro" -v agora_backups:/data/backups:ro -v "$INFRA/.env:/data/env/.env:ro" \
       "$RESTIC_IMAGE" backup --host agora --tag files --ignore-inode --ignore-ctime /data
     docker volume rm "$staging" >/dev/null
     restic_run "$RESTIC_IMAGE" forget --host agora --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
@@ -124,14 +137,23 @@ case "${1:-}" in
     restic_run "$RESTIC_IMAGE" check --read-data-subset=5%
     # Real test: the latest dump restored into a throwaway Postgres.
     name="agora-restore-check-$$"
-    docker run -d --rm --name "$name" -e POSTGRES_USER=agora -e POSTGRES_PASSWORD=check -e POSTGRES_DB=agora postgres:17-alpine >/dev/null
+    docker run -d --rm --name "$name" --cpus=0.5 --memory=512m --tmpfs /var/lib/postgresql/data -e POSTGRES_USER=agora -e POSTGRES_PASSWORD=check -e POSTGRES_DB=agora postgres:17-alpine >/dev/null
     trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
-    until docker exec "$name" pg_isready -U agora -d agora >/dev/null 2>&1; do sleep 1; done
+    deadline=$((SECONDS + 60))
+    until docker exec "$name" pg_isready -U agora -d agora >/dev/null 2>&1; do
+      (( SECONDS < deadline )) || { echo "Restore-check Postgres did not start." >&2; exit 1; }
+      sleep 1
+    done
     sleep 2
     restic_run "$RESTIC_IMAGE" dump --host agora --tag db latest /agora-db.sql \
       | docker exec -i "$name" psql -U agora -d agora -v ON_ERROR_STOP=1 -q >/dev/null
     users="$(docker exec "$name" psql -U agora -d agora -tAc 'select count(*) from "user"')"
     echo "Database restored from the latest off-site snapshot: $users account(s)."
+    if restic_run "$RESTIC_IMAGE" ls --host agora --tag files latest /data/hermes-data.tgz | grep '/data/hermes-data.tgz$' >/dev/null; then
+      restic_run "$RESTIC_IMAGE" dump --host agora --tag files latest /data/hermes-data.tgz \
+        | docker run --rm -i --network=none --memory=512m --entrypoint /opt/hermes/.venv/bin/python \
+          -v "$INFRA/verify-hermes-backup.py:/verify.py:ro" "${HERMES_REPO:-nousresearch/hermes-agent}:${HERMES_VERSION}" /verify.py
+    fi
     ;;
   *) sed -n '2,10p' "$0"; exit 1 ;;
 esac

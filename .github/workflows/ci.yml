@@ -8,6 +8,16 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: agora
+          POSTGRES_PASSWORD: agora
+          POSTGRES_DB: agora_test
+        ports:
+          - 5449:5432
+        options: --health-cmd "pg_isready -U agora -d agora_test" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -17,7 +27,21 @@ jobs:
           cache: pnpm
       - uses: oven-sh/setup-bun@v2
       - run: pnpm install --frozen-lockfile
-      # Known vulnerabilities in dependencies: high and critical fail the build.
-      - run: pnpm audit --audit-level high
+      # The web/API gate fails on all high/critical paths in these applications.
+      # Expo's unpatched Zod v3 build dependency stays visible, outside this web gate.
+      - run: bun scripts/audit-web.ts
+      - name: API, database, updater and backup regressions
+        run: bun test apps/api/src apps/updater/src infra/backup-space.test.ts scripts/audit-web.test.ts
+        env:
+          AGORA_DB_TESTS: "1"
+          DATABASE_URL: postgres://agora:agora@127.0.0.1:5449/agora_test
+          BETTER_AUTH_SECRET: agora-ci-test-secret-at-least-32-characters
+          BETTER_AUTH_URL: http://127.0.0.1:3001
+          WEB_ORIGIN: http://127.0.0.1:5173
+      - name: Web cache and preview lifecycle regressions
+        working-directory: apps/web
+        run: bun test tests
+      - name: Hermes archive restoration and SQLite integrity
+        run: python3 -m unittest discover -s infra -p 'test_*.py'
       - run: pnpm typecheck
       - run: pnpm --filter @agora/web build

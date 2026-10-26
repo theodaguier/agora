@@ -113,31 +113,34 @@ export async function listConversations(userId: string) {
   await ensureDirectBotConversations(userId);
   const last = db
     .select({
-      conversationId: message.conversationId,
-      text: sql<string>`(array_agg(${message.text} order by ${message.createdAt} desc))[1]`.as("text"),
-      kind: sql<string>`(array_agg(${message.kind} order by ${message.createdAt} desc))[1]`.as("last_kind"),
-      event: sql<ConversationEvent | null>`(array_agg(${message.data} -> 'event' order by ${message.createdAt} desc))[1]`.as("last_event"),
-      authorUserId: sql<string | null>`(array_agg(${message.authorUserId} order by ${message.createdAt} desc))[1]`.as("last_user"),
-      authorAgentId: sql<string | null>`(array_agg(${message.authorAgentId} order by ${message.createdAt} desc))[1]`.as("last_agent"),
-      // mapWith: without it, an aggregate comes back as text without a time zone, read as local time by the client.
-      at: sql<Date>`max(${message.createdAt})`.mapWith(message.createdAt).as("at"),
-      otherAt: sql<Date | null>`max(${message.createdAt}) filter (where ${message.kind} <> 'event' and ${message.authorUserId} is distinct from ${userId})`
-        .mapWith(message.createdAt)
-        .as("other_at"),
+      text: message.text,
+      kind: message.kind,
+      event: sql<ConversationEvent | null>`${message.data} -> 'event'`.as("last_event"),
+      authorUserId: message.authorUserId,
+      authorAgentId: message.authorAgentId,
+      at: message.createdAt,
     })
     .from(message)
-    .groupBy(message.conversationId)
+    .where(eq(message.conversationId, conversation.id))
+    .orderBy(desc(message.createdAt), desc(message.id))
+    .limit(1)
     .as("last");
 
   const rows = await db
     .select({
       conversation,
-      readAt: conversationMember.lastReadAt,
-      last: { text: last.text, kind: last.kind, event: last.event, authorUserId: last.authorUserId, authorAgentId: last.authorAgentId, at: last.at, otherAt: last.otherAt },
+      unread: sql<boolean>`exists (
+        select 1 from ${message}
+        where ${message.conversationId} = ${conversation.id}
+          and ${message.createdAt} > ${conversationMember.lastReadAt}
+          and ${message.kind} <> 'event'
+          and ${message.authorUserId} is distinct from ${userId}
+      )`,
+      last: { text: last.text, kind: last.kind, event: last.event, authorUserId: last.authorUserId, authorAgentId: last.authorAgentId, at: last.at },
     })
     .from(conversationMember)
     .innerJoin(conversation, eq(conversation.id, conversationMember.conversationId))
-    .leftJoin(last, eq(last.conversationId, conversation.id))
+    .leftJoinLateral(last, sql`true`)
     .where(eq(conversationMember.userId, userId))
     .orderBy(desc(sql`coalesce(${last.at}, ${conversation.createdAt})`));
   if (!rows.length) return [];
@@ -165,7 +168,7 @@ export async function listConversations(userId: string) {
   );
   const previewText = (text: string) => text.replace(TASK_REF, (_, id: string) => `« ${titles.get(id) ?? "…"} »`);
 
-  return rows.flatMap(({ conversation: c, readAt, last: l }) => {
+  return rows.flatMap(({ conversation: c, unread, last: l }) => {
     const people = members.filter((m) => m.conversationId === c.id).map(({ id, name, image }) => ({ id, name, image }));
     const bots = agents.filter((a) => a.conversationId === c.id).map((a) => a.agent);
     const isDirectBot = c.kind === "direct" && bots.length === 1;
@@ -183,7 +186,7 @@ export async function listConversations(userId: string) {
         agents: bots.map(agentDto),
         preview: l?.text ? { text: previewText(l.text), event: l.event ?? null, author: l.kind === "event" ? null : author, fromMe } : null,
         lastAt: l?.at ?? c.createdAt,
-        unread: !!l?.otherAt && new Date(l.otherAt) > new Date(readAt),
+        unread,
       },
     ];
   });

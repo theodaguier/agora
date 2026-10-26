@@ -213,7 +213,7 @@ async function runCompaction(turn: Turn, actor: { id: string; name: string }) {
   turn.startedAt = new Date().toISOString();
   setWorking(agentId, 1);
   // The summary is not streamed: members only see that the bot is working.
-  await publishToConversation(conversationId, { type: "bot.started", conversationId, turnId: turn.turnId, agentId, requestedBy: turn.requestedBy });
+  await publishToConversation(conversationId, { type: "bot.started", conversationId, turnId: turn.turnId, agentId, requestedBy: turn.requestedBy, startedAt: turn.startedAt });
 
   const sessionId = hermesSessionId(conversationId, bot.revision, conv.kind === "group" ? agentId : undefined, link.link.sessionGeneration);
   let summary = "";
@@ -346,8 +346,9 @@ export function abandonTurns(conversationId: string, agentId?: string) {
 export function activeTurns(conversationId: string) {
   return [...turns.values()]
     .filter((t) => t.conversationId === conversationId && t.started)
-    .map(({ turnId, agentId, requestedBy, text, tools, approval, codeSessions }) => ({
+    .map(({ turnId, agentId, requestedBy, text, tools, approval, codeSessions, startedAt }) => ({
       turnId,
+      startedAt,
       agentId,
       requestedBy,
       text,
@@ -464,7 +465,7 @@ async function runTurn(turn: Turn) {
   turn.startedAt = new Date().toISOString();
   setWorking(agentId, 1);
   await db.update(pendingTurn).set({ startedAt: new Date() }).where(eq(pendingTurn.id, turn.turnId));
-  await publishToConversation(conversationId, { type: "bot.started", conversationId, turnId: turn.turnId, agentId, requestedBy: turn.requestedBy });
+  await publishToConversation(conversationId, { type: "bot.started", conversationId, turnId: turn.turnId, agentId, requestedBy: turn.requestedBy, startedAt: turn.startedAt });
 
   // A bot just created: its Hermes profile may still be being set up (POST /agents).
   const ready = await profileReady(bot.hermesProfile, `Agent « ${bot.name} »`).then(
@@ -723,6 +724,7 @@ async function runTurn(turn: Turn) {
   const sentFiles = sending?.saved ?? [];
   if (parsed.text || parsed.choices || parsed.questions || parsed.views || previews.length || sentFiles.length || request || skill || bots || turn.codeSessions.length) {
     const extra = {
+      turn: { id: turn.turnId, startedAt: turn.startedAt! },
       ...(turn.tools.length && { tools: turn.tools }),
       ...(turn.approvals.length && { approvals: turn.approvals }),
       ...(turn.codeSessions.length && { codeSessions: turn.codeSessions }),

@@ -149,6 +149,7 @@ export type PendingApproval = { id: string; command: string; description: string
 
 export type ActiveTurn = {
   turnId: string;
+  startedAt?: string;
   agentId: string;
   requestedBy: string | null;
   text: string;
@@ -189,6 +190,7 @@ export const invocationKey = (v: Invocation) =>
 export type Choices = { question: string; hint?: string; options: { label: string; description?: string }[] };
 
 export type McpRequest = {
+  configuredEnv?: string[];
   id: string;
   name: string;
   title: string;
@@ -269,6 +271,7 @@ export type Message = {
   kind: "user" | "bot" | "event";
   text: string;
   data: {
+    turn?: import("@agora/core").ReplyTurn;
     tools?: { name: string; status: string }[];
     /** Approvals granted or denied during the turn. */
     approvals?: { command: string; choice: string; by: string | null }[];
@@ -386,7 +389,7 @@ export type PluginIndexEntry = { name: string; description?: string; identifier?
 
 export const attachmentUrl = (id: string, download = false) => `/api/attachments/${encodeURIComponent(id)}${download ? "?download" : ""}`;
 
-export async function uploadAttachment(conversationId: string, file: File) {
+export async function uploadAttachment(conversationId: string, file: File, signal?: AbortSignal) {
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/attachments`, {
@@ -394,6 +397,7 @@ export async function uploadAttachment(conversationId: string, file: File) {
     credentials: "include",
     headers: localeHeader(),
     body: form,
+    signal,
   });
   if (!res.ok) throw new ApiError(res.status, await res.text());
   return (await res.json()) as Attachment;
