@@ -18,7 +18,7 @@ import { ContextDialog } from "@/components/context-dialog";
 import { PersonAvatar } from "@/components/conversation-avatar";
 import { ArrowUpIcon, ClockIcon, CloseIcon, MicIcon, PackageIcon, PlugIcon } from "@/components/icons";
 import { MentionText } from "@/components/mention";
-import { ModelButton, ModelMenu } from "@/components/model-picker";
+import { ModelMenu } from "@/components/model-picker";
 import { useMe } from "@/components/server-scope";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
 import { retryLast, sessionCommand } from "@/lib/api";
@@ -329,8 +329,8 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
         </View>
       )}
       {/*
-       * Figma « Composer » (mobile): a white pill with a hairline, "+" then the field, the model, the
-       * microphone and the send button in the accent (the bot's colour); the quote, the files and the
+       * Figma « Composer » (mobile): a white pill with a hairline, "+" then the field, the
+       * microphone and the send button (the model is chosen from the "/" menu, as on the web) in the accent (the bot's colour); the quote, the files and the
        * skills/connectors/routines called with the message stack above the line.
        */}
       <Surface variant="transparent" className="gap-1 rounded-[23px] border border-border bg-background p-1.5">
@@ -377,7 +377,6 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           >
             <MentionText text={text} mentionables={colored} flat />
           </Input>
-          {models && <ModelButton conversationId={conversationId} bot={modelBot} several={modelBots.length > 1} open={modelOpen} onOpenChange={setModelOpen} />}
           <Button
             isIconOnly
             size="sm"

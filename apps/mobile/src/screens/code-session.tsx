@@ -115,7 +115,8 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
   const [atBottom, setAtBottom] = useState(true);
   const [barHeight, setBarHeight] = useState(0);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
-  const [tab, setTab] = useState<SessionTab>("overview");
+  // The log first, as on the web: it opens on the latest steps.
+  const [tab, setTab] = useState<SessionTab>("journal");
   const journal = tab === "journal";
   const { data: conv } = useQuery(conversationQuery(conversationId));
   const agent = session?.agentId ? conv?.agents.find((a) => a.id === session.agentId) : undefined;

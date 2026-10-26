@@ -57,8 +57,8 @@ export function AttachMenu({ open, onOpenChange, onFiles }: { open: boolean; onO
   return (
     <MenuButton
       icon="plus"
-      // A ring, as ChatGPT's: a gray circle would vanish on the composer's gray card.
-      variant="outline"
+      // Figma « Composer »: a plain "+", no ring.
+      variant="ghost"
       // Above the "+": the composer sits on the keyboard.
       placement="top"
       label={messages.attachFiles}
