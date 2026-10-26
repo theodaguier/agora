@@ -32,7 +32,7 @@ restic_run() {
   # SFTP repository: the server's SSH keys and known_hosts.
   [[ "$RESTIC_REPOSITORY" == sftp:* ]] && ssh=(-v "$HOME/.ssh:/root/.ssh:ro")
   # Fixed --host: snapshots group by host, and a container's hostname is random.
-  docker run --rm -i ${envs[@]+"${envs[@]}"} ${ssh[@]+"${ssh[@]}"} -v agora_restic-cache:/root/.cache/restic --hostname agora "$@"
+  docker run --rm -i --cpus=1 --memory=512m -e GOGC=50 ${envs[@]+"${envs[@]}"} ${ssh[@]+"${ssh[@]}"} -v agora_restic-cache:/root/.cache/restic --hostname agora "$@"
 }
 
 case "${1:-}" in
@@ -137,9 +137,13 @@ case "${1:-}" in
     restic_run "$RESTIC_IMAGE" check --read-data-subset=5%
     # Real test: the latest dump restored into a throwaway Postgres.
     name="agora-restore-check-$$"
-    docker run -d --rm --name "$name" -e POSTGRES_USER=agora -e POSTGRES_PASSWORD=check -e POSTGRES_DB=agora postgres:17-alpine >/dev/null
+    docker run -d --rm --name "$name" --cpus=0.5 --memory=512m --tmpfs /var/lib/postgresql/data -e POSTGRES_USER=agora -e POSTGRES_PASSWORD=check -e POSTGRES_DB=agora postgres:17-alpine >/dev/null
     trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
-    until docker exec "$name" pg_isready -U agora -d agora >/dev/null 2>&1; do sleep 1; done
+    deadline=$((SECONDS + 60))
+    until docker exec "$name" pg_isready -U agora -d agora >/dev/null 2>&1; do
+      (( SECONDS < deadline )) || { echo "Restore-check Postgres did not start." >&2; exit 1; }
+      sleep 1
+    done
     sleep 2
     restic_run "$RESTIC_IMAGE" dump --host agora --tag db latest /agora-db.sql \
       | docker exec -i "$name" psql -U agora -d agora -v ON_ERROR_STOP=1 -q >/dev/null
