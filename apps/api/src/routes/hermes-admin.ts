@@ -7,7 +7,9 @@ import { join } from "node:path";
 import { modelOptions, profileHome, toolsets } from "../hermes";
 import { envValues, guessIntegrationType, INTEGRATION_TYPES, withHttps } from "@agora/core";
 import { clearType, getTypes, setType } from "../integrations";
-import { agentMcpServers, dashboard, hermesCli, hermesCliJson, HermesError, restartGateway, scheduleGatewayRestart, setAgentMcp } from "../hermes-admin";
+import { agentMcpServers, dashboard, hermesCli, hermesCliJson, HermesError, restartGateway, scheduleGatewayRestart, setAgentMcp, snapshotMcpServer } from "../hermes-admin";
+import { probeConfiguredStdio } from "../mcp-probe";
+import { env } from "../env";
 import { bumpAgentRevision } from "../company";
 import { isRisky, setRiskyToolset } from "../sandbox";
 import { registryInstallBody, searchRegistry } from "../mcp-registry";
@@ -272,9 +274,11 @@ export const hermesAdmin = new Hono<AppEnv>()
     return c.body(null, 204);
   })
 
-  .post("/mcp/servers/:server/test", async (c) =>
-    c.json(await dashboard(`/api/mcp/servers/${name.parse(c.req.param("server"))}/test`, { method: "POST" })),
-  )
+  .post("/mcp/servers/:server/test", async (c) => {
+    const server = name.parse(c.req.param("server"));
+    const stdio = probeConfiguredStdio(await snapshotMcpServer(server), env.HERMES_HOME);
+    return c.json(stdio ? await stdio : await dashboard(`/api/mcp/servers/${server}/test`, { method: "POST" }));
+  })
 
   .delete("/mcp/servers/:server", async (c) => {
     const server = name.parse(c.req.param("server"));

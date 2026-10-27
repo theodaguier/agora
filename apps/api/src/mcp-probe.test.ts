@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { probeStdio } from "./mcp-probe";
+import { probeConfiguredStdio, probeStdio } from "./mcp-probe";
 
 const root = await mkdtemp(join(tmpdir(), "agora-probe-"));
 const script = join(root, "server.mjs");
@@ -26,4 +26,15 @@ test("a process startup failure exposes its reason without the credential", asyn
   expect(result.ok).toBe(false);
   expect(result.error).toContain("Invalid GSC_SERVICE_ACCOUNT_KEY");
   expect(result.error).not.toContain("private-value-123");
+});
+
+test("the admin stdio probe resolves declared secrets before its real handshake", async () => {
+  const result = await probeConfiguredStdio({ cfg: { command: process.execPath, args: [script], env: { SDK: "${SDK_PATH}" } }, env: { SDK_PATH: sdk } }, root);
+  expect(result?.ok).toBe(true);
+  expect(result?.tools).toEqual([{ name: "read" }]);
+});
+
+test("remote and missing declarations keep their dashboard test path", () => {
+  expect(probeConfiguredStdio({ cfg: { url: "https://example.invalid/mcp" }, env: {} })).toBeNull();
+  expect(probeConfiguredStdio(null)).toBeNull();
 });

@@ -1,6 +1,15 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { redactMcpError } from "./mcp-secrets";
+import { previousMcpSecrets, redactMcpError } from "./mcp-secrets";
+import type { McpSnapshot } from "./hermes-admin";
+
+/** The admin test and installation use the same stdio handshake and diagnostics. */
+export function probeConfiguredStdio(snapshot: McpSnapshot | null, cwd?: string) {
+  const cfg = snapshot?.cfg;
+  if (!cfg || typeof cfg.command !== "string") return null;
+  const args = Array.isArray(cfg.args) ? cfg.args.filter((value): value is string => typeof value === "string") : [];
+  return probeStdio({ command: cfg.command, args, env: previousMcpSecrets(snapshot).env }, cwd);
+}
 
 /** Probe stdio directly so a startup error includes useful, redacted stderr instead of Connection closed. */
 export async function probeStdio(server: { command: string; args: string[]; env: Record<string, string> }, cwd?: string) {
