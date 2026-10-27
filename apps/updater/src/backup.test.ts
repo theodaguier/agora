@@ -1,21 +1,21 @@
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, statfs, truncate, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 const root = await mkdtemp(join(tmpdir(), "agora-backups-test-"));
-const settings = { backupsDir: root, backupsVolume: "test-backups", keepBackups: 2 };
+const settings = { backupsDir: root, backupsVolume: "test-backups", keepBackups: 2, backupBudgetPercent: 20 };
 let fail = false;
 let spaceKiB = "2097152";
 let pauses = 0;
-mock.module("./config", () => ({ config: settings }));
-mock.module("./prod", () => ({ withHermesPaused: (fn: () => Promise<unknown>) => { pauses++; return fn(); } }));
+mock.module("./config", () => ({ config: settings, hermesImage: (version: string) => `test-hermes:${version}` }));
+mock.module("./prod", () => ({ contractEnv: async () => ({ hermesVersion: "fixture" }) }));
 mock.module("./exec", () => ({
   compose: async () => ({ stdout: "-- test dump" }),
   volumeName: () => "test-data",
   run: async () => ({ code: 0 }),
   must: async (cmd: string[]) => {
-    if (cmd.includes("--network=none")) return { stdout: spaceKiB };
+    if (cmd.some((arg) => arg.includes("df -Pk"))) return { stdout: spaceKiB };
     if (fail) throw new Error("archive failed");
     const archive = cmd.find((arg) => arg.endsWith("/hermes-data.tgz"))!;
     await writeFile(join(root, basename(join(archive, "..")), "hermes-data.tgz"), "test archive");
@@ -28,6 +28,7 @@ beforeEach(async () => {
   spaceKiB = "2097152";
   pauses = 0;
   settings.keepBackups = 2;
+  settings.backupBudgetPercent = 20;
   for (const name of await readdir(root)) await rm(join(root, name), { recursive: true, force: true });
 });
 afterAll(() => rm(root, { recursive: true, force: true }));
@@ -93,4 +94,51 @@ test("an invalid retention value cannot delete rollback backups", async () => {
   settings.keepBackups = 0;
   await expect(pruneBackups()).rejects.toThrow("positive integer");
   expect(await listBackups()).toEqual([kept]);
+});
+
+test("disk budget prunes oldest archives even below the count limit", async () => {
+  settings.keepBackups = 7;
+  const fs = await statfs(root);
+  const size = Math.floor(fs.blocks * fs.bsize * 0.08);
+  const ids = [await fixture("01"), await fixture("02"), await fixture("03")];
+  // Sparse files exercise real stat sizes without allocating the archive payloads.
+  for (const id of ids) await truncate(join(root, id, "hermes-data.tgz"), size);
+  await pruneBackups();
+  expect(await listBackups()).toEqual([ids[2]!, ids[1]!]);
+});
+
+test("a single oversized latest backup is always retained", async () => {
+  const fs = await statfs(root);
+  const old = await fixture("01"), latest = await fixture("02");
+  await truncate(join(root, latest, "hermes-data.tgz"), Math.floor(fs.blocks * fs.bsize * 0.21));
+  await pruneBackups();
+  expect(await listBackups()).toEqual([latest]);
+  expect(await readdir(root)).not.toContain(old);
+});
+
+test("an invalid budget fails before removing any archive", async () => {
+  const kept = await fixture("01");
+  settings.backupBudgetPercent = 100;
+  await expect(pruneBackups()).rejects.toThrow("BACKUP_BUDGET_PERCENT");
+  expect(await listBackups()).toEqual([kept]);
+});
+
+test("the size budget can be explicitly disabled", async () => {
+  const fs = await statfs(root);
+  const old = await fixture("01"), latest = await fixture("02");
+  await truncate(join(root, latest, "hermes-data.tgz"), Math.floor(fs.blocks * fs.bsize * 0.21));
+  settings.backupBudgetPercent = 0;
+  await pruneBackups();
+  expect(await listBackups()).toEqual([latest, old]);
+});
+
+test("free space for the next backup is measured again after removing the oldest", async () => {
+  settings.keepBackups = 7;
+  const gb = 1024 ** 3;
+  const ids = [await fixture("01"), await fixture("02"), await fixture("03")];
+  for (const [i, id] of ids.entries()) await truncate(join(root, id, "hermes-data.tgz"), (i === 0 ? 4 : 7) * gb);
+  let reads = 0;
+  await pruneBackups(async () => ({ total: 100 * gb, available: (++reads >= 3 ? 9 : 5) * gb }));
+  expect(await listBackups()).toEqual([ids[2]!, ids[1]!]);
+  expect(reads).toBe(3);
 });

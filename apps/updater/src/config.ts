@@ -9,6 +9,8 @@ export const config = {
   backupsVolume: process.env.BACKUPS_VOLUME ?? "agora_backups",
   backupsDir: process.env.BACKUPS_DIR ?? "/backups",
   keepBackups: Number(process.env.KEEP_BACKUPS ?? 7),
+  /** Local archives share the system disk; 0 disables the size budget. Always retain the latest. */
+  backupBudgetPercent: Number(process.env.BACKUP_BUDGET_PERCENT ?? 20),
   hermesRepo: process.env.HERMES_REPO ?? "nousresearch/hermes-agent",
   /** Registry for the app images (e.g. ghcr.io/<user>/agora); empty = locally built images. */
   imagePrefix: process.env.AGORA_IMAGE_PREFIX ?? "agora",

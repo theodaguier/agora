@@ -111,6 +111,16 @@ The updater backs up automatically before each update (volume
 - `agora_pgdata`: accounts, agents, conversations;
 - `agora_hermes-data`: Hermes profiles, memories, wiki, skills (`shared-skills/`: written by the bots, read by all of them), attachments, provider keys.
 
+Local rollback archives are limited by `KEEP_BACKUPS` (default 7) and
+`BACKUP_BUDGET_PERCENT` (default 20% of the backup filesystem capacity). Cleanup
+runs before a new backup, after success, at startup and hourly. It retains the
+newest consecutive archives within both limits and always keeps the most recent
+complete archive, even if that archive exceeds the size budget. A budget of 0
+disables the size limit. With the budget enabled, older archives are also removed
+when needed to leave room for an archive the size of the latest one plus a 1 GiB
+reserve; actual free space is checked again after each deletion. This local policy
+is independent of off-site retention.
+
 ```sh
 docker compose exec postgres pg_dump -U agora agora | gzip > agora-$(date +%F).sql.gz
 docker run --rm -v agora_hermes-data:/data -v "$PWD":/out alpine \
@@ -136,9 +146,13 @@ Backblaze B2 or an SFTP server.
    first run; 7 daily, 4 weekly and 6 monthly snapshots are kept.
    Hermes data is staged as `hermes-data.tgz` with rebuildable dependency/cache
    directories excluded. Source files, lockfiles and Git history are preserved.
-   Compression is limited to one CPU and 256 MiB of memory; its output is capped
-   below the available disk space with a 1 GiB reserve. Hermes resumes before
-   upload. Retention also runs after a failed file backup. A compressed archive
+   SQLite databases (`.db`, `.sqlite`, `.sqlite3`) use SQLite's online backup API;
+   their live journals are omitted. Hermes keeps running during both archiving
+   and upload. The archive streams files with one CPU and 512 MiB of memory; its
+   output is capped below the available disk space with a 1 GiB reserve.
+   Each database is consistent at its own capture time; other files use normal
+   streaming backup semantics and there is no transaction spanning all files.
+   Retention also runs after a failed file backup. A compressed archive
    can reduce restic's deduplication across snapshots; monitor repository growth.
 3. `./agora restore-check`: lists the snapshots, checks part of the data, and
    restores the latest dump into a throwaway Postgres (prints the account count).

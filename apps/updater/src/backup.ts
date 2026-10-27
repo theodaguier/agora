@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readdir, rename, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm, stat, statfs } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { config } from "./config";
+import { config, hermesImage } from "./config";
 import { compose, must, run, volumeName } from "./exec";
-import { withHermesPaused } from "./prod";
+import { contractEnv } from "./prod";
 
 /**
  * Left out of the Hermes archive: package caches and installed dependencies, written by the bots'
@@ -21,6 +21,8 @@ export async function backup(label: string) {
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${label}`;
   const dir = join(config.backupsDir, id);
   await mkdir(config.backupsDir, { recursive: true });
+  // Reclaim expired archives before reserving space for the next one.
+  await pruneBackups();
   const temporary = await mkdtemp(join(config.backupsDir, ".partial-"));
   const container = `agora-backup-${id}`;
   try {
@@ -37,13 +39,14 @@ export async function backup(label: string) {
     if (!Number.isSafeInteger(availableKiB) || availableKiB <= reserveKiB) throw new Error("Not enough backup space (1 GiB reserve required)");
     const limit = (availableKiB - reserveKiB) * 1024;
     // A timeout kills the docker client, not its container: remove the writer before its files.
-    await withHermesPaused(() => must([
-      "docker", "run", "--rm", "--name", container, "--cpus=1", "--memory=256m", "--ulimit", `fsize=${limit}:${limit}`,
+    const { hermesVersion } = await contractEnv();
+    await must([
+      "docker", "run", "--rm", "-i", "--name", container, "--network=none", "--cpus=1", "--memory=512m", "--ulimit", `fsize=${limit}:${limit}`,
+      "--entrypoint", "/opt/hermes/.venv/bin/python",
       "-v", `${volumeName("hermes-data")}:/data:ro`,
       "-v", `${config.backupsVolume}:/backups`,
-      "alpine", "sh", "-c", 'set -o pipefail; tar -cf - "$@" -C /data . | gzip -1 > "$0"',
-      `/backups/${basename(temporary)}/hermes-data.tgz`, ...CACHES.map((c) => `--exclude=${c}`),
-    ], { timeoutMs: 20 * 60_000 }));
+      hermesImage(hermesVersion), "-", "/data", `/backups/${basename(temporary)}/hermes-data.tgz`, JSON.stringify(CACHES), "/backups/.archive.lock",
+    ], { input: await Bun.file(new URL("../hermes-archive.py", import.meta.url)).text(), timeoutMs: 20 * 60_000 });
     if (!(await complete(temporary))) throw new Error("Incomplete backup");
     await rename(temporary, dir);
   } catch (err) {
@@ -100,10 +103,50 @@ async function complete(dir: string) {
 }
 
 /** Runs independently of successful updates; interrupted attempts don't consume retention slots. */
-export async function pruneBackups() {
+async function backupCapacity() {
+  const fs = await statfs(config.backupsDir);
+  return { total: fs.blocks * fs.bsize, available: fs.bavail * fs.bsize };
+}
+
+export async function pruneBackups(readCapacity = backupCapacity) {
   if (!Number.isSafeInteger(config.keepBackups) || config.keepBackups < 1) throw new Error("KEEP_BACKUPS must be a positive integer");
+  const percent = config.backupBudgetPercent ?? 20;
+  if (!Number.isSafeInteger(percent) || percent < 0 || percent > 90) throw new Error("BACKUP_BUDGET_PERCENT must be 0–90");
   const all = await listBackups();
-  for (const old of all.slice(config.keepBackups)) await rm(join(config.backupsDir, old), { recursive: true, force: true });
+  let budget = Infinity;
+  let capacity: Awaited<ReturnType<typeof backupCapacity>> | undefined;
+  if (percent && all.length > 1) {
+    capacity = await readCapacity();
+    if (!Number.isSafeInteger(capacity.total) || capacity.total <= 0 || !Number.isSafeInteger(capacity.available) || capacity.available < 0) throw new Error("Cannot determine backup filesystem capacity");
+    budget = Math.floor(capacity.total * percent / 100);
+  }
+  // Keep a consecutive prefix of the newest archives; an oversized latest archive
+  // is still a rollback point and must never be removed by this budget.
+  let used = 0;
+  let full = false;
+  const retained: { id: string; size: number }[] = [];
+  const remove = async ({ id, size }: { id: string; size: number }) => {
+    await rm(join(config.backupsDir, id), { recursive: true, force: true });
+    console.log(`backup retention: removed ${id} (${size} bytes)`);
+  };
+  for (const [i, id] of all.entries()) {
+    const sizes = await Promise.all(["db.sql", "hermes-data.tgz"].map((name) => stat(join(config.backupsDir, id, name))));
+    const size = sizes.reduce((sum, file) => sum + file.size, 0);
+    if (i > 0 && (full || i >= config.keepBackups || used + size > budget)) {
+      full = true;
+      await remove({ id, size });
+    } else { used += size; retained.push({ id, size }); }
+  }
+  if (capacity && retained.length > 1) {
+    // Keep room for an archive the size of the latest one plus the 1 GiB reserve.
+    // Refresh after deletion: sparse files/hardlinks may not actually free their apparent size.
+    const required = retained[0]!.size + 1024 ** 3;
+    capacity = await readCapacity();
+    while (retained.length > 1 && capacity.available < required) {
+      await remove(retained.pop()!);
+      capacity = await readCapacity();
+    }
+  }
   for (const name of await backupDirectories()) {
     if (!name.startsWith(".partial-") && (!BACKUP_ID.test(name) || await complete(join(config.backupsDir, name)))) continue;
     const dir = join(config.backupsDir, name);

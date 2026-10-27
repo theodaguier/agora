@@ -23,7 +23,7 @@ def verify(stream):
                     files += 1
                     suffix = next((s for s in ("-wal", "-shm") if member.name.endswith(".db" + s)), "")
                     base = member.name[:-len(suffix)] if suffix else member.name
-                    if not base.endswith(".db"):
+                    if not base.endswith((".db", ".sqlite", ".sqlite3")):
                         continue
                     # Flatten names: no archive path can escape the temporary directory.
                     key = hashlib.sha256(base.encode()).hexdigest() + ".db"

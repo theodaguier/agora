@@ -6,7 +6,7 @@ import { join } from "node:path";
 const scratch = await mkdtemp(join(tmpdir(), "agora-offsite-test-"));
 afterAll(() => rm(scratch, { recursive: true, force: true }));
 
-async function run(space: string, fail = false, pauseFails = false) {
+async function run(space: string, fail = false, snapshotFails = false) {
   const dir = await mkdtemp(join(scratch, "case-"));
   const bin = join(dir, "bin");
   await mkdir(bin);
@@ -17,7 +17,6 @@ async function run(space: string, fail = false, pauseFails = false) {
   await writeFile(join(bin, "flock"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
   await writeFile(join(bin, "docker"), `#!/usr/bin/env bash
 printf '%s\\n' "$1" >> "$AUDIT_TRACE"
-if [[ "$1" == "pause" && "$AUDIT_PAUSE_FAIL" == "1" ]]; then exit 1; fi
 if [[ "$1" == "compose" ]]; then
   if [[ " $* " == *" ps -q hermes "* ]]; then echo test-hermes; else echo test-dump; fi
 elif [[ "$1" == "run" ]]; then
@@ -25,11 +24,12 @@ elif [[ "$1" == "run" ]]; then
   if [[ " $* " == *" timeout 120 "* ]]; then
     [[ "$AUDIT_FAIL" == "0" ]] || exit 1
     echo "$AUDIT_SPACE"
+  elif [[ " $* " == *" /archive.py "* && "$AUDIT_SNAPSHOT_FAIL" == "1" ]]; then exit 1
   elif [[ " $* " == *" --stdin "* ]]; then cat >/dev/null; fi
 fi
 `, { mode: 0o755 });
   const proc = Bun.spawn(["bash", join(dir, "agora"), "backup-offsite"], {
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AUDIT_TRACE: trace, AUDIT_SPACE: space, AUDIT_FAIL: fail ? "1" : "0", AUDIT_PAUSE_FAIL: pauseFails ? "1" : "0" },
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AUDIT_TRACE: trace, AUDIT_SPACE: space, AUDIT_FAIL: fail ? "1" : "0", AUDIT_SNAPSHOT_FAIL: snapshotFails ? "1" : "0" },
     stdout: "pipe", stderr: "pipe",
   });
   const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
@@ -56,14 +56,14 @@ test("an unavailable space estimate also leaves Hermes running", async () => {
 test("adequate space permits the existing snapshot and off-site flow", async () => {
   const r = await run("2097152");
   expect(r.code).toBe(0);
-  expect(r.commands.filter((command) => command === "pause")).toHaveLength(1);
+  expect(r.commands).not.toContain("pause");
   expect(r.stdout).toContain("Off-site backup done");
 });
 
-test("a failed pause never unpauses another operation's Hermes snapshot", async () => {
+test("a failed online snapshot leaves Hermes running and applies retention", async () => {
   const r = await run("2097152", false, true);
   expect(r.code).toBe(1);
-  expect(r.commands).toContain("pause");
+  expect(r.commands).not.toContain("pause");
   expect(r.commands).not.toContain("unpause");
   expect(r.commands).toContain("retention");
 });
