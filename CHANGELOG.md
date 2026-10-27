@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.5 — 2026-10-27
+
+### Fixes
+- **updater**: vérifier les références locales de rollback sous Docker containerd
+
 ## v0.45.4 — 2026-10-27
 
 ### Fixes
