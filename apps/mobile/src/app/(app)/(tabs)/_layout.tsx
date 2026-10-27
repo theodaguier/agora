@@ -5,12 +5,14 @@ import { useMe } from "@/components/server-scope";
 import { haptic } from "@/lib/haptics";
 import { useInboxUnread } from "@/lib/inbox";
 import { defineMessages } from "@/lib/i18n";
+import { codeSessionState } from "@agora/core";
+import { allCodeSessionsQuery } from "@/lib/code-sessions";
 import { conversationsQuery, tasksQuery } from "@/lib/queries";
 
 const t = defineMessages({
   // Short labels: the tab bar gives each one about a fifth of the width.
-  en: { chats: "Chats", inbox: "Inbox", tasks: "Tasks", profile: "Profile", search: "Search" },
-  fr: { chats: "Discussions", inbox: "Réception", tasks: "Tâches", profile: "Profil", search: "Rechercher" },
+  en: { chats: "Chats", inbox: "Inbox", tasks: "Tasks", sessions: "Sessions", profile: "Profile" },
+  fr: { chats: "Discussions", inbox: "Réception", tasks: "Tâches", sessions: "Sessions", profile: "Profil" },
 });
 
 /** The app's sections, in a native tab bar (liquid glass on iOS 26), with the house icons (assets/tab-icons, drawn from @/components/icons). */
@@ -21,6 +23,8 @@ export default function TabsLayout() {
   const openTasks =
     useQuery({ ...tasksQuery(me.id), select: (list) => list.filter((x) => x.status !== "done" && x.assignees.some((a) => a.id === me.id)).length }).data ?? 0;
   const unreadInbox = useInboxUnread();
+  // Your sessions waiting for your answer.
+  const waiting = useQuery({ ...allCodeSessionsQuery, select: (list) => list.filter((s) => s.requestedBy === me.id && codeSessionState(s) === "waiting").length }).data ?? 0;
   // Selected tab in the text color: the web's palette is monochrome.
   const tint = useCSSVariable("--color-foreground") as string;
   return (
@@ -41,13 +45,14 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>{t.tasks}</NativeTabs.Trigger.Label>
         {openTasks > 0 && <NativeTabs.Trigger.Badge>{String(openTasks)}</NativeTabs.Trigger.Badge>}
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="(sessions)">
+        <NativeTabs.Trigger.Icon src={require("../../../../assets/tab-icons/sessions.png")} renderingMode="template" />
+        <NativeTabs.Trigger.Label>{t.sessions}</NativeTabs.Trigger.Label>
+        {waiting > 0 && <NativeTabs.Trigger.Badge>{String(waiting)}</NativeTabs.Trigger.Badge>}
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Icon src={require("../../../../assets/tab-icons/profile.png")} renderingMode="template" />
         <NativeTabs.Trigger.Label>{t.profile}</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="(search)" role="search">
-        <NativeTabs.Trigger.Icon src={require("../../../../assets/tab-icons/search.png")} renderingMode="template" />
-        <NativeTabs.Trigger.Label>{t.search}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

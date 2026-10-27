@@ -14,4 +14,5 @@ export const headerIcon = {
   sliders: require("../../assets/header-icons/sliders.png"),
   userPlus: require("../../assets/header-icons/user-plus.png"),
   chevronLeft: require("../../assets/header-icons/chevron-left.png"),
+  search: require("../../assets/header-icons/search.png"),
 };

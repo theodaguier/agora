@@ -36,6 +36,9 @@ export default function Chats() {
   return (
     <>
       <Stack.Screen.Title>{t.title}</Stack.Screen.Title>
+      <Stack.Toolbar placement="left">
+        <Stack.Toolbar.Button icon={headerIcon.search} iconRenderingMode="template" accessibilityLabel={tr(common).search} onPress={withTap(() => router.push("/search"))} />
+      </Stack.Toolbar>
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon={headerIcon.plus} iconRenderingMode="template" accessibilityLabel={t.newConversation} onPress={withTap(() => router.push("/new"))} />
       </Stack.Toolbar>
