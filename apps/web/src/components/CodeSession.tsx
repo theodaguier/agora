@@ -1,13 +1,13 @@
 import { modelName } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { createContext, Fragment, memo, useCallback, useMemo, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
+import { createContext, Fragment, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
 import {
   CODE_ENGINE_NAMES,
   codeDetailLine,
-  codeExchanges,
   codeEngineModes,
   codeStatusText,
+  toolLabel,
   nextCodeMode,
   OTHER_ANSWER,
   placeCodeSessions,
@@ -15,7 +15,6 @@ import {
   rankByQuery,
   type CodeApproval,
   type CodeBotQuestion,
-  type CodeExchange,
   type CodeSessionDetail,
   type CodeEngine,
   type CodePermissionMode,
@@ -90,10 +89,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SlashMenu, type SlashItem } from "@/components/SlashMenu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AgentAvatar } from "@/components/AgentAvatar";
-import { PersonAvatar } from "@/components/ConversationAvatar";
 import { BrandLogo } from "@/components/BrandLogo";
-import { conversationQuery } from "@/lib/queries";
 import type { AgentSummary, Person } from "@/lib/api";
 import { useT } from "@/i18n";
 import {
@@ -1025,8 +1021,6 @@ function CodeSessionView({
   const c = useT(common);
   const { user } = useRouteContext({ from: "/app" });
   const { data: session } = useQuery(codeSessionQuery(conversationId, sessionId));
-  const { data: conv } = useQuery(conversationQuery(conversationId));
-  const agent = session?.agentId ? conv?.agents.find((a) => a.id === session.agentId) : undefined;
   const [tab, setTab] = useState<SessionTab>("overview");
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -1069,15 +1063,13 @@ function CodeSessionView({
         {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
       </>
     ) : null;
-  // A new one comes into view: Avancement shows it first, at its top, and stops following the bottom.
+  // A new one comes into view: Avancement shows it, at the end of the stream.
   const waitingFor = approval?.id ?? session?.question?.text;
   useLayoutEffect(() => {
     if (!waitingFor) return;
-    setTab("overview");
-    requestAnimationFrame(() => {
-      follow.current = false;
-      scroller.current?.scrollTo({ top: 0 });
-    });
+    follow.current = true;
+    if (tab === "overview") scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+    else setTab("overview");
   }, [waitingFor]);
   const composer = useRef<{ addFiles: (files: FileList) => void }>(null);
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
@@ -1149,7 +1141,7 @@ function CodeSessionView({
             >
               <div ref={content} className="flex min-h-full flex-col">
                 {tab === "overview" ? (
-                  <Overview conversationId={conversationId} session={session} agent={agent} members={conv?.members ?? []} owner={owner} pending={pending} />
+                  <Overview conversationId={conversationId} session={session} owner={owner} pending={pending} />
                 ) : (
                   <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
                 )}
@@ -1202,17 +1194,13 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
 
 /** Aperçu: what waits for an answer, what it does now (or its answer, once it rests), its tasks, its exchanges. */
 function Overview({
-  conversationId,
   session,
-  agent,
-  members,
   owner,
   pending,
+  conversationId,
 }: {
   conversationId: string;
   session: CodeSessionDetail;
-  agent?: AgentSummary;
-  members: Person[];
   owner: boolean;
   pending: ReactNode;
 }) {
@@ -1220,28 +1208,9 @@ function Overview({
   const v = t.view;
   const running = session.status === "running";
   const done = session.todos.filter((x) => x.status === "completed").length;
-  const exchanges = useMemo(() => codeExchanges(session.steps), [session.steps]);
-  const now = active(session.status) ? (session.activity ?? codeStatusText(t, session)) : session.status === "failed" || session.status === "stopped" ? codeStatusText(t, session) : null;
+  // What it does, as it does it: instructions, its words streaming, its actions; what it waits for at the end.
   return (
-    <div className="flex flex-col gap-6">
-      {pending && <div className="flex flex-col gap-3">{pending}</div>}
-      {!pending && now && (
-        <Section title={v.now}>
-          <Item variant="muted" size="sm">
-            <ItemMedia variant="icon">
-              <StatusIcon status={session.status} asking={!!session.question} />
-            </ItemMedia>
-            <ItemContent className="min-w-0">
-              <ItemTitle className="line-clamp-2 font-normal">{now}</ItemTitle>
-            </ItemContent>
-          </Item>
-        </Section>
-      )}
-      {!active(session.status) && session.result && (
-        <Section title={v.answer}>
-          <MessageText text={session.result} className="text-[15px] leading-[21px]" />
-        </Section>
-      )}
+    <div className="flex flex-1 flex-col gap-6">
       {session.todos.length > 0 && (
         <Section title={v.tasks(done, session.todos.length)}>
           <ItemGroup className="gap-0 has-data-[size=xs]:gap-0">
@@ -1260,49 +1229,165 @@ function Overview({
           </ItemGroup>
         </Section>
       )}
-      {exchanges.length > 0 && (
-        <Section title={agent ? v.exchangesWith(agent.name) : v.instructions}>
-          <ItemGroup className="gap-1 has-data-[size=xs]:gap-1">
-            {exchanges.map((x) => (
-              <ExchangeRow key={x.id} exchange={x} engine={session.engine} agent={agent} members={members} />
-            ))}
-          </ItemGroup>
-        </Section>
+      {session.steps.length === 0 && !pending ? (
+        <Empty className="flex-1">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Spinner />
+            </EmptyMedia>
+            <EmptyDescription>{t.empty}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <Timeline steps={session.steps} running={running} />
+          {pending}
+        </div>
       )}
       {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
     </div>
   );
 }
 
-/** One exchange: who, what it was (instruction, question, answer), then its words; a long one unfolds on a click. */
-function ExchangeRow({ exchange, engine, agent, members }: { exchange: CodeExchange; engine: CodeEngine; agent?: AgentSummary; members: Person[] }) {
-  const t = useT(messages);
-  const [open, setOpen] = useState(false);
-  const fromCode = exchange.kind === "question";
-  const person = !fromCode && exchange.by !== agent?.name ? members.find((m) => m.name === exchange.by) : undefined;
-  const who = fromCode ? CODE_ENGINE_NAMES[engine] : (exchange.by ?? t.codeSession);
+type ToolStepT = Extract<CodeStep, { kind: "tool" }>;
+type Block = { kind: "step"; step: Exclude<CodeStep, ToolStepT> } | { kind: "tools"; steps: ToolStepT[] };
+const parentOf = (s: CodeStep) => ("parentId" in s ? s.parentId : undefined);
+
+/** Consecutive actions read as one block. */
+function blocks(steps: CodeStep[]): Block[] {
+  const out: Block[] = [];
+  for (const step of steps) {
+    const last = out.at(-1);
+    if (step.kind === "tool" && last?.kind === "tools") last.steps.push(step);
+    else if (step.kind === "tool") out.push({ kind: "tools", steps: [step] });
+    else out.push({ kind: "step", step });
+  }
+  return out;
+}
+
+/** The steps of one level (the session's, or a subagent's), each subagent call holding its own. */
+function Timeline({ steps, running, parentId }: { steps: CodeStep[]; running: boolean; parentId?: string }) {
+  const own = steps.filter((s) => parentOf(s) === parentId);
+  const last = own.at(-1);
   return (
-    <Item size="xs" className="items-start px-0">
-      <ItemMedia className="mt-0.5 size-5">
-        {fromCode ? (
-          <ModelLogo provider={engine === "codex" ? "codex" : engine === "cursor" ? "cursor" : "claude-code"} className="size-4" />
-        ) : person ? (
-          <PersonAvatar person={person} className="size-5 text-[8px]" />
-        ) : agent && exchange.by === agent.name ? (
-          <AgentAvatar agent={agent} className="size-5" />
-        ) : null}
-      </ItemMedia>
-      <ItemContent className="min-w-0">
-        <ItemDescription className="text-xs">
-          {who} · {t.view.kinds[exchange.kind]}
-        </ItemDescription>
-        <Collapsible open={open} onOpenChange={setOpen}>
-          <CollapsibleTrigger className={cn("w-full text-left text-sm whitespace-pre-wrap break-words", !open && "line-clamp-3")}>{exchange.text}</CollapsibleTrigger>
-        </Collapsible>
-      </ItemContent>
-    </Item>
+    <div className="flex flex-col gap-3">
+      {blocks(own).map((b) =>
+        b.kind === "tools" ? (
+          <ToolBlock key={b.steps[0]!.id} steps={b.steps} all={steps} />
+        ) : (
+          <StepView key={b.step.id} step={b.step} streaming={running && b.step === last} />
+        ),
+      )}
+    </div>
   );
 }
+
+function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; streaming: boolean }) {
+  const t = useT(messages);
+  switch (step.kind) {
+    case "user":
+      return (
+        <div className="flex flex-col items-end gap-1">
+          {step.by && <span className="px-1 text-xs text-muted-foreground">{step.by}</span>}
+          {!!step.files?.length && <SentAttachments items={step.files} className="max-w-[88%]" />}
+          {step.text && <UserBubble text={step.text} className="max-w-[88%] text-sm" />}
+        </div>
+      );
+    case "text":
+      return <MessageText text={step.text} streaming={streaming} className="text-sm" />;
+    case "git":
+      return (
+        <div className={cn("flex items-start gap-2 text-[13px]", step.ok ? "text-muted-foreground" : "text-destructive")}>
+          {step.ok ? <BranchIcon className="mt-0.5 size-3.5 shrink-0" /> : <CloseCircleIcon className="mt-0.5 size-3.5 shrink-0" />}
+          <span className="min-w-0 break-words">
+            {step.text}
+            {step.by ? ` · ${step.by}` : ""}
+          </span>
+        </div>
+      );
+    case "notice":
+      if (step.code === "error") {
+        return (
+          <Alert variant="destructive">
+            <CloseCircleIcon />
+            <AlertTitle>{t.notices.error}</AlertTitle>
+            {step.text && (
+              <AlertDescription>
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs">{step.text}</pre>
+              </AlertDescription>
+            )}
+          </Alert>
+        );
+      }
+      return (
+        <div className="text-center text-[13px] text-muted-foreground">
+          {t.notices[step.code]}
+          {step.text && <CodeBlock className="mt-1.5 text-left">{step.text}</CodeBlock>}
+        </div>
+      );
+  }
+}
+
+/** A run of actions: the latest few in view, the earlier ones folded behind one line. */
+const SHOWN = 3;
+function ToolBlock({ steps, all }: { steps: ToolStepT[]; all: CodeStep[] }) {
+  const t = useT(messages);
+  const [open, setOpen] = useState(false);
+  const hidden = open ? 0 : Math.max(0, steps.length - SHOWN);
+  return (
+    <div className="-mx-2 flex flex-col">
+      {hidden > 0 && (
+        <Button variant="ghost" size="xs" className="justify-start px-2 text-muted-foreground" onClick={() => setOpen(true)}>
+          {t.earlierActions(hidden)}
+        </Button>
+      )}
+      {steps.slice(hidden).map((s) => (
+        <ToolRow key={s.id} step={s} all={all} />
+      ))}
+    </div>
+  );
+}
+
+/** A path reads as its file name; the folders it sits in on the server say nothing. */
+const shortTitle = (title: string) => title.replace(/(?:\/[\w.@+-]+)+\/([\w.@+-]+)/g, "$1");
+
+/** One action, named in words; unfolds to its input and result, and to a subagent's own steps. */
+function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
+  const t = useT(messages);
+  const [open, setOpen] = useState(false);
+  const nested = all.some((s) => parentOf(s) === step.id);
+  const expandable = !!(step.input || step.output || nested);
+  const label = toolLabel(step.name, t.toolNames);
+  const detail = step.title && step.title !== step.name ? shortTitle(step.title) : (label.action ?? "");
+  const row = (
+    <>
+      <span className="shrink-0 text-muted-foreground">{label.name}</span>
+      <span className="min-w-0 flex-1 truncate text-left text-foreground/80">{detail}</span>
+      {step.status === "running" ? <Spinner className="size-3.5 shrink-0" /> : step.status !== "done" && <CloseCircleIcon className="size-3.5 shrink-0 text-destructive" />}
+    </>
+  );
+  if (!expandable) return <div className="flex h-7 items-center gap-2 px-2 text-[13px]">{row}</div>;
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger render={<Button variant="ghost" size="xs" className="w-full justify-start gap-2 font-normal" />}>{row}</CollapsibleTrigger>
+      <CollapsibleContent className="ml-2 flex flex-col gap-2 border-l py-1.5 pr-2 pl-3">
+        {step.input && (step.name === "ExitPlanMode" ? <MessageText text={step.input} className="text-sm" /> : <Detail label={t.input} text={step.input} />)}
+        {nested && <Timeline steps={all} running={false} parentId={step.id} />}
+        {step.output && <Detail label={t.output} text={step.output} />}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function Detail({ label, text }: { label: string; text: string }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs text-muted-foreground">{label}</p>
+      <CodeBlock className="max-h-72 leading-relaxed">{text}</CodeBlock>
+    </div>
+  );
+}
+
 
 const GIT_REFRESH_MS = 30_000;
 
