@@ -18,8 +18,18 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
   const prod = await contractEnv();
   const from = prod.appVersion;
   const { entry, step, finish } = await startRun("app", from, to, trigger);
+  let originalApi = "";
+  let activationRequested = false;
 
   try {
+    // Preserve the exact working images. Rollback must not pull/rebuild a mutable
+    // Hermes base, especially when the new build failed because the disk is full.
+    const api = (await must(["docker", "inspect", "--format", "{{.Id}} {{.Image}}", containerName("api")])).stdout.trim().split(/\s+/);
+    originalApi = api[0] ?? "";
+    const web = (await must(["docker", "inspect", "--format", "{{.Image}}", containerName("web")])).stdout.trim();
+    if (!originalApi || !api[1] || !web) throw new Error("Cannot identify running application images");
+    await must(["docker", "tag", api[1], `agora-api:${from}-${prod.hermesVersion || "v2026.9.21"}`]);
+    await must(["docker", "tag", web, appImage("web", from)]);
     if (usesRegistry()) {
       await step("app_pull_images", "Téléchargement des images");
       for (const kind of ["app", "web", "updater"] as const) await must(["docker", "pull", appImage(kind, to)], { timeoutMs: 30 * 60_000 });
@@ -36,7 +46,7 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
     await step("backup_done", `Sauvegarde ${entry.backup}`, true, { id: entry.backup });
 
     await step("app_switch", `Bascule sur Agora ${to}`, undefined, { version: to });
-    await switchTo(to);
+    await switchTo(to, { activating: () => { activationRequested = true; } });
     await waitApi(to);
     const result = await checkContract({ container: containerName("hermes"), volume: volumeName("hermes-data"), appVersion: to, env: prod.env, uid: prod.uid, chat: false, mutating: false });
     entry.contract = result;
@@ -64,6 +74,18 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
     await saveState();
     if (!entry.backup) return (await finish("failed"), entry);
     try {
+      const current = await run(["docker", "inspect", "--format", "{{.Id}}", containerName("api")]);
+      if (!activationRequested || (current.code === 0 && current.stdout.trim() === originalApi)) {
+        // The failed preparation never ran new migrations: rewinding the DB here
+        // would discard messages written while the backup/build was running.
+        await setEnv("APP_VERSION", from);
+        await checkoutVersion(from).catch((e) => console.error("checkout:", e));
+        await must(["docker", "start", containerName("api")]);
+        await waitApi(from);
+        await step("rollback_done", "Préparation annulée, version précédente rétablie sans restaurer la base", true);
+        await finish("rolled_back");
+        return entry;
+      }
       await step("app_rollback", `Retour arrière vers ${from} avec restauration de la base`, undefined, { version: from });
       await compose(["stop", "api"]);
       await restoreDatabase(entry.backup);
@@ -80,12 +102,13 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
   return entry;
 }
 
-async function switchTo(version: string, { rollback = false } = {}) {
+async function switchTo(version: string, { rollback = false, activating }: { rollback?: boolean; activating?: () => void } = {}) {
   // On rollback, a checkout failure must not keep production down: the
   // previous images are still there and the checkout can be fixed by hand.
   if (rollback) await checkoutVersion(version).catch((err) => console.error("checkout:", err));
   else await checkoutVersion(version);
   await setEnv("APP_VERSION", version);
-  await compose(["build", "api"], { timeoutMs: 20 * 60_000 });
-  await compose(["up", "-d", "--no-deps", "api", "web"], { timeoutMs: 10 * 60_000 });
+  if (!rollback) await compose(["build", "api"], { timeoutMs: 20 * 60_000 });
+  activating?.();
+  await compose(["up", "-d", "--no-deps", "--no-build", "--pull", "never", "api", "web"], { timeoutMs: 10 * 60_000 });
 }
