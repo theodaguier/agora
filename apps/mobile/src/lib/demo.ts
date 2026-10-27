@@ -352,6 +352,9 @@ function route(method: string, path: string, query: URLSearchParams, body: Recor
       return { ...find(agents, second), createdAt: ago(60 * 24 * 60), access: true };
     case "digest":
       return get && !second ? null : {};
+    // The Sessions tab: the demo has no code session.
+    case "code-sessions":
+      return [];
     case "inbox": {
       if (second === "read") {
         const ids = body.ids as string[] | undefined;

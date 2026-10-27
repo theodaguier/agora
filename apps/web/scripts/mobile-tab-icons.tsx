@@ -12,6 +12,7 @@ import { Resvg } from "@resvg/resvg-js";
 import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatIntegrationIcon } from "../src/components/icons/integrations";
+import { TerminalIcon } from "../src/components/icons/tools";
 import { CheckIcon, ChevronLeftIcon, CloseIcon, InboxIcon, PlusIcon, RefreshIcon, SearchIcon, SlidersIcon, TaskListIcon, UserIcon, UserPlusIcon } from "../src/components/icons/ui";
 
 type Icon = ComponentType<{ size?: number }>;
@@ -22,13 +23,13 @@ const SETS: { dir: string; size: number; icons: Record<string, Icon> }[] = [
     // The tab's file name (src/app/(app)/(tabs)/_layout.tsx) → its house icon.
     dir: "tab-icons",
     size: 26,
-    icons: { chats: ChatIntegrationIcon, inbox: InboxIcon, tasks: TaskListIcon, profile: UserIcon, search: SearchIcon },
+    icons: { chats: ChatIntegrationIcon, inbox: InboxIcon, tasks: TaskListIcon, sessions: TerminalIcon, profile: UserIcon },
   },
   {
     // The header buttons (src/components/header-button.tsx `headerIcon`).
     dir: "header-icons",
     size: 22,
-    icons: { check: CheckIcon, close: CloseIcon, plus: PlusIcon, refresh: RefreshIcon, sliders: SlidersIcon, "user-plus": UserPlusIcon, "chevron-left": ChevronLeftIcon },
+    icons: { check: CheckIcon, close: CloseIcon, plus: PlusIcon, refresh: RefreshIcon, sliders: SlidersIcon, "user-plus": UserPlusIcon, "chevron-left": ChevronLeftIcon, search: SearchIcon },
   },
 ];
 

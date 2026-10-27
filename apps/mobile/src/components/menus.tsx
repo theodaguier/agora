@@ -36,6 +36,7 @@ import {
   RefreshIcon,
   ReplyIcon,
   SearchIcon,
+  SlidersIcon,
   TaskListIcon,
   TrashIcon,
   UndoIcon,
@@ -113,6 +114,7 @@ const ICONS: Record<string, IconComponent> = {
   key: KeyIcon,
   checklist: TaskListIcon,
   "arrow.triangle.branch": BranchIcon,
+  "slider.horizontal.3": SlidersIcon,
 };
 
 export type SFSymbol = string;

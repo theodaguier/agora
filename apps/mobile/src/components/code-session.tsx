@@ -137,41 +137,103 @@ export function useCanStartCodeSession(conversationId: string) {
 
 export const newCodeSessionHref = (conversationId: string) => `/code/${conversationId}/new` as Href;
 
+/** Deletes a session (its owner), once confirmed: gone from every list. */
+export function useDeleteCodeSession() {
+  const t = tr(codeSessions);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  const remove = useMutation({
+    mutationFn: (s: Pick<CodeSession, "id" | "conversationId">) => deleteCodeSession(s.conversationId, s.id),
+    onSuccess: (_, s) => {
+      dropCodeSession(qc, s.conversationId, s.id);
+      toast.success(t.deleted);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  return async (s: Pick<CodeSession, "id" | "conversationId" | "title">) => {
+    if (await confirmAction({ title: t.deleteTitle(s.title), description: t.deleteHelp, action: t.deleteSession })) remove.mutate(s);
+  };
+}
+
+/** Opened: the pull requests still open, and the branches pushed, as they are on GitHub now. */
+export function useRefreshCodeSessionsGit(sessions: CodeSession[] | undefined) {
+  const qc = useQueryClient();
+  const loaded = !!sessions;
+  useEffect(() => {
+    for (const s of sessions ?? []) {
+      if (s.git?.pr?.state === "open" || (s.git?.pushed && !s.git.pr)) {
+        refreshCodeSessionGit(s.conversationId, s.id).then(
+          (fresh) => applyCodeSession(qc, fresh),
+          () => {},
+        );
+      }
+    }
+    // Once per opening, not on every change the refresh itself brings.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, qc]);
+}
+
+/**
+ * Figma « Ligne de session »: its priority and state, its title, who started it, its issue, what it does
+ * or where it stands, and when. Its owner sets the priority or deletes it with a long press.
+ */
+export function CodeSessionRow({
+  session: s,
+  owner,
+  agent,
+  showState = true,
+  onOpen,
+}: {
+  session: CodeSession;
+  owner: boolean;
+  agent?: { name: string; avatar: { color: string; shape?: string } };
+  /** False under a group that already says it. */
+  showState?: boolean;
+  onOpen: () => void;
+}) {
+  const t = tr(codeSessions);
+  const me = useMe();
+  const setPriority = useSetCodePriority();
+  const confirmDelete = useDeleteCodeSession();
+  return (
+    <LongPressMenu
+      actions={
+        owner
+          ? [...priorityEntries(s, (priority) => setPriority.mutate({ conversationId: s.conversationId, id: s.id, priority })), "divider", { label: t.deleteSession, icon: "trash", destructive: true, onPress: () => void confirmDelete(s) }]
+          : []
+      }
+    >
+      <ListGroup.Item onPress={withTap(onOpen)} className="items-start">
+        <ListGroup.ItemPrefix className="flex-row gap-2 pt-0.5">
+          <CodePriorityIcon priority={s.priority} />
+          {showState && <CodeStateIcon state={codeSessionState(s)} />}
+        </ListGroup.ItemPrefix>
+        <ListGroup.ItemContent className="gap-0.5">
+          <ListGroup.ItemTitle numberOfLines={2}>{s.title}</ListGroup.ItemTitle>
+          <SessionMeta session={s} who={agent?.name ?? (s.requestedBy === me.id ? t.page.you : null)} agent={agent} />
+        </ListGroup.ItemContent>
+        <ListGroup.ItemSuffix>
+          <Typography type="body-xs" className="text-subtle">
+            {listTime(new Date(s.updatedAt))}
+          </Typography>
+        </ListGroup.ItemSuffix>
+      </ListGroup.Item>
+    </LongPressMenu>
+  );
+}
+
 /**
  * Every session of the conversation (the web's header button), each opening its screen; its owner
  * starts one from the first row and deletes one with a long press.
  */
 export function CodeSessionList({ conversationId, onOpen, onNew }: { conversationId: string; onOpen: (sessionId: string) => void; onNew: () => void }) {
   const t = tr(codeSessions);
-  const qc = useQueryClient();
   const me = useMe();
-  const toast = useAdminToast();
   const canStart = useCanStartCodeSession(conversationId);
-  const sessions = byCodePriority(useCodeSessions(conversationId) ?? []);
+  const loaded = useCodeSessions(conversationId);
+  const sessions = byCodePriority(loaded ?? []);
   const { data: conversation } = useQuery(conversationQuery(conversationId));
-  const setPriority = useSetCodePriority();
-  const remove = useMutation({
-    mutationFn: (id: string) => deleteCodeSession(conversationId, id),
-    onSuccess: (_, id) => {
-      dropCodeSession(qc, conversationId, id);
-      toast.success(t.deleted);
-    },
-    onError: (e) => toast.failed(e),
-  });
-  const confirmDelete = async (s: CodeSession) => {
-    if (await confirmAction({ title: t.deleteTitle(s.title), description: t.deleteHelp, action: t.deleteSession })) remove.mutate(s.id);
-  };
-  // Opened: the pull requests still open, and the branches pushed, as they are on GitHub now.
-  useEffect(() => {
-    for (const s of qc.getQueryData(codeSessionsQuery(conversationId).queryKey) ?? []) {
-      if (s.git?.pr?.state === "open" || (s.git?.pushed && !s.git.pr)) {
-        refreshCodeSessionGit(conversationId, s.id).then(
-          (fresh) => applyCodeSession(qc, fresh),
-          () => {},
-        );
-      }
-    }
-  }, [conversationId, qc]);
+  useRefreshCodeSessionsGit(loaded ?? undefined);
   return (
     <ListGroup>
       {canStart && (
@@ -185,38 +247,17 @@ export function CodeSessionList({ conversationId, onOpen, onNew }: { conversatio
           <ListGroup.ItemSuffix />
         </ListGroup.Item>
       )}
-      {sessions.map((s, i) => {
-        const owner = canStart && s.requestedBy === me.id;
-        const agent = s.agentId ? conversation?.agents.find((a) => a.id === s.agentId) : undefined;
-        return (
-          <Fragment key={s.id}>
-            {(i > 0 || canStart) && <Separator className="ml-16" />}
-            <LongPressMenu
-              actions={
-                owner
-                  ? [...priorityEntries(s, (priority) => setPriority.mutate({ conversationId, id: s.id, priority })), "divider", { label: t.deleteSession, icon: "trash", destructive: true, onPress: () => void confirmDelete(s) }]
-                  : []
-              }
-            >
-              <ListGroup.Item onPress={withTap(() => onOpen(s.id))} className="items-start">
-                <ListGroup.ItemPrefix className="flex-row gap-2 pt-0.5">
-                  <CodePriorityIcon priority={s.priority} />
-                  <CodeStateIcon state={codeSessionState(s)} />
-                </ListGroup.ItemPrefix>
-                <ListGroup.ItemContent className="gap-0.5">
-                  <ListGroup.ItemTitle numberOfLines={2}>{s.title}</ListGroup.ItemTitle>
-                  <SessionMeta session={s} who={agent?.name ?? (s.requestedBy === me.id ? t.page.you : null)} agent={agent} />
-                </ListGroup.ItemContent>
-                <ListGroup.ItemSuffix>
-                  <Typography type="body-xs" className="text-subtle">
-                    {listTime(new Date(s.updatedAt))}
-                  </Typography>
-                </ListGroup.ItemSuffix>
-              </ListGroup.Item>
-            </LongPressMenu>
-          </Fragment>
-        );
-      })}
+      {sessions.map((s, i) => (
+        <Fragment key={s.id}>
+          {(i > 0 || canStart) && <Separator className="ml-16" />}
+          <CodeSessionRow
+            session={s}
+            owner={canStart && s.requestedBy === me.id}
+            agent={s.agentId ? conversation?.agents.find((a) => a.id === s.agentId) : undefined}
+            onOpen={() => onOpen(s.id)}
+          />
+        </Fragment>
+      ))}
     </ListGroup>
   );
 }
