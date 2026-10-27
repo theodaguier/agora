@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.47.0 — 2026-10-27
+
+### Features
+- **mobile**: onglet Sessions, la recherche passe dans les Discussions
+
 ## v0.46.1 — 2026-10-27
 
 ### Fixes
