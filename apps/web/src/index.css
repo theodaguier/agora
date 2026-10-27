@@ -78,6 +78,16 @@
   /* état/attente: waits for you. */
   --warning: #f97316;
   --warning-foreground: #e8650c;
+  /* priorité/* and statut/* (Figma « Agora · Couleurs »): a session's priority and state, never the same hues. */
+  --priority-urgent: #e5484d;
+  --priority-high: #f76b15;
+  --priority-medium: #e6a700;
+  --priority-low: #8b8d98;
+  --state-running: #0a84ff;
+  --state-you: #d6409f;
+  --state-finished: #1fa855;
+  --state-merged: #8e4ec6;
+  --state-neutral: #a1a1a6;
 
   /* Controls are flat: no gradient, highlight or shadow. */
   --relief-highlight: 0 0 #0000;
@@ -131,6 +141,15 @@
   --success: #2cc266;
   --warning: #fb8a3c;
   --warning-foreground: #fb8a3c;
+  --priority-urgent: #f2555a;
+  --priority-high: #ff8b3e;
+  --priority-medium: #f5c33b;
+  --priority-low: #9b9da8;
+  --state-running: #3b9bff;
+  --state-you: #e66bb4;
+  --state-finished: #2cc266;
+  --state-merged: #a875dd;
+  --state-neutral: #7c7c82;
 
   --relief-highlight: 0 0 #0000;
   --relief-raised: 0 0 #0000;
@@ -185,6 +204,15 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-priority-urgent: var(--priority-urgent);
+  --color-priority-high: var(--priority-high);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-low: var(--priority-low);
+  --color-state-running: var(--state-running);
+  --color-state-you: var(--state-you);
+  --color-state-finished: var(--state-finished);
+  --color-state-merged: var(--state-merged);
+  --color-state-neutral: var(--state-neutral);
   --shadow-card: var(--card-shadow);
 
   /* Same scale as Tailwind's default radii, derived from --radius. */

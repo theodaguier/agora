@@ -1,20 +1,22 @@
-import { codeDetailLine, codeStatusText, placeCodeSessions, type CodeSession, type CodeSessionRef, type CodeSessionStatus } from "@agora/core";
+import { byCodePriority, CODE_PRIORITIES, codeDetailLine, codeSessionState, codeStatusText, placeCodeSessions, type CodePriority, type CodeSession, type CodeSessionRef, type CodeSessionStatus } from "@agora/core";
 import { codeSessions } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, type Href } from "expo-router";
-import { Button, Card, ListGroup, Separator, Spinner, Surface } from "heroui-native";
+import { Button, Card, ListGroup, Separator, Surface, Typography } from "heroui-native";
 import { Fragment, useEffect, type ReactNode } from "react";
 import { View } from "react-native";
 import { useAdminToast } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
-import { ChatQuestionIcon, CheckCircleIcon, ClockIcon, CloseCircleIcon, CodeIcon, PlusIcon, ShieldAlertIcon } from "@/components/icons";
-import { LongPressMenu } from "@/components/menus";
+import { AgentAvatar } from "@/components/agent-avatar";
+import { CodePriorityIcon, CodeStateIcon, IssueIcon } from "@/components/code-session-marks";
+import { CodeIcon, PlusIcon } from "@/components/icons";
+import { LongPressMenu, type MenuEntry } from "@/components/menus";
 import { useMe } from "@/components/server-scope";
-import { applyCodeSession, codeModelsQuery, codeSessionsQuery, deleteCodeSession, dropCodeSession, refreshCodeSessionGit } from "@/lib/code-sessions";
-import { dividerLabel } from "@/lib/dates";
+import { applyCodeSession, codeModelsQuery, codeSessionsQuery, deleteCodeSession, dropCodeSession, refreshCodeSessionGit, setCodeSessionPriority } from "@/lib/code-sessions";
+import { listTime } from "@/lib/dates";
+import { conversationQuery } from "@/lib/queries";
 import { withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 /*
  * apps/web/src/components/CodeSession.tsx, in the thread: a session's card where the bot started it,
@@ -26,15 +28,25 @@ export const isActive = (s: CodeSessionStatus) => s === "running" || s === "wait
 
 export const codeSessionHref = (conversationId: string, sessionId: string) => `/code/${conversationId}/${sessionId}` as Href;
 
-/** `asking`: it waits on its question to its bot, not on an approval. */
-export function StatusIcon({ status, asking, className, small }: { status: CodeSessionStatus; asking?: boolean; className?: string; small?: boolean }) {
-  const size = small ? 12 : 18;
-  if (status === "running") return <Spinner size="sm" className={cn(small && "size-3", className)} />;
-  if (status === "waiting" && asking) return <ChatQuestionIcon size={size} className={cn("text-warning", className)} />;
-  if (status === "waiting") return <ShieldAlertIcon size={size} className={cn("text-warning", className)} />;
-  if (status === "idle") return <ClockIcon size={size} className={cn("text-muted", className)} />;
-  if (status === "done") return <CheckCircleIcon size={size} className={cn("text-success", className)} />;
-  return <CloseCircleIcon size={size} className={cn(status === "failed" ? "text-danger" : "text-muted", className)} />;
+/** Sets a session's priority (its owner): the list, its card and its screen follow. */
+export function useSetCodePriority() {
+  const t = tr(codeSessions);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  return useMutation({
+    mutationFn: (v: { conversationId: string; id: string; priority: CodePriority }) => setCodeSessionPriority(v.conversationId, v.id, v.priority),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      toast.success(t.priorityChanged(t.priorities[s.priority]));
+    },
+    onError: (e) => toast.failed(e),
+  });
+}
+
+/** Figma « Menu de priorité » as menu entries: the five priorities, the current one checked. */
+export function priorityEntries(session: Pick<CodeSession, "priority">, set: (p: CodePriority) => void): MenuEntry[] {
+  const t = tr(codeSessions);
+  return [{ title: t.priority, actions: CODE_PRIORITIES.map((p) => ({ label: t.priorities[p], mark: <CodePriorityIcon priority={p} />, checked: session.priority === p, onPress: () => p !== session.priority && set(p) })) }];
 }
 
 /** Card of a Claude Code session, where it was started in the conversation: where it stands, and the way into its steps. */
@@ -56,11 +68,15 @@ export function CodeSessionCard({ conversationId, sessionId, title }: { conversa
           {session?.title ?? title}
         </Card.Title>
         <View className="flex-row items-center gap-1.5">
-          {session && <StatusIcon status={status} asking={!!session.question} small />}
-          <Card.Description numberOfLines={1} className="min-w-0 shrink text-footnote">
+          {session && <CodeStateIcon state={codeSessionState(session)} size={12} />}
+          <Card.Description numberOfLines={1} className="shrink-0 text-footnote">
             {session ? codeStatusText(t, session) : gone ? t.gone : t.status[status]}
-            {detail ? ` · ${detail}` : ""}
           </Card.Description>
+          {!!detail && (
+            <Typography type="body-xs" numberOfLines={1} className="ml-1 min-w-0 shrink text-subtle">
+              {detail}
+            </Typography>
+          )}
         </View>
       </Card.Body>
       {!gone && (
@@ -131,7 +147,9 @@ export function CodeSessionList({ conversationId, onOpen, onNew }: { conversatio
   const me = useMe();
   const toast = useAdminToast();
   const canStart = useCanStartCodeSession(conversationId);
-  const sessions = useCodeSessions(conversationId) ?? [];
+  const sessions = byCodePriority(useCodeSessions(conversationId) ?? []);
+  const { data: conversation } = useQuery(conversationQuery(conversationId));
+  const setPriority = useSetCodePriority();
   const remove = useMutation({
     mutationFn: (id: string) => deleteCodeSession(conversationId, id),
     onSuccess: (_, id) => {
@@ -167,32 +185,84 @@ export function CodeSessionList({ conversationId, onOpen, onNew }: { conversatio
           <ListGroup.ItemSuffix />
         </ListGroup.Item>
       )}
-      {sessions.map((s, i) => (
-        <Fragment key={s.id}>
-          {(i > 0 || canStart) && <Separator className="ml-12" />}
-          <LongPressMenu actions={[canStart && s.requestedBy === me.id && { label: t.deleteSession, icon: "trash", destructive: true, onPress: () => void confirmDelete(s) }]}>
-            <ListGroup.Item onPress={withTap(() => onOpen(s.id))} className="items-start">
-              <ListGroup.ItemPrefix className="pt-0.5">
-                <StatusIcon status={s.status} asking={!!s.question} />
-              </ListGroup.ItemPrefix>
-              <ListGroup.ItemContent className="gap-0.5">
-                <ListGroup.ItemTitle numberOfLines={2}>{s.title}</ListGroup.ItemTitle>
-                <ListGroup.ItemDescription numberOfLines={1}>
-                  {codeStatusText(t, s)}
-                  {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
-                  {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
-                </ListGroup.ItemDescription>
-                {s.instruction && (
-                  <ListGroup.ItemDescription numberOfLines={2}>
-                    {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
-                  </ListGroup.ItemDescription>
-                )}
-              </ListGroup.ItemContent>
-              <ListGroup.ItemSuffix />
-            </ListGroup.Item>
-          </LongPressMenu>
-        </Fragment>
-      ))}
+      {sessions.map((s, i) => {
+        const owner = canStart && s.requestedBy === me.id;
+        const agent = s.agentId ? conversation?.agents.find((a) => a.id === s.agentId) : undefined;
+        return (
+          <Fragment key={s.id}>
+            {(i > 0 || canStart) && <Separator className="ml-16" />}
+            <LongPressMenu
+              actions={
+                owner
+                  ? [...priorityEntries(s, (priority) => setPriority.mutate({ conversationId, id: s.id, priority })), "divider", { label: t.deleteSession, icon: "trash", destructive: true, onPress: () => void confirmDelete(s) }]
+                  : []
+              }
+            >
+              <ListGroup.Item onPress={withTap(() => onOpen(s.id))} className="items-start">
+                <ListGroup.ItemPrefix className="flex-row gap-2 pt-0.5">
+                  <CodePriorityIcon priority={s.priority} />
+                  <CodeStateIcon state={codeSessionState(s)} />
+                </ListGroup.ItemPrefix>
+                <ListGroup.ItemContent className="gap-0.5">
+                  <ListGroup.ItemTitle numberOfLines={2}>{s.title}</ListGroup.ItemTitle>
+                  <SessionMeta session={s} who={agent?.name ?? (s.requestedBy === me.id ? t.page.you : null)} agent={agent} />
+                </ListGroup.ItemContent>
+                <ListGroup.ItemSuffix>
+                  <Typography type="body-xs" className="text-subtle">
+                    {listTime(new Date(s.updatedAt))}
+                  </Typography>
+                </ListGroup.ItemSuffix>
+              </ListGroup.Item>
+            </LongPressMenu>
+          </Fragment>
+        );
+      })}
     </ListGroup>
+  );
+}
+
+/** A row's meta line (web Sessions' SessionRow): who, its issue, what it does or where it stands; spaced, no separators. */
+function SessionMeta({ session: s, who, agent }: { session: CodeSession; who: string | null; agent?: { avatar: { color: string; shape?: string } } }) {
+  const t = tr(codeSessions);
+  const state = codeSessionState(s);
+  const detail =
+    state === "waiting" || state === "running"
+      ? codeDetailLine(s)
+      : s.git?.pr
+        ? `${t.git.pr(s.git.pr.number)} ${t.git.prState[s.git.pr.state]}`
+        : s.todos.length
+          ? t.page.todos(s.todos.filter((x) => x.status === "completed").length, s.todos.length)
+          : s.worktree?.removedAt
+            ? t.worktree.listGone
+            : null;
+  return (
+    <View className="min-w-0 flex-row items-center gap-2">
+      {!!who && (
+        <View className="shrink-0 flex-row items-center gap-1.5">
+          {agent && <AgentAvatar agent={agent} size={14} />}
+          <Typography type="body-sm" color="muted">
+            {who}
+          </Typography>
+        </View>
+      )}
+      {s.issue && (
+        <View className="shrink-0 flex-row items-center gap-1">
+          <IssueIcon size={12} />
+          <Typography type="body-sm" color="muted">
+            #{s.issue.number}
+          </Typography>
+        </View>
+      )}
+      {!!detail && (
+        <Typography
+          type="body-sm"
+          color="muted"
+          numberOfLines={1}
+          className={state === "waiting" ? "min-w-0 shrink text-state-you" : state === "failed" ? "min-w-0 shrink text-priority-urgent" : "min-w-0 shrink"}
+        >
+          {detail}
+        </Typography>
+      )}
+    </View>
   );
 }

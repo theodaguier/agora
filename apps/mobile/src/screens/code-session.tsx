@@ -1,18 +1,17 @@
 import {
   CODE_ENGINE_NAMES,
   CODE_PERMISSION_MODES,
-  codeExchanges,
+  codeSessionState,
   codeStatusText,
   OTHER_ANSWER,
   questionAnswer,
   rankByQuery,
   type CodeApproval,
   type CodeBotQuestion,
-  type CodeExchange,
   type CodeGit,
+  type CodeIssue,
   type CodeQuestion,
   type CodeSession,
-  type CodeSessionDetail,
   type CodeStep,
   type CodeTodo,
   toolLabel,
@@ -34,14 +33,15 @@ import {
   Description,
   Input,
   Label,
+  LinkButton,
   ListGroup,
   Menu,
+  PressableFeedback,
   Radio,
   RadioGroup,
   Separator,
   Spinner,
   Surface,
-  Tabs,
   TextArea,
   TextField,
   Typography,
@@ -52,15 +52,15 @@ import { AppState, ScrollView, View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAdminToast } from "@/components/admin/ui";
-import { AgentAvatar } from "@/components/agent-avatar";
 import { SentAttachments } from "@/components/attachments";
 import { AttachMenu } from "@/components/composer/attach-menu";
 import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
 import { UserBubble } from "@/components/bubbles";
-import { isActive, StatusIcon } from "@/components/code-session";
+import { isActive, priorityEntries, useSetCodePriority } from "@/components/code-session";
+import { CodePriorityIcon, CodeStateIcon, codeStateTone, IssueIcon } from "@/components/code-session-marks";
 import { confirmAction } from "@/components/confirm-action";
 import { ArrowUpIcon, BranchIcon, ChartIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, ExternalLinkIcon, KeyIcon, StopIcon, ToolIcon, UserIcon } from "@/components/icons";
-import { MenuButton, MenuContent } from "@/components/menus";
+import { MenuButton, MenuContent, TapMenu } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
 import { ModelLogo } from "@/components/model-logo";
@@ -73,6 +73,7 @@ import {
   codeModelsQuery,
   codeSessionQuery,
   deleteCodeSession,
+  detachCodeSessionIssue,
   dropCodeSession,
   refreshCodeSessionGit,
   removeCodeSessionWorktree,
@@ -85,23 +86,21 @@ import {
   writeCommitMessage,
   type CodeGitRequest,
 } from "@/lib/code-sessions";
-import { haptic, withTap } from "@/lib/haptics";
-import { conversationQuery } from "@/lib/queries";
+import { withTap } from "@/lib/haptics";
 import { locale, tr } from "@/lib/i18n";
 import { dateFormat } from "@/lib/intl";
 import { cn } from "@/lib/utils";
 
 /*
- * apps/web/src/components/CodeSession.tsx's panel as a screen pushed over the conversation. The thread
- * holds every step, live, and ends on what waits for an answer (an approval, questions, a plan). Only
- * the field rides on the keyboard, with a chip for the task list and one for the branch: each opens
- * its sheet. The session's details are in the header's menu. The pull request's form is a form sheet
- * (app/(app)/code/…/pull-request.tsx).
+ * apps/web/src/components/CodeSession.tsx's panel as a screen pushed over the conversation. No tabs:
+ * one stream, as on the web. Its line (state, engine, issue, branch), the branch and its pull request
+ * (a tap opens the files and the git actions in a sheet), its tasks, then every step, live, ending on
+ * what waits for an answer (an approval, questions, a plan). Only the field rides on the keyboard. The
+ * priority is the header's icon button, the session's details are in its menu. The pull request's form
+ * is a form sheet (app/(app)/code/…/pull-request.tsx).
  */
 
 type SheetKind = "info" | "git";
-/** Aperçu: where it stands (web's tab of the same name); Journal: every step. Modifications stay in the branch's sheet. */
-type SessionTab = "overview" | "journal";
 
 export function CodeSessionScreen({ conversationId, sessionId }: { conversationId: string; sessionId: string }) {
   const t = tr(codeSessions);
@@ -115,11 +114,6 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
   const [atBottom, setAtBottom] = useState(true);
   const [barHeight, setBarHeight] = useState(0);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
-  // The log first, as on the web: it opens on the latest steps.
-  const [tab, setTab] = useState<SessionTab>("journal");
-  const journal = tab === "journal";
-  const { data: conv } = useQuery(conversationQuery(conversationId));
-  const agent = session?.agentId ? conv?.agents.find((a) => a.id === session.agentId) : undefined;
   const owner = !!session && session.requestedBy === me.id;
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
   const qc = useQueryClient();
@@ -160,13 +154,17 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
       <Stack.Screen options={{ title: session?.title ?? t.codeSession, headerTransparent: true, headerBlurEffect: "systemChromeMaterial" }} />
       {session && (
         <Stack.Toolbar placement="right">
+          {owner && (
+            <Stack.Toolbar.View>
+              <PriorityButton session={session} />
+            </Stack.Toolbar.View>
+          )}
           <Stack.Toolbar.View>
             <MenuButton
               icon="ellipsis"
               label={t.codeSession}
               actions={[
                 { label: t.details, icon: "info.circle", onPress: () => setSheet("info") },
-                !!session.git?.pr && { label: t.git.pr(session.git.pr.number), icon: "link", onPress: () => void Linking.openURL(session.git!.pr!.url) },
                 owner && !!session.repo && { label: t.credentials.open, icon: "key", onPress: () => router.push(credentialsHref(conversationId, session.id)) },
                 owner && "divider",
                 owner && { label: t.deleteSession, icon: "trash", destructive: true, disabled: remove.isPending, onPress: () => void confirmDelete() },
@@ -203,7 +201,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
               scrollEventThrottle={64}
-              onContentSizeChange={() => journal && follow.current && scroller.current?.scrollToEnd({ animated: false })}
+              onContentSizeChange={() => follow.current && scroller.current?.scrollToEnd({ animated: false })}
               onScrollBeginDrag={() => (follow.current = false)}
               onScroll={(e) => {
                 const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
@@ -212,44 +210,19 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 setAtBottom(bottom);
               }}
             >
-              <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
-                <StatusIcon status={session.status} asking={!!session.question} />
-                <Typography type="body-sm" color="muted">
-                  {codeStatusText(t, session)}
-                  {session.mode !== "bypassPermissions" ? ` · ${t.modes[session.mode]}` : ""}
-                </Typography>
-                {agent && (
-                  <View className="flex-row items-center gap-1">
-                    <AgentAvatar agent={agent} size={16} />
-                    <Typography type="body-sm" color="muted">
-                      {t.view.launchedBy(agent.name)}
-                    </Typography>
-                  </View>
-                )}
-              </View>
-              <Tabs value={tab} onValueChange={(v) => (haptic.select(), setTab(v as SessionTab))}>
-                <Tabs.List>
-                  <Tabs.Indicator />
-                  <Tabs.Trigger value="overview">
-                    <Tabs.Label>{t.view.overview}</Tabs.Label>
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="journal">
-                    <Tabs.Label>{t.view.journal}</Tabs.Label>
-                  </Tabs.Trigger>
-                </Tabs.List>
-              </Tabs>
+              <HeaderLine conversationId={conversationId} session={session} owner={owner} />
               {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
-              {!journal ? (
-                <Overview session={session} agent={agent} pending={pending} />
-              ) : session.steps.length === 0 ? (
+              {session.git && <ChangesCard git={session.git} onOpen={() => setSheet("git")} />}
+              <TodoSection session={session} />
+              {session.steps.length === 0 && !session.approval && !session.question ? (
                 <View className="items-center py-12">
                   <Spinner />
                 </View>
               ) : (
                 <Timeline steps={session.steps} running={session.status === "running"} />
               )}
-              {/* What waits for an answer ends the log, where the run stopped. */}
-              {journal && pending}
+              {/* What waits for an answer ends the stream, where the run stopped. */}
+              {pending}
               {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
             </KeyboardChatScrollView>
 
@@ -259,7 +232,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               className="absolute inset-x-0 bottom-0"
               onLayout={(e) => setBarHeight(e.nativeEvent.layout.height)}
             >
-              {journal && !atBottom && (
+              {!atBottom && (
                 <View pointerEvents="box-none" className="absolute inset-x-0 bottom-full mb-2 items-center">
                   <Button size="sm" variant="secondary" onPress={() => toEnd(true)}>
                     {t.latest}
@@ -267,11 +240,6 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 </View>
               )}
               <Surface className="gap-2 px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
-                {session.git && (
-                  <View className="flex-row gap-2">
-                    <BranchChip git={session.git} onPress={() => setSheet("git")} />
-                  </View>
-                )}
                 {owner ? (
                   <SessionComposer conversationId={conversationId} session={session} onSent={() => toEnd(true)} />
                 ) : (
@@ -294,6 +262,111 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
         )}
       </Surface>
     </>
+  );
+}
+
+/**
+ * Its line under the title (web PaneHeader's description, Figma « En-tête de session »): its state with
+ * its mark, the engine said once, its issue, its branch; spaced, each with its mark, no separators.
+ */
+function HeaderLine({ conversationId, session, owner }: { conversationId: string; session: CodeSession; owner: boolean }) {
+  const t = tr(codeSessions);
+  const state = codeSessionState(session);
+  const tone = codeStateTone(state);
+  const branch = session.git?.branch ?? session.worktree?.branch;
+  return (
+    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
+      <View className="flex-row items-center gap-1.5">
+        <CodeStateIcon state={state} size={14} />
+        <Typography type="body-sm" color={tone ? "default" : "muted"} className={tone}>
+          {codeStatusText(t, session)}
+        </Typography>
+      </View>
+      <Typography type="body-sm" color="muted">
+        {CODE_ENGINE_NAMES[session.engine]}
+      </Typography>
+      {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
+      {!!branch && (
+        <View className="min-w-0 shrink flex-row items-center gap-1">
+          <BranchIcon size={14} className="text-muted" />
+          <Typography type="body-sm" color="muted" numberOfLines={1} className="min-w-0 shrink">
+            {branch}
+          </Typography>
+        </View>
+      )}
+    </View>
+  );
+}
+
+/** Its issue in its line: open it on GitHub; its owner detaches it when the session linked the wrong one. */
+function IssueMenu({ conversationId, session, issue, owner }: { conversationId: string; session: CodeSession; issue: CodeIssue; owner: boolean }) {
+  const t = tr(codeSessions);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  const detach = useMutation({
+    mutationFn: () => detachCodeSessionIssue(conversationId, session.id),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      toast.success(t.issue.detached);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  return (
+    <TapMenu
+      accessibilityLabel={t.issue.label(issue.number)}
+      actions={[
+        {
+          title: issue.title,
+          actions: [
+            { label: t.issue.open, icon: "link", onPress: () => void Linking.openURL(issue.url) },
+            owner && { label: t.issue.detach, icon: "xmark", destructive: true, disabled: detach.isPending, onPress: () => void confirmAction({ title: t.issue.detachTitle(issue.number), description: t.issue.detachHelp, action: t.issue.detach }).then((ok) => ok && detach.mutate()) },
+          ],
+        },
+      ]}
+    >
+      <View className="flex-row items-center gap-1">
+        <IssueIcon size={14} />
+        <Typography type="body-sm" color="muted">
+          #{issue.number}
+        </Typography>
+      </View>
+    </TapMenu>
+  );
+}
+
+/** The header's priority (its owner): its mark alone, opening the five priorities (Figma « Menu de priorité »). */
+function PriorityButton({ session }: { session: CodeSession }) {
+  const t = tr(codeSessions);
+  const set = useSetCodePriority();
+  return (
+    <Menu>
+      <Menu.Trigger asChild>
+        <Button isIconOnly size="sm" variant="ghost" accessibilityLabel={`${t.priority} ${t.priorities[session.priority]}`} isDisabled={set.isPending}>
+          <CodePriorityIcon priority={session.priority} size={18} />
+        </Button>
+      </Menu.Trigger>
+      <MenuContent entries={priorityEntries(session, (priority) => set.mutate({ conversationId: session.conversationId, id: session.id, priority }))} />
+    </Menu>
+  );
+}
+
+/** Its task list, at the top of the stream: its title and the count in a lighter grey. */
+function TodoSection({ session }: { session: CodeSession }) {
+  const v = tr(codeSessions).view;
+  if (!session.todos.length) return null;
+  const done = session.todos.filter((x) => x.status === "completed").length;
+  return (
+    <View className="gap-2">
+      <View className="flex-row items-baseline gap-2">
+        <Typography type="body-sm" color="muted">
+          {v.tasks}
+        </Typography>
+        <Typography type="body-sm" className="text-subtle">
+          {v.tasksCount(done, session.todos.length)}
+        </Typography>
+      </View>
+      <TodoList todos={session.todos} running={session.status === "running"} />
+    </View>
   );
 }
 
@@ -380,10 +453,8 @@ function InfoList({ conversationId, session, owner, onLeave }: { conversationId:
         </ListGroup.ItemPrefix>
         <ListGroup.ItemContent>
           <ListGroup.ItemTitle>{t.account}</ListGroup.ItemTitle>
-          <ListGroup.ItemDescription>
-            {session.account.email}
-            {session.account.plan ? ` · ${session.account.plan}` : ""}
-          </ListGroup.ItemDescription>
+          <ListGroup.ItemDescription>{session.account.email}</ListGroup.ItemDescription>
+          {!!session.account.plan && <ListGroup.ItemDescription>{session.account.plan}</ListGroup.ItemDescription>}
         </ListGroup.ItemContent>
       </ListGroup.Item>
     ),
@@ -394,9 +465,10 @@ function InfoList({ conversationId, session, owner, onLeave }: { conversationId:
         </ListGroup.ItemPrefix>
         <ListGroup.ItemContent>
           <ListGroup.ItemTitle>{t.usage}</ListGroup.ItemTitle>
-          <ListGroup.ItemDescription>
-            {t.estimated(format.cost(u.costUsd))} · {time}
-          </ListGroup.ItemDescription>
+          <View className="flex-row gap-3">
+            <ListGroup.ItemDescription>{t.estimated(format.cost(u.costUsd))}</ListGroup.ItemDescription>
+            <ListGroup.ItemDescription>{time}</ListGroup.ItemDescription>
+          </View>
         </ListGroup.ItemContent>
       </ListGroup.Item>
     ),
@@ -524,17 +596,52 @@ function WorktreeBanner({ conversationId, session, worktree }: { conversationId:
   );
 }
 
-/** The branch above the field: its name and its changes; a tap opens its sheet. */
-function BranchChip({ git, onPress }: { git: CodeGit; onPress: () => void }) {
-  const t = tr(codeSessions).git;
-  const summary = git.changes ? t.changes(git.changes) : git.ahead ? t.ahead(git.ahead, git.pushed) : git.pr ? `${t.pr(git.pr.number)} · ${t.prState[git.pr.state]}` : t.clean;
+/**
+ * The branch and its pull request, at the top of the stream (web ChangesView's card): its PR's title or
+ * the branch, where it stands, and « N fichiers modifiés »; a tap opens the files and the git actions.
+ */
+function ChangesCard({ git, onOpen }: { git: CodeGit; onOpen: () => void }) {
+  const all = tr(codeSessions);
+  const t = all.git;
+  const pr = git.pr;
+  const where = [
+    pr ? `${t.pr(pr.number)} ${t.prState[pr.state]}` : null,
+    git.ahead ? (git.pushed ? all.view.commits(git.ahead) : t.ahead(git.ahead, false)) : null,
+    git.behind ? t.behind(git.behind) : null,
+    !pr && !git.ahead && !git.behind && !git.changes ? t.clean : null,
+  ].filter((w): w is string => !!w);
   return (
-    <Chip size="sm" variant="secondary" accessibilityRole="button" onPress={withTap(onPress)} className="min-w-0 shrink">
-      <BranchIcon size={14} className="text-muted" />
-      <Chip.Label numberOfLines={1}>
-        {git.branch ?? "?"} · {summary}
-      </Chip.Label>
-    </Chip>
+    <PressableFeedback accessibilityRole="button" accessibilityLabel={t.changesTitle} onPress={withTap(onOpen)}>
+      <Card className="flex-row items-center gap-3">
+        <Surface variant="secondary" className="size-9 items-center justify-center rounded-[10px] p-0 shadow-none">
+          <BranchIcon size={18} className="text-muted" />
+        </Surface>
+        <Card.Body className="min-w-0 flex-1 gap-0.5">
+          {pr ? (
+            <Card.Title numberOfLines={1}>{pr.title}</Card.Title>
+          ) : (
+            <Typography type="code" numberOfLines={1}>
+              {git.branch ?? "?"}
+            </Typography>
+          )}
+          <View className="flex-row flex-wrap items-center gap-x-3">
+            {where.map((w) => (
+              <Card.Description key={w}>{w}</Card.Description>
+            ))}
+            {git.changes > 0 && (
+              <LinkButton size="sm" onPress={withTap(onOpen)}>
+                <LinkButton.Label>{t.changes(git.changes)}</LinkButton.Label>
+              </LinkButton>
+            )}
+          </View>
+        </Card.Body>
+        {pr && (
+          <Button size="sm" variant="secondary" onPress={withTap(() => void Linking.openURL(pr.url))}>
+            {all.open}
+          </Button>
+        )}
+      </Card>
+    </PressableFeedback>
   );
 }
 
@@ -620,12 +727,19 @@ function ChangesPanel({ conversationId, session, git, owner, onLeave }: { conver
         <Typography type="code" numberOfLines={1}>
           {git.branch ?? "?"}
         </Typography>
-        <Typography type="body-sm" color="muted">
-          {summary.length ? summary.join(" · ") : t.clean}
-          {added > 0 || removed > 0 ? "  " : ""}
-          {added > 0 && <Typography type="body-sm" className="text-success">{`+${added} `}</Typography>}
-          {removed > 0 && <Typography type="body-sm" className="text-danger">{`−${removed}`}</Typography>}
-        </Typography>
+        <View className="flex-row flex-wrap items-center gap-x-3">
+          {(summary.length ? summary : [t.clean]).map((w) => (
+            <Typography key={w} type="body-sm" color="muted">
+              {w}
+            </Typography>
+          ))}
+          {(added > 0 || removed > 0) && (
+            <Typography type="body-sm">
+              {added > 0 && <Typography type="body-sm" className="text-success">{`+${added} `}</Typography>}
+              {removed > 0 && <Typography type="body-sm" className="text-danger">{`−${removed}`}</Typography>}
+            </Typography>
+          )}
+        </View>
       </View>
 
       {pr && (
@@ -633,7 +747,7 @@ function ChangesPanel({ conversationId, session, git, owner, onLeave }: { conver
           <ListGroup.Item accessibilityRole="link" onPress={withTap(() => Linking.openURL(pr.url))}>
             <ListGroup.ItemContent>
               <ListGroup.ItemTitle>
-                {t.pr(pr.number)} · {t.prState[pr.state]}
+                {t.pr(pr.number)} {t.prState[pr.state]}
               </ListGroup.ItemTitle>
               <ListGroup.ItemDescription numberOfLines={2}>{pr.title}</ListGroup.ItemDescription>
             </ListGroup.ItemContent>
@@ -729,15 +843,33 @@ function Timeline({ steps, running, parentId }: { steps: CodeStep[]; running: bo
     <View className="gap-3">
       {blocks(own).map((b) =>
         b.kind === "tools" ? (
-          <Accordion key={b.steps[0]!.id} selectionMode="multiple" hideSeparator>
-            {b.steps.map((s) => (
-              <ToolRow key={s.id} step={s} all={steps} />
-            ))}
-          </Accordion>
+          <ToolBlock key={b.steps[0]!.id} steps={b.steps} all={steps} />
         ) : (
           <StepView key={b.step.id} step={b.step} streaming={running && b.step === last} />
         ),
       )}
+    </View>
+  );
+}
+
+/** A run of actions: the latest few in view, the earlier ones folded behind one line (web: ToolBlock). */
+const SHOWN = 3;
+function ToolBlock({ steps, all }: { steps: ToolStepT[]; all: CodeStep[] }) {
+  const t = tr(codeSessions);
+  const [open, setOpen] = useState(false);
+  const hidden = open ? 0 : Math.max(0, steps.length - SHOWN);
+  return (
+    <View>
+      {hidden > 0 && (
+        <Button size="sm" variant="ghost" className="self-start px-0" onPress={withTap(() => setOpen(true))}>
+          <Button.Label className="text-muted">{t.earlierActions(hidden)}</Button.Label>
+        </Button>
+      )}
+      <Accordion selectionMode="multiple" hideSeparator>
+        {steps.slice(hidden).map((s) => (
+          <ToolRow key={s.id} step={s} all={all} />
+        ))}
+      </Accordion>
     </View>
   );
 }
@@ -765,7 +897,7 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
           {step.ok ? <BranchIcon size={14} className="mt-0.5 text-muted" /> : <CloseCircleIcon size={14} className="mt-0.5 text-danger" />}
           <Typography type="body-sm" color={step.ok ? "muted" : "default"} className={cn("min-w-0 flex-1", !step.ok && "text-danger")}>
             {step.text}
-            {step.by ? ` · ${step.by}` : ""}
+            {!!step.by && <Typography type="body-sm" className="text-subtle">{`  ${step.by}`}</Typography>}
           </Typography>
         </View>
       );
@@ -893,86 +1025,7 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
   );
 }
 
-/** Its task list is shown while a task is left or while it works. */
-
-/** Claude Code's task list above the field (web: TodoBar): where it stands; a tap opens every task. */
-/** Aperçu: what waits for an answer, what it does now (or its answer, once it rests), its tasks, what it and its bot said to each other. */
-function Overview({ session, agent, pending }: { session: CodeSessionDetail; agent?: { name: string; avatar: { color: string } }; pending: ReactNode }) {
-  const t = tr(codeSessions);
-  const v = t.view;
-  const running = session.status === "running";
-  const waiting = !!session.approval || !!session.question;
-  const done = session.todos.filter((x) => x.status === "completed").length;
-  const exchanges = codeExchanges(session.steps);
-  const now = isActive(session.status) ? (session.activity ?? codeStatusText(t, session)) : session.status === "failed" || session.status === "stopped" ? codeStatusText(t, session) : null;
-  return (
-    <View className="gap-6">
-      {waiting && <View className="gap-3">{pending}</View>}
-      {!waiting && now && (
-        <OverviewSection title={v.now}>
-          <View className="flex-row items-start gap-2">
-            <StatusIcon status={session.status} asking={!!session.question} />
-            <Typography className="min-w-0 flex-1">{now}</Typography>
-          </View>
-        </OverviewSection>
-      )}
-      {!isActive(session.status) && !!session.result && (
-        <OverviewSection title={v.answer}>
-          <MessageText text={session.result} />
-        </OverviewSection>
-      )}
-      {session.todos.length > 0 && (
-        <OverviewSection title={v.tasks(done, session.todos.length)}>
-          <TodoList todos={session.todos} running={running} />
-        </OverviewSection>
-      )}
-      {exchanges.length > 0 && (
-        <OverviewSection title={agent ? v.exchangesWith(agent.name) : v.instructions}>
-          <View className="gap-3.5">
-            {exchanges.map((x) => (
-              <ExchangeRow key={x.id} exchange={x} session={session} agent={agent} />
-            ))}
-          </View>
-        </OverviewSection>
-      )}
-    </View>
-  );
-}
-
-function OverviewSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <View className="gap-2">
-      <Typography type="body-sm" color="muted">
-        {title}
-      </Typography>
-      {children}
-    </View>
-  );
-}
-
-/** One exchange: who and what it was, then its words; a long one unfolds on a tap. */
-function ExchangeRow({ exchange, session, agent }: { exchange: CodeExchange; session: CodeSession; agent?: { name: string; avatar: { color: string } } }) {
-  const t = tr(codeSessions);
-  const [open, setOpen] = useState(false);
-  const fromCode = exchange.kind === "question";
-  return (
-    <View className="flex-row gap-2.5">
-      <View className="mt-0.5 size-5 items-center justify-center">
-        {fromCode ? <ModelLogo provider={session.engine === "codex" ? "codex" : session.engine === "cursor" ? "cursor" : "claude-code"} size={16} /> : agent && exchange.by === agent.name ? <AgentAvatar agent={agent} size={20} /> : null}
-      </View>
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Typography type="body-xs" color="muted">
-          {fromCode ? CODE_ENGINE_NAMES[session.engine] : (exchange.by ?? t.codeSession)} · {t.view.kinds[exchange.kind]}
-        </Typography>
-        <Typography numberOfLines={open ? undefined : 4} onPress={() => setOpen((o) => !o)}>
-          {exchange.text}
-        </Typography>
-      </View>
-    </View>
-  );
-}
-
-/** Every task of its list, in its sheet. */
+/** Every task of its list. */
 function TodoList({ todos, running }: { todos: CodeTodo[]; running: boolean }) {
   return (
     <ListGroup>
@@ -1306,7 +1359,7 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
               key: `${cmd.skill ? "skill" : "command"}:${cmd.name}`,
               kind: cmd.skill ? ("skill" as const) : ("command" as const),
               name: cmd.name,
-              description: cmd.argumentHint ? `${cmd.argumentHint} · ${cmd.description}` : cmd.description,
+              description: cmd.argumentHint ? `${cmd.argumentHint}  ${cmd.description}` : cmd.description,
             })),
           query,
         );
@@ -1329,7 +1382,7 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
           multiline
           value={text}
           onChangeText={setText}
-          placeholder={session.question ? t.placeholderAnswer : isActive(session.status) ? t.placeholderRunning : session.commands.length ? t.commands.hint : t.placeholderIdle}
+          placeholder={session.question ? t.placeholderAnswer : isActive(session.status) ? t.placeholderRunning : session.commands.length ? t.placeholderIdleCommands : t.placeholderIdle}
           className="max-h-[152px] bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
         />
         <View className="flex-row items-center gap-2">

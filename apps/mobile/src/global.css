@@ -84,6 +84,17 @@
       /* état/attente */
       --waiting: #f97316;
 
+      /* Sessions de code: priorité/ and statut/ (apps/web/src/index.css) */
+      --priority-urgent: #e5484d;
+      --priority-high: #f76b15;
+      --priority-medium: #e6a700;
+      --priority-low: #8b8d98;
+      --state-running: #0a84ff;
+      --state-you: #d6409f;
+      --state-finished: #1fa855;
+      --state-merged: #8e4ec6;
+      --state-neutral: #a1a1a6;
+
       --field-background: #ffffff;
       --field-foreground: var(--foreground);
       --field-placeholder: #a0a0a0;
@@ -139,6 +150,16 @@
       --brand: #3b9bff;
       --waiting: #fb8a3c;
 
+      --priority-urgent: #f2555a;
+      --priority-high: #ff8b3e;
+      --priority-medium: #f5c33b;
+      --priority-low: #9b9da8;
+      --state-running: #3b9bff;
+      --state-you: #e66bb4;
+      --state-finished: #2cc266;
+      --state-merged: #a875dd;
+      --state-neutral: #7c7c82;
+
       --field-background: #1b1b1b;
       --field-foreground: var(--foreground);
       --field-placeholder: #6e6e6e;
@@ -177,6 +198,15 @@
   --color-icon: var(--icon);
   --color-brand-soft: color-mix(in oklab, var(--brand) 12%, transparent);
   --color-subtle: var(--subtle);
+  --color-priority-urgent: var(--priority-urgent);
+  --color-priority-high: var(--priority-high);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-low: var(--priority-low);
+  --color-state-running: var(--state-running);
+  --color-state-you: var(--state-you);
+  --color-state-finished: var(--state-finished);
+  --color-state-merged: var(--state-merged);
+  --color-state-neutral: var(--state-neutral);
 
   --color-accent-soft: var(--default);
   --color-accent-soft-foreground: var(--default-foreground);

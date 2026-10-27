@@ -1,7 +1,8 @@
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import type { ActiveTurn, ConversationDetail, ConversationKind, ConversationSummary, Inbox, Message, PendingApproval } from "./api";
-import { insertMessage, removeMessage, type Schedule } from "@agora/core";
+import { codeSessionState, insertMessage, removeMessage, type CodeSessionState, type Schedule } from "@agora/core";
+import { notifyBotMessage, notifyCodeSession } from "./attention";
 import { applySchedule } from "./availability";
 import { applyAgentStatus, applyPresence, presenceQuery } from "./presence";
 import type { CodeSession, CodeSessionRef, CodeStep } from "@agora/core";
@@ -131,6 +132,17 @@ const codeSeen = new Map<string, CodeSeen>();
 
 const seen = (s: CodeSession): CodeSeen => ({ status: s.status, approval: s.status === "waiting" ? (s.approval?.id ?? null) : null });
 
+/** Last state of each session, as the lists show it: its toast goes on a change. */
+const codeStates = new Map<string, CodeSessionState>();
+
+/** Its owner gets a toast when it waits for them, is done, merged or fails, away from their eyes. */
+function codeToast(qc: QueryClient, me: string, session: CodeSession) {
+  const cached = qc.getQueryData(codeSessionsQuery(session.conversationId).queryKey)?.find((s) => s.id === session.id);
+  const before = codeStates.get(session.id) ?? (cached && codeSessionState(cached));
+  codeStates.set(session.id, codeSessionState(session));
+  if (session.requestedBy === me) notifyCodeSession(session, before);
+}
+
 /** Its owner hears it wait for an approval, and finish (or fail) a run they started themselves. */
 function codeSound(qc: QueryClient, me: string, session: CodeSession) {
   const cached = qc.getQueryData(codeSessionsQuery(session.conversationId).queryKey)?.find((s) => s.id === session.id);
@@ -205,6 +217,11 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       if (author?.kind === "user") updateTyping(cid, (ts) => ts.filter((t) => t.userId !== author.id));
       // Someone else's message in a direct conversation; in a group, only what reaches the inbox rings.
       if (author?.kind === "user" && author.id !== me && kindOf(qc, cid) !== "group") void playSound("message", ev.message.id);
+      // A bot's answer for you, in a conversation you are not looking at.
+      if (author?.kind === "agent") {
+        const turn = state.turns[cid]?.find((t) => t.turnId === ev.message.data?.turn?.id);
+        if (yours(qc, me, cid, turn) || kindOf(qc, cid) === "direct") notifyBotMessage(cid, ev.message);
+      }
       qc.invalidateQueries({ queryKey: ["conversations"] });
       return;
     }
@@ -265,6 +282,7 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       return;
     case "code.session":
       codeSound(qc, me, ev.session);
+      codeToast(qc, me, ev.session);
       applyCodeSession(qc, ev.session);
       return;
     case "code.step":
@@ -272,6 +290,7 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       return;
     case "code.removed":
       codeSeen.delete(ev.sessionId);
+      codeStates.delete(ev.sessionId);
       dropCodeSession(qc, cid, ev.sessionId);
       return;
     case "bot.done":

@@ -1,56 +1,87 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouteContext } from "@tanstack/react-router";
-import { useState } from "react";
-import { CODE_ENGINE_NAMES, codeStatusText, type CodeSession, type CodeSessionStatus } from "@agora/core";
+import { useState, type DragEvent } from "react";
+import {
+  codeDetailLine,
+  codeSessionProject,
+  codeSessionState,
+  groupCodeSessions,
+  type CodePriority,
+  type CodeSession,
+  type CodeSessionGrouping,
+  type CodeSessionOrdering,
+  type CodeSessionState,
+  type CodeSessionView,
+} from "@agora/core";
 import { codeSessions, common } from "@agora/core/i18n";
-import { ChevronLeftIcon, TerminalIcon } from "@/components/icons";
-import { ModelLogo } from "@/components/ProviderLogo";
+import { AgentAvatar } from "@/components/AgentAvatar";
+import { BrandLogo } from "@/components/BrandLogo";
+import { CodePriorityIcon, CodeStateIcon, IssueIcon } from "@/components/CodeSessionMarks";
+import { CodePriorityMenu, priorityOfKey, useSetCodePriority, useSetCodePriorityOf } from "@/components/CodePriorityMenu";
+import { EmptyFigure } from "@/components/EmptyFigure";
+import { BranchIcon, ChevronLeftIcon, TerminalIcon } from "@/components/icons";
+import { OptionSelect } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { EmptyFigure } from "@/components/EmptyFigure";
-import { FieldLegend, FieldSet } from "@/components/ui/field";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { useT } from "@/i18n";
 import { allCodeSessionsQuery } from "@/lib/code-sessions";
 import { updateSide } from "@/lib/conversation-side";
 import { listTime } from "@/lib/dates";
 import { useOrgTitle } from "@/lib/org";
-import { conversationTitle } from "@/lib/participants";
 import { conversationsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-type Group = "review" | "running" | "ended";
-type Filter = "all" | Group;
+type Display = { view: CodeSessionView; group: CodeSessionGrouping; order: CodeSessionOrdering; showStopped: boolean };
 
-/** Rests after its run, its work to read: review. Works or waits on someone: running. Over: ended. */
-const groupOf = (s: CodeSessionStatus): Group => (s === "idle" ? "review" : s === "running" || s === "waiting" ? "running" : "ended");
-const WEEK = 7 * 86_400_000;
+const DISPLAY_KEY = "agora.sessions.display";
+const DEFAULT_DISPLAY: Display = { view: "active", group: "state", order: "priority", showStopped: false };
+
+/** How the list is shown, kept in this browser as Linear keeps a view's display options. */
+function loadDisplay(): Display {
+  try {
+    return { ...DEFAULT_DISPLAY, ...(JSON.parse(localStorage.getItem(DISPLAY_KEY) ?? "{}") as Partial<Display>) };
+  } catch {
+    return DEFAULT_DISPLAY;
+  }
+}
+
+function useDisplay() {
+  const [display, setDisplay] = useState(loadDisplay);
+  const update = (patch: Partial<Display>) =>
+    setDisplay((d) => {
+      const next = { ...d, ...patch };
+      try {
+        localStorage.setItem(DISPLAY_KEY, JSON.stringify(next));
+      } catch {
+        // Blocked storage: kept for this page only.
+      }
+      return next;
+    });
+  return [display, update] as const;
+}
+
+const VIEWS: CodeSessionView[] = ["active", "finished", "all"];
 
 /**
- * Figma « Page Sessions »: every Claude Code session of your conversations, wherever it was started.
- * To review first (it finished its run), then those at work, then the ended ones. A row opens its
- * conversation with the session beside the thread.
+ * Figma « Sessions : vues et regroupement » (13, 14): every code session of your conversations, as Linear
+ * lists issues. Views (Active, Over, All), then groups by state, priority or project, each sorted by
+ * priority then last activity. Priority: its mark (a menu), keys 1 to 4 and 0 on a row, or dragging a
+ * row into another priority group. A row opens its conversation with the session beside the thread.
  */
 export function Sessions() {
   const t = useT(codeSessions);
   const c = useT(common);
-  const p = t.page;
-  useOrgTitle(p.title);
-  const [filter, setFilter] = useState<Filter>("all");
+  const b = t.board;
+  useOrgTitle(t.page.title);
+  const [display, setDisplay] = useDisplay();
   const { data: sessions = [], isPending } = useQuery(allCodeSessionsQuery);
-  const count = (g: Group) => sessions.filter((s) => groupOf(s.status) === g).length;
-  const shown = (g: Group) => (filter === "all" || filter === g ? sessions.filter((s) => groupOf(s.status) === g) : []);
-  const ended = shown("ended");
-  const recent = ended.filter((s) => Date.now() - new Date(s.updatedAt).getTime() < WEEK);
-  const older = ended.filter((s) => !recent.includes(s));
-  const groups = [
-    { key: "review", title: p.review, rows: shown("review") },
-    { key: "running", title: p.running, rows: shown("running") },
-    { key: "recent", title: p.endedWeek, rows: recent },
-    { key: "older", title: p.older, rows: older },
-  ].filter((g) => g.rows.length);
+  // What each view would show, stopped sessions counted only when they are shown.
+  const count = (view: CodeSessionView) => groupCodeSessions(sessions, { ...display, view }).reduce((n, g) => n + g.sessions.length, 0);
+  const groups = groupCodeSessions(sessions, display);
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -58,18 +89,24 @@ export function Sessions() {
           <Button variant="ghost" size="icon" nativeButton={false} render={<Link to="/" aria-label={c.back} />} className="-ml-2 mb-2 hover:bg-transparent md:hidden">
             <ChevronLeftIcon className="size-5" />
           </Button>
-          <h1 className="text-xl leading-7 font-medium">{p.title}</h1>
+          <h1 className="text-xl leading-7 font-medium">{t.page.title}</h1>
           {sessions.length > 0 && (
-            <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="mt-3">
-              <TabsList>
-                {(["all", "review", "running", "ended"] as const).map((f) => (
-                  <TabsTrigger key={f} value={f}>
-                    {p[f]}
-                    {f !== "all" && f !== "ended" && count(f) > 0 && <span className="tabular-nums text-muted-foreground">{count(f)}</span>}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+            <div className="mt-3 flex items-center gap-0.5">
+              {/* Figma « Vue de liste »: text tabs, a light background on the one shown, the count in light grey. */}
+              {VIEWS.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={display.view === v}
+                  onClick={() => setDisplay({ view: v })}
+                  className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:bg-accent aria-pressed:font-medium aria-pressed:text-foreground"
+                >
+                  {b.views[v]}
+                  <span className="font-normal text-subtle tabular-nums">{count(v)}</span>
+                </button>
+              ))}
+              <DisplayMenu display={display} onChange={setDisplay} />
+            </div>
           )}
           {isPending ? (
             <Spinner className="mx-auto mt-16 size-5 text-muted-foreground" />
@@ -80,29 +117,18 @@ export function Sessions() {
                   <EmptyMedia variant="icon">
                     <TerminalIcon />
                   </EmptyMedia>
-                  <EmptyTitle>{p.emptyFilter}</EmptyTitle>
+                  <EmptyTitle>{b.empty}</EmptyTitle>
                 </EmptyHeader>
               ) : (
                 <EmptyHeader>
                   <EmptyFigure mascot="grey" />
-                  <EmptyTitle>{p.emptyTitle}</EmptyTitle>
-                  <EmptyDescription>{p.empty}</EmptyDescription>
+                  <EmptyTitle>{t.page.emptyTitle}</EmptyTitle>
+                  <EmptyDescription>{t.page.empty}</EmptyDescription>
                 </EmptyHeader>
               )}
             </Empty>
           ) : (
-            groups.map((g) => (
-              <FieldSet key={g.key} className="mt-8 gap-2">
-                <FieldLegend variant="label" className="mb-0 font-normal text-muted-foreground">
-                  {g.title}
-                </FieldLegend>
-                <ItemGroup className="gap-2">
-                  {g.rows.map((s) => (
-                    <SessionRow key={s.id} session={s} />
-                  ))}
-                </ItemGroup>
-              </FieldSet>
-            ))
+            groups.map((g) => <Group key={g.key} group={display.group} groupKey={g.key} sessions={g.sessions} />)
           )}
         </div>
       </div>
@@ -110,59 +136,187 @@ export function Sessions() {
   );
 }
 
-/** One session: its engine, its title, who started it where and where it stands; when; « Relire » once it rests. */
-function SessionRow({ session: s }: { session: CodeSession }) {
+/** Figma « Affichage »: group by, order by, and whether stopped sessions show. */
+function DisplayMenu({ display, onChange }: { display: Display; onChange: (patch: Partial<Display>) => void }) {
+  const b = useT(codeSessions).board;
+  return (
+    <Popover>
+      <PopoverTrigger render={<Button variant="outline" size="sm" className="ml-auto" />}>{b.display}</PopoverTrigger>
+      <PopoverContent align="end" className="w-72 gap-3">
+        <Field orientation="horizontal">
+          <FieldLabel className="flex-1 font-normal">{b.groupBy}</FieldLabel>
+          <OptionSelect
+            className="w-36"
+            value={display.group}
+            options={(["state", "priority", "project"] as const).map((v) => ({ value: v, label: b.groupings[v] }))}
+            onValueChange={(v) => onChange({ group: v as CodeSessionGrouping })}
+          />
+        </Field>
+        <Field orientation="horizontal">
+          <FieldLabel className="flex-1 font-normal">{b.orderBy}</FieldLabel>
+          <OptionSelect
+            className="w-36"
+            value={display.order}
+            options={(["priority", "updated", "created"] as const).map((v) => ({ value: v, label: b.orderings[v] }))}
+            onValueChange={(v) => onChange({ order: v as CodeSessionOrdering })}
+          />
+        </Field>
+        <Field orientation="horizontal">
+          <FieldLabel htmlFor="sessions-stopped" className="flex-1 font-normal">
+            {b.showStopped}
+          </FieldLabel>
+          <Switch id="sessions-stopped" checked={display.showStopped} onCheckedChange={(v) => onChange({ showStopped: v })} />
+        </Field>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Figma « Titre de groupe » and its card: the group's mark (state, priority or GitHub), its name, its
+ * count in light grey. Grouped by priority, a row dropped here takes the group's priority.
+ */
+function Group({ group, groupKey, sessions }: { group: CodeSessionGrouping; groupKey: string; sessions: CodeSession[] }) {
+  const t = useT(codeSessions);
+  const [over, setOver] = useState(false);
+  const priority = group === "priority" ? (groupKey as CodePriority) : null;
+  const drop = useDropPriority(priority);
+  const mark =
+    group === "state" ? (
+      <CodeStateIcon state={groupKey as CodeSessionState} className="size-3.5" />
+    ) : group === "priority" ? (
+      <CodePriorityIcon priority={groupKey as CodePriority} className="size-3.5" />
+    ) : (
+      <BrandLogo domain="github.com" fallback={<BranchIcon className="size-3.5" />} className="size-3.5 dark:invert" />
+    );
+  // A project by its repository's name (« e-do-bots »), its owner on hover.
+  const label = group === "state" ? t.stateGroups[groupKey as CodeSessionState] : group === "priority" ? t.priorities[groupKey as CodePriority] : (groupKey.split("/")[1] ?? groupKey) || t.board.noProject;
+  return (
+    <section className="mt-7 flex flex-col gap-2">
+      <h2 title={group === "project" ? groupKey : undefined} className="flex items-center gap-1.5 pl-0.5 text-[13px] leading-[18px] text-muted-foreground">
+        {mark}
+        {label}
+        <span className="text-subtle tabular-nums">{sessions.length}</span>
+      </h2>
+      <div
+        className={cn("flex flex-col rounded-[14px] border border-border p-1 transition-colors", over && "border-ring bg-accent/40")}
+        onDragOver={(e) => {
+          if (!priority || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          setOver(false);
+          drop(e);
+        }}
+      >
+        {sessions.map((s) => (
+          <SessionRow key={s.id} session={s} grouping={group} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+const DRAG_TYPE = "application/x-agora-session";
+
+/** A row dropped into a priority group: the session and its conversation travel in the drag. */
+function useDropPriority(priority: CodePriority | null) {
+  const set = useSetCodePriorityOf();
+  return (e: DragEvent) => {
+    const data = priority && e.dataTransfer.getData(DRAG_TYPE);
+    if (!data) return;
+    e.preventDefault();
+    const { id, conversationId, from } = JSON.parse(data) as { id: string; conversationId: string; from: CodePriority };
+    if (from !== priority) set.mutate({ conversationId, id, priority });
+  };
+}
+
+/**
+ * Figma « Ligne de session »: its priority (a menu, for its owner), its state (unless the group says it),
+ * its title, then who started it, its issue, what it waits for or where its work is, and when. No « · ».
+ */
+function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: CodeSessionGrouping }) {
   const t = useT(codeSessions);
   const navigate = useNavigate();
   const { user } = useRouteContext({ from: "/app" });
   const { data: conversations = [] } = useQuery(conversationsQuery);
   const conv = conversations.find((c) => c.id === s.conversationId);
   const agent = s.agentId ? conv?.agents.find((a) => a.id === s.agentId) : undefined;
-  const who = agent?.name ?? (s.requestedBy === user.id ? t.page.you : CODE_ENGINE_NAMES[s.engine]);
-  const group = groupOf(s.status);
-  const where =
-    s.status === "waiting"
-      ? codeStatusText(t, s)
-      : group === "running"
-        ? (s.activity ?? codeStatusText(t, s))
+  const owner = s.requestedBy === user.id;
+  const setPriority = useSetCodePriority(s);
+  const state = codeSessionState(s);
+  const who = agent?.name ?? (owner ? t.page.you : null);
+  const detail =
+    state === "waiting" || state === "running"
+      ? codeDetailLine(s)
       : s.git?.pr
         ? `${t.git.pr(s.git.pr.number)} ${t.git.prState[s.git.pr.state]}`
-        : group === "ended"
-          ? codeStatusText(t, s)
-          : (s.git?.branch ?? (s.todos.length ? t.page.todos(s.todos.filter((x) => x.status === "completed").length, s.todos.length) : null));
-  // A direct conversation with the bot is named after it: once is enough.
-  const place = conv && conversationTitle(conv, user.id);
+        : s.todos.length
+          ? t.page.todos(s.todos.filter((x) => x.status === "completed").length, s.todos.length)
+          : null;
+  const project = grouping !== "project" ? codeSessionProject(s) : "";
   const open = () => {
     updateSide(s.conversationId, (side) => ({ ...side, panel: null, previewKey: null, codeTabs: side.codeTabs.includes(s.id) ? side.codeTabs : [...side.codeTabs, s.id], codeSession: s.id }));
     void navigate({ to: "/c/$conversationId", params: { conversationId: s.conversationId } });
   };
   return (
-    <Item variant="outline" render={<button type="button" onClick={open} />} className="text-left hover:bg-muted/60">
-      <ItemMedia variant="image" className="rounded-[10px] border border-border">
-        <ModelLogo provider={s.engine === "codex" ? "codex" : s.engine === "cursor" ? "cursor" : "claude-code"} className="size-5" />
-      </ItemMedia>
-      <ItemContent className="min-w-0">
-        <ItemTitle className="w-full font-normal">
-          <span className="truncate">{s.title}</span>
-        </ItemTitle>
-        <ItemDescription className="line-clamp-1">
-          {[who, place !== who && place].filter(Boolean).join(" · ")}
-          {where && (
-            <>
-              {" · "}
-              <span className={cn(s.status === "waiting" && "text-warning-foreground", s.status === "failed" && "text-destructive")}>{where}</span>
-            </>
+    <div
+      role="button"
+      tabIndex={0}
+      draggable={owner}
+      onDragStart={(e) => {
+        e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ id: s.id, conversationId: s.conversationId, from: s.priority }));
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") return open();
+        const p = owner ? priorityOfKey(e) : null;
+        if (!p || p === s.priority) return;
+        e.preventDefault();
+        setPriority.mutate(p);
+      }}
+      className="group/row flex cursor-pointer items-center gap-2.5 rounded-[10px] px-3 py-2.5 outline-none hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/30"
+    >
+      {owner ? (
+        <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <CodePriorityMenu
+            session={s}
+            align="start"
+            trigger={
+              <button type="button" aria-label={`${t.priority} ${t.priorities[s.priority]}`} className="flex size-6 items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                <CodePriorityIcon priority={s.priority} />
+              </button>
+            }
+          />
+        </span>
+      ) : (
+        <span className="flex size-6 items-center justify-center" title={t.priorities[s.priority]}>
+          <CodePriorityIcon priority={s.priority} />
+        </span>
+      )}
+      {grouping !== "state" && <CodeStateIcon state={state} />}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <p className="truncate text-[15px] leading-[21px]">{s.title}</p>
+        <p className="flex min-w-0 items-center gap-2 text-[13px] leading-[18px] text-muted-foreground">
+          {who && (
+            <span className="flex shrink-0 items-center gap-1.5">
+              {agent && <AgentAvatar agent={agent} className="size-4" />}
+              {who}
+            </span>
           )}
-        </ItemDescription>
-      </ItemContent>
-      <ItemActions>
-        <span className="text-xs text-muted-foreground tabular-nums">{listTime(new Date(s.updatedAt))}</span>
-        {group === "review" && (
-          <Button variant="secondary" size="sm" nativeButton={false} render={<span />}>
-            {t.page.reread}
-          </Button>
-        )}
-      </ItemActions>
-    </Item>
+          {project && <span className="shrink-0">{project.split("/")[1] ?? project}</span>}
+          {s.issue && (
+            <span className="flex shrink-0 items-center gap-1" title={s.issue.title}>
+              <IssueIcon />#{s.issue.number}
+            </span>
+          )}
+          {detail && <span className={cn("min-w-0 truncate", state === "waiting" && "text-state-you", state === "failed" && "text-priority-urgent")}>{detail}</span>}
+        </p>
+      </div>
+      <span className="shrink-0 self-start pt-0.5 text-xs text-subtle tabular-nums">{listTime(new Date(s.updatedAt))}</span>
+    </div>
   );
 }

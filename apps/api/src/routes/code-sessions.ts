@@ -3,7 +3,7 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { attachCodeSession, turnOfHermesSession } from "../bot-runner";
 import { claudeProfiles } from "../claude-accounts";
-import { CODE_ENGINES, type CodeEngine } from "@agora/core";
+import { CODE_ENGINES, CODE_PRIORITIES, type CodeEngine, type CodePriority } from "@agora/core";
 import { resolveClaudeCodeModel } from "../claude-code";
 import { availableEngines, canUseCodeSessions, canUseEngine, engineBin, engineModels } from "../code-engines";
 import {
@@ -13,6 +13,7 @@ import {
   codeSessionReport,
   commitMessageFor,
   deleteCodeSession,
+  detachCodeSessionIssue,
   refreshCodeSessionGit,
   removeCodeSessionWorktree,
   getCodeSession,
@@ -22,6 +23,7 @@ import {
   sendToCodeSession,
   switchCodeSessionAccount,
   setCodeSessionMode,
+  setCodeSessionPriority,
   setCodeSessionModel,
   startCodeSession,
   stopCodeSession,
@@ -221,6 +223,22 @@ export const codeSessions = new Hono<AppEnv>()
     const body = z.object({ mode: MODE }).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid" }, 400);
     return setCodeSessionMode(owned.sessionId, body.data.mode, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
+  /** Its priority (Urgent to None), the owner's way to set sessions aside and focus on others. */
+  .put("/:sessionId/priority", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    const body = z.object({ priority: z.enum(CODE_PRIORITIES as [CodePriority, ...CodePriority[]]) }).safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "invalid" }, 400);
+    return setCodeSessionPriority(owned.sessionId, body.data.priority, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
+  /** Its issue detached: the session linked one that is not its task. */
+  .delete("/:sessionId/issue", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    return detachCodeSessionIssue(owned.sessionId, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
   })
 
   .put("/:sessionId/model", async (c) => {

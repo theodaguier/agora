@@ -1,6 +1,6 @@
 /* apps/web/src/lib/code-sessions.ts: same queries, same calls. */
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
-import type { CodeAccount, CodeApprovalAnswer, CodePermissionMode, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
+import type { CodeAccount, CodeApprovalAnswer, CodePermissionMode, CodePriority, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
 import { api, conversationPath } from "./api";
 
 /** Claude Code sessions of a conversation (apps/api/src/code-sessions.ts): list for the cards, detail with steps for the panel. */
@@ -70,6 +70,13 @@ export const answerCodeApproval = (conversationId: string, id: string, approvalI
 /** Its permission mode: right away if it works, for the next run otherwise. */
 export const setCodeSessionMode = (conversationId: string, id: string, mode: CodePermissionMode) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/mode`), { method: "PUT", body: JSON.stringify({ mode }) });
+
+/** Its priority, as in Linear: Urgent to None. */
+export const setCodeSessionPriority = (conversationId: string, id: string, priority: CodePriority) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/priority`), { method: "PUT", body: JSON.stringify({ priority }) });
+
+/** Its issue detached: the session linked one that is not its task. */
+export const detachCodeSessionIssue = (conversationId: string, id: string) => api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/issue`), { method: "DELETE" });
 
 export type CodeGitRequest =
   /** An empty message: Claude Code writes it from the diff. */

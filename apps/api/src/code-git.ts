@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type { CodeGit, CodeGitFile, CodePullRequest, CodeRepo } from "@agora/core";
+import type { CodeGit, CodeGitFile, CodeIssue, CodePullRequest, CodeRepo } from "@agora/core";
 import { childEnv } from "./harden";
 import { defineMessages, tr } from "./i18n";
 import { instanceSecret } from "./vault";
@@ -350,6 +350,31 @@ export async function listRepos(): Promise<CodeRepo[]> {
   const repos = list.filter((r) => !r.archived).map((r) => ({ repo: r.full_name, private: r.private, pushedAt: r.pushed_at }));
   reposCache = { token, at: Date.now(), repos };
   return repos;
+}
+
+type ApiIssue = { number: number; html_url: string; title: string; state: "open" | "closed"; body: string | null; labels: ({ name?: string } | string)[]; pull_request?: unknown };
+
+const toIssue = (i: ApiIssue): CodeIssue => ({ number: i.number, url: i.html_url, title: i.title, state: i.state });
+
+/** The repository's open issues (pull requests left out), the latest first: what a session can link itself to. */
+export async function listIssues(repo: string, limit = 50): Promise<(CodeIssue & { labels: string[]; body: string })[]> {
+  const token = await githubToken();
+  if (!token) throw new GitError("No GitHub token.");
+  const list = await github<ApiIssue[]>(token, "GET", `/repos/${repo}/issues?state=open&per_page=${Math.min(limit, 100)}&sort=updated`);
+  return list
+    .filter((i) => !i.pull_request)
+    .map((i) => ({ ...toIssue(i), labels: i.labels.map((l) => (typeof l === "string" ? l : (l.name ?? ""))).filter(Boolean), body: (i.body ?? "").replace(/\s+/g, " ").trim().slice(0, 400) }));
+}
+
+/** One issue of the repository (null: not found, or a pull request). */
+export async function getIssue(repo: string, number: number): Promise<CodeIssue | null> {
+  const token = await githubToken();
+  if (!token) throw new GitError("No GitHub token.");
+  const issue = await github<ApiIssue>(token, "GET", `/repos/${repo}/issues/${number}`).catch((err) => {
+    if (err instanceof GitError && err.message.startsWith("GitHub 404")) return null;
+    throw err;
+  });
+  return issue && !issue.pull_request ? toIssue(issue) : null;
 }
 
 type ApiPull = { number: number; html_url: string; title: string; state: "open" | "closed"; merged_at: string | null; draft?: boolean; base: { ref: string } };

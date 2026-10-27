@@ -9,7 +9,9 @@ import { AgentAvatar } from "@/components/AgentAvatar";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
 import { TabChip } from "@/components/TabChip";
 import { findPreview, PreviewPage } from "@/components/Preview";
-import { ModelLogo } from "@/components/ProviderLogo";
+import { CodePriorityIcon, CodeStateIcon } from "@/components/CodeSessionMarks";
+import { codeSessionState, type CodeSession } from "@agora/core";
+import { useCodeSessionUnread } from "@/lib/code-seen";
 import { BrowserIcon, ChatIntegrationIcon, CloseIcon, FileCodeIcon, InboxIcon, PlusIcon, SplitIcon, TaskListIcon, TerminalIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -349,14 +351,16 @@ function IconAction({ label, onClick, children }: { label: string; onClick: () =
 /** A tab of a pane, dragged to move it (to another pane, or to a pane's edge to split). */
 function TabItem({ path, paneId, active, focused }: { path: string; paneId: string; active: boolean; focused: boolean }) {
   const t = useT(messages);
-  const { title, icon, unread } = useTabInfo(path);
+  const { title, icon, unread, session } = useTabInfo(path);
+  // A session's tab gets its dot as the conversation's panel tabs do: something new to read, not in front.
+  const sessionUnread = useCodeSessionUnread(session, active);
   return (
     <TabChip
       title={title}
       icon={icon}
       active={active}
       dimmed={!focused}
-      unread={unread}
+      unread={unread || sessionUnread}
       closeLabel={t.closeTab(title)}
       onSelect={() => activateTab(paneId, path)}
       onClose={() => closeTab(path)}
@@ -366,7 +370,7 @@ function TabItem({ path, paneId, active, focused }: { path: string; paneId: stri
 }
 
 /** A tab's title and icon, from what the app already has in cache. */
-function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: boolean } {
+function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: boolean; session?: CodeSession } {
   const t = useT(messages);
   const { user } = useRouteContext({ from: "/app" });
   const target = parseTab(path);
@@ -384,11 +388,22 @@ function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: bo
       return { title: name, icon: bot ? <AgentAvatar agent={bot} className="size-4" /> : <ChatIntegrationIcon className="text-muted-foreground" />, unread: conv?.unread };
     case "screen":
       return { title: `${t.screen} · ${name}`, icon: <BrowserIcon /> };
-    case "code":
+    case "code": {
+      const session = sessions?.find((s) => s.id === target.sessionId);
       return {
-        title: isNewCodeSession(target.sessionId) ? t.newSession : (sessions?.find((s) => s.id === target.sessionId)?.title ?? t.session),
-        icon: <ModelLogo provider="claude-code" />,
+        title: isNewCodeSession(target.sessionId) ? t.newSession : (session?.title ?? t.session),
+        // Figma « Onglet de session »: its priority and its state.
+        icon: session ? (
+          <>
+            <CodePriorityIcon priority={session.priority} />
+            <CodeStateIcon state={codeSessionState(session)} />
+          </>
+        ) : (
+          <TerminalIcon />
+        ),
+        session,
       };
+    }
     case "preview":
       return { title: findPreview(target.previewKey, turns, thread ?? [])?.title || t.mockup, icon: <FileCodeIcon /> };
     case "new":
