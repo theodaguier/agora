@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.4 — 2026-10-27
+
+### Fixes
+- **backups**: gérer les fichiers runtime et vérifier les snapshots SQLite
+
 ## v0.45.3 — 2026-10-27
 
 ### Fixes
