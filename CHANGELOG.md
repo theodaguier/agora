@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.46.0 — 2026-10-27
+
+### Features
+- sessions de code à la Linear — priorité, états, vues, issues GitHub, toasts
+
+### Fixes
+- **web**: menu « + » des onglets de session lisible
+- **web**: fiche bot avec « Écrire » et « Modifier », comme le panneau agent
+
 ## v0.45.13 — 2026-10-27
 
 ### Fixes
