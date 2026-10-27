@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.46.1 — 2026-10-27
+
+### Fixes
+- **deps**: better-auth 1.7.13 (GHSA-965c-763c-88jm, GHSA-r4xp-prcw-77qf)
+- **web**: une session s'ouvre dans son onglet depuis Sessions, priorité nommée dans l'en-tête
+
 ## v0.46.0 — 2026-10-27
 
 ### Features
