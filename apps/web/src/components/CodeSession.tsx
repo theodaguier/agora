@@ -1069,10 +1069,15 @@ function CodeSessionView({
         {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
       </>
     ) : null;
-  // A new one comes into view: Avancement shows it first.
+  // A new one comes into view: Avancement shows it first, at its top, and stops following the bottom.
   const waitingFor = approval?.id ?? session?.question?.text;
   useLayoutEffect(() => {
-    if (waitingFor) setTab("overview");
+    if (!waitingFor) return;
+    setTab("overview");
+    requestAnimationFrame(() => {
+      follow.current = false;
+      scroller.current?.scrollTo({ top: 0 });
+    });
   }, [waitingFor]);
   const composer = useRef<{ addFiles: (files: FileList) => void }>(null);
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
