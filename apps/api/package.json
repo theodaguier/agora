@@ -11,16 +11,16 @@
   },
   "dependencies": {
     "@agora/core": "workspace:*",
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "better-auth": "^1.7.7",
-    "drizzle-orm": "^0.45.3",
+    "drizzle-orm": "^0.45.4",
     "hono": "^4.13.14",
     "postgres": "^3.4.9",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.2",
+    "@types/bun": "^1.4.4",
     "drizzle-kit": "^0.31.11",
     "typescript": "^7.0.2"
   },
