@@ -66,7 +66,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -585,17 +584,22 @@ function CodeSessionTabs({
             <TooltipContent>{t.openSession}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="start" className="w-80">
-            {canStart && <DropdownMenuItem onClick={() => onOpen(NEW_CODE_SESSION)}>{t.newSession}</DropdownMenuItem>}
+            {canStart && (
+              <DropdownMenuItem onClick={() => onOpen(NEW_CODE_SESSION)}>
+                <PlusIcon />
+                {t.newSession}
+              </DropdownMenuItem>
+            )}
             {canStart && others.length > 0 && <DropdownMenuSeparator />}
             {others.length > 0 && (
-              <DropdownMenuGroup className="max-h-80 overflow-y-auto">
-                <DropdownMenuLabel>{t.sessions}</DropdownMenuLabel>
+              // Two lines per session, as in the Sessions popover: its title, then its state and when.
+              <DropdownMenuGroup className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
                 {others.map((s) => (
-                  <DropdownMenuItem key={s.id} onClick={() => onOpen(s.id)} className="items-start">
-                    <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{s.title}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
+                  <DropdownMenuItem key={s.id} onClick={() => onOpen(s.id)} className="h-auto items-start py-1.5">
+                    <StatusIcon status={s.status} asking={!!s.question} className="mt-0.5" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate text-sm">{s.title}</span>
+                      <span className="truncate text-xs text-muted-foreground">
                         <StatusText session={s} /> · {dividerLabel(new Date(s.updatedAt))}
                       </span>
                     </span>
