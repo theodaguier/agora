@@ -1160,8 +1160,9 @@ function CodeSessionView({
                 <CodePriorityMenu
                   session={session}
                   trigger={
-                    <Button variant="ghost" size="icon" aria-label={`${t.priority} ${t.priorities[session.priority]}`} title={t.priorities[session.priority]}>
+                    <Button variant="ghost" size="sm" aria-label={`${t.priority} ${t.priorities[session.priority]}`} className="gap-1.5 px-2 font-normal text-muted-foreground">
                       <CodePriorityIcon priority={session.priority} />
+                      {t.priorities[session.priority]}
                     </Button>
                   }
                 />

@@ -29,7 +29,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { useT } from "@/i18n";
 import { allCodeSessionsQuery } from "@/lib/code-sessions";
-import { updateSide } from "@/lib/conversation-side";
 import { listTime } from "@/lib/dates";
 import { useOrgTitle } from "@/lib/org";
 import { conversationsQuery } from "@/lib/queries";
@@ -258,8 +257,7 @@ function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: 
           : null;
   const project = grouping !== "project" ? codeSessionProject(s) : "";
   const open = () => {
-    updateSide(s.conversationId, (side) => ({ ...side, panel: null, previewKey: null, codeTabs: side.codeTabs.includes(s.id) ? side.codeTabs : [...side.codeTabs, s.id], codeSession: s.id }));
-    void navigate({ to: "/c/$conversationId", params: { conversationId: s.conversationId } });
+    void navigate({ to: "/c/$conversationId/code/$sessionId", params: { conversationId: s.conversationId, sessionId: s.id } });
   };
   return (
     <div
