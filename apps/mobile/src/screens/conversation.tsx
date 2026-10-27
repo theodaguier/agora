@@ -585,9 +585,11 @@ function ConversationHeader({
         options={{
           title,
           headerTransparent: true,
-          // The thread scrolls under the header: a material keeps it readable (a React Native
-          // scroll view doesn't get iOS 26's scroll edge effect).
+          // The thread scrolls under the header: a material keeps it readable.
           headerBlurEffect: "systemChromeMaterial",
+          // iOS 26 gives the screen's scroll view an edge effect, and the thread is flipped (scaleY -1): its bottom
+          // edge, as tall as the keyboard and the composer, was drawn over the top of the thread, blurring every message.
+          scrollEdgeEffects: { top: "hidden", bottom: "hidden", left: "hidden", right: "hidden" },
           headerTitle: () => <HeaderTitle conversation={conv} me={me} title={title} label={infoLabel || undefined} />,
         }}
  />

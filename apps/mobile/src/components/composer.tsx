@@ -329,26 +329,31 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
         </View>
       )}
       {/*
-       * Figma « Composer » (mobile): a white pill with a hairline, "+" then the field, the
-       * microphone and the send button (the model is chosen from the "/" menu, as on the web) in the accent (the bot's colour); the quote, the files and the
-       * skills/connectors/routines called with the message stack above the line.
+       * Figma « Composer » (mobile): a 48 pt white pill with a hairline: "+", the field, the microphone and the
+       * send button in the accent (the bot's colour); the model is chosen from the "/" menu, as on the web.
+       * The quote, the files and the skills/connectors/routines called with the message stack above the line.
        */}
-      <Surface variant="transparent" className="gap-1 rounded-[23px] border border-border bg-background p-1.5">
-        {replyTo && <ReplyStrip quote={replyTo} onCancel={onCancelReply} />}
-        <PendingFiles items={files} onRemove={removeFile} />
-        {invocations.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerClassName="gap-1.5 px-1">
-            {invocations.map((v) => (
-              <InvocationChip
-                key={invocationKey(v)}
-                invocation={v}
-                bot={v.kind !== "routine" && v.agentId ? mentionables.find((a) => a.id === v.agentId)?.name : undefined}
-                onRemove={() => setInvocations((xs) => xs.filter((x) => x !== v))}
-              />
-            ))}
-          </ScrollView>
+      <Surface variant="transparent" className="rounded-[24px] border border-border bg-background p-0" style={{ borderCurve: "continuous" }}>
+        {(replyTo || files.length > 0 || invocations.length > 0) && (
+          <View className="gap-1 px-1.5 pt-1.5">
+            {replyTo && <ReplyStrip quote={replyTo} onCancel={onCancelReply} />}
+            <PendingFiles items={files} onRemove={removeFile} />
+            {invocations.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerClassName="gap-1.5 px-1">
+                {invocations.map((v) => (
+                  <InvocationChip
+                    key={invocationKey(v)}
+                    invocation={v}
+                    bot={v.kind !== "routine" && v.agentId ? mentionables.find((a) => a.id === v.agentId)?.name : undefined}
+                    onRemove={() => setInvocations((xs) => xs.filter((x) => x !== v))}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
         )}
-        <View className="flex-row items-end gap-1">
+        {/* 40 pt buttons 3 pt inside the hairline (48 pt in all); as the field grows, they stay on its last line. */}
+        <View className="flex-row items-end px-1 py-[3px]">
           <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
           {/*
            * The web lays a colored copy under a transparent field; a native field takes styled
@@ -371,9 +376,10 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             onKeyPress={(e) => {
               if (e.nativeEvent.key === "Backspace" && text === "" && invocations.length) setInvocations((xs) => xs.slice(0, -1));
             }}
-            // Part of the card rather than a field inside it: no fill, no border, no shadow, no focus outline (it is
-            // always the one being typed in). The messages' size (text-body), placeholder included. Six lines, then it scrolls.
-            className="max-h-[152px] min-w-0 flex-1 border-transparent bg-transparent px-1 py-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
+            // Part of the pill rather than a field inside it: no fill, no border, no shadow, no focus outline (it is
+            // always the one being typed in). One 22 pt line centred on the buttons' 40 pt, at the messages' size
+            // (text-body), placeholder included. Six lines, then it scrolls.
+            className="max-h-[152px] min-h-10 min-w-0 flex-1 border-transparent bg-transparent px-1 py-[9px] text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
           >
             <MentionText text={text} mentionables={colored} flat />
           </Input>
