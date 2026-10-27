@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.10 — 2026-10-27
+
+### Fixes
+- **web,mobile**: sessions de code sans jargon, mises à jour lisibles, composer sans autoremplissage
+
 ## v0.45.9 — 2026-10-27
 
 ### Fixes
