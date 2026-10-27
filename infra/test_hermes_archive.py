@@ -46,6 +46,34 @@ class OnlineArchiveTests(unittest.TestCase):
                 self.assertEqual(db.execute("SELECT count(*) FROM sample").fetchone(), (2,))
             finally: db.close()
 
+    def test_idle_wal_database_on_a_read_only_mount_is_snapshotted_from_a_copy(self):
+        # Production: Hermes' WAL databases have no -shm while closed, and the
+        # archiver mounts the volume read-only, so SQLite cannot open them in place.
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch, "source"); (root / "cron").mkdir(parents=True)
+            db = sqlite3.connect(root / "cron/executions.db")
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("CREATE TABLE sample (value TEXT)")
+            db.execute("INSERT INTO sample VALUES ('kept')"); db.commit(); db.close()
+            self.assertFalse((root / "cron/executions.db-shm").exists())
+            for path in [root / "cron", root]: path.chmod(0o555)
+            try:
+                with self.assertRaises(sqlite3.OperationalError):
+                    sqlite3.connect((root / "cron/executions.db").as_uri() + "?mode=ro", uri=True).execute("SELECT 1 FROM sample").fetchall()
+                output = Path(scratch, "backup.tgz")
+                result = module.create_archive(root, output, [])
+            finally:
+                for path in [root, root / "cron"]: path.chmod(0o755)
+            self.assertEqual(result["sqliteSnapshots"], 1)
+            self.assertEqual(sorted(p.name for p in Path(scratch).iterdir()), ["backup.tgz", "source"])
+            with tarfile.open(output) as archive:
+                restored = Path(scratch, "restored.db")
+                restored.write_bytes(archive.extractfile("./cron/executions.db").read())
+            copy = sqlite3.connect(restored)
+            try:
+                self.assertEqual(copy.execute("SELECT value FROM sample").fetchall(), [("kept",)])
+            finally: copy.close()
+
     def test_source_lockfiles_git_and_kept_hardlinks_survive_cache_exclusions(self):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch, "source"); root.mkdir()
