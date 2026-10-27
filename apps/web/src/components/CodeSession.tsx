@@ -978,7 +978,7 @@ type SessionTab = "overview" | "changes" | "journal";
  * A session, as wide as the conversation beside it: its header (state, branch, the bot that started
  * it), then three tabs. Aperçu says where it stands: what it does now or its answer, its tasks, and
  * what it and its bot said to each other. Modifications: its files and its pull request. Journal:
- * every step. Its pending approval or question comes first in Aperçu and last in Journal; the
+ * every step, the tab it opens on. Its pending approval or question comes first in Aperçu and last in Journal; the
  * owner's field stays at the bottom. `page`: a tab of its own, the close button closes it.
  */
 function CodeSessionView({
@@ -1000,14 +1000,35 @@ function CodeSessionView({
   const { data: session } = useQuery(codeSessionQuery(conversationId, sessionId));
   const { data: conv } = useQuery(conversationQuery(conversationId));
   const agent = session?.agentId ? conv?.agents.find((a) => a.id === session.agentId) : undefined;
-  const [tab, setTab] = useState<SessionTab>("overview");
+  // The log first: it opens on the latest steps.
+  const [tab, setTab] = useState<SessionTab>("journal");
   const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   const follow = useRef(true);
-  // The log follows the work while the reader stays at its bottom.
+  const isAtBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  // Opening the log lands on its bottom.
   useLayoutEffect(() => {
-    if (tab === "journal" && follow.current) scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-  }, [session?.steps, tab]);
+    if (tab === "journal") follow.current = true;
+  }, [tab]);
+  // The log follows the work while the reader stays at its bottom: every time its content grows
+  // (new steps, but also code blocks and diffs laying out after the first render, which left a
+  // refreshed page at the top), and the "latest" button knows where the reader is without a scroll.
+  const loaded = !!session;
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    const inner = content.current;
+    if (!el || !inner) return;
+    const sync = () => {
+      if (tab === "journal" && follow.current) el.scrollTop = el.scrollHeight;
+      setAtBottom(isAtBottom(el));
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(inner);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [tab, loaded]);
 
   const owner = !!session && session.requestedBy === user.id;
   const approval = session?.approval;
@@ -1097,34 +1118,34 @@ function CodeSessionView({
             <div
               ref={scroller}
               onScroll={(e) => {
-                if (tab !== "journal") return;
-                const el = e.currentTarget;
-                const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-                follow.current = bottom;
+                const bottom = isAtBottom(e.currentTarget);
+                if (tab === "journal") follow.current = bottom;
                 setAtBottom(bottom);
               }}
               // Positioned, like the conversation's thread: its absolute elements stay within it.
               className="relative h-full overflow-y-auto px-5 pt-2 pb-4"
             >
-              {tab === "overview" ? (
-                <Overview conversationId={conversationId} session={session} agent={agent} members={conv?.members ?? []} owner={owner} pending={pending} />
-              ) : tab === "changes" ? (
-                <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
-              ) : session.steps.length === 0 && !pending ? (
-                <Empty className="h-full">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <Spinner />
-                    </EmptyMedia>
-                    <EmptyDescription>{t.empty}</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  <Timeline steps={session.steps} running={session.status === "running"} />
-                  {pending}
-                </div>
-              )}
+              <div ref={content} className="flex min-h-full flex-col">
+                {tab === "overview" ? (
+                  <Overview conversationId={conversationId} session={session} agent={agent} members={conv?.members ?? []} owner={owner} pending={pending} />
+                ) : tab === "changes" ? (
+                  <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
+                ) : session.steps.length === 0 && !pending ? (
+                  <Empty className="flex-1">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <Spinner />
+                      </EmptyMedia>
+                      <EmptyDescription>{t.empty}</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    <Timeline steps={session.steps} running={session.status === "running"} />
+                    {pending}
+                  </div>
+                )}
+              </div>
             </div>
             {tab === "journal" && !atBottom && (
               <Button
