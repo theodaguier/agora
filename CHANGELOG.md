@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.13 — 2026-10-27
+
+### Fixes
+- **mobile**: plus de flou sur le fil quand le clavier est ouvert, composer aux cotes Figma
+
 ## v0.45.12 — 2026-10-27
 
 ### Fixes
