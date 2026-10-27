@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.45.11 — 2026-10-27
+
+### Fixes
+- **web**: une demande d'accord reste visible en haut d'Avancement
+- **web**: Avancement s'ouvre en bas, suit la session et propose « Derniers échanges » quand on remonte
+
 ## v0.45.10 — 2026-10-27
 
 ### Fixes
