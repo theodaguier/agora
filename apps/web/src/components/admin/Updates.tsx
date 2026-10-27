@@ -110,11 +110,10 @@ export function Updates() {
       <FieldGroup>
         <FieldSet>
           <FieldLegend>{t.versions}</FieldLegend>
-          <ItemGroup className="gap-2">
+          <ItemGroup className="gap-0 rounded-xl border p-1">
             <VersionCard
               title="Agora"
               current={data.server.app}
-              detail={data.server.commit ? t.commit(data.server.commit) : undefined}
               available={data.available?.app ?? []}
               rejected={data.rejected?.app ?? []}
               disabled={busy || !!data.unavailable}
@@ -145,22 +144,25 @@ export function Updates() {
             <FieldSeparator />
             <FieldSet>
               <FieldLegend>{t.autoUpdates}</FieldLegend>
-              <FieldDescription>
-                {t.parisTime}
-                {data.lastCheck && t.lastCheck(time.format(new Date(data.lastCheck)))}
-              </FieldDescription>
               <FieldGroup>
                 <Field orientation="horizontal">
-                  <FieldLabel htmlFor="auto-hermes">{t.autoHermes}</FieldLabel>
+                  <FieldContent>
+                    <FieldLabel htmlFor="auto-hermes">{t.autoHermes}</FieldLabel>
+                    <FieldDescription>{t.autoHermesHelp}</FieldDescription>
+                  </FieldContent>
                   <Switch id="auto-hermes" checked={!!data.settings?.autoHermes} onCheckedChange={(autoHermes) => settings.mutate({ autoHermes })} />
                 </Field>
                 <Field orientation="horizontal">
-                  <FieldLabel htmlFor="auto-app">{t.autoApp}</FieldLabel>
+                  <FieldContent>
+                    <FieldLabel htmlFor="auto-app">{t.autoApp}</FieldLabel>
+                    <FieldDescription>{t.autoAppHelp}</FieldDescription>
+                  </FieldContent>
                   <Switch id="auto-app" checked={!!data.settings?.autoApp} onCheckedChange={(autoApp) => settings.mutate({ autoApp })} />
                 </Field>
-                <Field orientation="responsive">
+                <Field orientation="horizontal">
                   <FieldContent>
                     <FieldLabel>{t.window}</FieldLabel>
+                    <FieldDescription>{t.parisTime}</FieldDescription>
                   </FieldContent>
                   <div className="flex items-center gap-2">
                     <HourSelect label={t.windowStart} value={data.settings?.windowStart ?? 3} onChange={(h) => settings.mutate({ windowStart: h })} />
@@ -168,8 +170,13 @@ export function Updates() {
                     <HourSelect label={t.windowEnd} value={data.settings?.windowEnd ?? 5} onChange={(h) => settings.mutate({ windowEnd: h })} />
                   </div>
                 </Field>
+                {/* When it last looked, and looking again: one row, the button on the right. */}
                 <Field orientation="horizontal">
-                  <Button variant="outline" disabled={check.isPending || busy} onClick={() => check.mutate()}>
+                  <FieldContent>
+                    <FieldLabel>{t.lastCheck}</FieldLabel>
+                    <FieldDescription>{data.lastCheck ? time.format(new Date(data.lastCheck)) : t.never}</FieldDescription>
+                  </FieldContent>
+                  <Button variant="secondary" size="sm" disabled={check.isPending || busy} onClick={() => check.mutate()}>
                     {check.isPending ? c.inProgress : t.checkNow}
                   </Button>
                 </Field>
@@ -199,7 +206,6 @@ export function Updates() {
 function VersionCard(props: {
   title: string;
   current: string;
-  detail?: string;
   available: string[];
   rejected: string[];
   disabled: boolean;
@@ -211,7 +217,7 @@ function VersionCard(props: {
   const latest = props.available.at(-1);
   const rejected = !!latest && props.rejected.includes(latest);
   return (
-    <Item variant="outline">
+    <Item>
       <ItemContent>
         <ItemTitle>
           {props.title} {props.current}
@@ -219,16 +225,13 @@ function VersionCard(props: {
         <ItemDescription>
           {latest ? (
             <>
-              {t.available}
-              {latest}
-              {props.available.length > 1 && t.others(props.available.length - 1)}
+              {t.available(latest)}
               {props.note?.(latest) && ` · ${props.note(latest)}`}
               {rejected && ` · ${t.rejected}`}
             </>
           ) : (
             t.upToDate
           )}
-          {props.detail && ` · ${props.detail}`}
         </ItemDescription>
       </ItemContent>
       {latest && (

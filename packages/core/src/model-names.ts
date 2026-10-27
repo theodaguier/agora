@@ -105,3 +105,13 @@ export function connectorName(slug: string): string {
     .map((w) => CONNECTOR_BRANDS[w.toLowerCase()] ?? w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 }
+
+/**
+ * A tool call as people read it: an MCP tool by its connector, then what it does
+ * ("mcp__figma__use_figma" → "Figma", "use figma"), a built-in one by its label when there is one.
+ */
+export function toolLabel(tool: string, names: Record<string, string>): { name: string; action: string | null } {
+  const m = /^mcp__(.+?)__(.+)$/.exec(tool);
+  if (m) return { name: connectorName(m[1]!), action: m[2]!.replace(/_+/g, " ") };
+  return { name: names[tool] ?? tool, action: null };
+}

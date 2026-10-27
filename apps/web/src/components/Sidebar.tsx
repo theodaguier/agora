@@ -273,7 +273,7 @@ function SidebarBody() {
         </InputGroup>
       </div>
 
-      <nav aria-label={t.conversations} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-3">
+      <nav aria-label={t.conversations} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-2.5 pb-3">
         {isPending && [0, 1, 2].map((i) => <SidebarMenuSkeleton key={i} showIcon className="mt-2 h-[53px]" />)}
         {!isPending && conversations.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t.empty}</p>}
         {withAgent.length > 0 && (
@@ -426,7 +426,7 @@ function DesktopSidebar() {
         </>
       )}
 
-      <nav aria-label={t.conversations} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
+      <nav aria-label={t.conversations} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-3 pb-2 [scrollbar-width:none]">
         {isPending && [0, 1, 2].map((i) => <SidebarMenuSkeleton key={i} showIcon className="h-[54px]" />)}
         {!isPending && conversations.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t.empty}</p>}
         {list.map((c) => (
