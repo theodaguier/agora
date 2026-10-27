@@ -1028,6 +1028,31 @@ function CodeSessionView({
   const { data: conv } = useQuery(conversationQuery(conversationId));
   const agent = session?.agentId ? conv?.agents.find((a) => a.id === session.agentId) : undefined;
   const [tab, setTab] = useState<SessionTab>("overview");
+  const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const [atBottom, setAtBottom] = useState(true);
+  const follow = useRef(true);
+  const isAtBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  // Avancement opens on its bottom, the latest exchanges, and follows the work while the reader stays there:
+  // every time its content grows, and the "latest" button knows where the reader is without a scroll.
+  const loaded = !!session;
+  useLayoutEffect(() => {
+    if (tab === "overview") follow.current = true;
+  }, [tab]);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    const inner = content.current;
+    if (!el || !inner) return;
+    const sync = () => {
+      if (tab === "overview" && follow.current) el.scrollTop = el.scrollHeight;
+      setAtBottom(isAtBottom(el));
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(inner);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [tab, loaded]);
 
   const owner = !!session && session.requestedBy === user.id;
   const approval = session?.approval;
@@ -1107,9 +1132,17 @@ function CodeSessionView({
           {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
 
           <div className="relative min-h-0 flex-1">
-            {/* Positioned, like the conversation's thread: its absolute elements stay within it. */}
-            <div className="relative h-full overflow-y-auto px-5 pt-2 pb-4">
-              <div className="flex min-h-full flex-col">
+            <div
+              ref={scroller}
+              onScroll={(e) => {
+                const bottom = isAtBottom(e.currentTarget);
+                if (tab === "overview") follow.current = bottom;
+                setAtBottom(bottom);
+              }}
+              // Positioned, like the conversation's thread: its absolute elements stay within it.
+              className="relative h-full overflow-y-auto px-5 pt-2 pb-4"
+            >
+              <div ref={content} className="flex min-h-full flex-col">
                 {tab === "overview" ? (
                   <Overview conversationId={conversationId} session={session} agent={agent} members={conv?.members ?? []} owner={owner} pending={pending} />
                 ) : (
@@ -1117,6 +1150,19 @@ function CodeSessionView({
                 )}
               </div>
             </div>
+            {!atBottom && (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full"
+                onClick={() => {
+                  follow.current = true;
+                  scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+                }}
+              >
+                {t.latest}
+              </Button>
+            )}
           </div>
 
           <div className="shrink-0 px-4 pt-2 pb-4">
