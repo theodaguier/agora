@@ -105,5 +105,22 @@ class OnlineArchiveTests(unittest.TestCase):
                 self.assertNotIn("./gateway.sock", archive.getnames())
                 self.assertEqual(archive.extractfile("./config.yaml").read(), b"fixture")
 
+    def test_extensionless_runtime_database_is_snapshotted_but_code_fixtures_are_preserved(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch, "source"); root.mkdir()
+            code = root / "worktrees/repo"; code.mkdir(parents=True)
+            fixture = b"SQLite format 3\x00" + b"deliberately invalid test fixture"
+            (code / "fixture.db").write_bytes(fixture)
+            db = sqlite3.connect(root / "Cookies")
+            try:
+                db.execute("PRAGMA journal_mode=WAL")
+                db.execute("CREATE TABLE sample(value TEXT)"); db.commit()
+                output = Path(scratch, "backup.tgz")
+                self.assertEqual(module.create_archive(root, output, [])["sqliteSnapshots"], 1)
+                with tarfile.open(output) as archive:
+                    self.assertNotIn("./Cookies-wal", archive.getnames())
+                    self.assertEqual(archive.extractfile("./worktrees/repo/fixture.db").read(), fixture)
+            finally: db.close()
+
 
 if __name__ == "__main__": unittest.main()

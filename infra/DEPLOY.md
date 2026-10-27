@@ -146,8 +146,10 @@ Backblaze B2 or an SFTP server.
    first run; 7 daily, 4 weekly and 6 monthly snapshots are kept.
    Hermes data is staged as `hermes-data.tgz` with rebuildable dependency/cache
    directories excluded. Source files, lockfiles and Git history are preserved.
-   SQLite databases (`.db`, `.sqlite`, `.sqlite3`) use SQLite's online backup API;
-   their live journals are omitted. Hermes keeps running during both archiving
+   Runtime SQLite databases (including extensionless browser databases) use
+   SQLite's online backup API; their live journals are omitted. Coding worktrees,
+   repositories, uploads, attachments and Git objects retain their original bytes.
+   Hermes keeps running during both archiving
    and upload. The archive streams files with one CPU and 512 MiB of memory; its
    output is capped below the available disk space with a 1 GiB reserve.
    Each database is consistent at its own capture time; other files use normal

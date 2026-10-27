@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.3 — 2026-10-27
+
+### Fixes
+- sauvegardes à chaud, rétention disque et retour arrière fiable
+
 ## v0.45.2 — 2026-10-26
 
 ### Fixes

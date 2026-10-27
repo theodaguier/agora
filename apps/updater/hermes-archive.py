@@ -62,7 +62,11 @@ def create_archive(root, output, excludes, reserve_bytes=0):
                         if info.isfile():
                             files += 1
                             is_sqlite = False
-                            if path.suffix.lower() in (".db", ".sqlite", ".sqlite3"):
+                            # Runtime databases can be extensionless (for example Chromium's
+                            # Cookies). Coding worktrees, uploads and Git objects are user files:
+                            # preserve their bytes, including deliberately invalid DB fixtures.
+                            raw_files = {".git", "worktrees", "repos", "projects", "uploads", "attachments", "shared-skills"}
+                            if not any(part in raw_files for part in Path(relative).parts):
                                 with path.open("rb") as header:
                                     is_sqlite = header.read(16) == b"SQLite format 3\x00"
                             if is_sqlite:
