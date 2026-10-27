@@ -30,6 +30,37 @@ class ReservedWriter:
         return getattr(self.file, name)
 
 
+def stable_copy(path, scratch, reserve_bytes=0):
+    """Copies a database and its WAL, retrying until neither changed during the copy."""
+    sources = [path, Path(str(path) + "-wal")]
+
+    def state():
+        return [(s.st_size, s.st_mtime_ns) if (s := stat_or_none(p)) else None for p in sources]
+
+    for _ in range(5):
+        before = state()
+        size = sum(entry[0] for entry in before if entry)
+        if reserve_bytes and shutil.disk_usage(scratch).free < 2 * size + reserve_bytes:
+            raise OSError("Insufficient SQLite snapshot space")
+        copy = scratch / "source.db"
+        for source, entry in zip(sources, before):
+            destination = Path(str(copy) + source.name.removeprefix(path.name))
+            destination.unlink(missing_ok=True)
+            if entry:
+                shutil.copyfile(source, destination)
+        if state() == before:
+            return copy
+        time.sleep(0.2)
+    raise TimeoutError("SQLite database kept changing")
+
+
+def stat_or_none(path):
+    try:
+        return path.stat()
+    except FileNotFoundError:
+        return None
+
+
 def create_archive(root, output, excludes, reserve_bytes=0):
     root, output = Path(root).resolve(), Path(output)
     sqlite_paths = set()
@@ -77,12 +108,26 @@ def create_archive(root, output, excludes, reserve_bytes=0):
                                     if time.monotonic() > deadline:
                                         raise TimeoutError("SQLite snapshot timed out")
 
-                                with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=5)) as source:
-                                    size = source.execute("PRAGMA page_count").fetchone()[0] * source.execute("PRAGMA page_size").fetchone()[0]
-                                    if reserve_bytes and shutil.disk_usage(output.parent).free < size + reserve_bytes:
-                                        raise OSError("Insufficient SQLite snapshot space")
-                                    with closing(sqlite3.connect(target)) as destination:
-                                        source.backup(destination, pages=1024, progress=progress, sleep=0.05)
+                                def snapshot(uri):
+                                    with closing(sqlite3.connect(uri, uri=True, timeout=5)) as source:
+                                        size = source.execute("PRAGMA page_count").fetchone()[0] * source.execute("PRAGMA page_size").fetchone()[0]
+                                        if reserve_bytes and shutil.disk_usage(output.parent).free < size + reserve_bytes:
+                                            raise OSError("Insufficient SQLite snapshot space")
+                                        with closing(sqlite3.connect(target)) as destination:
+                                            source.backup(destination, pages=1024, progress=progress, sleep=0.05)
+
+                                try:
+                                    snapshot(path.as_uri() + "?mode=ro")
+                                except sqlite3.OperationalError:
+                                    # A WAL database nobody has open has no -shm, and a read-only
+                                    # mount cannot create one: snapshot a stable copy instead.
+                                    target.unlink(missing_ok=True)
+                                    copy = stable_copy(path, Path(scratch), reserve_bytes)
+                                    try:
+                                        snapshot(copy.as_uri())
+                                    finally:
+                                        for suffix in ("", "-wal", "-shm"):
+                                            Path(str(copy) + suffix).unlink(missing_ok=True)
                                 info.size = target.stat().st_size
                                 info.pax_headers["agora.sqlite.snapshot"] = "1"
                                 with target.open("rb") as content:
