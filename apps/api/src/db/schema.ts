@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
 import type { ImplicitCall } from "../group";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
@@ -359,6 +359,10 @@ export const codeSession = pgTable(
     /** Codex's thread or Cursor's chat id, resumed at each instruction (Claude Code's is the session's id). */
     engineThread: text("engine_thread"),
     status: text("status").$type<CodeSessionStatus>().notNull(),
+    /** Its owner's priority for it, as in Linear (set from the panel, its tab or the Sessions list). */
+    priority: text("priority").$type<CodePriority>().notNull().default("none"),
+    /** The GitHub issue it works on, linked by the session itself (link_issue) or detached by its owner. */
+    issue: jsonb("issue").$type<CodeIssue>(),
     cwd: text("cwd").notNull(),
     /** GitHub repository (owner/name) cloned into `cwd` at the start. */
     repo: text("repo"),

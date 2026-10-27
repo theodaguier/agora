@@ -25,6 +25,8 @@ const listeners = new Set<() => void>();
 function load(userId: string) {
   const key = `agora.side.${userId}`;
   if (key === storageKey) return;
+  // Opened before any conversation was shown (a row of Sessions, a toast): kept over what was saved.
+  const opened = storageKey ? {} : sides;
   storageKey = key;
   sides = {};
   try {
@@ -33,6 +35,16 @@ function load(userId: string) {
       sides = Object.fromEntries(Object.entries(saved).filter(([, s]) => s && Array.isArray(s.codeTabs) && s.codeTabs.every((t) => typeof t === "string")));
   } catch {
     // Unreadable or blocked storage: nothing open.
+  }
+  sides = { ...sides, ...opened };
+  if (Object.keys(opened).length) save();
+}
+
+function save() {
+  try {
+    if (storageKey) localStorage.setItem(storageKey, JSON.stringify(sides, (k, v) => (k === "panel" && v === "search" ? null : v)));
+  } catch {
+    // Kept for this page only.
   }
 }
 
@@ -45,13 +57,12 @@ export function updateSide(conversationId: string, fn: (s: ConversationSide) => 
   sides = isEmpty(next) ? rest : { ...rest, [conversationId]: next };
   const ids = Object.keys(sides);
   if (ids.length > KEEP) for (const id of ids.slice(0, ids.length - KEEP)) delete sides[id];
-  try {
-    if (storageKey) localStorage.setItem(storageKey, JSON.stringify(sides, (k, v) => (k === "panel" && v === "search" ? null : v)));
-  } catch {
-    // Kept for this page only.
-  }
+  save();
   listeners.forEach((l) => l());
 }
+
+/** What a conversation has open beside its thread now (outside React: the notifications). */
+export const sideOf = (conversationId: string): ConversationSide => sides[conversationId] ?? EMPTY;
 
 const subscribe = (l: () => void) => {
   listeners.add(l);

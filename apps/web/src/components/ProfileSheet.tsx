@@ -1,14 +1,18 @@
 import { mascot } from "@/lib/agent-avatar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClockIcon, ToolIcon } from "@/components/icons";
-import { Link, useNavigate, useRouteContext } from "@tanstack/react-router";
+import { ClockIcon } from "@/components/icons";
+import { toolLabel } from "@agora/core";
+import { codeSessions } from "@agora/core/i18n";
+import { useState } from "react";
+import { AgentSheet } from "@/components/AgentSheet";
+import { Button } from "@/components/ui/button";
+import { Link, useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
 import { ConversationAvatar, PersonAvatar, useStatusLabel } from "@/components/ConversationAvatar";
 import { conversationTitle } from "@/lib/participants";
 import { WorkingOn } from "@/components/WorkingOn";
 import { RoutineActions, useToggleRoutine } from "@/components/RoutineDialog";
 import { TaskList } from "@/components/TaskList";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -50,6 +54,8 @@ const messages = defineMessages({
     next: (when: string) => `Next: ${when}`,
     paused: "Paused",
     conversation: "Conversation",
+    write: "Message",
+    edit: "Edit",
   },
   fr: {
     profile: "Profil",
@@ -78,6 +84,8 @@ const messages = defineMessages({
     next: (when: string) => `Prochaine : ${when.charAt(0).toLowerCase()}${when.slice(1)}`,
     paused: "En pause",
     conversation: "Conversation",
+    write: "Écrire",
+    edit: "Modifier",
   },
 });
 
@@ -232,6 +240,7 @@ function useConversationTitle(conversationId: string) {
 
 function TurnItem({ turn }: { turn: AgentActivity["turns"][number] }) {
   const t = useT(messages);
+  const tools = useT(codeSessions);
   const title = useConversationTitle(turn.conversationId);
   return (
     <Item
@@ -245,17 +254,7 @@ function TurnItem({ turn }: { turn: AgentActivity["turns"][number] }) {
       <ItemContent className="min-w-0">
         <ItemTitle className="w-full truncate">{title ?? t.conversation}</ItemTitle>
         <ItemDescription className="flex items-center gap-1.5">
-          {turn.tool ? (
-            <>
-              {t.using}
-              <Badge variant="secondary" className="h-auto gap-1 rounded-md px-1.5 py-0.5 font-mono text-xs font-normal text-foreground/80">
-                <ToolIcon name={turn.tool} className="size-3.5" />
-                {turn.tool}
-              </Badge>
-            </>
-          ) : (
-            t.writing
-          )}
+          {turn.tool ? `${t.using} ${toolLabel(turn.tool, tools.toolNames).name}` : t.writing}
         </ItemDescription>
       </ItemContent>
     </Item>
@@ -290,6 +289,18 @@ function RoutineItem({ routine }: { routine: AgentActivity["routines"][number] }
   );
 }
 
+/** The direct conversation you are reading right now is with them: no « Écrire » that would only close the sheet. */
+function useInDirectWith(who: { agentId?: string; userId?: string }) {
+  const { user: me } = useRouteContext({ from: "/app" });
+  const { data: conversations = [] } = useQuery(conversationsQuery);
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  const id = /^\/c\/([^/]+)/.exec(path)?.[1];
+  const c = id ? conversations.find((x) => x.id === id) : undefined;
+  if (!c || c.kind !== "direct") return false;
+  if (who.agentId) return c.agents.length === 1 && c.agents[0]!.id === who.agentId;
+  return !c.agents.length && c.members.some((m) => m.id === who.userId && m.id !== me.id);
+}
+
 /** Avatar with its status, name (opens the direct conversation, if you may use the bot), and since when it exists. */
 function BotHeader({ agent }: { agent: AgentProfile }) {
   const t = useT(messages);
@@ -307,30 +318,37 @@ function BotHeader({ agent }: { agent: AgentProfile }) {
     meta: { error: t.openFailed },
   });
   const since = dateFormat({ month: "long", year: "numeric" }).format(new Date(agent.createdAt));
+  const { user: me } = useRouteContext({ from: "/app" });
+  const [editing, setEditing] = useState(false);
+  const here = useInDirectWith({ agentId: agent.id });
+  const canWrite = agent.access && !agent.onboarding && !here;
+  const admin = me.role === "admin";
 
-  // Figma « En-tête agent »: the bot's clay portrait, then its name.
+  // Figma « Panneau agent »: the bot's clay portrait, its name, then its actions as grey pills.
   return (
     <div className="flex flex-col gap-3">
       <img src={mascot(agent.avatar.color).figure} alt="" draggable={false} className="aspect-[7/5] w-full rounded-2xl bg-[#efe9e1] object-cover" />
-      <div className="min-w-0">
-        <SheetTitle className="truncate text-xl leading-[26px] font-medium">
-          {agent.access && !agent.onboarding ? (
-            <button
-              type="button"
-              onClick={() => open.mutate()}
-              disabled={open.isPending}
-              title={t.message(agent.name)}
-              className="max-w-full truncate rounded-sm text-left underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
-            >
-              {agent.name}
-            </button>
-          ) : (
-            agent.name
-          )}
-        </SheetTitle>
-        <SheetDescription className="truncate">{t.botSince(since)}</SheetDescription>
-        {status && <p className="truncate text-xs text-muted-foreground">{status}</p>}
+      <div className="min-w-0 pt-1">
+        <SheetTitle className="truncate text-xl leading-[26px] font-medium">{agent.name}</SheetTitle>
+        <SheetDescription className="truncate">{[t.botSince(since), status].filter(Boolean).join(" · ")}</SheetDescription>
       </div>
+      {(canWrite || admin) && (
+        <div className="flex flex-wrap gap-2">
+          {canWrite && (
+            <Button variant="secondary" onClick={() => open.mutate()} disabled={open.isPending}>
+              {t.write}
+            </Button>
+          )}
+          {admin && (
+            <>
+              <Button variant="secondary" onClick={() => setEditing(true)}>
+                {t.edit}
+              </Button>
+              <AgentSheet agentId={agent.id} open={editing} onOpenChange={setEditing} />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -351,29 +369,23 @@ function PersonHeader({ person, self }: { person: UserProfile; self: boolean }) 
     meta: { error: t.openFailed },
   });
   const subtitle = [person.title, person.username && `@${person.username}`].filter(Boolean).join(" · ");
+  const here = useInDirectWith({ userId: person.id });
 
   return (
-    <div className="flex items-center gap-3">
-      <PersonAvatar person={person} className="size-14" />
-      <div className="min-w-0">
-        <SheetTitle className="truncate text-xl leading-[26px] font-medium">
-          {self ? (
-            person.name
-          ) : (
-            <button
-              type="button"
-              onClick={() => open.mutate()}
-              disabled={open.isPending}
-              title={t.message(person.name.split(" ")[0]!)}
-              className="max-w-full truncate rounded-sm text-left underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
-            >
-              {person.name}
-            </button>
-          )}
-        </SheetTitle>
-        <SheetDescription className="truncate">{subtitle}</SheetDescription>
-        {status && <p className="truncate text-xs text-muted-foreground">{status}</p>}
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <PersonAvatar person={person} className="size-14" />
+        <div className="min-w-0">
+          <SheetTitle className="truncate text-xl leading-[26px] font-medium">{person.name}</SheetTitle>
+          <SheetDescription className="truncate">{subtitle}</SheetDescription>
+          {status && <p className="truncate text-xs text-muted-foreground">{status}</p>}
+        </div>
       </div>
+      {!self && !here && (
+        <Button variant="secondary" className="self-start" onClick={() => open.mutate()} disabled={open.isPending}>
+          {t.write}
+        </Button>
+      )}
     </div>
   );
 }

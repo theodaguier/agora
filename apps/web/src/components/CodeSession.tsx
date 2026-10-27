@@ -7,6 +7,10 @@ import {
   codeDetailLine,
   codeEngineModes,
   codeStatusText,
+  byCodePriority,
+  codeSessionState,
+  type CodeSessionState,
+  type CodeIssue,
   toolLabel,
   nextCodeMode,
   OTHER_ANSWER,
@@ -29,17 +33,14 @@ import { codeSessions, common } from "@agora/core/i18n";
 import {
   ArrowUpIcon,
   BranchIcon,
-  ChatQuestionIcon,
   CheckCircleIcon,
   CircleIcon,
   CloseIcon,
   ChevronDownIcon,
-  ClockIcon,
   CloseCircleIcon,
   CodeIcon,
   MoreIcon,
   PlusIcon,
-  ShieldAlertIcon,
   SparklesIcon,
   StopIcon,
   TerminalIcon,
@@ -48,6 +49,9 @@ import {
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
 import { BesideButton, besideMessages } from "@/components/BesideButton";
 import { PaneHeader } from "@/components/PaneHeader";
+import { CodePriorityIcon, CodeStateIcon, IssueIcon } from "@/components/CodeSessionMarks";
+import { CodePriorityMenu, priorityOfKey, useSetCodePriority } from "@/components/CodePriorityMenu";
+import { markCodeSessionSeen, useCodeSessionUnread } from "@/lib/code-seen";
 import { UserBubble } from "@/components/Bubbles";
 import { TabChip } from "@/components/TabChip";
 import { usePendingFiles } from "@/components/Composer";
@@ -88,9 +92,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SlashMenu, type SlashItem } from "@/components/SlashMenu";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandLogo } from "@/components/BrandLogo";
-import type { AgentSummary, Person } from "@/lib/api";
 import { useT } from "@/i18n";
 import {
   answerCodeApproval,
@@ -106,6 +108,7 @@ import {
   codeSessionsQuery,
   deleteCodeSession,
   dropCodeSession,
+  detachCodeSessionIssue,
   sendToCodeSession,
   setCodeSessionMode,
   setCodeSessionModel,
@@ -128,29 +131,18 @@ const messages = codeSessions;
 
 const active = (s: CodeSessionStatus) => s === "running" || s === "waiting";
 
-/** A status's color, for its icon and its name: working in blue, waiting on someone in amber, failed in red; the rest neutral. */
-const statusTone: Record<CodeSessionStatus, string> = {
-  running: "text-brand",
-  waiting: "text-warning-foreground",
-  idle: "text-foreground",
-  done: "text-muted-foreground",
-  stopped: "text-muted-foreground",
-  failed: "text-destructive",
-};
+const STATE_TEXT_TONE: Partial<Record<CodeSessionState, string>> = { waiting: "text-state-you", failed: "text-priority-urgent" };
 
-/** `asking`: it waits on its question to its bot, not on an approval. */
-function StatusIcon({ status, asking, className }: { status: CodeSessionStatus; asking?: boolean; className?: string }) {
-  const tone = cn("size-4", statusTone[status], className);
-  if (status === "running") return <Spinner className={tone} />;
-  if (status === "waiting" && asking) return <ChatQuestionIcon className={tone} />;
-  if (status === "waiting") return <ShieldAlertIcon className={tone} />;
-  if (status === "idle") return <ClockIcon className={tone} />;
-  if (status === "done") return <CheckCircleIcon className={tone} />;
-  return <CloseCircleIcon className={tone} />;
+/** Its state as a mark (Figma « Statut de session »): one shape and one color per state. */
+function StatusIcon({ session, className }: { session: Pick<CodeSession, "status" | "question" | "git">; className?: string }) {
+  return <CodeStateIcon state={codeSessionState(session)} className={className} />;
 }
 
-/** Its status in words, in its color. */
-const StatusText = ({ session }: { session: CodeSession }) => <span className={cn(session.status !== "idle" && statusTone[session.status])}>{codeStatusText(useT(messages), session)}</span>;
+/** Its state in words; what waits for you and a failure in their color. */
+function StatusText({ session }: { session: CodeSession }) {
+  const t = useT(messages);
+  return <span className={STATE_TEXT_TONE[codeSessionState(session)]}>{codeStatusText(t, session)}</span>;
+}
 
 /* ---------- in the thread ---------- */
 
@@ -181,12 +173,10 @@ export function CodeSessionCard({
       <EngineTile engine={session?.engine} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className="truncate text-[15px] leading-[21px]">{session?.title ?? title}</p>
-        <p className="flex min-w-0 items-center gap-1.5 text-[13px] leading-[18px] text-muted-foreground">
-          {session && active(status) && <StatusIcon status={status} asking={!!session.question} className="size-3" />}
-          <span className="truncate">
-            {session ? codeStatusText(t, session) : gone ? t.gone : t.status[status]}
-            {detail ? ` · ${detail}` : ""}
-          </span>
+        <p className="flex min-w-0 items-center gap-2 text-[13px] leading-[18px] text-muted-foreground">
+          {session && <StatusIcon session={session} className="size-3.5" />}
+          <span className="shrink-0">{session ? <StatusText session={session} /> : gone ? t.gone : t.status[status]}</span>
+          {detail && <span className="min-w-0 truncate">{detail}</span>}
         </p>
       </div>
       {!gone && (
@@ -351,15 +341,20 @@ export function CodeSessionsButton({
                 }
                 className="flex-nowrap items-start text-left hover:bg-muted/60 aria-[current]:bg-muted"
               >
-                <ItemMedia className="mt-0.5">
-                  <StatusIcon status={s.status} asking={!!s.question} />
+                <ItemMedia className="mt-0.5 gap-1.5">
+                  <CodePriorityIcon priority={s.priority} className="size-3.5" />
+                  <StatusIcon session={s} className="size-3.5" />
                 </ItemMedia>
                 <ItemContent className="min-w-0">
                   <ItemTitle className="w-full truncate font-normal">{s.title}</ItemTitle>
-                  <ItemDescription className="truncate text-xs">
-                    <StatusText session={s} />
-                    {s.git?.pr ? ` · PR #${s.git.pr.number}` : s.git?.branch ? ` · ${s.git.branch}` : ""}
-                    {s.worktree?.removedAt ? ` · ${t.worktree.listGone}` : ""} · {dividerLabel(new Date(s.updatedAt))}
+                  <ItemDescription className="flex min-w-0 items-center gap-2 text-xs">
+                    <span className="shrink-0">
+                      <StatusText session={s} />
+                    </span>
+                    {s.issue && <IssueRef issue={s.issue} />}
+                    {s.git?.pr ? <span className="shrink-0">PR #{s.git.pr.number}</span> : s.git?.branch && <span className="truncate">{s.git.branch}</span>}
+                    {s.worktree?.removedAt && <span className="shrink-0">{t.worktree.listGone}</span>}
+                    <span className="ml-auto shrink-0 text-subtle">{dividerLabel(new Date(s.updatedAt))}</span>
                   </ItemDescription>
                   {s.instruction && (
                     <ItemDescription className="text-xs">
@@ -552,28 +547,41 @@ function CodeSessionTabs({
   onCloseTab: (sessionId: string) => void;
 }) {
   const t = useT(messages);
-  const c = useT(common);
   const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
   const { data: engines = [] } = useQuery({ ...codeEnginesQuery(conversationId), retry: false });
   const canStart = engines.length > 0;
-  const others = sessions.filter((s) => !tabs.includes(s.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const others = byCodePriority(sessions.filter((s) => !tabs.includes(s.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+  // The most pressing first (a stable sort: the opening order within a priority); a new session stays last.
+  const order = [...byCodePriority(tabs.flatMap((id) => sessions.filter((s) => s.id === id))).map((s) => s.id), ...tabs.filter((id) => !sessions.some((s) => s.id === id))];
+  // Figma 10: the ones set aside (Low) fold behind « De côté », so the tabs you focus on stay readable.
+  const aside = order.filter((id) => id !== active && sessions.find((s) => s.id === id)?.priority === "low");
   return (
     <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-1.5">
-      {tabs.map((id) => {
-        const session = sessions.find((s) => s.id === id);
-        const title = session?.title ?? t.newSession;
-        return (
-          <TabChip
-            key={id}
-            title={title}
-            icon={session ? <StatusIcon status={session.status} /> : <CodeIcon />}
-            active={id === active}
-            closeLabel={`${c.close} ${title}`}
-            onSelect={() => onSelect(id)}
-            onClose={() => onCloseTab(id)}
-          />
-        );
-      })}
+      {order
+        .filter((id) => !aside.includes(id))
+        .map((id) => (
+          <SessionTab key={id} id={id} session={sessions.find((s) => s.id === id)} active={id === active} onSelect={() => onSelect(id)} onClose={() => onCloseTab(id)} />
+        ))}
+      {aside.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="shrink-0 gap-1.5 px-2 font-normal text-muted-foreground" />}>
+            <CodePriorityIcon priority="low" className="size-3.5" />
+            {t.board.aside}
+            <span className="text-subtle tabular-nums">{aside.length}</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-72">
+            {aside.map((id) => {
+              const s = sessions.find((x) => x.id === id)!;
+              return (
+                <DropdownMenuItem key={id} onClick={() => onSelect(id)}>
+                  <StatusIcon session={s} className="size-3.5" />
+                  <span className="truncate">{s.title}</span>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       {(canStart || others.length > 0) && (
         <DropdownMenu>
           <Tooltip>
@@ -585,18 +593,25 @@ function CodeSessionTabs({
             <TooltipContent>{t.openSession}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="start" className="w-80">
-            {canStart && <DropdownMenuItem onClick={() => onOpen(NEW_CODE_SESSION)}>{t.newSession}</DropdownMenuItem>}
+            {canStart && (
+              <DropdownMenuItem onClick={() => onOpen(NEW_CODE_SESSION)}>
+                <PlusIcon />
+                {t.newSession}
+              </DropdownMenuItem>
+            )}
             {canStart && others.length > 0 && <DropdownMenuSeparator />}
             {others.length > 0 && (
-              <DropdownMenuGroup className="max-h-80 overflow-y-auto">
-                <DropdownMenuLabel>{t.sessions}</DropdownMenuLabel>
+              // Two lines per session, as in the Sessions popover: its title, then its state and when.
+              <DropdownMenuGroup className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
                 {others.map((s) => (
-                  <DropdownMenuItem key={s.id} onClick={() => onOpen(s.id)} className="items-start">
-                    <StatusIcon status={s.status} className="mt-0.5 shrink-0" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{s.title}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        <StatusText session={s} /> · {dividerLabel(new Date(s.updatedAt))}
+                  <DropdownMenuItem key={s.id} onClick={() => onOpen(s.id)} className="h-auto items-start py-1.5">
+                    <CodePriorityIcon priority={s.priority} className="mt-0.5 size-3.5" />
+                    <StatusIcon session={s} className="mt-0.5 size-3.5" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate text-sm">{s.title}</span>
+                      <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                        <StatusText session={s} />
+                        <span className="ml-auto shrink-0 text-subtle">{dividerLabel(new Date(s.updatedAt))}</span>
                       </span>
                     </span>
                   </DropdownMenuItem>
@@ -607,6 +622,37 @@ function CodeSessionTabs({
         </DropdownMenu>
       )}
     </div>
+  );
+}
+
+/** Figma « Onglet de session »: its priority, its state, its title; a blue dot when an answer waits to be read. */
+function SessionTab({ id, session, active, onSelect, onClose }: { id: string; session?: CodeSession; active: boolean; onSelect: () => void; onClose: () => void }) {
+  const t = useT(messages);
+  const c = useT(common);
+  const unread = useCodeSessionUnread(session, active);
+  const title = session?.title ?? t.newSession;
+  return (
+    <TabChip
+      key={id}
+      title={title}
+      icon={
+        session ? (
+          <>
+            <CodePriorityIcon priority={session.priority} />
+            <StatusIcon session={session} />
+          </>
+        ) : (
+          <CodeIcon />
+        )
+      }
+      active={active}
+      unread={unread}
+      closeLabel={`${c.close} ${title}`}
+      onSelect={onSelect}
+      onClose={onClose}
+      // Readable titles: the bar scrolls rather than cutting them to two letters.
+      className="min-w-[200px] max-w-[240px]"
+    />
   );
 }
 
@@ -995,14 +1041,11 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
   );
 }
 
-type SessionTab = "overview" | "changes";
-
 /**
- * A session, as wide as the conversation beside it (Figma « Sessions de code — un seul parcours »): its
- * header (one line: state, engine, branch), then two tabs. Avancement says where it stands: its pending
- * approval or question first, what it does now or its answer, its tasks, and what it and its bot said
- * to each other. Modifications: its files and its pull request. No log of raw steps. The owner's field
- * stays at the bottom. `page`: a tab of its own, the close button closes it.
+ * A session, as wide as the conversation beside it (Figma « En-tête de session », « Fil »): its header
+ * (state, engine, issue, branch; its priority), then one stream: its pull request and files, its
+ * tasks, what it said and did, and what waits for an answer at the end. The owner's field stays at the
+ * bottom. `page`: a tab of its own, the close button closes it.
  */
 function CodeSessionView({
   conversationId,
@@ -1021,7 +1064,6 @@ function CodeSessionView({
   const c = useT(common);
   const { user } = useRouteContext({ from: "/app" });
   const { data: session } = useQuery(codeSessionQuery(conversationId, sessionId));
-  const [tab, setTab] = useState<SessionTab>("overview");
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -1031,14 +1073,11 @@ function CodeSessionView({
   // every time its content grows, and the "latest" button knows where the reader is without a scroll.
   const loaded = !!session;
   useLayoutEffect(() => {
-    if (tab === "overview") follow.current = true;
-  }, [tab]);
-  useLayoutEffect(() => {
     const el = scroller.current;
     const inner = content.current;
     if (!el || !inner) return;
     const sync = () => {
-      if (tab === "overview" && follow.current) el.scrollTop = el.scrollHeight;
+      if (follow.current) el.scrollTop = el.scrollHeight;
       setAtBottom(isAtBottom(el));
     };
     sync();
@@ -1046,7 +1085,7 @@ function CodeSessionView({
     observer.observe(inner);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [tab, loaded]);
+  }, [loaded]);
 
   const owner = !!session && session.requestedBy === user.id;
   const approval = session?.approval;
@@ -1068,34 +1107,67 @@ function CodeSessionView({
   useLayoutEffect(() => {
     if (!waitingFor) return;
     follow.current = true;
-    if (tab === "overview") scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-    else setTab("overview");
+    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [waitingFor]);
+  // Read once it is in front: its tab loses its dot.
+  useEffect(() => {
+    if (session) markCodeSessionSeen(session);
+  }, [session?.id, session?.updatedAt]);
+  const setPriority = useSetCodePriority({ id: sessionId, conversationId });
   const composer = useRef<{ addFiles: (files: FileList) => void }>(null);
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
-  const changed = session?.git ? (session.git.files?.length ?? session.git.changes) : 0;
   const branch = session?.git?.branch ?? session?.worktree?.branch;
   const engineName = CODE_ENGINE_NAMES[session?.engine ?? "claude"];
 
   return (
     <FileDropPanel onFiles={owner ? (files) => composer.current?.addFiles(files) : undefined} label={t.drop(engineName)}>
+      <div
+        className="contents"
+        // 1 to 4, 0: its priority, as in Linear, outside a text field.
+        onKeyDown={(e) => {
+          const p = owner && session ? priorityOfKey(e) : null;
+          if (!p || p === session?.priority) return;
+          e.preventDefault();
+          setPriority.mutate(p);
+        }}
+      >
       <PaneHeader
         media={<EngineTile engine={session?.engine} />}
         title={session?.title ?? t.codeSession}
-        // One line, as in Figma: its state, the engine said once, its branch.
+        // One line, as in Figma: its state, the engine said once, its issue, its branch; no « · », each with its mark.
         description={
           session && (
-            <span className="flex min-w-0 items-center gap-1.5">
-              <StatusIcon status={session.status} asking={!!session.question} className="size-3 shrink-0" />
-              <span className="truncate">
-                <StatusText session={session} /> · {engineName}
-                {branch && ` · ${branch}`}
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="flex shrink-0 items-center gap-1.5">
+                <StatusIcon session={session} className="size-3.5" />
+                <StatusText session={session} />
               </span>
+              <span className="shrink-0">{engineName}</span>
+              {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
+              {branch && (
+                <span className="flex min-w-0 items-center gap-1">
+                  <BranchIcon className="size-3.5 shrink-0" />
+                  <span className="truncate">{branch}</span>
+                </span>
+              )}
             </span>
           )
         }
         actions={
           <>
+            {session &&
+              (owner ? (
+                <CodePriorityMenu
+                  session={session}
+                  trigger={
+                    <Button variant="ghost" size="icon" aria-label={`${t.priority} ${t.priorities[session.priority]}`} title={t.priorities[session.priority]}>
+                      <CodePriorityIcon priority={session.priority} />
+                    </Button>
+                  }
+                />
+              ) : (
+                session.priority !== "none" && <CodePriorityIcon priority={session.priority} className="mx-2" />
+              ))}
             {session && <SessionDetails conversationId={conversationId} session={session} showModel={!owner} owner={owner} />}
             {onDetach && <BesideButton onClick={onDetach} />}
             {onClose && (
@@ -1106,17 +1178,6 @@ function CodeSessionView({
           </>
         }
       />
-      {session && (
-        <Tabs value={tab} onValueChange={(v) => setTab(v as SessionTab)} className="shrink-0 px-5 pb-2">
-          <TabsList>
-            <TabsTrigger value="overview">{t.view.overview}</TabsTrigger>
-            <TabsTrigger value="changes">
-              {t.view.changes}
-              {changed > 0 && <span className="tabular-nums text-muted-foreground">{changed}</span>}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      )}
 
       {!session ? (
         <div className="flex min-h-0 flex-1">
@@ -1133,18 +1194,14 @@ function CodeSessionView({
               ref={scroller}
               onScroll={(e) => {
                 const bottom = isAtBottom(e.currentTarget);
-                if (tab === "overview") follow.current = bottom;
+                follow.current = bottom;
                 setAtBottom(bottom);
               }}
               // Positioned, like the conversation's thread: its absolute elements stay within it.
               className="relative h-full overflow-y-auto px-5 pt-2 pb-4"
             >
               <div ref={content} className="flex min-h-full flex-col">
-                {tab === "overview" ? (
-                  <Overview conversationId={conversationId} session={session} owner={owner} pending={pending} />
-                ) : (
-                  <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
-                )}
+                <Overview conversationId={conversationId} session={session} owner={owner} pending={pending} />
               </div>
             </div>
             {!atBottom && (
@@ -1167,7 +1224,49 @@ function CodeSessionView({
           </div>
         </>
       )}
+      </div>
     </FileDropPanel>
+  );
+}
+
+/** Its issue in a list's line: its mark and number, its title on hover. */
+function IssueRef({ issue }: { issue: CodeIssue }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1" title={issue.title}>
+      <IssueIcon />#{issue.number}
+    </span>
+  );
+}
+
+/** Its issue in the header: open it on GitHub; its owner detaches it when the session linked the wrong one. */
+function IssueMenu({ conversationId, session, issue, owner }: { conversationId: string; session: CodeSession; issue: CodeIssue; owner: boolean }) {
+  const t = useT(messages);
+  const qc = useQueryClient();
+  const detach = useMutation({
+    mutationFn: () => detachCodeSessionIssue(conversationId, session.id),
+    onSuccess: (s) => applyCodeSession(qc, s),
+    meta: { success: t.issue.detached },
+  });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<button type="button" title={issue.title} className="flex shrink-0 items-center gap-1 rounded-sm outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50" />}>
+        <IssueIcon />#{issue.number}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuLabel className="truncate">{issue.title}</DropdownMenuLabel>
+        <DropdownMenuItem render={<a href={issue.url} target="_blank" rel="noreferrer" />}>{t.issue.open}</DropdownMenuItem>
+        {owner && (
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={async () => {
+              if (await confirmAction({ title: t.issue.detachTitle(issue.number), description: t.issue.detachHelp, action: t.issue.detach })) detach.mutate();
+            }}
+          >
+            {t.issue.detach}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1211,9 +1310,11 @@ function Overview({
   // What it does, as it does it: instructions, its words streaming, its actions; what it waits for at the end.
   return (
     <div className="flex flex-1 flex-col gap-6">
+      <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
       {session.todos.length > 0 && (
-        <Section title={v.tasks(done, session.todos.length)}>
-          <ItemGroup className="gap-0 has-data-[size=xs]:gap-0">
+        <Section title={<>{v.tasks}<span className="ml-2 text-subtle tabular-nums">{v.tasksCount(done, session.todos.length)}</span></>}>
+          {/* Figma « Tâches »: a hairline card. */}
+          <ItemGroup className="gap-0 rounded-xl border border-border px-3 py-1 has-data-[size=xs]:gap-0">
             {session.todos.map((todo) => (
               <Item key={todo.id} size="xs" className="px-0 py-1.5">
                 <ItemMedia variant="icon">
@@ -1301,7 +1402,7 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
           {step.ok ? <BranchIcon className="mt-0.5 size-3.5 shrink-0" /> : <CloseCircleIcon className="mt-0.5 size-3.5 shrink-0" />}
           <span className="min-w-0 break-words">
             {step.text}
-            {step.by ? ` · ${step.by}` : ""}
+            {step.by && <span className="ml-2 text-subtle">{step.by}</span>}
           </span>
         </div>
       );
@@ -1349,7 +1450,7 @@ function ToolBlock({ steps, all }: { steps: ToolStepT[]; all: CodeStep[] }) {
 }
 
 /** A path reads as its file name; the folders it sits in on the server say nothing. */
-const shortTitle = (title: string) => title.replace(/(?:\/[\w.@+-]+)+\/([\w.@+-]+)/g, "$1");
+const shortTitle = (title: string) => title.replace(/\S*\/([^\s/]+)/g, "$1");
 
 /** One action, named in words; unfolds to its input and result, and to a subagent's own steps. */
 function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
@@ -1456,7 +1557,7 @@ function SessionDetails({ conversationId, session, showModel, owner }: { convers
                 <ItemTitle>{t.account}</ItemTitle>
                 <ItemDescription className="truncate">
                   {session.account.email}
-                  {session.account.plan ? ` · ${session.account.plan}` : ""}
+                  {session.account.plan && <span className="ml-2 text-subtle">{session.account.plan}</span>}
                 </ItemDescription>
               </ItemContent>
             </Item>
@@ -1603,19 +1704,10 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
     meta: { error: t.failed },
   });
 
+  const [filesOpen, setFilesOpen] = useState(false);
   const git = session.git;
-  if (!git)
-    return (
-      <Empty className="pt-10">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <BranchIcon />
-          </EmptyMedia>
-          <EmptyTitle>{v.noChanges}</EmptyTitle>
-          <EmptyDescription>{v.noChangesHelp}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
+  // Not a GitHub clone, or not read yet: nothing to show above its stream.
+  if (!git) return null;
   const files = git.files ?? [];
   const onBase = !!git.branch && git.branch === git.base;
   const pr = git.pr;
@@ -1649,15 +1741,51 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
       ];
 
   const where = [
-    pr ? `${t.pr(pr.number)} · ${t.prState[pr.state]}` : git.branch,
+    pr ? `${t.pr(pr.number)} ${t.prState[pr.state]}` : git.branch,
     git.ahead ? (git.pushed ? v.commits(git.ahead) : t.ahead(git.ahead, false)) : null,
     git.behind ? t.behind(git.behind) : null,
     !pr && !git.ahead && !git.behind && !git.changes ? t.clean : null,
   ].filter(Boolean);
+  const card = (
+    <div className="flex flex-col gap-2">
+      <Item variant="outline">
+        <ItemMedia variant="image" className="rounded-[10px] border border-border">
+          <BrandLogo domain="github.com" fallback={<BranchIcon className="size-5 text-muted-foreground" />} className="size-[22px] dark:invert" />
+        </ItemMedia>
+        <ItemContent className="min-w-0">
+          <ItemTitle className={cn("w-full font-normal", !pr && "font-mono text-xs")}>
+            <span className="truncate">{pr?.title ?? git.branch ?? "?"}</span>
+          </ItemTitle>
+          <ItemDescription className="flex min-w-0 items-center gap-2.5">
+            {where.map((w) => (
+              <span key={w} className="shrink-0">
+                {w}
+              </span>
+            ))}
+            {git.changes > 0 && (
+              <button type="button" onClick={() => setFilesOpen((o) => !o)} className="shrink-0 underline-offset-2 hover:text-foreground hover:underline">
+                {t.changes(git.changes)}
+              </button>
+            )}
+          </ItemDescription>
+        </ItemContent>
+        <ItemActions>
+          {branchActions.length > 0 && <GitActions actions={branchActions} busy={busy} pending={run.isPending} working={working} />}
+          {pr && (
+            <Button variant="secondary" nativeButton={false} render={<a href={pr.url} target="_blank" rel="noreferrer" />}>
+              {all.open}
+            </Button>
+          )}
+        </ItemActions>
+      </Item>
+      {owner && !git.github && <FieldDescription>{t.noGithub}</FieldDescription>}
+    </div>
+  );
 
   return (
-    <div className="flex flex-col gap-6">
-      {(git.changes > 0 || files.length > 0) && (
+    <div className="flex flex-col gap-4">
+      {card}
+      {filesOpen && (git.changes > 0 || files.length > 0) && (
         <Section title={v.uncommitted(git.changes)}>
           {files.length > 0 && (
             <ItemGroup className="gap-0 has-data-[size=xs]:gap-0">
@@ -1711,29 +1839,6 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
           )}
         </Section>
       )}
-
-      <Section title={pr ? v.pullRequest : v.branch}>
-        <Item variant="outline">
-          <ItemMedia variant="image" className="rounded-[10px] border border-border">
-            <BrandLogo domain="github.com" fallback={<BranchIcon className="size-5 text-muted-foreground" />} className="size-[22px] dark:invert" />
-          </ItemMedia>
-          <ItemContent className="min-w-0">
-            <ItemTitle className={cn("w-full font-normal", !pr && "font-mono text-xs")}>
-              <span className="truncate">{pr?.title ?? git.branch ?? "?"}</span>
-            </ItemTitle>
-            <ItemDescription className="line-clamp-1">{where.join(" · ")}</ItemDescription>
-          </ItemContent>
-          <ItemActions>
-            {branchActions.length > 0 && <GitActions actions={branchActions} busy={busy} pending={run.isPending} working={working} />}
-            {pr && (
-              <Button variant="secondary" nativeButton={false} render={<a href={pr.url} target="_blank" rel="noreferrer" />}>
-                {all.open}
-              </Button>
-            )}
-          </ItemActions>
-        </Item>
-        {owner && !git.github && <FieldDescription>{t.noGithub}</FieldDescription>}
-      </Section>
 
       <PullRequestDialog
         open={prDialog}
@@ -2223,7 +2328,7 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
               : active(session.status)
                 ? t.placeholderRunning
                 : session.commands.length
-                  ? `${t.placeholderIdle} · ${t.commands.hint}`
+                  ? t.placeholderIdleCommands
                   : t.placeholderIdle
           }
           onChange={(e) => {
@@ -2293,7 +2398,7 @@ function commandItems(session: CodeSession, query: string): SlashItem[] {
       key: `${c.skill ? "skill" : "command"}:${c.name}`,
       kind: c.skill ? "skill" : "command",
       name: c.name,
-      description: c.argumentHint ? `${c.argumentHint} · ${c.description}` : c.description,
+      description: c.argumentHint ? `${c.argumentHint}  ${c.description}` : c.description,
     })),
     query.toLowerCase(),
   );

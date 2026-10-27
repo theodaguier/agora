@@ -1,13 +1,13 @@
-import { insertMessage, removeMessage, type CodeSession, type CodeSessionRef, type CodeStep, type Schedule } from "@agora/core";
+import { codeSessionState, insertMessage, removeMessage, type CodeSession, type CodeSessionState, type CodeSessionRef, type CodeStep, type Schedule } from "@agora/core";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { fetch } from "expo/fetch";
 import { useEffect, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { apiUrl, authHeaders } from "./api";
-import { applyCodeSession, applyCodeStep, dropCodeSession } from "./code-sessions";
+import { applyCodeSession, applyCodeStep, codeSessionsQuery, dropCodeSession } from "./code-sessions";
 import { demoEvents, isDemo } from "./demo";
 import { presenceQuery } from "./presence";
-import type { ActiveTurn, Message, PendingApproval } from "./types";
+import type { ActiveTurn, ConversationDetail, ConversationSummary, Message, PendingApproval } from "./types";
 
 /*
  * apps/web/src/lib/realtime.ts: same store and same event handling. The stream is read with
@@ -48,6 +48,43 @@ export function onTurnEvent(conversationId: string, fn: (ev: TurnEvent) => void)
   const l = (ev: TurnEvent) => ev.conversationId === conversationId && fn(ev);
   turnListeners.add(l);
   return () => void turnListeners.delete(l);
+}
+
+/**
+ * What happens away from your eyes (apps/web/src/lib/attention.tsx): a session of yours reached a state
+ * worth telling, or a bot answered you. components/attention-toasts.tsx turns them into toasts,
+ * unless what they are about is on screen.
+ */
+export type AttentionEvent =
+  | { kind: "code"; session: CodeSession; state: "waiting" | "finished" | "merged" | "failed" }
+  | { kind: "message"; conversationId: string; message: Message };
+const attentionListeners = new Set<(ev: AttentionEvent) => void>();
+
+export function onAttention(fn: (ev: AttentionEvent) => void) {
+  attentionListeners.add(fn);
+  return () => void attentionListeners.delete(fn);
+}
+
+const tell = (ev: AttentionEvent) => attentionListeners.forEach((l) => l(ev));
+
+const kindOf = (qc: QueryClient, conversationId: string) =>
+  qc.getQueryData<ConversationSummary[]>(["conversations"])?.find((c) => c.id === conversationId)?.kind ??
+  qc.getQueryData<ConversationDetail>(["conversation", conversationId])?.kind;
+
+/** Replies of yours: ones you asked for, and in a direct conversation with a bot, the ones nobody asked for (routines). */
+const yours = (qc: QueryClient, me: string, conversationId: string, turn: ActiveTurn | undefined) =>
+  !!turn && (turn.requestedBy === me || (turn.requestedBy === null && kindOf(qc, conversationId) === "direct"));
+
+/** Last state of each session, as the lists show it: its toast goes on a change. */
+const codeStates = new Map<string, CodeSessionState>();
+const TOLD = new Set<CodeSessionState>(["waiting", "finished", "merged", "failed"]);
+
+function codeAttention(qc: QueryClient, me: string, session: CodeSession) {
+  const cached = qc.getQueryData(codeSessionsQuery(session.conversationId).queryKey)?.find((s) => s.id === session.id);
+  const before = codeStates.get(session.id) ?? (cached && codeSessionState(cached));
+  const state = codeSessionState(session);
+  codeStates.set(session.id, state);
+  if (session.requestedBy === me && before && before !== state && TOLD.has(state)) tell({ kind: "code", session, state: state as "waiting" | "finished" | "merged" | "failed" });
 }
 
 const EMPTY_TURNS: ActiveTurn[] = [];
@@ -179,6 +216,11 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       qc.setQueryData<Message[]>(["messages", cid], (old) => old && insertMessage(old, ev.message));
       const author = ev.message.author;
       if (author?.kind === "user") updateTyping(cid, (ts) => ts.filter((t) => t.userId !== author.id));
+      // A bot's answer for you: a turn you started, or a direct conversation.
+      if (author?.kind === "agent" && ev.message.kind === "bot") {
+        const turn = state.turns[cid]?.find((t) => t.turnId === ev.message.data?.turn?.id);
+        if (yours(qc, me, cid, turn) || kindOf(qc, cid) === "direct") tell({ kind: "message", conversationId: cid, message: ev.message });
+      }
       qc.invalidateQueries({ queryKey: ["conversations"] });
       return;
     }
@@ -233,12 +275,14 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
       updateTurns(cid, (ts) => ts.map((t) => (t.turnId === ev.turnId ? { ...t, codeSessions: [...(t.codeSessions ?? []), ev.session] } : t)));
       return;
     case "code.session":
+      codeAttention(qc, me, ev.session);
       applyCodeSession(qc, ev.session);
       return;
     case "code.step":
       applyCodeStep(qc, cid, ev.sessionId, ev.step);
       return;
     case "code.removed":
+      codeStates.delete(ev.sessionId);
       dropCodeSession(qc, cid, ev.sessionId);
       return;
     case "bot.done":

@@ -1,7 +1,7 @@
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import { Button, Menu, PressableFeedback, Select, Separator, SubMenu, Typography } from "heroui-native";
-import { cloneElement, Fragment, useState, type ReactElement } from "react";
+import { cloneElement, Fragment, useState, type ReactElement, type ReactNode } from "react";
 import type { GestureResponderEvent } from "react-native";
 import {
   AtIcon,
@@ -120,6 +120,8 @@ export type SFSymbol = string;
 export type MenuAction = {
   label: string;
   icon?: SFSymbol;
+  /** A mark of its own in place of the icon (a session's priority). */
+  mark?: ReactNode;
   onPress: () => void;
   destructive?: boolean;
   disabled?: boolean;
@@ -168,7 +170,7 @@ function Items({ entries }: { entries: MenuEntry[] }) {
       );
     return (
       <Menu.Item key={e.label} variant={e.destructive ? "danger" : "default"} isDisabled={e.disabled} isSelected={e.checked} onPress={e.onPress}>
-        <MenuIcon name={e.icon} destructive={e.destructive} />
+        {e.mark ?? <MenuIcon name={e.icon} destructive={e.destructive} />}
         <Menu.ItemTitle>{e.label}</Menu.ItemTitle>
         {e.checked !== undefined && <Menu.ItemIndicator />}
       </Menu.Item>

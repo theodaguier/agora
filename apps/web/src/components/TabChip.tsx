@@ -17,6 +17,7 @@ export function TabChip({
   onSelect,
   onClose,
   onDragStart,
+  className,
 }: {
   title: string;
   icon: ReactNode;
@@ -28,6 +29,7 @@ export function TabChip({
   onClose: () => void;
   /** Makes the tab draggable. */
   onDragStart?: (e: DragEvent) => void;
+  className?: string;
 }) {
   return (
     <div
@@ -53,9 +55,10 @@ export function TabChip({
         "group/tab flex h-[30px] min-w-0 max-w-[200px] flex-1 select-none items-center gap-[7px] rounded-[9px] pr-1.5 pl-2.5 text-[13px] tracking-[-0.05px] text-muted-foreground outline-none hover:bg-black/4 focus-visible:ring-3 focus-visible:ring-ring/30 dark:hover:bg-white/5",
         active && "bg-background font-medium text-foreground ring-1 ring-black/8 dark:ring-white/10 hover:bg-background dark:bg-accent dark:hover:bg-accent",
         active && dimmed && "text-muted-foreground",
+        className,
       )}
     >
-      <span className="flex size-3.5 shrink-0 items-center justify-center [&_svg]:size-3.5">{icon}</span>
+      <span className="flex h-3.5 min-w-3.5 shrink-0 items-center justify-center gap-1 [&_svg]:size-3.5">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{title}</span>
       {unread && !active && <span className="size-1.5 shrink-0 rounded-full bg-brand" />}
       <Button

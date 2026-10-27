@@ -202,13 +202,13 @@ export const nextCodeMode = (mode: CodePermissionMode, engine: CodeEngine = "cla
 
 /** A session's status in words (the codeSessions messages): what it waits for, when it waits. */
 export function codeStatusText(
-  t: { waitingQuestion: string; waitingPlan: string; status: Record<CodeSessionStatus, string> },
-  session: { status: CodeSessionStatus; approval: CodeApproval | null; question?: CodeBotQuestion | null },
+  t: { waitingQuestion: string; waitingPlan: string; states: Record<CodeSessionState, string> },
+  session: { status: CodeSessionStatus; approval: CodeApproval | null; question?: CodeBotQuestion | null; git?: CodeGit | null },
 ) {
   if (session.question) return t.waitingQuestion;
   if (session.status === "waiting" && session.approval?.kind === "question") return t.waitingQuestion;
   if (session.status === "waiting" && session.approval?.kind === "plan") return t.waitingPlan;
-  return t.status[session.status];
+  return t.states[codeSessionState(session)];
 }
 
 /** What it waits for, in one line: the action and its target, or the question, or the plan's title. */
@@ -277,6 +277,81 @@ export type CodeUsage = {
   durationMs: number;
 };
 
+/**
+ * How much a session matters to its owner, as in Linear: Urgent first, Low for the ones set aside to focus
+ * on others, None until it is given one. Its key is the shortcut that sets it.
+ */
+export type CodePriority = "urgent" | "high" | "medium" | "low" | "none";
+
+export const CODE_PRIORITIES: CodePriority[] = ["urgent", "high", "medium", "low", "none"];
+
+export const CODE_PRIORITY_KEYS: Record<CodePriority, string> = { urgent: "1", high: "2", medium: "3", low: "4", none: "0" };
+
+/** The GitHub issue of its repository a session works on: it links it itself when its task matches one, and its owner can detach it. */
+export type CodeIssue = { number: number; title: string; url: string; state: "open" | "closed" };
+
+/**
+ * A session's state as the lists show it: its status, with the end of a run split by what came of it.
+ * waiting: it waits for an approval or an answer; idle: it waits for an instruction, without a pull request;
+ * finished: it answered and its pull request is open (or closed unmerged); merged: its pull request is merged.
+ */
+export type CodeSessionState = "waiting" | "running" | "idle" | "finished" | "merged" | "stopped" | "failed";
+
+/** The order of the groups by state: what needs you first, then what works, then what is over. */
+export const CODE_STATES: CodeSessionState[] = ["waiting", "running", "idle", "finished", "merged", "stopped", "failed"];
+
+export function codeSessionState(s: { status: CodeSessionStatus; question?: CodeBotQuestion | null; git?: CodeGit | null }): CodeSessionState {
+  if (s.question || s.status === "waiting") return "waiting";
+  if (s.status === "done") return "merged";
+  if (s.status === "idle") return s.git?.pr ? "finished" : "idle";
+  return s.status;
+}
+
+/** Actives: still to follow (working, waiting); Finies: over (finished, merged, stopped, failed). */
+export type CodeSessionView = "active" | "finished" | "all";
+
+const ACTIVE_STATES = new Set<CodeSessionState>(["waiting", "running", "idle"]);
+
+export const inCodeSessionView = (state: CodeSessionState, view: CodeSessionView) =>
+  view === "all" || (view === "active") === ACTIVE_STATES.has(state);
+
+export type CodeSessionGrouping = "state" | "priority" | "project";
+export type CodeSessionOrdering = "priority" | "updated" | "created";
+
+/** Its project: the GitHub repository it works in ("" without one). */
+export const codeSessionProject = (s: { repo: string | null; git?: CodeGit | null }) => s.repo ?? s.git?.repo ?? "";
+
+type Groupable = Pick<CodeSession, "status" | "question" | "git" | "repo" | "priority" | "updatedAt" | "createdAt">;
+
+/**
+ * A list of sessions in groups, as Linear shows issues: by state, priority or project, each group sorted
+ * by `order` then by the last activity. Empty groups are left out; stopped and failed ones only on demand.
+ */
+export function groupCodeSessions<T extends Groupable>(
+  sessions: T[],
+  opts: { group: CodeSessionGrouping; order: CodeSessionOrdering; view: CodeSessionView; showStopped: boolean },
+): { key: string; sessions: T[] }[] {
+  const rank = (p: CodePriority) => CODE_PRIORITIES.indexOf(p);
+  const shown = sessions.filter((s) => {
+    const state = codeSessionState(s);
+    return inCodeSessionView(state, opts.view) && (opts.showStopped || (state !== "stopped" && state !== "failed"));
+  });
+  const sorted = [...shown].sort(
+    (a, b) =>
+      (opts.order === "priority" ? rank(a.priority) - rank(b.priority) : 0) ||
+      (opts.order === "created" ? b.createdAt.localeCompare(a.createdAt) : 0) ||
+      b.updatedAt.localeCompare(a.updatedAt),
+  );
+  const keyOf = (s: T) => (opts.group === "state" ? codeSessionState(s) : opts.group === "priority" ? s.priority : codeSessionProject(s));
+  const keys =
+    opts.group === "state" ? CODE_STATES : opts.group === "priority" ? CODE_PRIORITIES : [...new Set(sorted.map(keyOf))].sort((a, b) => (a ? (b ? a.localeCompare(b) : -1) : 1));
+  return keys.map((key) => ({ key, sessions: sorted.filter((s) => keyOf(s) === key) })).filter((g) => g.sessions.length);
+}
+
+/** Workspace tabs: the most pressing first, so the ones you focus on stay readable. */
+export const byCodePriority = <T extends { priority: CodePriority }>(list: T[]) =>
+  [...list].sort((a, b) => CODE_PRIORITIES.indexOf(a.priority) - CODE_PRIORITIES.indexOf(b.priority));
+
 export type CodeSession = {
   id: string;
   conversationId: string;
@@ -288,6 +363,9 @@ export type CodeSession = {
   requestedBy: string | null;
   title: string;
   status: CodeSessionStatus;
+  priority: CodePriority;
+  /** The GitHub issue it works on, once linked. */
+  issue: CodeIssue | null;
   /** Working directory on the server. */
   cwd: string;
   /** GitHub repository (owner/name) it was cloned from, when started on one. */

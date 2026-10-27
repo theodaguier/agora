@@ -2,7 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, join, sep } from "node:path";
 import type { Subprocess } from "bun";
-import { CODE_ENGINE_NAMES, codeEngineModes, codeInstructionText, type CodeApproval, type CodeEngine, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
+import { CODE_ENGINE_NAMES, CODE_PRIORITIES, codeEngineModes, codeInstructionText, type CodeApproval, type CodeIssue, type CodePriority, type CodeEngine, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
 import { activateClaudeAccount, activeClaudeAccountId, claudeCodeEnv, claudeProfiles } from "./claude-accounts";
 import { resultUsage, sessionExists, workspace, type ClaudeResult } from "./claude-code";
 import { engineBin, headlessEngine, type HeadlessEngine } from "./code-engines";
@@ -177,6 +177,8 @@ function summary(s: Live): CodeSession {
     title: r.title,
     // Its question to its bot holds the run as an approval does.
     status: s.question && r.status === "running" ? "waiting" : statusOf(r),
+    priority: r.priority,
+    issue: r.issue ?? null,
     cwd: r.cwd,
     repo: r.repo,
     git: r.git,
@@ -396,6 +398,8 @@ async function save(s: Live) {
       .update(schema.codeSession)
       .set({
         status: r.status,
+        priority: r.priority,
+        issue: r.issue,
         result: r.result,
         model: r.model,
         permissions: r.permissions,
@@ -744,6 +748,25 @@ export async function setCodeSessionMode(id: string, mode: CodePermissionMode, c
   return summary(s);
 }
 
+/** Its owner's priority for it: broadcast to the conversation, kept with the session. */
+export async function setCodeSessionPriority(id: string, priority: CodePriority, conversationId?: string) {
+  const s = await load(id, conversationId);
+  if (!CODE_PRIORITIES.includes(priority)) throw new CodeSessionError("invalid");
+  s.row.priority = priority;
+  touch(s, [], true);
+  await save(s);
+  return summary(s);
+}
+
+/** Its issue detached by its owner: the session linked the wrong one. */
+export async function detachCodeSessionIssue(id: string, conversationId?: string) {
+  const s = await load(id, conversationId);
+  s.row.issue = null;
+  touch(s, [], true);
+  await save(s);
+  return summary(s);
+}
+
 /**
  * The model of the next runs; a run under way switches right away (Claude Code's set_model
  * control request). The caller checks the model is one the owner may use.
@@ -792,6 +815,12 @@ export type GitRequest =
  * A git action of the owner, from the panel: never while Claude Code works in the directory.
  * Recorded in the steps (the bot reads them), and in the conversation for a pull request.
  */
+/** A pull request opened from the panel closes the session's issue once merged (GitHub's "Closes #n"). */
+function withIssue(req: Extract<GitRequest, { action: "pr" }>, issue: CodeIssue | null | undefined) {
+  if (!issue || new RegExp(`(close[sd]?|fix(e[sd])?|resolve[sd]?) #${issue.number}\\b`, "i").test(req.body)) return req;
+  return { ...req, body: `${req.body.trim()}${req.body.trim() ? "\n\n" : ""}Closes #${issue.number}` };
+}
+
 export async function runGitAction(id: string, req: GitRequest, by: string, conversationId?: string) {
   const s = await load(id, conversationId);
   if (s.running || s.gitBusy) throw new CodeSessionError("busy");
@@ -803,7 +832,7 @@ export async function runGitAction(id: string, req: GitRequest, by: string, conv
       commit: async () => gitOps.commit(cwd, (req as Extract<GitRequest, { action: "commit" }>).message.trim() || (await writeCommitMessage(s))),
       push: () => gitOps.push(cwd),
       pull: () => gitOps.pull(cwd),
-      pr: () => gitOps.openPullRequest(cwd, req as Extract<GitRequest, { action: "pr" }>),
+      pr: () => gitOps.openPullRequest(cwd, withIssue(req as Extract<GitRequest, { action: "pr" }>, s.row.issue)),
       merge: () => gitOps.mergePullRequest(cwd, (req as Extract<GitRequest, { action: "merge" }>).method),
     }[req.action]();
     gitStep(s, req.action, true, outcome.text, by);
@@ -1402,12 +1431,14 @@ async function execute(s: Live, id: number): Promise<void> {
     r.worktree && r.repo && (await repoEnv(r.repo)) && CREDENTIALS_NOTE,
     // ask_bot is an MCP tool of Claude Code's control protocol.
     s.bot && !headless && askNote(s.bot),
+    issueRepo(r) && !headless && issueNote(r.issue),
   ]
     .filter(Boolean)
     .join("\n\n");
   if (headless) return executeHeadless(s, id, headlessEngine(r.engine as Exclude<CodeEngine, "claude">), appended, connectors);
-  const mcp = await claudeMcpConfig(connectors, s.bot ? { [MCP_SERVER]: { type: "sdk", name: MCP_SERVER } } : {});
-  const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools, ...(s.bot ? [ASK_TOOL] : []), ...mcp.allowed];
+  const own = agoraTools(s);
+  const mcp = await claudeMcpConfig(connectors, own.length ? { [MCP_SERVER]: { type: "sdk", name: MCP_SERVER } } : {});
+  const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools, ...own.map((t) => `mcp__${MCP_SERVER}__${t.name}`), ...mcp.allowed];
   // The files joined to its instructions, including the ones sent while this process stays warm.
   const uploads = uploadsDir(await workspace(), r.id);
   await mkdir(uploads, { recursive: true });
@@ -1824,6 +1855,65 @@ const askTool = (bot: string) => ({
   },
 });
 
+/* ---------- its GitHub issue ---------- */
+
+/**
+ * A session on a GitHub repository links itself to the issue its task answers: it reads the open
+ * issues (find_issues) and links the one that matches (link_issue), so its owner finds it by issue.
+ * Its pull request then closes the issue.
+ */
+const FIND_ISSUES = "find_issues";
+const LINK_ISSUE = "link_issue";
+
+/** Its repository on GitHub, when it can read its issues. */
+const issueRepo = (r: Row) => (r.engine === "claude" && (r.repo ?? r.git?.repo)) || null;
+
+const issueNote = (issue: CodeIssue | null | undefined) =>
+  issue
+    ? `Cette session est rattachée à l'issue GitHub #${issue.number} (« ${issue.title} »). Si tu ouvres une pull request, écris « Closes #${issue.number} » dans sa description.`
+    : `Au début de ta tâche, regarde les issues ouvertes du dépôt avec ${`mcp__${MCP_SERVER}__${FIND_ISSUES}`}. Si l'une décrit clairement ce qu'on te demande, rattache-la avec ${`mcp__${MCP_SERVER}__${LINK_ISSUE}`}, une seule fois, puis écris « Closes #n » dans la description de ta pull request. Si aucune ne correspond clairement, n'en rattache aucune.`;
+
+/** Its own MCP tools: its question to its bot, and its issue on a GitHub repository. */
+function agoraTools(s: Live): Json[] {
+  const r = s.row;
+  return [
+    ...(s.bot && r.engine === "claude" ? [askTool(s.bot)] : []),
+    ...(issueRepo(r)
+      ? [
+          {
+            name: FIND_ISSUES,
+            description: "Liste les issues ouvertes du dépôt GitHub de la session (numéro, titre, étiquettes, début de la description), les plus récentes d'abord.",
+            inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          },
+          {
+            name: LINK_ISSUE,
+            description:
+              "Rattache la session à une issue ouverte du dépôt dont le contenu correspond clairement à ta tâche. Son propriétaire la voit sous le titre de la session et peut la détacher. Une seule issue : un nouvel appel remplace la précédente.",
+            inputSchema: { type: "object", properties: { number: { type: "integer", description: "Le numéro de l'issue." } }, required: ["number"], additionalProperties: false },
+          },
+        ]
+      : []),
+  ];
+}
+
+async function issueCall(s: Live, name: string, args: Json): Promise<string> {
+  const repo = issueRepo(s.row);
+  if (!repo) throw new Error("Cette session ne travaille pas sur un dépôt GitHub.");
+  if (name === FIND_ISSUES) {
+    const issues = await gitOps.listIssues(repo);
+    if (!issues.length) return "Aucune issue ouverte.";
+    return issues.map((i) => `#${i.number} ${i.title}${i.labels.length ? ` [${i.labels.join(", ")}]` : ""}${i.body ? `\n  ${i.body}` : ""}`).join("\n");
+  }
+  const number = Number(args.number);
+  if (!Number.isInteger(number) || number <= 0) throw new Error("number est requis.");
+  const issue = await gitOps.getIssue(repo, number);
+  if (!issue) throw new Error(`L'issue #${number} n'existe pas dans ${repo}.`);
+  s.row.issue = issue;
+  touch(s, [], true);
+  await save(s);
+  return `Session rattachée à #${issue.number} (« ${issue.title} »). Écris « Closes #${issue.number} » dans la description de ta pull request.`;
+}
+
 function mcpReply(s: Live, requestId: string, message: Json) {
   write(s, { type: "control_response", response: { subtype: "success", request_id: requestId, response: { mcp_response: message } } });
 }
@@ -1835,9 +1925,16 @@ function onMcpMessage(s: Live, requestId: string, msg: Json) {
     case "initialize":
       return reply({ result: { protocolVersion: msg.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: MCP_SERVER, version: "1" } } });
     case "tools/list":
-      return reply({ result: { tools: [askTool(s.bot!)] } });
+      return reply({ result: { tools: agoraTools(s) } });
     case "tools/call": {
-      if (msg.params?.name !== ASK) return toolError(`Unknown tool: ${String(msg.params?.name)}`);
+      if (msg.params?.name === FIND_ISSUES || msg.params?.name === LINK_ISSUE) {
+        void issueCall(s, msg.params.name, msg.params?.arguments ?? {}).then(
+          (text) => reply({ result: { content: [{ type: "text", text }] } }),
+          (err) => toolError(err instanceof Error ? err.message : String(err)),
+        );
+        return;
+      }
+      if (msg.params?.name !== ASK || !s.bot) return toolError(`Unknown tool: ${String(msg.params?.name)}`);
       const args = msg.params?.arguments ?? {};
       const text = String(args.question ?? "").trim();
       if (!text) return toolError("question is required");

@@ -1,5 +1,6 @@
 import { Redirect, Stack } from "expo-router";
 import { Announcements } from "@/components/announcements";
+import { AttentionToasts } from "@/components/attention-toasts";
 import { ConfirmHost } from "@/components/confirm-dialog";
 import { useMe } from "@/components/server-scope";
 import { TwoFactorRequired, useTwoFactorRequired } from "@/components/two-factor";
@@ -31,6 +32,7 @@ function SignedIn() {
   return (
     <>
       <Realtime />
+      <AttentionToasts />
       <Announcements />
       <Stack screenOptions={{ headerBackButtonDisplayMode: "minimal" }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
