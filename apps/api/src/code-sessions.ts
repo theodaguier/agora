@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, join, sep } from "node:path";
 import type { Subprocess } from "bun";
@@ -1356,6 +1356,17 @@ function cool(s: Live) {
   setTimeout(() => proc.kill(), COOL_GRACE_MS).unref();
 }
 
+/** The Hermes profile of a direct conversation's bot; null in a group, where no single bot is meant. */
+async function directBotProfile(conversationId: string) {
+  const bots = await db
+    .select({ profile: schema.agent.hermesProfile })
+    .from(schema.conversation)
+    .innerJoin(schema.conversationAgent, eq(schema.conversationAgent.conversationId, schema.conversation.id))
+    .innerJoin(schema.agent, eq(schema.agent.id, schema.conversationAgent.agentId))
+    .where(and(eq(schema.conversation.id, conversationId), eq(schema.conversation.kind, "direct")));
+  return bots.length === 1 ? bots[0]!.profile : null;
+}
+
 async function execute(s: Live, id: number): Promise<void> {
   const r = s.row;
   if (s.prepare) {
@@ -1381,8 +1392,10 @@ async function execute(s: Live, id: number): Promise<void> {
     ? await db.select({ name: schema.agent.name, profile: schema.agent.hermesProfile }).from(schema.agent).where(eq(schema.agent.id, r.agentId))
     : [];
   s.bot = bot?.name ?? null;
-  // And it gets that bot's connectors, the ones enabled for it in Hermes.
-  const connectors = bot ? await engineMcpOrNone(bot.profile) : noMcp();
+  // And it gets that bot's connectors, the ones enabled for it in Hermes; started from the panel of a
+  // direct conversation, the ones of the conversation's bot.
+  const connectorsOf = bot?.profile ?? (await directBotProfile(r.conversationId));
+  const connectors = connectorsOf ? await engineMcpOrNone(connectorsOf) : noMcp();
   const headless = r.engine !== "claude";
   const appended = [
     env.CHROMIUM_PATH && browserNote(env.CHROMIUM_PATH),
