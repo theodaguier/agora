@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.7 — 2026-10-27
+
+### Fixes
+- **web**: accent du bot appelé dans les groupes, dépôt de fichiers en session de code, sessions neutres
+
 ## v0.45.6 — 2026-10-27
 
 ### Fixes
