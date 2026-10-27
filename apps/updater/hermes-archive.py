@@ -43,7 +43,7 @@ def create_archive(root, output, excludes, reserve_bytes=0):
     try:
         with tempfile.TemporaryDirectory(prefix=".sqlite-", dir=output.parent) as scratch:
             with output.open("wb") as file, gzip.GzipFile(fileobj=ReservedWriter(file, reserve_bytes, output.parent), mode="wb", compresslevel=1) as compressed:
-                with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                with tarfile.open(fileobj=compressed, mode="w|", pax_headers={"agora.archive.format": "sqlite-online-v1"}) as archive:
                     def add(path, relative):
                         nonlocal files
                         if excluded(relative):
@@ -54,12 +54,19 @@ def create_archive(root, output, excludes, reserve_bytes=0):
                             if relative.endswith(suffix) and relative[:-len(suffix)] in sqlite_paths:
                                 return
                         info = archive.gettarinfo(str(path), arcname="./" + relative if relative != "." else ".")
+                        # Unix sockets are transient endpoints, not restorable files.
+                        if info is None:
+                            return
                         if info.islnk() and info.linkname.removeprefix("./") in sqlite_paths:
                             sqlite_paths.add(relative)
                         if info.isfile():
                             files += 1
                             is_sqlite = False
-                            if path.suffix.lower() in (".db", ".sqlite", ".sqlite3"):
+                            # Runtime databases can be extensionless (for example Chromium's
+                            # Cookies). Coding worktrees, uploads and Git objects are user files:
+                            # preserve their bytes, including deliberately invalid DB fixtures.
+                            raw_files = {".git", "worktrees", "repos", "projects", "uploads", "attachments", "shared-skills"}
+                            if not any(part in raw_files for part in Path(relative).parts):
                                 with path.open("rb") as header:
                                     is_sqlite = header.read(16) == b"SQLite format 3\x00"
                             if is_sqlite:
@@ -77,6 +84,7 @@ def create_archive(root, output, excludes, reserve_bytes=0):
                                     with closing(sqlite3.connect(target)) as destination:
                                         source.backup(destination, pages=1024, progress=progress, sleep=0.05)
                                 info.size = target.stat().st_size
+                                info.pax_headers["agora.sqlite.snapshot"] = "1"
                                 with target.open("rb") as content:
                                     archive.addfile(info, content)
                                 target.unlink()

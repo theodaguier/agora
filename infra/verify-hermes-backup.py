@@ -14,16 +14,21 @@ from pathlib import Path
 def verify(stream):
     databases = set()
     files = 0
+    online_format = False
     with tempfile.TemporaryDirectory(prefix="agora-restore-") as scratch:
         with gzip.GzipFile(fileobj=stream) as compressed:
             with tarfile.open(fileobj=compressed, mode="r|") as archive:
                 for member in archive:
+                    online_format |= member.pax_headers.get("agora.archive.format") == "sqlite-online-v1"
                     if not member.isfile():
                         continue
                     files += 1
-                    suffix = next((s for s in ("-wal", "-shm") if member.name.endswith(".db" + s)), "")
+                    if online_format and member.pax_headers.get("agora.sqlite.snapshot") != "1":
+                        continue
+                    extensions = (".db", ".sqlite", ".sqlite3")
+                    suffix = "" if online_format else next((s for s in ("-wal", "-shm") if member.name.endswith(s) and member.name[:-len(s)].endswith(extensions)), "")
                     base = member.name[:-len(suffix)] if suffix else member.name
-                    if not base.endswith((".db", ".sqlite", ".sqlite3")):
+                    if not online_format and not base.endswith(extensions):
                         continue
                     # Flatten names: no archive path can escape the temporary directory.
                     key = hashlib.sha256(base.encode()).hexdigest() + ".db"

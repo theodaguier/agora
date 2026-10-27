@@ -2,6 +2,7 @@ import importlib.util
 import fcntl
 import os
 import sqlite3
+import socket
 import tarfile
 import tempfile
 import subprocess
@@ -13,6 +14,9 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location("hermes_archive", Path(__file__).resolve().parents[1] / "apps/updater/hermes-archive.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+verify_spec = importlib.util.spec_from_file_location("verify_archive", Path(__file__).with_name("verify-hermes-backup.py"))
+verifier = importlib.util.module_from_spec(verify_spec)
+verify_spec.loader.exec_module(verifier)
 
 
 class OnlineArchiveTests(unittest.TestCase):
@@ -91,6 +95,37 @@ class OnlineArchiveTests(unittest.TestCase):
             with patch.object(module.shutil, "disk_usage", return_value=type("Usage", (), {"free": 50})()):
                 with self.assertRaises(OSError): module.create_archive(root, output, [], reserve_bytes=1000)
             self.assertFalse(output.exists())
+
+    def test_live_unix_sockets_are_ignored_like_tar(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch, "source"); root.mkdir()
+            output = Path(scratch, "backup.tgz")
+            (root / "config.yaml").write_text("fixture")
+            with socket.socket(socket.AF_UNIX) as endpoint:
+                endpoint.bind(str(root / "gateway.sock"))
+                module.create_archive(root, output, [])
+            with tarfile.open(output) as archive:
+                self.assertNotIn("./gateway.sock", archive.getnames())
+                self.assertEqual(archive.extractfile("./config.yaml").read(), b"fixture")
+
+    def test_extensionless_runtime_database_is_snapshotted_but_code_fixtures_are_preserved(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch, "source"); root.mkdir()
+            code = root / "worktrees/repo"; code.mkdir(parents=True)
+            fixture = b"SQLite format 3\x00" + b"deliberately invalid test fixture"
+            (code / "fixture.db").write_bytes(fixture)
+            db = sqlite3.connect(root / "Cookies")
+            try:
+                db.execute("PRAGMA journal_mode=WAL")
+                db.execute("CREATE TABLE sample(value TEXT)"); db.commit()
+                output = Path(scratch, "backup.tgz")
+                self.assertEqual(module.create_archive(root, output, [])["sqliteSnapshots"], 1)
+                with tarfile.open(output) as archive:
+                    self.assertNotIn("./Cookies-wal", archive.getnames())
+                    self.assertEqual(archive.extractfile("./worktrees/repo/fixture.db").read(), fixture)
+                with output.open("rb") as stream:
+                    self.assertEqual(verifier.verify(stream)["sqliteDatabasesRestored"], 1)
+            finally: db.close()
 
 
 if __name__ == "__main__": unittest.main()
