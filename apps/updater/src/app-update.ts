@@ -22,14 +22,10 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
   let activationRequested = false;
 
   try {
-    // Preserve the exact working images. Rollback must not pull/rebuild a mutable
+    // Preserve verified local images. Rollback must not pull/rebuild a mutable
     // Hermes base, especially when the new build failed because the disk is full.
-    const api = (await must(["docker", "inspect", "--format", "{{.Id}} {{.Image}}", containerName("api")])).stdout.trim().split(/\s+/);
-    originalApi = api[0] ?? "";
-    const web = (await must(["docker", "inspect", "--format", "{{.Image}}", containerName("web")])).stdout.trim();
-    if (!originalApi || !api[1] || !web) throw new Error("Cannot identify running application images");
-    await must(["docker", "tag", api[1], `agora-api:${from}-${prod.hermesVersion || "v2026.9.21"}`]);
-    await must(["docker", "tag", web, appImage("web", from)]);
+    originalApi = await preserveImage("api", from, `agora-api:${from}-${prod.hermesVersion || "v2026.9.21"}`);
+    await preserveImage("web", from, appImage("web", from));
     if (usesRegistry()) {
       await step("app_pull_images", "Téléchargement des images");
       for (const kind of ["app", "web", "updater"] as const) await must(["docker", "pull", appImage(kind, to)], { timeoutMs: 30 * 60_000 });
@@ -100,6 +96,25 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
     }
   }
   return entry;
+}
+
+/** Containerd can expose a config digest in container.Image that is not taggable.
+ * Resolve the cached reference in that case, and verify its app version before use. */
+async function preserveImage(service: "api" | "web", version: string, target: string) {
+  const [id, image, reference] = (await must(["docker", "inspect", "--format", "{{.Id}} {{.Image}} {{.Config.Image}}", containerName(service)])).stdout.trim().split(/\s+/);
+  if (!id || !image) throw new Error("Cannot identify running application images");
+  let source = image;
+  const available = await run(["docker", "image", "inspect", source, "--format", "{{.Id}}"]);
+  if (available.code !== 0) {
+    if (!reference) throw new Error("The running image has no cached reference");
+    source = (await must(["docker", "image", "inspect", reference, "--format", "{{.Id}}"])).stdout.trim();
+    const cachedVersion = service === "api"
+      ? JSON.parse((await must(["docker", "run", "--rm", "--read-only", "--network=none", "--memory=64m", "--entrypoint", "cat", source, "/app/build.json"])).stdout).app
+      : (await must(["docker", "image", "inspect", source, "--format", '{{index .Config.Labels "org.opencontainers.image.version"}}'])).stdout.trim();
+    if (!source || cachedVersion !== version) throw new Error("Cached rollback image does not match the running application version");
+  }
+  await must(["docker", "tag", source, target]);
+  return id;
 }
 
 async function switchTo(version: string, { rollback = false, activating }: { rollback?: boolean; activating?: () => void } = {}) {

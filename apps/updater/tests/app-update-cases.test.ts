@@ -15,16 +15,20 @@ mock.module("../src/state", () => ({ loadState: async () => state, saveState: as
 mock.module("../src/run-log", () => ({ startRun: async () => ({ entry: {} as { backup?: string }, step: async () => {}, finish: async (status: string) => { outcomes.push(status); } }) }));
 const command = async (args: string[]) => {
   commands.push(args);
+  if (args[1] === "image" && args[2] === "inspect") {
+    if ((failure === "config-digest" || failure === "wrong-cached-version") && args[3] === "sha256:working-api") return { code: 1, stdout: "", stderr: "no such config digest" };
+    return ok("sha256:registered-image");
+  }
+  if (args[1] === "run" && args.includes("/app/build.json")) return ok(JSON.stringify({ app: failure === "wrong-cached-version" ? "0.44.1" : "0.45.0" }));
   if (args[1] === "inspect") {
-    if (args.includes("{{.Id}} {{.Image}}")) return ok("old-container sha256:working-api");
-    if (args.includes("{{.Image}}")) return ok("sha256:working-web");
+    if (args.includes("{{.Id}} {{.Image}} {{.Config.Image}}")) return ok(args.at(-1) === "agora-web-1" ? "old-web sha256:working-web cached-web" : "old-container sha256:working-api cached-api");
     return ok(currentId);
   }
   return ok();
 };
 mock.module("../src/exec", () => ({
   containerName: (name: string) => `agora-${name}-1`, volumeName: (name: string) => `agora_${name}`,
-  run: command, must: command,
+  run: command, must: async (args: string[]) => { const result = await command(args); if (result.code) throw new Error(result.stderr); return result; },
   compose: async (args: string[]) => {
     commands.push(["compose", ...args]);
     if (args[0] === "build" && failure === "build") throw new Error("disk full");
@@ -71,5 +75,21 @@ test("backup failure leaves the production API untouched", async () => {
   await updateApp("0.45.3", "manual");
   expect(restored).toBe(0);
   expect(commands.some((c) => c[0] === "compose")).toBe(false);
+  expect(outcomes).toEqual(["failed"]);
+});
+
+test("an untaggable config digest falls back to a version-verified cached image", async () => {
+  failure = "config-digest";
+  await updateApp("0.45.3", "manual");
+  expect(commands).toContainEqual(["docker", "tag", "sha256:registered-image", "agora-api:0.45.0-fixture"]);
+  expect(restored).toBe(0);
+  expect(outcomes).toEqual(["succeeded"]);
+});
+
+test("a cached image of another version cannot replace the rollback image", async () => {
+  failure = "wrong-cached-version";
+  await updateApp("0.45.3", "manual");
+  expect(commands.some((c) => c[0] === "compose")).toBe(false);
+  expect(restored).toBe(0);
   expect(outcomes).toEqual(["failed"]);
 });
