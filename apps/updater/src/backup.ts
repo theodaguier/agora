@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, readdir, rename, rm, stat, statfs } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { config } from "./config";
+import { config, hermesImage } from "./config";
 import { compose, must, run, volumeName } from "./exec";
-import { withHermesPaused } from "./prod";
+import { contractEnv } from "./prod";
 
 /**
  * Left out of the Hermes archive: package caches and installed dependencies, written by the bots'
@@ -39,13 +39,14 @@ export async function backup(label: string) {
     if (!Number.isSafeInteger(availableKiB) || availableKiB <= reserveKiB) throw new Error("Not enough backup space (1 GiB reserve required)");
     const limit = (availableKiB - reserveKiB) * 1024;
     // A timeout kills the docker client, not its container: remove the writer before its files.
-    await withHermesPaused(() => must([
-      "docker", "run", "--rm", "--name", container, "--cpus=1", "--memory=256m", "--ulimit", `fsize=${limit}:${limit}`,
+    const { hermesVersion } = await contractEnv();
+    await must([
+      "docker", "run", "--rm", "-i", "--name", container, "--network=none", "--cpus=1", "--memory=512m", "--ulimit", `fsize=${limit}:${limit}`,
+      "--entrypoint", "/opt/hermes/.venv/bin/python",
       "-v", `${volumeName("hermes-data")}:/data:ro`,
       "-v", `${config.backupsVolume}:/backups`,
-      "alpine", "sh", "-c", 'set -o pipefail; tar -cf - "$@" -C /data . | gzip -1 > "$0"',
-      `/backups/${basename(temporary)}/hermes-data.tgz`, ...CACHES.map((c) => `--exclude=${c}`),
-    ], { timeoutMs: 20 * 60_000 }));
+      hermesImage(hermesVersion), "-", "/data", `/backups/${basename(temporary)}/hermes-data.tgz`, JSON.stringify(CACHES),
+    ], { input: await Bun.file(new URL("../hermes-archive.py", import.meta.url)).text(), timeoutMs: 20 * 60_000 });
     if (!(await complete(temporary))) throw new Error("Incomplete backup");
     await rename(temporary, dir);
   } catch (err) {

@@ -8,14 +8,14 @@ const settings = { backupsDir: root, backupsVolume: "test-backups", keepBackups:
 let fail = false;
 let spaceKiB = "2097152";
 let pauses = 0;
-mock.module("./config", () => ({ config: settings }));
-mock.module("./prod", () => ({ withHermesPaused: (fn: () => Promise<unknown>) => { pauses++; return fn(); } }));
+mock.module("./config", () => ({ config: settings, hermesImage: (version: string) => `test-hermes:${version}` }));
+mock.module("./prod", () => ({ contractEnv: async () => ({ hermesVersion: "fixture" }) }));
 mock.module("./exec", () => ({
   compose: async () => ({ stdout: "-- test dump" }),
   volumeName: () => "test-data",
   run: async () => ({ code: 0 }),
   must: async (cmd: string[]) => {
-    if (cmd.includes("--network=none")) return { stdout: spaceKiB };
+    if (cmd.some((arg) => arg.includes("df -Pk"))) return { stdout: spaceKiB };
     if (fail) throw new Error("archive failed");
     const archive = cmd.find((arg) => arg.endsWith("/hermes-data.tgz"))!;
     await writeFile(join(root, basename(join(archive, "..")), "hermes-data.tgz"), "test archive");

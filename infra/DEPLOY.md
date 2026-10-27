@@ -146,9 +146,13 @@ Backblaze B2 or an SFTP server.
    first run; 7 daily, 4 weekly and 6 monthly snapshots are kept.
    Hermes data is staged as `hermes-data.tgz` with rebuildable dependency/cache
    directories excluded. Source files, lockfiles and Git history are preserved.
-   Compression is limited to one CPU and 256 MiB of memory; its output is capped
-   below the available disk space with a 1 GiB reserve. Hermes resumes before
-   upload. Retention also runs after a failed file backup. A compressed archive
+   SQLite databases (`.db`, `.sqlite`, `.sqlite3`) use SQLite's online backup API;
+   their live journals are omitted. Hermes keeps running during both archiving
+   and upload. The archive streams files with one CPU and 512 MiB of memory; its
+   output is capped below the available disk space with a 1 GiB reserve.
+   Each database is consistent at its own capture time; other files use normal
+   streaming backup semantics and there is no transaction spanning all files.
+   Retention also runs after a failed file backup. A compressed archive
    can reduce restic's deduplication across snapshots; monitor repository growth.
 3. `./agora restore-check`: lists the snapshots, checks part of the data, and
    restores the latest dump into a throwaway Postgres (prints the account count).

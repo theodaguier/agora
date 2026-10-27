@@ -7,6 +7,7 @@ RUN apk add --no-cache docker-cli docker-cli-compose git su-exec
 WORKDIR /app
 COPY apps/updater/package.json apps/updater/tsconfig.json ./
 COPY apps/updater/src src
+COPY apps/updater/hermes-archive.py ./
 LABEL org.opencontainers.image.title="Agora updater" org.opencontainers.image.version="${APP_VERSION}"
 # Absolute path: compose sets working_dir to the host's infra directory.
 CMD ["bun", "/app/src/main.ts"]
