@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.9 — 2026-10-27
+
+### Fixes
+- **updater**: sauvegarder les bases WAL inactives depuis le volume en lecture seule
+
 ## v0.45.8 — 2026-10-27
 
 ### Fixes
