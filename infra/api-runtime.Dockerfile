@@ -5,7 +5,7 @@ ARG APP_IMAGE
 ARG HERMES_IMAGE
 
 FROM ${APP_IMAGE} AS app
-FROM oven/bun:1.3.9-slim AS bun
+FROM oven/bun:1.4.2-slim AS bun
 
 FROM ${HERMES_IMAGE}
 ARG HERMES_VERSION=""
