@@ -1,7 +1,9 @@
 """Stream Hermes files and online SQLite snapshots into a standard tar.gz archive."""
 import fnmatch
+import fcntl
 import gzip
 import json
+import shutil
 import signal
 import sqlite3
 import sys
@@ -12,7 +14,23 @@ from contextlib import closing
 from pathlib import Path
 
 
-def create_archive(root, output, excludes):
+class ReservedWriter:
+    def __init__(self, file, reserve, path):
+        self.file, self.reserve, self.path, self.written = file, reserve, path, 4 * 1024 ** 2
+
+    def write(self, data):
+        if self.reserve and self.written >= 4 * 1024 ** 2:
+            if shutil.disk_usage(self.path).free < self.reserve + len(data):
+                raise OSError("Insufficient archive space")
+            self.written = 0
+        self.written += len(data)
+        return self.file.write(data)
+
+    def __getattr__(self, name):
+        return getattr(self.file, name)
+
+
+def create_archive(root, output, excludes, reserve_bytes=0):
     root, output = Path(root).resolve(), Path(output)
     sqlite_paths = set()
     files = 0
@@ -24,7 +42,7 @@ def create_archive(root, output, excludes):
 
     try:
         with tempfile.TemporaryDirectory(prefix=".sqlite-", dir=output.parent) as scratch:
-            with gzip.open(output, "wb", compresslevel=1) as compressed:
+            with output.open("wb") as file, gzip.GzipFile(fileobj=ReservedWriter(file, reserve_bytes, output.parent), mode="wb", compresslevel=1) as compressed:
                 with tarfile.open(fileobj=compressed, mode="w|") as archive:
                     def add(path, relative):
                         nonlocal files
@@ -53,6 +71,9 @@ def create_archive(root, output, excludes):
                                         raise TimeoutError("SQLite snapshot timed out")
 
                                 with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=5)) as source:
+                                    size = source.execute("PRAGMA page_count").fetchone()[0] * source.execute("PRAGMA page_size").fetchone()[0]
+                                    if reserve_bytes and shutil.disk_usage(output.parent).free < size + reserve_bytes:
+                                        raise OSError("Insufficient SQLite snapshot space")
                                     with closing(sqlite3.connect(target)) as destination:
                                         source.backup(destination, pages=1024, progress=progress, sleep=0.05)
                                 info.size = target.stat().st_size
@@ -79,7 +100,9 @@ def create_archive(root, output, excludes):
 if __name__ == "__main__":
     signal.alarm(1200)
     try:
-        print(json.dumps(create_archive(sys.argv[1], sys.argv[2], json.loads(sys.argv[3]))))
+        with open(sys.argv[4], "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            print(json.dumps(create_archive(sys.argv[1], sys.argv[2], json.loads(sys.argv[3]), reserve_bytes=1024 ** 3)))
     except Exception as error:
         print("Hermes archive failed: " + type(error).__name__, file=sys.stderr)
         sys.exit(1)

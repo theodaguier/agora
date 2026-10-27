@@ -45,7 +45,7 @@ export async function backup(label: string) {
       "--entrypoint", "/opt/hermes/.venv/bin/python",
       "-v", `${volumeName("hermes-data")}:/data:ro`,
       "-v", `${config.backupsVolume}:/backups`,
-      hermesImage(hermesVersion), "-", "/data", `/backups/${basename(temporary)}/hermes-data.tgz`, JSON.stringify(CACHES),
+      hermesImage(hermesVersion), "-", "/data", `/backups/${basename(temporary)}/hermes-data.tgz`, JSON.stringify(CACHES), "/backups/.archive.lock",
     ], { input: await Bun.file(new URL("../hermes-archive.py", import.meta.url)).text(), timeoutMs: 20 * 60_000 });
     if (!(await complete(temporary))) throw new Error("Incomplete backup");
     await rename(temporary, dir);

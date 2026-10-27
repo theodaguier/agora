@@ -108,9 +108,10 @@ case "${1:-}" in
     docker run --rm --name "$archive_container" --network=none --cpus=1 --memory=512m --ulimit "fsize=$max_bytes:$max_bytes" \
       --entrypoint /opt/hermes/.venv/bin/python \
       -v agora_hermes-data:/from:ro -v "$staging:/to" \
+      -v agora_backups:/locks \
       -v "$ROOT/apps/updater/hermes-archive.py:/archive.py:ro" \
       "${HERMES_REPO:-nousresearch/hermes-agent}:${HERMES_VERSION:-v2026.9.21}" /archive.py /from /to/hermes-data.tgz \
-      '["node_modules",".venv",".npm",".cache",".next",".nuxt",".svelte-kit",".expo",".turbo","*/.bun/install/cache","*/.local/share/pnpm"]' || copied=false
+      '["node_modules",".venv",".npm",".cache",".next",".nuxt",".svelte-kit",".expo",".turbo","*/.bun/install/cache","*/.local/share/pnpm"]' /locks/.archive.lock || copied=false
     $copied || { echo "Copy of the Hermes data failed: nothing sent." >&2; exit 1; }
     # New snapshots contain /data/hermes-data.tgz; old directory snapshots remain restorable.
     restic_run -v "$staging:/data:ro" -v agora_backups:/data/backups:ro -v "$INFRA/.env:/data/env/.env:ro" \

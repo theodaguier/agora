@@ -1,9 +1,13 @@
 import importlib.util
+import fcntl
 import os
 import sqlite3
 import tarfile
 import tempfile
+import subprocess
+import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("hermes_archive", Path(__file__).resolve().parents[1] / "apps/updater/hermes-archive.py")
@@ -67,6 +71,25 @@ class OnlineArchiveTests(unittest.TestCase):
             output = Path(scratch, "backup.tgz")
             with self.assertRaises(sqlite3.DatabaseError):
                 module.create_archive(root, output, [])
+            self.assertFalse(output.exists())
+
+    def test_a_competing_archiver_cannot_start_a_second_writer(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch, "source"); root.mkdir()
+            output = Path(scratch, "backup.tgz")
+            lock_path = Path(scratch, "archive.lock")
+            with lock_path.open("a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                result = subprocess.run([sys.executable, spec.origin, str(root), str(output), "[]", str(lock_path)], capture_output=True, timeout=5)
+            self.assertEqual(result.returncode, 1)
+            self.assertFalse(output.exists())
+
+    def test_archive_space_reserve_is_checked_during_writes(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch, "source"); root.mkdir()
+            output = Path(scratch, "backup.tgz")
+            with patch.object(module.shutil, "disk_usage", return_value=type("Usage", (), {"free": 50})()):
+                with self.assertRaises(OSError): module.create_archive(root, output, [], reserve_bytes=1000)
             self.assertFalse(output.exists())
 
 
