@@ -1,8 +1,9 @@
 import { ALL_HANDLE } from "@agora/core";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { Mention } from "@/components/Mention";
 import { TaskRef } from "@/components/TaskRef";
 import { EntityText } from "@/components/TextEntities";
+import { agentAccent } from "./agent-avatar";
 import { splitTaskRefs } from "./task-refs";
 import { withOffsets } from "./utils";
 import type { AgentSummary, Person } from "./api";
@@ -47,6 +48,21 @@ export function splitMentions(text: string, list: Mentionable[]): Segment[] {
   }
   if (last < text.length) out.push(text.slice(last));
   return out;
+}
+
+/**
+ * In a group, the bot a message calls (its first bot mention) dresses it: your bubble and the send
+ * button take its colour, as in a conversation with that bot. Nothing when it calls no bot.
+ */
+export function addressedAccent(text: string, list: Mentionable[]): CSSProperties | undefined {
+  // A bot: its target says so, or (the field's list) no target and a colour of its own; colleagues
+  // have a person target and "@all" the brand variable.
+  const bot = splitMentions(text, list).find(
+    (s) => typeof s !== "string" && (s.target ? s.target.kind === "agent" : s.color.startsWith("#")),
+  );
+  if (typeof bot !== "object") return undefined;
+  const color = bot.target?.kind === "agent" ? bot.target.agent.avatar.color : bot.color;
+  return { "--primary": agentAccent(color), "--primary-foreground": "#fff" } as CSSProperties;
 }
 
 /**

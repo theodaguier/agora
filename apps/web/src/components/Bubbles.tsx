@@ -114,7 +114,8 @@ function ToolBadge({ name }: { name: string }) {
 /** Tools used by the agent during a reply (hermes.tool.progress events). */
 export function ToolLine({ tools, running, className }: { tools: { name: string; status: string }[]; running?: boolean; className?: string }) {
   const t = useT(messages);
-  const names = [...new Set(tools.map((tool) => tool.name))];
+  // The code session tools are told by the session's card under the reply, not by their raw names.
+  const names = [...new Set(tools.map((tool) => tool.name))].filter((n) => !n.startsWith("claude_code_"));
   if (!names.length) return null;
   return (
     <p className={cn("my-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-muted-foreground", className)}>

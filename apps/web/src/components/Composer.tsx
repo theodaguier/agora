@@ -9,7 +9,7 @@ import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui
 import { defineMessages, useT } from "@/i18n";
 import { invocationKey, retryLast, sessionCommand, uploadAttachment, type AgentSummary, type Attachment, type Invocation, type ReplyTo } from "@/lib/api";
 import { ALL_HANDLE } from "@agora/core";
-import { allMentionable, MentionText, splitMentions } from "@/lib/mentions";
+import { addressedAccent, allMentionable, MentionText, splitMentions } from "@/lib/mentions";
 import { personMentionables, usePeople } from "@/lib/people";
 import { AwayNotice } from "@/components/AwayNotice";
 import { useDraft } from "@/lib/drafts";
@@ -509,7 +509,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
                 <StopIcon />
               </Button>
             ) : (
-              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="size-[34px] disabled:opacity-40 [&_svg:not([class*='size-'])]:size-[18px]">
+              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} style={addressedAccent(text, colored)} className="size-[34px] disabled:opacity-40 [&_svg:not([class*='size-'])]:size-[18px]">
                 <ArrowUpIcon strokeWidth={2.25} />
               </Button>
             )}

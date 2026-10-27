@@ -157,13 +157,13 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
 
   return (
     <>
-      <Stack.Screen options={{ title: session?.title ?? t.claudeCode, headerTransparent: true, headerBlurEffect: "systemChromeMaterial" }} />
+      <Stack.Screen options={{ title: session?.title ?? t.codeSession, headerTransparent: true, headerBlurEffect: "systemChromeMaterial" }} />
       {session && (
         <Stack.Toolbar placement="right">
           <Stack.Toolbar.View>
             <MenuButton
               icon="ellipsis"
-              label={t.claudeCode}
+              label={t.codeSession}
               actions={[
                 { label: t.details, icon: "info.circle", onPress: () => setSheet("info") },
                 !!session.git?.pr && { label: t.git.pr(session.git.pr.number), icon: "link", onPress: () => void Linking.openURL(session.git!.pr!.url) },
@@ -982,7 +982,7 @@ function ExchangeRow({ exchange, session, agent }: { exchange: CodeExchange; ses
       </View>
       <View className="min-w-0 flex-1 gap-0.5">
         <Typography type="body-xs" color="muted">
-          {fromCode ? CODE_ENGINE_NAMES[session.engine] : (exchange.by ?? t.claudeCode)} · {t.view.kinds[exchange.kind]}
+          {fromCode ? CODE_ENGINE_NAMES[session.engine] : (exchange.by ?? t.codeSession)} · {t.view.kinds[exchange.kind]}
         </Typography>
         <Typography numberOfLines={open ? undefined : 4} onPress={() => setOpen((o) => !o)}>
           {exchange.text}
@@ -1416,7 +1416,7 @@ function SessionModelPicker({ conversationId, session }: { conversationId: strin
         placement="top"
         entries={[
           {
-            title: t.claudeCode,
+            title: CODE_ENGINE_NAMES[session.engine],
             actions: list.map((m) => ({
               label: m.label ?? m.id,
               checked: m.id === session.model,

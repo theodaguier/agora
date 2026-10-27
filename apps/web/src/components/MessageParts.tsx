@@ -18,7 +18,7 @@ import { defineMessages, useT } from "@/i18n";
 import { attachmentUrl, deleteMessage, invocationKey, type Attachment, type Invocation, type Message, type ReplyTo } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
 import { messagesQuery } from "@/lib/queries";
-import type { Mentionable } from "@/lib/mentions";
+import { addressedAccent, type Mentionable } from "@/lib/mentions";
 import { cn } from "@/lib/utils";
 import { BubbleAttachments, SentAttachments } from "./Attachments";
 import { isImage, isVideo } from "../lib/files";
@@ -114,7 +114,10 @@ export function ChatMessage(props: {
   const framed = !!(text || replyTo || forwarded);
   const rich = !!(attachments.length || replyTo || forwarded);
   return (
-    <div className={cn("flex min-w-0 flex-col gap-1.5", mine ? "items-end" : "items-start", attachments.length > 0 && "mt-1")}>
+    <div
+      className={cn("flex min-w-0 flex-col gap-1.5", mine ? "items-end" : "items-start", attachments.length > 0 && "mt-1")}
+      style={mine ? addressedAccent(text, mentionables) : undefined}
+    >
       {invocations.length > 0 && (
         <div className="flex flex-wrap justify-end gap-1.5">
           {invocations.map((v) => (
