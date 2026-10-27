@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.6 — 2026-10-27
+
+### Fixes
+- **integrations**: réutiliser le probe MCP direct pour les tests administrateur
+
 ## v0.45.5 — 2026-10-27
 
 ### Fixes
