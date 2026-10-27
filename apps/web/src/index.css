@@ -311,15 +311,18 @@
   }
 }
 
+/* Your own bubble is in the bot's colour: mentions in it are white and medium, links white and
+   underlined. Unlayered, so it wins over the mention's text-brand utility. */
+.bubble-mine :is(.mention, a) {
+  color: inherit;
+}
+.bubble-mine a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* A message arriving while the conversation is open: rises into place. */
 @layer components {
-  /* Your own bubble is in the bot's colour: links and mentions in it are white, underlined. */
-  .bubble-mine :is(.mention, a) {
-    color: inherit;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-
   .chat-arrive {
     transition:
       opacity 200ms var(--ease-out),

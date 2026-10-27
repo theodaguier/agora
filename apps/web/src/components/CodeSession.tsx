@@ -45,6 +45,7 @@ import {
   ShieldAlertIcon,
   SparklesIcon,
   StopIcon,
+  TerminalIcon,
   ToolIcon,
   WarningIcon,
 } from "@/components/icons";
@@ -331,7 +332,7 @@ export function CodeSessionsButton({
           }
         >
           {/* It hops while a session works: that is the sign, no badge. */}
-          <ModelLogo provider="claude-code" className={cn("size-[18px]", working && "code-working")} />
+          <TerminalIcon className={cn(working && "code-working")} />
         </TooltipTrigger>
         <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
       </Tooltip>
@@ -531,7 +532,7 @@ export function CodeSessionPanel({
     return (
       <Sheet open onOpenChange={(open) => !open && onClose()}>
         <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:sm:max-w-2xl">
-          <SheetTitle className="sr-only">{t.claudeCode}</SheetTitle>
+          <SheetTitle className="sr-only">{t.codeSession}</SheetTitle>
           {view}
         </SheetContent>
       </Sheet>
@@ -696,7 +697,7 @@ function NewSessionView({
     if (canSend) start.mutate({ task: text.trim(), attachmentIds: files.ids });
   };
   return (
-    <div {...fileDrop(files.add)} className="flex min-h-0 flex-1 flex-col">
+    <FileDropPanel onFiles={files.add} label={t.dropNew}>
       <PaneHeader
         title={t.newSession}
         actions={
@@ -765,7 +766,7 @@ function NewSessionView({
           </InputGroup>
         </form>
       </div>
-    </div>
+    </FileDropPanel>
   );
 }
 
@@ -789,20 +790,51 @@ function useInstructionFiles(conversationId: string) {
   };
 }
 
-/** Files dropped anywhere on the panel go to its field; the conversation's own drop leaves them (data-file-drop). */
-const fileDrop = (onFiles: (files: FileList) => void) => ({
-  "data-file-drop": true,
-  onDragOver: (e: DragEvent) => {
-    if (!e.dataTransfer.types.includes("Files")) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-  },
-  onDrop: (e: DragEvent) => {
-    if (!e.dataTransfer.files.length) return;
-    e.preventDefault();
-    onFiles(e.dataTransfer.files);
-  },
-});
+/**
+ * The panel takes files dropped anywhere on it into its field, as the conversation does (same veil);
+ * the conversation's own drop leaves them (data-file-drop). Without `onFiles`, a plain column.
+ */
+function FileDropPanel({ onFiles, label, children }: { onFiles?: (files: FileList) => void; label: string; children: ReactNode }) {
+  const [dragging, setDragging] = useState(false);
+  const depth = useRef(0);
+  if (!onFiles) return <div className="flex min-h-0 flex-1 flex-col">{children}</div>;
+  const files = (e: DragEvent) => e.dataTransfer.types.includes("Files");
+  return (
+    <div
+      data-file-drop
+      className="relative flex min-h-0 flex-1 flex-col"
+      onDragEnter={(e) => {
+        if (!files(e)) return;
+        depth.current += 1;
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!files(e)) return;
+        depth.current = Math.max(0, depth.current - 1);
+        if (!depth.current) setDragging(false);
+      }}
+      onDragOver={(e) => {
+        if (!files(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(e) => {
+        depth.current = 0;
+        setDragging(false);
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        onFiles(e.dataTransfer.files);
+      }}
+    >
+      {children}
+      {dragging && (
+        <div className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-brand bg-background/80 px-6 text-center text-sm font-medium">
+          {label}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** "+" beside the field, as in the conversation's: images, screenshots, any file for Claude Code. */
 function AttachButton({ onFiles, disabled }: { onFiles: (files: FileList) => void; disabled?: boolean }) {
@@ -1057,12 +1089,13 @@ function CodeSessionView({
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
   const changed = session?.git ? (session.git.files?.length ?? session.git.changes) : 0;
   const branch = session?.git?.branch ?? session?.worktree?.branch;
+  const engineName = CODE_ENGINE_NAMES[session?.engine ?? "claude"];
 
   return (
-    <div {...(owner && fileDrop((files) => composer.current?.addFiles(files)))} className="flex min-h-0 flex-1 flex-col">
+    <FileDropPanel onFiles={owner ? (files) => composer.current?.addFiles(files) : undefined} label={t.drop(engineName)}>
       <PaneHeader
         media={<EngineTile engine={session?.engine} />}
-        title={session?.title ?? t.claudeCode}
+        title={session?.title ?? t.codeSession}
         description={agent && t.view.launchedBy(agent.name)}
         actions={
           <>
@@ -1167,7 +1200,7 @@ function CodeSessionView({
           </div>
         </>
       )}
-    </div>
+    </FileDropPanel>
   );
 }
 
@@ -1272,7 +1305,7 @@ function ExchangeRow({ exchange, engine, agent, members }: { exchange: CodeExcha
   const [open, setOpen] = useState(false);
   const fromCode = exchange.kind === "question";
   const person = !fromCode && exchange.by !== agent?.name ? members.find((m) => m.name === exchange.by) : undefined;
-  const who = fromCode ? CODE_ENGINE_NAMES[engine] : (exchange.by ?? t.claudeCode);
+  const who = fromCode ? CODE_ENGINE_NAMES[engine] : (exchange.by ?? t.codeSession);
   return (
     <Item size="xs" className="items-start px-0">
       <ItemMedia className="mt-0.5 size-5">

@@ -320,11 +320,12 @@ function HeaderTitle({
       </button>
     ) : (
       title && (
-        <span className={pill}>
+        <span className={cn(pill, group && "pl-3.5")}>
           <TitleWithStatus
             title={title}
             p={conv && !group ? othersOf(conv, me)[0] : undefined}
-            avatar={conv && <ConversationAvatar conversation={conv} me={me} className="size-6" />}
+            // A group's members are the facepile beside it: no initials tile repeating them.
+            avatar={conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-6" />}
           />
         </span>
       )
