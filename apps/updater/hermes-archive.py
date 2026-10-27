@@ -43,7 +43,7 @@ def create_archive(root, output, excludes, reserve_bytes=0):
     try:
         with tempfile.TemporaryDirectory(prefix=".sqlite-", dir=output.parent) as scratch:
             with output.open("wb") as file, gzip.GzipFile(fileobj=ReservedWriter(file, reserve_bytes, output.parent), mode="wb", compresslevel=1) as compressed:
-                with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                with tarfile.open(fileobj=compressed, mode="w|", pax_headers={"agora.archive.format": "sqlite-online-v1"}) as archive:
                     def add(path, relative):
                         nonlocal files
                         if excluded(relative):
@@ -84,6 +84,7 @@ def create_archive(root, output, excludes, reserve_bytes=0):
                                     with closing(sqlite3.connect(target)) as destination:
                                         source.backup(destination, pages=1024, progress=progress, sleep=0.05)
                                 info.size = target.stat().st_size
+                                info.pax_headers["agora.sqlite.snapshot"] = "1"
                                 with target.open("rb") as content:
                                     archive.addfile(info, content)
                                 target.unlink()

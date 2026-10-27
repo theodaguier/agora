@@ -14,6 +14,9 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location("hermes_archive", Path(__file__).resolve().parents[1] / "apps/updater/hermes-archive.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+verify_spec = importlib.util.spec_from_file_location("verify_archive", Path(__file__).with_name("verify-hermes-backup.py"))
+verifier = importlib.util.module_from_spec(verify_spec)
+verify_spec.loader.exec_module(verifier)
 
 
 class OnlineArchiveTests(unittest.TestCase):
@@ -120,6 +123,8 @@ class OnlineArchiveTests(unittest.TestCase):
                 with tarfile.open(output) as archive:
                     self.assertNotIn("./Cookies-wal", archive.getnames())
                     self.assertEqual(archive.extractfile("./worktrees/repo/fixture.db").read(), fixture)
+                with output.open("rb") as stream:
+                    self.assertEqual(verifier.verify(stream)["sqliteDatabasesRestored"], 1)
             finally: db.close()
 
 
