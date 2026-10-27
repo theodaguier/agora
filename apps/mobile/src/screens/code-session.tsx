@@ -15,10 +15,10 @@ import {
   type CodeSessionDetail,
   type CodeStep,
   type CodeTodo,
+  toolLabel,
 } from "@agora/core";
 import { codeSessions, common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
 import { Stack, router, useFocusEffect, type Href } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
@@ -59,7 +59,7 @@ import { PendingFiles, usePendingFiles } from "@/components/composer/pending-fil
 import { UserBubble } from "@/components/bubbles";
 import { isActive, StatusIcon } from "@/components/code-session";
 import { confirmAction } from "@/components/confirm-action";
-import { ArrowUpIcon, BranchIcon, ChartIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, CopyIcon, ExternalLinkIcon, FolderIcon, KeyIcon, StopIcon, ToolIcon, UserIcon } from "@/components/icons";
+import { ArrowUpIcon, BranchIcon, ChartIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, ExternalLinkIcon, KeyIcon, StopIcon, ToolIcon, UserIcon } from "@/components/icons";
 import { MenuButton, MenuContent } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
@@ -373,7 +373,7 @@ function InfoList({ conversationId, session, owner, onLeave }: { conversationId:
         </ListGroup.ItemContent>
       </ListGroup.Item>
     ),
-    owner && !!session.account && (
+    owner && !!session.account?.email && (
       <ListGroup.Item key="account">
         <ListGroup.ItemPrefix>
           <UserIcon size={20} className="text-muted" />
@@ -381,31 +381,12 @@ function InfoList({ conversationId, session, owner, onLeave }: { conversationId:
         <ListGroup.ItemContent>
           <ListGroup.ItemTitle>{t.account}</ListGroup.ItemTitle>
           <ListGroup.ItemDescription>
-            {session.account.email ?? t.serverAccount}
+            {session.account.email}
             {session.account.plan ? ` · ${session.account.plan}` : ""}
           </ListGroup.ItemDescription>
         </ListGroup.ItemContent>
       </ListGroup.Item>
     ),
-    <ListGroup.Item
-      key="folder"
-      accessibilityLabel={t.copyPath}
-      onPress={withTap(async () => {
-        await Clipboard.setStringAsync(session.cwd);
-        toast.success(c.copied, session.cwd);
-      })}
-    >
-      <ListGroup.ItemPrefix>
-        <FolderIcon size={20} className="text-muted" />
-      </ListGroup.ItemPrefix>
-      <ListGroup.ItemContent>
-        <ListGroup.ItemTitle>{t.folder}</ListGroup.ItemTitle>
-        <ListGroup.ItemDescription numberOfLines={2}>{session.cwd}</ListGroup.ItemDescription>
-      </ListGroup.ItemContent>
-      <ListGroup.ItemSuffix>
-        <CopyIcon size={16} className="text-muted" />
-      </ListGroup.ItemSuffix>
-    </ListGroup.Item>,
     !!u && (
       <ListGroup.Item key="usage">
         <ListGroup.ItemPrefix>
@@ -414,10 +395,7 @@ function InfoList({ conversationId, session, owner, onLeave }: { conversationId:
         <ListGroup.ItemContent>
           <ListGroup.ItemTitle>{t.usage}</ListGroup.ItemTitle>
           <ListGroup.ItemDescription>
-            {t.tokens(format.compact(u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens))} · {format.cost(u.costUsd)} · {t.runs(u.runs)} · {time}
-          </ListGroup.ItemDescription>
-          <ListGroup.ItemDescription>
-            {t.usageDetail(format.compact(u.inputTokens), format.compact(u.outputTokens), format.compact(u.cacheReadTokens + u.cacheWriteTokens), u.turns)}
+            {t.estimated(format.cost(u.costUsd))} · {time}
           </ListGroup.ItemDescription>
         </ListGroup.ItemContent>
       </ListGroup.Item>
@@ -815,14 +793,16 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const t = tr(codeSessions);
   const nested = all.some((s) => parentOf(s) === step.id);
   const expandable = !!(step.input || step.output || nested);
+  // Its name as people read it (the connector of an MCP tool, what a built-in one does), never mcp__x__y.
+  const label = toolLabel(step.name, t.toolNames);
   const row = (
     <View className="min-w-0 flex-1 flex-row items-center gap-2">
       <ToolIcon name={step.name} className="size-3.5 text-muted" />
       <Typography type="body-sm" color="muted">
-        {step.name}
+        {label.name}
       </Typography>
-      <Typography type="body-xs" numberOfLines={1} className="min-w-0 flex-1 font-mono">
-        {step.title !== step.name ? step.title : ""}
+      <Typography type="body-xs" numberOfLines={1} className={cn("min-w-0 flex-1", step.title !== step.name && "font-mono")}>
+        {step.title !== step.name ? step.title : (label.action ?? "")}
       </Typography>
       <ToolStatus status={step.status} />
     </View>

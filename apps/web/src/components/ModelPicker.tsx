@@ -183,7 +183,7 @@ export function GroupHeading({ provider, label }: { provider: string; label: str
 export function ModelOption(props: {
   value: string;
   label: string;
-  logo: React.ReactNode;
+  logo?: React.ReactNode;
   active: boolean;
   reasoning?: boolean;
   description?: string;

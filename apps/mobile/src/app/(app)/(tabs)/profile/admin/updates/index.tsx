@@ -92,7 +92,6 @@ function UpdatesScreen() {
           <VersionRow
             title="Agora"
             current={data.server.app}
-            detail={data.server.commit ? t.commit(data.server.commit) : undefined}
             available={data.available?.app ?? []}
             rejected={data.rejected?.app ?? []}
             disabled={busy || !!data.unavailable}
@@ -190,7 +189,7 @@ function VersionRow(props: {
           {props.title} {props.current}
         </ListGroup.ItemTitle>
         <ListGroup.ItemDescription>
-          {latest ? `${t.available}${latest}${props.available.length > 1 ? t.others(props.available.length - 1) : ""}${rejected ? ` · ${t.rejected}` : ""}` : t.upToDate}
+          {latest ? `${t.available}${latest}${rejected ? ` · ${t.rejected}` : ""}` : t.upToDate}
           {props.detail ? ` · ${props.detail}` : ""}
         </ListGroup.ItemDescription>
       </ListGroup.ItemContent>

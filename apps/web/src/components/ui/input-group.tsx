@@ -139,6 +139,11 @@ function InputGroupTextarea({
   return (
     <Textarea
       data-slot="input-group-control"
+      // A message field, never a form to fill: no browser or password-manager autofill prompt on it.
+      autoComplete="off"
+      data-1p-ignore=""
+      data-lpignore="true"
+      data-form-type="other"
       className={cn(
         "flex-1 resize-none rounded-none border-0 bg-transparent py-2 shadow-none ring-0 focus-visible:ring-0 disabled:bg-transparent aria-invalid:ring-0 dark:bg-transparent dark:disabled:bg-transparent",
         className

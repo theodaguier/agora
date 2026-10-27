@@ -36,17 +36,14 @@ import {
   CloseIcon,
   ChevronDownIcon,
   ClockIcon,
-  ChevronRightIcon,
   CloseCircleIcon,
   CodeIcon,
-  CopyIcon,
   MoreIcon,
   PlusIcon,
   ShieldAlertIcon,
   SparklesIcon,
   StopIcon,
   TerminalIcon,
-  ToolIcon,
   WarningIcon,
 } from "@/components/icons";
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
@@ -56,14 +53,13 @@ import { UserBubble } from "@/components/Bubbles";
 import { TabChip } from "@/components/TabChip";
 import { usePendingFiles } from "@/components/Composer";
 import { MessageText } from "@/components/MessageText";
-import { GroupHeading, ModelOption } from "@/components/ModelPicker";
+import { ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Badge } from "@/components/ui/badge";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -126,7 +122,6 @@ import {
   writeCommitMessage,
 } from "@/lib/code-sessions";
 import { confirmAction } from "@/lib/confirm";
-import { copyText } from "@/lib/feedback";
 import { playSound } from "@/lib/sounds";
 import { dividerLabel } from "@/lib/dates";
 import { useDraft } from "@/lib/drafts";
@@ -1004,14 +999,14 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
   );
 }
 
-type SessionTab = "overview" | "changes" | "journal";
+type SessionTab = "overview" | "changes";
 
 /**
- * A session, as wide as the conversation beside it: its header (state, branch, the bot that started
- * it), then three tabs. Aperçu says where it stands: what it does now or its answer, its tasks, and
- * what it and its bot said to each other. Modifications: its files and its pull request. Journal:
- * every step, the tab it opens on. Its pending approval or question comes first in Aperçu and last in Journal; the
- * owner's field stays at the bottom. `page`: a tab of its own, the close button closes it.
+ * A session, as wide as the conversation beside it (Figma « Sessions de code — un seul parcours »): its
+ * header (one line: state, engine, branch), then two tabs. Avancement says where it stands: its pending
+ * approval or question first, what it does now or its answer, its tasks, and what it and its bot said
+ * to each other. Modifications: its files and its pull request. No log of raw steps. The owner's field
+ * stays at the bottom. `page`: a tab of its own, the close button closes it.
  */
 function CodeSessionView({
   conversationId,
@@ -1032,35 +1027,7 @@ function CodeSessionView({
   const { data: session } = useQuery(codeSessionQuery(conversationId, sessionId));
   const { data: conv } = useQuery(conversationQuery(conversationId));
   const agent = session?.agentId ? conv?.agents.find((a) => a.id === session.agentId) : undefined;
-  // The log first: it opens on the latest steps.
-  const [tab, setTab] = useState<SessionTab>("journal");
-  const scroller = useRef<HTMLDivElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-  const [atBottom, setAtBottom] = useState(true);
-  const follow = useRef(true);
-  const isAtBottom = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-  // Opening the log lands on its bottom.
-  useLayoutEffect(() => {
-    if (tab === "journal") follow.current = true;
-  }, [tab]);
-  // The log follows the work while the reader stays at its bottom: every time its content grows
-  // (new steps, but also code blocks and diffs laying out after the first render, which left a
-  // refreshed page at the top), and the "latest" button knows where the reader is without a scroll.
-  const loaded = !!session;
-  useLayoutEffect(() => {
-    const el = scroller.current;
-    const inner = content.current;
-    if (!el || !inner) return;
-    const sync = () => {
-      if (tab === "journal" && follow.current) el.scrollTop = el.scrollHeight;
-      setAtBottom(isAtBottom(el));
-    };
-    sync();
-    const observer = new ResizeObserver(sync);
-    observer.observe(inner);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [tab, loaded]);
+  const [tab, setTab] = useState<SessionTab>("overview");
 
   const owner = !!session && session.requestedBy === user.id;
   const approval = session?.approval;
@@ -1077,13 +1044,10 @@ function CodeSessionView({
         {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
       </>
     ) : null;
-  // A new one comes into view: Aperçu shows it first, the log scrolls to it.
+  // A new one comes into view: Avancement shows it first.
   const waitingFor = approval?.id ?? session?.question?.text;
   useLayoutEffect(() => {
-    if (!waitingFor) return;
-    follow.current = true;
-    if (tab === "journal") scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-    else setTab("overview");
+    if (waitingFor) setTab("overview");
   }, [waitingFor]);
   const composer = useRef<{ addFiles: (files: FileList) => void }>(null);
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
@@ -1096,7 +1060,18 @@ function CodeSessionView({
       <PaneHeader
         media={<EngineTile engine={session?.engine} />}
         title={session?.title ?? t.codeSession}
-        description={agent && t.view.launchedBy(agent.name)}
+        // One line, as in Figma: its state, the engine said once, its branch.
+        description={
+          session && (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <StatusIcon status={session.status} asking={!!session.question} className="size-3 shrink-0" />
+              <span className="truncate">
+                <StatusText session={session} /> · {engineName}
+                {branch && ` · ${branch}`}
+              </span>
+            </span>
+          )
+        }
         actions={
           <>
             {session && <SessionDetails conversationId={conversationId} session={session} showModel={!owner} owner={owner} />}
@@ -1108,22 +1083,7 @@ function CodeSessionView({
             )}
           </>
         }
-      >
-        {session && (
-          <div className="flex min-w-0 flex-wrap gap-1.5 pt-1">
-            <Badge variant="secondary">
-              <StatusIcon status={session.status} asking={!!session.question} className="size-3" />
-              <StatusText session={session} />
-            </Badge>
-            {branch && (
-              <Badge variant="outline" className="max-w-full font-mono">
-                <BranchIcon />
-                <span className="truncate">{branch}</span>
-              </Badge>
-            )}
-          </div>
-        )}
-      </PaneHeader>
+      />
       {session && (
         <Tabs value={tab} onValueChange={(v) => setTab(v as SessionTab)} className="shrink-0 px-5 pb-2">
           <TabsList>
@@ -1132,7 +1092,6 @@ function CodeSessionView({
               {t.view.changes}
               {changed > 0 && <span className="tabular-nums text-muted-foreground">{changed}</span>}
             </TabsTrigger>
-            <TabsTrigger value="journal">{t.view.journal}</TabsTrigger>
           </TabsList>
         </Tabs>
       )}
@@ -1148,51 +1107,16 @@ function CodeSessionView({
           {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
 
           <div className="relative min-h-0 flex-1">
-            <div
-              ref={scroller}
-              onScroll={(e) => {
-                const bottom = isAtBottom(e.currentTarget);
-                if (tab === "journal") follow.current = bottom;
-                setAtBottom(bottom);
-              }}
-              // Positioned, like the conversation's thread: its absolute elements stay within it.
-              className="relative h-full overflow-y-auto px-5 pt-2 pb-4"
-            >
-              <div ref={content} className="flex min-h-full flex-col">
+            {/* Positioned, like the conversation's thread: its absolute elements stay within it. */}
+            <div className="relative h-full overflow-y-auto px-5 pt-2 pb-4">
+              <div className="flex min-h-full flex-col">
                 {tab === "overview" ? (
                   <Overview conversationId={conversationId} session={session} agent={agent} members={conv?.members ?? []} owner={owner} pending={pending} />
-                ) : tab === "changes" ? (
-                  <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
-                ) : session.steps.length === 0 && !pending ? (
-                  <Empty className="flex-1">
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <Spinner />
-                      </EmptyMedia>
-                      <EmptyDescription>{t.empty}</EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
                 ) : (
-                  <div className="flex flex-col gap-4">
-                    <Timeline steps={session.steps} running={session.status === "running"} />
-                    {pending}
-                  </div>
+                  <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
                 )}
               </div>
             </div>
-            {tab === "journal" && !atBottom && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-md"
-                onClick={() => {
-                  follow.current = true;
-                  scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
-                }}
-              >
-                {t.latest}
-              </Button>
-            )}
           </div>
 
           <div className="shrink-0 px-4 pt-2 pb-4">
@@ -1204,11 +1128,11 @@ function CodeSessionView({
   );
 }
 
-/** The engine's logo in a bordered tile (Figma « Carte de PR »). */
+/** A session's tile (Figma « Carte de session »): the terminal glyph, whatever the engine; its name in the title. */
 function EngineTile({ engine, className }: { engine?: CodeEngine; className?: string }) {
   return (
     <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-border bg-background", className)} title={engine ? CODE_ENGINE_NAMES[engine] : undefined}>
-      <ModelLogo provider={engine === "codex" ? "codex" : engine === "cursor" ? "cursor" : "claude-code"} className="size-[22px]" />
+      <TerminalIcon className="size-5 text-muted-foreground" />
     </span>
   );
 }
@@ -1382,20 +1306,6 @@ function SessionDetails({ conversationId, session, showModel, owner }: { convers
           <TooltipContent>{t.details}</TooltipContent>
         </Tooltip>
         <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
-          <Item
-            size="sm"
-            render={<button type="button" onClick={() => copyText(session.cwd)} />}
-            aria-label={t.copyPath}
-            className="flex-nowrap text-left hover:bg-muted/60"
-          >
-            <ItemContent className="min-w-0">
-              <ItemTitle>{t.folder}</ItemTitle>
-              <ItemDescription className="break-all font-mono text-xs">{session.cwd}</ItemDescription>
-            </ItemContent>
-            <ItemActions>
-              <CopyIcon className="size-4 text-muted-foreground" />
-            </ItemActions>
-          </Item>
           {showModel && session.model && (
             <Item size="sm">
               <ItemContent className="min-w-0">
@@ -1404,12 +1314,12 @@ function SessionDetails({ conversationId, session, showModel, owner }: { convers
               </ItemContent>
             </Item>
           )}
-          {owner && session.account && (
+          {owner && session.account?.email && (
             <Item size="sm">
               <ItemContent className="min-w-0">
                 <ItemTitle>{t.account}</ItemTitle>
                 <ItemDescription className="truncate">
-                  {session.account.email ?? t.serverAccount}
+                  {session.account.email}
                   {session.account.plan ? ` · ${session.account.plan}` : ""}
                 </ItemDescription>
               </ItemContent>
@@ -1419,19 +1329,19 @@ function SessionDetails({ conversationId, session, showModel, owner }: { convers
             <Item size="sm">
               <ItemContent className="min-w-0">
                 <ItemTitle>{t.usage}</ItemTitle>
-                <ItemDescription className="tabular-nums">
-                  {t.tokens(f.compact(u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens))} · {f.cost(u.costUsd)} · {t.runs(u.runs)} · {usageTime(u)}
-                </ItemDescription>
-                <ItemDescription className="tabular-nums">
-                  {t.usageDetail(f.compact(u.inputTokens), f.compact(u.outputTokens), f.compact(u.cacheReadTokens + u.cacheWriteTokens), u.turns)}
-                </ItemDescription>
-                <ItemDescription className="text-xs">{t.costNote}</ItemDescription>
+                {/* The cost is an estimate at API prices: said in its tooltip, not as a paragraph. */}
+                <Tooltip>
+                  <TooltipTrigger render={<ItemDescription className="w-fit tabular-nums" />}>
+                    {t.estimated(f.cost(u.costUsd))} · {usageTime(u)}
+                  </TooltipTrigger>
+                  <TooltipContent>{t.costNote}</TooltipContent>
+                </Tooltip>
               </ItemContent>
             </Item>
           )}
           {owner && session.repo && (
             <div className="px-2.5 pb-1.5 pt-1">
-              <Button variant="outline" size="sm" onClick={() => setCredentials(true)}>
+              <Button variant="secondary" size="sm" onClick={() => setCredentials(true)}>
                 {t.credentials.open}
               </Button>
             </div>
@@ -1788,141 +1698,8 @@ function PullRequestDialog(props: {
 
 /* ---------- steps ---------- */
 
-type ToolStepT = Extract<CodeStep, { kind: "tool" }>;
-/** Its question to its bot, a tool call for Claude Code: named in words here. */
-const ASK_BOT = "mcp__agora__ask_bot";
-type Block = { kind: "step"; step: Exclude<CodeStep, ToolStepT> } | { kind: "tools"; steps: ToolStepT[] };
-
-/** Consecutive tool calls read as one block; a subagent's steps go under its Task call. */
-function blocks(steps: CodeStep[]): Block[] {
-  const out: Block[] = [];
-  for (const step of steps) {
-    const last = out.at(-1);
-    if (step.kind === "tool" && last?.kind === "tools") last.steps.push(step);
-    else if (step.kind === "tool") out.push({ kind: "tools", steps: [step] });
-    else out.push({ kind: "step", step });
-  }
-  return out;
-}
-
-const parentOf = (s: CodeStep) => ("parentId" in s ? s.parentId : undefined);
-
-/** The steps of one level (the session's, or a subagent's), each Task call holding its own. */
-function Timeline({ steps, running, parentId }: { steps: CodeStep[]; running: boolean; parentId?: string }) {
-  const own = steps.filter((s) => parentOf(s) === parentId);
-  const last = own.at(-1);
-  return (
-    <div className="flex flex-col gap-3">
-      {blocks(own).map((b) =>
-        b.kind === "tools" ? (
-          <div key={b.steps[0]!.id} className="-mx-2 flex flex-col">
-            {b.steps.map((s) => (
-              <ToolRow key={s.id} step={s} all={steps} />
-            ))}
-          </div>
-        ) : (
-          <StepView key={b.step.id} step={b.step} streaming={running && b.step === last} />
-        ),
-      )}
-    </div>
-  );
-}
-
-function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; streaming: boolean }) {
-  const t = useT(messages);
-  switch (step.kind) {
-    case "user":
-      return (
-        <div className="flex flex-col items-end gap-1">
-          {step.by && <span className="px-1 text-xs text-muted-foreground">{step.by}</span>}
-          {!!step.files?.length && <SentAttachments items={step.files} className="max-w-[88%]" />}
-          {step.text && <UserBubble text={step.text} className="max-w-[88%] text-sm" />}
-        </div>
-      );
-    case "text":
-      return <MessageText text={step.text} streaming={streaming} className="text-sm" />;
-    case "git":
-      return (
-        <div className={cn("flex items-start gap-2 text-[13px]", step.ok ? "text-muted-foreground" : "text-destructive")}>
-          {step.ok ? <BranchIcon className="mt-0.5 size-3.5 shrink-0" /> : <CloseCircleIcon className="mt-0.5 size-3.5 shrink-0" />}
-          <span className="min-w-0 break-words">
-            {step.text}
-            {step.by ? ` · ${step.by}` : ""}
-          </span>
-        </div>
-      );
-    case "notice":
-      if (step.code === "error") {
-        return (
-          <Alert variant="destructive">
-            <CloseCircleIcon />
-            <AlertTitle>{t.notices.error}</AlertTitle>
-            {step.text && (
-              <AlertDescription>
-                <pre className="whitespace-pre-wrap break-words font-mono text-xs">{step.text}</pre>
-              </AlertDescription>
-            )}
-          </Alert>
-        );
-      }
-      return (
-        <div className="text-center text-[13px] text-muted-foreground">
-          {t.notices[step.code]}
-          {step.text && <CodeBlock className="mt-1.5 text-left">{step.text}</CodeBlock>}
-        </div>
-      );
-  }
-}
-
-/** A finished call shows nothing, as in an IDE: only work in progress and failures stand out. */
-function ToolStatus({ status }: { status: ToolStepT["status"] }) {
-  if (status === "running") return <Spinner className="size-3.5 shrink-0" />;
-  if (status === "done") return null;
-  return <CloseCircleIcon className="size-3.5 shrink-0 text-destructive" />;
-}
-
-/** One tool call; unfolds to its input and result, and to its subagent's steps for a Task call. */
-function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
-  const t = useT(messages);
-  const [open, setOpen] = useState(false);
-  const nested = all.some((s) => parentOf(s) === step.id);
-  const expandable = !!(step.input || step.output || nested);
-  const row = (
-    <>
-      <ToolIcon name={step.name} className="size-3.5" />
-      <span className="shrink-0">{step.name === ASK_BOT ? t.view.kinds.question.replace(/^./, (c) => c.toUpperCase()) : step.name}</span>
-      <span className={cn("min-w-0 flex-1 truncate text-left text-foreground/80", step.name !== ASK_BOT && "font-mono text-xs")}>{step.title !== step.name ? step.title : ""}</span>
-      <ToolStatus status={step.status} />
-    </>
-  );
-  if (!expandable) return <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-muted-foreground">{row}</div>;
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger render={<Button variant="ghost" size="xs" className="w-full justify-start gap-2" />}>
-        {row}
-        <ChevronRightIcon className={cn("size-3 transition-transform", open && "rotate-90")} />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="ml-3.5 flex flex-col gap-2 border-l py-1.5 pl-3 pr-2">
-        {step.input && (step.name === "ExitPlanMode" ? <MessageText text={step.input} className="text-sm" /> : <Detail label={t.input} text={step.input} />)}
-        {nested && <Timeline steps={all} running={false} parentId={step.id} />}
-        {step.output && <Detail label={t.output} text={step.output} />}
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-/** A command, a tool's input or output, an error: monospaced, wrapped, scrolling past its height. */
 function CodeBlock({ className, children }: { className?: string; children: ReactNode }) {
   return <pre className={cn("overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted px-3 py-2 font-mono text-xs", className)}>{children}</pre>;
-}
-
-function Detail({ label, text }: { label: string; text: string }) {
-  return (
-    <div>
-      <p className="mb-1 text-xs text-muted-foreground">{label}</p>
-      <CodeBlock className="max-h-72 leading-relaxed">{text}</CodeBlock>
-    </div>
-  );
 }
 
 /* ---------- approval and writing ---------- */
@@ -2483,15 +2260,13 @@ const CodeModelPicker = memo(function CodeModelPicker({ conversationId, engine, 
           <CommandInput placeholder={t.searchModel} />
           <CommandList className="max-h-80">
             <CommandEmpty>{t.noModel}</CommandEmpty>
-            <CommandGroup heading={<GroupHeading provider={engine} label={CODE_ENGINE_NAMES[engine]} />}>
+            <CommandGroup>
               {list.map((m) => (
                 <ModelOption
                   key={m.id}
                   value={key(m)}
                   label={"label" in m && m.label ? m.label : modelName(m.id)}
                   description={"description" in m ? m.description : undefined}
-                  reasoning={"reasoning" in m ? m.reasoning : undefined}
-                  logo={<ModelLogo model={m.id} provider={vendor} />}
                   active={m.id === value}
                   onSelect={() => {
                     setOpen(false);
