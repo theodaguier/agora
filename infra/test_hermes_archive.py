@@ -2,6 +2,7 @@ import importlib.util
 import fcntl
 import os
 import sqlite3
+import socket
 import tarfile
 import tempfile
 import subprocess
@@ -91,6 +92,18 @@ class OnlineArchiveTests(unittest.TestCase):
             with patch.object(module.shutil, "disk_usage", return_value=type("Usage", (), {"free": 50})()):
                 with self.assertRaises(OSError): module.create_archive(root, output, [], reserve_bytes=1000)
             self.assertFalse(output.exists())
+
+    def test_live_unix_sockets_are_ignored_like_tar(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch, "source"); root.mkdir()
+            output = Path(scratch, "backup.tgz")
+            (root / "config.yaml").write_text("fixture")
+            with socket.socket(socket.AF_UNIX) as endpoint:
+                endpoint.bind(str(root / "gateway.sock"))
+                module.create_archive(root, output, [])
+            with tarfile.open(output) as archive:
+                self.assertNotIn("./gateway.sock", archive.getnames())
+                self.assertEqual(archive.extractfile("./config.yaml").read(), b"fixture")
 
 
 if __name__ == "__main__": unittest.main()

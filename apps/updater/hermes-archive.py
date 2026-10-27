@@ -54,6 +54,9 @@ def create_archive(root, output, excludes, reserve_bytes=0):
                             if relative.endswith(suffix) and relative[:-len(suffix)] in sqlite_paths:
                                 return
                         info = archive.gettarinfo(str(path), arcname="./" + relative if relative != "." else ".")
+                        # Unix sockets are transient endpoints, not restorable files.
+                        if info is None:
+                            return
                         if info.islnk() and info.linkname.removeprefix("./") in sqlite_paths:
                             sqlite_paths.add(relative)
                         if info.isfile():
