@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.8 — 2026-10-27
+
+### Fixes
+- **code-sessions**: connecteurs du bot pour les sessions lancées depuis le panneau
+
 ## v0.45.7 — 2026-10-27
 
 ### Fixes
