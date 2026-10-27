@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.45.12 — 2026-10-27
+
+### Fixes
+- **web**: Avancement montre le fil de la session en direct
+
 ## v0.45.11 — 2026-10-27
 
 ### Fixes
