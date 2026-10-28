@@ -465,6 +465,16 @@ export const NEW_CODE_SESSION = "new";
 export const newCodeSessionId = () => `${NEW_CODE_SESSION}-${crypto.randomUUID().slice(0, 8)}`;
 export const isNewCodeSession = (id: string) => id === NEW_CODE_SESSION || id.startsWith(`${NEW_CODE_SESSION}-`);
 
+/** The repository a new session opened from outside its conversation (the Sessions page) starts on, by tab. */
+const presetRepos = new Map<string, string | null>();
+
+/** A new session's tab id, its repository chosen already (null: none, to pick beside the field). */
+export function newCodeSessionFor(repo: string | null) {
+  const id = newCodeSessionId();
+  presetRepos.set(id, repo);
+  return id;
+}
+
 /**
  * The Claude Code panel: the sessions opened in it, as tabs (the "+" opens another one, new or
  * existing), each kept as it was while another is in front. Large screens show it beside the thread; smaller ones in a sheet over it.
@@ -671,7 +681,7 @@ export function CodeSessionPage({
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       {isNewCodeSession(sessionId) ? (
-        <NewSessionView conversationId={conversationId} onStarted={onStarted} onClose={onClose} page />
+        <NewSessionView conversationId={conversationId} preset={presetRepos.get(sessionId)} onStarted={onStarted} onClose={onClose} page />
       ) : (
         <CodeSessionView conversationId={conversationId} sessionId={sessionId} onClose={onClose} page />
       )}
@@ -685,12 +695,15 @@ export function CodeSessionPage({
  */
 function NewSessionView({
   conversationId,
+  preset,
   onStarted,
   onClose,
   onDetach,
   page,
 }: {
   conversationId: string;
+  /** Its repository, chosen where it was opened; otherwise the conversation's latest. */
+  preset?: string | null;
   onStarted: (sessionId: string) => void;
   onClose?: () => void;
   onDetach?: () => void;
@@ -703,7 +716,7 @@ function NewSessionView({
   const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
   // The conversation's repositories, the latest session's first: usually the one to work on again.
   const recent = [...new Set([...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).flatMap((s) => (s.git?.repo ? [s.git.repo] : [])))];
-  const [repo, setRepo] = useState<string | null>(recent[0] ?? null);
+  const [repo, setRepo] = useState<string | null>(preset !== undefined ? preset : (recent[0] ?? null));
   const { data: engines = [] } = useQuery({ ...codeEnginesQuery(conversationId), retry: false });
   // Claude Code unless picked otherwise, or not available to them.
   const [picked, setPicked] = useState<CodeEngine | null>(null);

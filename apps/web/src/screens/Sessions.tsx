@@ -16,19 +16,22 @@ import {
 import { codeSessions, common } from "@agora/core/i18n";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { BrandLogo } from "@/components/BrandLogo";
+import { newCodeSessionFor } from "@/components/CodeSession";
 import { CodePriorityIcon, CodeStateIcon, IssueIcon } from "@/components/CodeSessionMarks";
 import { CodePriorityMenu, priorityOfKey, useSetCodePriority, useSetCodePriorityOf } from "@/components/CodePriorityMenu";
 import { EmptyFigure } from "@/components/EmptyFigure";
-import { BranchIcon, ChevronLeftIcon, TerminalIcon } from "@/components/icons";
+import { BranchIcon, ChevronLeftIcon, PlusIcon, TerminalIcon } from "@/components/icons";
 import { OptionSelect } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useT } from "@/i18n";
-import { allCodeSessionsQuery } from "@/lib/code-sessions";
+import { allCodeSessionsQuery, codeEnginesQuery } from "@/lib/code-sessions";
 import { listTime } from "@/lib/dates";
 import { useOrgTitle } from "@/lib/org";
 import { conversationsQuery } from "@/lib/queries";
@@ -81,6 +84,7 @@ export function Sessions() {
   // What each view would show, stopped sessions counted only when they are shown.
   const count = (view: CodeSessionView) => groupCodeSessions(sessions, { ...display, view }).reduce((n, g) => n + g.sessions.length, 0);
   const groups = groupCodeSessions(sessions, display);
+  const start = useNewSession(sessions);
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -88,7 +92,10 @@ export function Sessions() {
           <Button variant="ghost" size="icon" nativeButton={false} render={<Link to="/" aria-label={c.back} />} className="-ml-2 mb-2 hover:bg-transparent md:hidden">
             <ChevronLeftIcon className="size-5" />
           </Button>
-          <h1 className="text-xl leading-7 font-medium">{t.page.title}</h1>
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-xl leading-7 font-medium">{t.page.title}</h1>
+            {start.can && <NewSessionButton projects={start.projects} onStart={start.open} />}
+          </div>
           {sessions.length > 0 && (
             <div className="mt-3 flex items-center gap-0.5">
               {/* Figma « Vue de liste »: text tabs, a light background on the one shown, the count in light grey. */}
@@ -127,11 +134,64 @@ export function Sessions() {
               )}
             </Empty>
           ) : (
-            groups.map((g) => <Group key={g.key} group={display.group} groupKey={g.key} sessions={g.sessions} />)
+            groups.map((g) => (
+              <Group key={g.key} group={display.group} groupKey={g.key} sessions={g.sessions} onStart={start.can && display.group === "project" && g.key ? () => start.open(g.key) : undefined} />
+            ))
           )}
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Starting a session from here: it opens as a new session tab, its repository chosen. A session lives in
+ * a conversation: the one of the project's latest session, else of the latest session, else the latest
+ * conversation. Only for those who may start one (an engine of theirs is installed).
+ */
+function useNewSession(sessions: CodeSession[]) {
+  const navigate = useNavigate();
+  const { data: conversations = [] } = useQuery(conversationsQuery);
+  const known = new Set(conversations.map((c) => c.id));
+  const latest = sessions.filter((s) => known.has(s.conversationId)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const fallback = latest[0]?.conversationId ?? [...conversations].sort((a, b) => b.lastAt.localeCompare(a.lastAt))[0]?.id;
+  const { data: engines = [] } = useQuery({ ...codeEnginesQuery(fallback ?? ""), enabled: !!fallback, retry: false });
+  return {
+    can: !!fallback && engines.length > 0,
+    /** The projects worked on, the latest first. */
+    projects: [...new Set(latest.map(codeSessionProject).filter(Boolean))].slice(0, 8),
+    open: (repo: string | null) => {
+      const conversationId = (repo ? latest.find((s) => codeSessionProject(s) === repo)?.conversationId : undefined) ?? fallback;
+      if (!conversationId) return;
+      void navigate({ to: "/c/$conversationId/code/$sessionId", params: { conversationId, sessionId: newCodeSessionFor(repo) } });
+    },
+  };
+}
+
+/** « Nouvelle session »: on one of the projects worked on, or another repository picked beside the field. */
+function NewSessionButton({ projects, onStart }: { projects: string[]; onStart: (repo: string | null) => void }) {
+  const b = useT(codeSessions).board;
+  if (!projects.length) {
+    return (
+      <Button size="sm" onClick={() => onStart(null)}>
+        {b.newSession}
+      </Button>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button size="sm" />}>{b.newSession}</DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60">
+        {projects.map((repo) => (
+          <DropdownMenuItem key={repo} title={repo} onClick={() => onStart(repo)}>
+            <BrandLogo domain="github.com" fallback={<BranchIcon className="size-4" />} className="size-4 dark:invert" />
+            <span className="truncate">{repo.split("/")[1] ?? repo}</span>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onStart(null)}>{b.otherRepo}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -175,7 +235,7 @@ function DisplayMenu({ display, onChange }: { display: Display; onChange: (patch
  * Figma « Titre de groupe » and its card: the group's mark (state, priority or GitHub), its name, its
  * count in light grey. Grouped by priority, a row dropped here takes the group's priority.
  */
-function Group({ group, groupKey, sessions }: { group: CodeSessionGrouping; groupKey: string; sessions: CodeSession[] }) {
+function Group({ group, groupKey, sessions, onStart }: { group: CodeSessionGrouping; groupKey: string; sessions: CodeSession[]; onStart?: () => void }) {
   const t = useT(codeSessions);
   const [over, setOver] = useState(false);
   const priority = group === "priority" ? (groupKey as CodePriority) : null;
@@ -196,6 +256,14 @@ function Group({ group, groupKey, sessions }: { group: CodeSessionGrouping; grou
         {mark}
         {label}
         <span className="text-subtle tabular-nums">{sessions.length}</span>
+        {onStart && (
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t.board.newIn(label)} onClick={onStart} className="ml-auto" />}>
+              <PlusIcon />
+            </TooltipTrigger>
+            <TooltipContent>{t.board.newIn(label)}</TooltipContent>
+          </Tooltip>
+        )}
       </h2>
       <div
         className={cn("flex flex-col rounded-[14px] border border-border p-1 transition-colors", over && "border-ring bg-accent/40")}
