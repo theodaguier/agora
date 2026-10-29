@@ -34,7 +34,13 @@
 	# API (and SSE reply streams): the API shares the hermes container's network.
 	# No page CSP here: attachments send their own (sandbox).
 	handle /api/* {
-		request_body {
+		# Attachment uploads (videos) go up to 2 GiB; the rest stays small.
+		@upload path_regexp ^/api/conversations/[^/]+/attachments$
+		@other not path_regexp ^/api/conversations/[^/]+/attachments$
+		request_body @upload {
+			max_size 2049MiB
+		}
+		request_body @other {
 			max_size 30MB
 		}
 		reverse_proxy hermes:3001 {

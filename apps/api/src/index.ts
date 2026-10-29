@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { db, schema } from "./db";
 import { logger } from "hono/logger";
 import { auth } from "./auth";
@@ -49,13 +50,21 @@ import { syncSessionSearch } from "./session-search";
 import { usage } from "./routes/usage";
 import { localeMiddleware } from "./i18n";
 import { protectProcess } from "./harden";
+import { MAX_FILE } from "./attachments";
 
 protectProcess();
+
+// Bun lets a body through up to the size of an attachment upload (written to disk as it
+// arrives); every other route reads its body in memory and stays under this.
+const BODY_LIMIT = 30 * 1024 * 1024;
+const UPLOAD = /^\/api\/conversations\/[^/]+\/attachments$/;
+const smallBodies = bodyLimit({ maxSize: BODY_LIMIT, onError: (c) => c.json({ error: "body_too_large" }, 413) });
 
 const app = new Hono()
   .basePath("/api")
   .use(logger())
   .use(localeMiddleware)
+  .use((c, next) => (c.req.method === "POST" && UPLOAD.test(c.req.path) ? next() : smallBodies(c, next)))
   .get("/health", (c) => c.json({ ok: true, version: version.app }))
   /** Public identity of the instance (login screen, title). */
   .get("/org", async (c) => {
@@ -132,4 +141,4 @@ recoverCodeSessions().catch((err) => console.error("code sessions: recovery", er
 startCodeSessionSweep();
 void syncSessionSearch();
 
-export default { port: env.PORT, fetch: app.fetch, idleTimeout: 255, maxRequestBodySize: 30 * 1024 * 1024 };
+export default { port: env.PORT, fetch: app.fetch, idleTimeout: 255, maxRequestBodySize: MAX_FILE + 1024 * 1024 };

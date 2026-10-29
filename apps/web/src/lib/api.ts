@@ -389,14 +389,13 @@ export type PluginIndexEntry = { name: string; description?: string; identifier?
 
 export const attachmentUrl = (id: string, download = false) => `/api/attachments/${encodeURIComponent(id)}${download ? "?download" : ""}`;
 
+/** The file is the body, streamed by the browser from disk: a video doesn't have to fit in memory. */
 export async function uploadAttachment(conversationId: string, file: File, signal?: AbortSignal) {
-  const form = new FormData();
-  form.append("file", file);
   const res = await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/attachments`, {
     method: "POST",
     credentials: "include",
-    headers: localeHeader(),
-    body: form,
+    headers: { ...localeHeader(), "Content-Type": file.type || "application/octet-stream", "X-Agora-Filename": encodeURIComponent(file.name) },
+    body: file,
     signal,
   });
   if (!res.ok) throw new ApiError(res.status, await res.text());

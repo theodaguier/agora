@@ -31,3 +31,4 @@ export * from "./media";
 export * from "./devices";
 export * from "./model-names";
 export * from "./agent-colors";
+export * from "./attachments";

@@ -38,7 +38,7 @@ import { invocationKey, type AgentSummary, type Attachment, type Invocation, typ
 
 const messages = defineMessages({
   en: {
-    tooLarge: "File too large (25 MB max)",
+    tooLarge: "File too large (2 GB max)",
     uploadFailed: "Upload failed",
     mentionHint: "Ask it to reply",
     allHint: "The relevant bots reply",
@@ -62,7 +62,7 @@ const messages = defineMessages({
     stopDictation: "Stop dictation",
   },
   fr: {
-    tooLarge: "Fichier trop lourd (25 Mo max)",
+    tooLarge: "Fichier trop lourd (2 Go max)",
     uploadFailed: "Envoi impossible",
     mentionHint: "Le faire répondre",
     allHint: "Les bots concernés répondent",

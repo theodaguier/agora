@@ -1,3 +1,4 @@
+import { MAX_ATTACHMENT } from "@agora/core";
 import { LinearGradient } from "expo-linear-gradient";
 import { Chip, CloseButton, ScrollShadow, Spinner, Surface, Typography, useThemeColor } from "heroui-native";
 import { useState } from "react";
@@ -31,8 +32,6 @@ export type PendingFile = {
   error?: string;
 };
 
-const MAX_FILE = 25 * 1024 * 1024;
-
 const newKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
 /** Files attached to the message being written, uploaded as soon as they're added (the Claude Code session's field too). */
@@ -42,7 +41,7 @@ export function usePendingFiles(conversationId: string, t: { tooLarge: string; u
     for (const file of list.slice(0, 10)) {
       const key = newKey();
       const pending = { key, name: file.name, mime: file.mime, size: file.size ?? 0, uri: file.uri };
-      if (file.size && file.size > MAX_FILE) {
+      if (file.size && file.size > MAX_ATTACHMENT) {
         haptic.error();
         setFiles((xs) => [...xs, { ...pending, status: "error", error: t.tooLarge }]);
         continue;

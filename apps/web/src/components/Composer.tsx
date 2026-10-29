@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { defineMessages, useT } from "@/i18n";
 import { invocationKey, retryLast, sessionCommand, uploadAttachment, type AgentSummary, type Attachment, type Invocation, type ReplyTo } from "@/lib/api";
-import { ALL_HANDLE } from "@agora/core";
+import { ALL_HANDLE, MAX_ATTACHMENT } from "@agora/core";
 import { addressedAccent, allMentionable, MentionText, splitMentions } from "@/lib/mentions";
 import { personMentionables, usePeople } from "@/lib/people";
 import { AwayNotice } from "@/components/AwayNotice";
@@ -30,7 +30,7 @@ import { toastError } from "@/lib/feedback";
 
 const messages = defineMessages({
   en: {
-    tooLarge: "File too large (25 MB max)",
+    tooLarge: "File too large (2 GB max)",
     uploadFailed: "Upload failed",
     mentionHint: "Ask it to reply",
     allHint: "The relevant bots reply",
@@ -52,7 +52,7 @@ const messages = defineMessages({
     send: "Send",
   },
   fr: {
-    tooLarge: "Fichier trop lourd (25 Mo max)",
+    tooLarge: "Fichier trop lourd (2 Go max)",
     uploadFailed: "Envoi impossible",
     mentionHint: "Le faire répondre",
     allHint: "Les bots concernés répondent",
@@ -87,7 +87,6 @@ const replyMessages = defineMessages({
   fr: { cancelReply: "Annuler la réponse" },
 });
 
-const MAX_FILE = 25 * 1024 * 1024;
 const MAX_INVOCATIONS = 5;
 
 type Props = {
@@ -188,7 +187,7 @@ export function usePendingFiles(conversationId: string, t: { tooLarge: string; u
     for (const file of Array.from(list).slice(0, 10)) {
       const key = crypto.randomUUID();
       const previewUrl = file.type.startsWith("image/") ? previews.create(file) : undefined;
-      if (file.size > MAX_FILE) {
+      if (file.size > MAX_ATTACHMENT) {
         setFiles((xs) => [...xs, { key, file, previewUrl, status: "error", error: t.tooLarge }]);
         continue;
       }
