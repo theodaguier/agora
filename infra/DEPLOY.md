@@ -66,7 +66,9 @@ line, `docker compose -p agora exec -it --user hermes hermes hermes model`.
     production over and checks again. On any failure: rollback to the previous
     version with data restore.
   - **App**: patches and minors applied automatically, majors on click;
-    backup, switchover (migrations on API startup), health and contract
+    database backup (a rollback only restores the database, so the Hermes
+    volume is archived before a Hermes update only), switchover (migrations
+    on API startup), health and contract
     checks, otherwise rollback with database restore.
   - A rejected version is no longer retried automatically ("Allow a new
     attempt" button in the admin).

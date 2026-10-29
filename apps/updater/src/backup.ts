@@ -15,10 +15,12 @@ import { contractEnv } from "./prod";
 const CACHES = ["node_modules", ".venv", ".npm", ".cache", ".next", ".nuxt", ".svelte-kit", ".expo", ".turbo", "*/.bun/install/cache", "*/.local/share/pnpm"];
 
 /**
- * Pre-update backup: Postgres dump + archive of the Hermes volume.
- * Returns the backup's id (directory).
+ * Pre-update backup: Postgres dump, plus the archive of the Hermes volume before a Hermes update
+ * (`hermes-…` label). An app update's rollback only restores the database: archiving the volume
+ * there took 10 to 20 minutes for nothing. Returns the backup's id (directory).
  */
 export async function backup(label: string) {
+  const withHermes = hasHermesData(label);
   const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${label}`;
   const dir = join(config.backupsDir, id);
   await mkdir(config.backupsDir, { recursive: true });
@@ -31,34 +33,8 @@ export async function backup(label: string) {
       timeoutMs: 10 * 60_000,
     });
     await Bun.write(join(temporary, "db.sql"), dump.stdout);
-    const space = await must([
-      "docker", "run", "--rm", "--network=none", "-v", `${config.backupsVolume}:/backups:ro`,
-      "alpine", "sh", "-ec", "df -Pk /backups | awk 'END { print $4 }'",
-    ]);
-    const availableKiB = Number(space.stdout.trim());
-    const reserveKiB = 1024 * 1024;
-    if (!Number.isSafeInteger(availableKiB) || availableKiB <= reserveKiB) throw new Error("Not enough backup space (1 GiB reserve required)");
-    const limit = (availableKiB - reserveKiB) * 1024;
-    // The archive takes many minutes: fail now if the last one, plus a margin, can't fit.
-    const needed = Math.ceil((await lastArchiveSize()) * 1.1);
-    if (needed > limit) {
-      const gb = (bytes: number) => Math.round(bytes / 1e8) / 10;
-      throw new UpdaterError(
-        `Espace disque insuffisant pour la sauvegarde : environ ${gb(needed)} Go nécessaires, ${gb(limit)} Go libres`,
-        "backup_space",
-        { needed: gb(needed), free: gb(limit) },
-      );
-    }
-    // A timeout kills the docker client, not its container: remove the writer before its files.
-    const { hermesVersion } = await contractEnv();
-    await must([
-      "docker", "run", "--rm", "-i", "--name", container, "--network=none", "--cpus=1", "--memory=512m", "--ulimit", `fsize=${limit}:${limit}`,
-      "--entrypoint", "/opt/hermes/.venv/bin/python",
-      "-v", `${volumeName("hermes-data")}:/data:ro`,
-      "-v", `${config.backupsVolume}:/backups`,
-      hermesImage(hermesVersion), "-", "/data", `/backups/${basename(temporary)}/hermes-data.tgz`, JSON.stringify(CACHES), "/backups/.archive.lock",
-    ], { input: await Bun.file(new URL("../hermes-archive.py", import.meta.url)).text(), timeoutMs: 20 * 60_000 });
-    if (!(await complete(temporary))) throw new Error("Incomplete backup");
+    if (withHermes) await archiveHermes(temporary, container);
+    if (!(await complete(temporary, withHermes))) throw new Error("Incomplete backup");
     await rename(temporary, dir);
   } catch (err) {
     await run(["docker", "rm", "-f", container]).catch(() => {});
@@ -69,6 +45,39 @@ export async function backup(label: string) {
   await pruneBackups().catch((err) => console.error("backup retention", err));
   return id;
 }
+
+async function archiveHermes(temporary: string, container: string) {
+  const space = await must([
+    "docker", "run", "--rm", "--network=none", "-v", `${config.backupsVolume}:/backups:ro`,
+    "alpine", "sh", "-ec", "df -Pk /backups | awk 'END { print $4 }'",
+  ]);
+  const availableKiB = Number(space.stdout.trim());
+  const reserveKiB = 1024 * 1024;
+  if (!Number.isSafeInteger(availableKiB) || availableKiB <= reserveKiB) throw new Error("Not enough backup space (1 GiB reserve required)");
+  const limit = (availableKiB - reserveKiB) * 1024;
+  // The archive takes many minutes: fail now if the last one, plus a margin, can't fit.
+  const needed = Math.ceil((await lastArchiveSize()) * 1.1);
+  if (needed > limit) {
+    const gb = (bytes: number) => Math.round(bytes / 1e8) / 10;
+    throw new UpdaterError(
+      `Espace disque insuffisant pour la sauvegarde : environ ${gb(needed)} Go nécessaires, ${gb(limit)} Go libres`,
+      "backup_space",
+      { needed: gb(needed), free: gb(limit) },
+    );
+  }
+  // A timeout kills the docker client, not its container: remove the writer before its files.
+  const { hermesVersion } = await contractEnv();
+  await must([
+    "docker", "run", "--rm", "-i", "--name", container, "--network=none", "--cpus=1", "--memory=512m", "--ulimit", `fsize=${limit}:${limit}`,
+    "--entrypoint", "/opt/hermes/.venv/bin/python",
+    "-v", `${volumeName("hermes-data")}:/data:ro`,
+    "-v", `${config.backupsVolume}:/backups`,
+    hermesImage(hermesVersion), "-", "/data", `/backups/${basename(temporary)}/hermes-data.tgz`, JSON.stringify(CACHES), "/backups/.archive.lock",
+  ], { input: await Bun.file(new URL("../hermes-archive.py", import.meta.url)).text(), timeoutMs: 20 * 60_000 });
+}
+
+/** Backups taken before a Hermes update carry the Hermes volume; an app update's, the database only. */
+const hasHermesData = (name: string) => /(^|Z-)hermes-/.test(name);
 
 export async function restoreDatabase(id: string) {
   const sql = await Bun.file(join(config.backupsDir, id, "db.sql")).text();
@@ -91,7 +100,7 @@ export async function restoreHermesData(id: string) {
 
 export async function listBackups() {
   const entries = await backupDirectories();
-  const valid = await Promise.all(entries.filter((name) => BACKUP_ID.test(name)).map(async (name) => await complete(join(config.backupsDir, name)) ? name : null));
+  const valid = await Promise.all(entries.filter((name) => BACKUP_ID.test(name)).map(async (name) => await complete(join(config.backupsDir, name), hasHermesData(name)) ? name : null));
   return valid.filter((name): name is string => name !== null).sort().reverse();
 }
 
@@ -106,18 +115,24 @@ async function backupDirectories() {
   return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 }
 
-/** Size of the newest backup's Hermes archive, the best guess for the next one (0 without one). */
+/** Size of the newest Hermes archive, the best guess for the next one (0 without one). */
 async function lastArchiveSize() {
-  const [latest] = await listBackups();
-  if (!latest) return 0;
-  return (await stat(join(config.backupsDir, latest, "hermes-data.tgz"))).size;
+  for (const id of await listBackups()) {
+    const size = await fileSize(join(config.backupsDir, id, "hermes-data.tgz"));
+    if (size) return size;
+  }
+  return 0;
 }
 
-async function complete(dir: string) {
-  return Promise.all(["db.sql", "hermes-data.tgz"].map((name) => stat(join(dir, name)).then((s) => s.isFile() && s.size > 0).catch((err: NodeJS.ErrnoException) => {
-    if (err.code === "ENOENT") return false;
-    throw err;
-  }))).then((files) => files.every(Boolean));
+/** A missing file is 0 bytes. */
+const fileSize = (path: string) => stat(path).then((s) => (s.isFile() ? s.size : 0)).catch((err: NodeJS.ErrnoException) => {
+  if (err.code === "ENOENT") return 0;
+  throw err;
+});
+
+async function complete(dir: string, withHermes: boolean) {
+  const files = withHermes ? ["db.sql", "hermes-data.tgz"] : ["db.sql"];
+  return Promise.all(files.map((name) => fileSize(join(dir, name)))).then((sizes) => sizes.every((size) => size > 0));
 }
 
 /** Runs independently of successful updates; interrupted attempts don't consume retention slots. */
@@ -148,8 +163,8 @@ export async function pruneBackups(readCapacity = backupCapacity) {
     console.log(`backup retention: removed ${id} (${size} bytes)`);
   };
   for (const [i, id] of all.entries()) {
-    const sizes = await Promise.all(["db.sql", "hermes-data.tgz"].map((name) => stat(join(config.backupsDir, id, name))));
-    const size = sizes.reduce((sum, file) => sum + file.size, 0);
+    const sizes = await Promise.all(["db.sql", "hermes-data.tgz"].map((name) => fileSize(join(config.backupsDir, id, name))));
+    const size = sizes.reduce((sum, bytes) => sum + bytes, 0);
     if (i > 0 && (full || i >= config.keepBackups || used + size > budget)) {
       full = true;
       await remove({ id, size });
@@ -166,7 +181,7 @@ export async function pruneBackups(readCapacity = backupCapacity) {
     }
   }
   for (const name of await backupDirectories()) {
-    if (!name.startsWith(".partial-") && (!BACKUP_ID.test(name) || await complete(join(config.backupsDir, name)))) continue;
+    if (!name.startsWith(".partial-") && (!BACKUP_ID.test(name) || await complete(join(config.backupsDir, name), hasHermesData(name)))) continue;
     const dir = join(config.backupsDir, name);
     if (Date.now() - (await stat(dir)).mtimeMs > PARTIAL_MAX_AGE_MS) await rm(dir, { recursive: true, force: true });
   }
