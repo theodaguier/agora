@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.48.0 — 2026-10-29
+
+### Features
+- pièces jointes jusqu'à 2 Go, envoyées en streaming
+
+### Fixes
+- **deps**: seroval 1.6.12, corrige les advisories high du gate d'audit web
+
 ## v0.47.0 — 2026-10-27
 
 ### Features
