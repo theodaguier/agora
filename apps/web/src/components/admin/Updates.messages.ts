@@ -55,6 +55,7 @@ export const messages = defineMessages({
     steps: {
       app_pull_images: () => "Downloading images",
       backup_start: () => "Backing up the database and Hermes data",
+      backup_db_start: () => "Backing up the database",
       backup_done: (p: StepParams) => `Backup ${p.id}`,
       app_switch: (p: StepParams) => `Switching to Agora ${p.version}`,
       app_verified: () => "New version verified",
@@ -129,6 +130,7 @@ export const messages = defineMessages({
     steps: {
       app_pull_images: () => "Téléchargement des images",
       backup_start: () => "Sauvegarde de la base et des données Hermes",
+      backup_db_start: () => "Sauvegarde de la base",
       backup_done: (p: StepParams) => `Sauvegarde ${p.id}`,
       app_switch: (p: StepParams) => `Bascule sur Agora ${p.version}`,
       app_verified: () => "Nouvelle version vérifiée",

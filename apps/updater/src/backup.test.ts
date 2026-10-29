@@ -34,7 +34,7 @@ beforeEach(async () => {
 afterAll(() => rm(root, { recursive: true, force: true }));
 
 async function fixture(day: string, complete = true) {
-  const id = `2026-10-${day}T00-00-00-000Z-app-0.44.1`;
+  const id = `2026-10-${day}T00-00-00-000Z-hermes-v2026.9.24`;
   const dir = join(root, id);
   await mkdir(dir);
   await writeFile(join(dir, "db.sql"), "dump");
@@ -45,7 +45,7 @@ async function fixture(day: string, complete = true) {
 test("an archive failure removes its partial files and preserves usable backups", async () => {
   const kept = await fixture("01");
   fail = true;
-  await expect(backup("app-0.44.2")).rejects.toThrow("archive failed");
+  await expect(backup("hermes-v2026.10.1")).rejects.toThrow("archive failed");
   expect(await readdir(root)).toEqual([kept]);
   expect(await listBackups()).toEqual([kept]);
 });
@@ -54,14 +54,14 @@ test("insufficient or invalid disk capacity fails before pausing Hermes", async 
   const kept = await fixture("01");
   for (const space of ["524288", "invalid", ""]) {
     spaceKiB = space;
-    await expect(backup("app-0.45.1")).rejects.toThrow("backup space");
+    await expect(backup("hermes-v2026.10.1")).rejects.toThrow("backup space");
   }
   expect(pauses).toBe(0);
   expect(await readdir(root)).toEqual([kept]);
 });
 
 test("a successful backup becomes visible only as a complete backup", async () => {
-  const id = await backup("app-0.44.2");
+  const id = await backup("hermes-v2026.10.1");
   expect(await listBackups()).toEqual([id]);
   expect((await readdir(join(root, id))).sort()).toEqual(["db.sql", "hermes-data.tgz"]);
 });
@@ -147,8 +147,18 @@ test("an archive the last one says won't fit fails up front, with the sizes", as
   const kept = await fixture("01");
   // 2 GiB free, 1 GiB reserved: the last archive (1.5 GiB) plus its margin can't fit.
   await truncate(join(root, kept, "hermes-data.tgz"), 1.5 * 1024 ** 3);
-  const err = await backup("app-0.48.0").catch((e) => e);
+  const err = await backup("hermes-v2026.10.1").catch((e) => e);
   expect(err.code).toBe("backup_space");
   expect(err.params).toEqual({ needed: 1.8, free: 1.1 });
   expect(await readdir(root)).toEqual([kept]);
+});
+
+test("an app update's backup is the database alone, without archiving Hermes", async () => {
+  const hermes = await fixture("01");
+  // No disk reading, no archive: either would fail here.
+  fail = true;
+  spaceKiB = "";
+  const id = await backup("app-0.48.2");
+  expect(await readdir(join(root, id))).toEqual(["db.sql"]);
+  expect(await listBackups()).toEqual([id, hermes]);
 });

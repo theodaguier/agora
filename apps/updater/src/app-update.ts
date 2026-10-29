@@ -37,7 +37,7 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
 
     const baseline = await checkContract({ container: containerName("hermes"), volume: volumeName("hermes-data"), appVersion: from, env: prod.env, uid: prod.uid, chat: false, mutating: false });
 
-    await step("backup_start", "Sauvegarde de la base et des données Hermes");
+    await step("backup_db_start", "Sauvegarde de la base");
     entry.backup = await backup(`app-${to}`);
     await step("backup_done", `Sauvegarde ${entry.backup}`, true, { id: entry.backup });
 
