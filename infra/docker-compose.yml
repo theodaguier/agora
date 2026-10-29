@@ -127,7 +127,7 @@ services:
       REGISTRY_USER: ${REGISTRY_USER:-}
       REGISTRY_TOKEN: ${REGISTRY_TOKEN:-}
       BACKUPS_VOLUME: agora_backups
-      KEEP_BACKUPS: ${KEEP_BACKUPS:-7}
+      KEEP_BACKUPS: ${KEEP_BACKUPS:-2}
       BACKUP_BUDGET_PERCENT: ${BACKUP_BUDGET_PERCENT:-20}
       TZ: ${TZ:-Europe/Paris}
     volumes:
