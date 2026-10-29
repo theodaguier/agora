@@ -7,7 +7,7 @@ export type Check = { name: string; detail?: string };
 export type StepParams = { id: string; version: string; image: string; passed: number; total: number; failing: string[]; error: string };
 
 /** Parameters of a coded updater error (apps/updater/src/coded.ts). */
-export type ErrorParams = { image: string; tag: string; command: string; exitCode: number; output: string; container: string; seconds: number; detail: string; checks: Check[] };
+export type ErrorParams = { image: string; tag: string; command: string; exitCode: number; output: string; container: string; seconds: number; detail: string; checks: Check[]; needed: number; free: number };
 
 const checksEn = (checks: Check[]) => checks.map((c) => `${c.name}: ${c.detail ?? "failed"}`).join("; ");
 const checksFr = (checks: Check[]) => checks.map((c) => `${c.name} : ${c.detail ?? "échec"}`).join(" ; ");
@@ -84,6 +84,7 @@ export const messages = defineMessages({
       api_unavailable: (p: ErrorParams) => `Agora API unavailable or wrong version (${p.detail})`,
       regressions: (p: ErrorParams) => `regressions: ${checksEn(p.checks)}`,
       prod_regressions: (p: ErrorParams) => `production regressions: ${checksEn(p.checks)}`,
+      backup_space: (p: ErrorParams) => `not enough disk space for the backup: about ${p.needed} GB needed, ${p.free} GB free`,
     },
   },
   fr: {
@@ -157,6 +158,7 @@ export const messages = defineMessages({
       api_unavailable: (p: ErrorParams) => `API Agora indisponible ou mauvaise version (${p.detail})`,
       regressions: (p: ErrorParams) => `régressions : ${checksFr(p.checks)}`,
       prod_regressions: (p: ErrorParams) => `régressions en production : ${checksFr(p.checks)}`,
+      backup_space: (p: ErrorParams) => `espace disque insuffisant pour la sauvegarde : environ ${p.needed} Go nécessaires, ${p.free} Go libres`,
     },
   },
 });

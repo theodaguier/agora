@@ -124,6 +124,15 @@ class OnlineArchiveTests(unittest.TestCase):
                 with self.assertRaises(OSError): module.create_archive(root, output, [], reserve_bytes=1000)
             self.assertFalse(output.exists())
 
+    def test_a_failed_archive_reports_its_cause_last(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch, "missing")
+            output = Path(scratch, "backup.tgz")
+            result = subprocess.run([sys.executable, spec.origin, str(root), str(output), "[]", str(Path(scratch, "archive.lock"))], capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 1)
+            self.assertTrue(result.stderr.strip().splitlines()[-1].startswith("Hermes archive failed: FileNotFoundError: "))
+            self.assertFalse(output.exists())
+
     def test_live_unix_sockets_are_ignored_like_tar(self):
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch, "source"); root.mkdir()

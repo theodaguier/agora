@@ -3,6 +3,7 @@ import fnmatch
 import fcntl
 import gzip
 import json
+import os
 import shutil
 import signal
 import sqlite3
@@ -157,5 +158,8 @@ if __name__ == "__main__":
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             print(json.dumps(create_archive(sys.argv[1], sys.argv[2], json.loads(sys.argv[3]), reserve_bytes=1024 ** 3)))
     except Exception as error:
-        print("Hermes archive failed: " + type(error).__name__, file=sys.stderr)
-        sys.exit(1)
+        print(f"Hermes archive failed: {type(error).__name__}: {error}", file=sys.stderr, flush=True)
+        # Exit without finalizers: after a failed write, gzip's buffer flushes into a collected
+        # GzipFile ("lost gzip_file"), and that traceback took the place of this line in the
+        # updater's error, which keeps the last lines.
+        os._exit(1)
