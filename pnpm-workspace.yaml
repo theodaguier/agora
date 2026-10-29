@@ -24,6 +24,7 @@ overrides:
   "undici@>=7.18.0 <7.30.1": ^7.30.1
   "ip-address@>=10.0.0 <10.7.4": ^10.7.4
   "fast-uri@>=3.0.0 <3.1.9": ^3.1.9
+  "seroval@<1.6.11": ~1.6.12
   "@modelcontextprotocol/sdk>zod": ^4.6.7
   "zod-to-json-schema>zod": ^4.6.7
 
