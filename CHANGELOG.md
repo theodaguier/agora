@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.49.1 — 2026-10-29
+
+### Fixes
+- **updater**: la purge des dépendances couvre aussi les worktrees des sessions Claude Code
+
 ## v0.49.0 — 2026-10-29
 
 ### Features
