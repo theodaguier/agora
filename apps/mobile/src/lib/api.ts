@@ -1,5 +1,5 @@
 import * as Device from "expo-device";
-import { File } from "expo-file-system";
+import { File, type UploadResult } from "expo-file-system";
 import { auth, common } from "@agora/core/i18n";
 import { defineMessages, locale } from "./i18n";
 import { type Server } from "./servers";
@@ -259,27 +259,24 @@ export const attachmentUrl = (id: string, download = false) => apiUrl(`/attachme
 export type LocalFile = { uri: string; name: string; mime: string };
 
 export async function uploadAttachment(conversationId: string, file: LocalFile) {
-  const form = new FormData();
-  // The global fetch is expo/fetch (Expo 57): it rejects React Native's { uri } parts and encodes a
-  // part that has `bytes()`, read here from the file on disk.
-  form.append("file", { name: file.name, type: file.mime, bytes: () => new File(file.uri).bytes() } as unknown as Blob);
-  let res: Response;
+  // The file is the body, sent from disk by the native upload: expo/fetch (Expo 57) would load it
+  // in memory first, and a video doesn't fit there.
+  let res: UploadResult;
   try {
-    res = await fetch(apiUrl(conversationPath(conversationId, "/attachments")), {
-      method: "POST",
-      headers: { "X-Agora-Locale": locale, ...authHeaders() },
-      body: form,
+    res = await new File(file.uri).upload(apiUrl(conversationPath(conversationId, "/attachments")), {
+      headers: { "X-Agora-Locale": locale, ...authHeaders(), "Content-Type": file.mime, "X-Agora-Filename": encodeURIComponent(file.name) },
+      mimeType: file.mime,
+      sessionType: "foreground",
     });
   } catch {
     throw new ApiError(0, messages.unreachable);
   }
-  if (!res.ok) {
-    const body = await res.text();
-    let message = body;
+  if (res.status < 200 || res.status >= 300) {
+    let message = res.body;
     try {
-      message = JSON.parse(body).error ?? body;
+      message = JSON.parse(res.body).error ?? res.body;
     } catch {}
     throw new ApiError(res.status, message);
   }
-  return (await res.json()) as Attachment;
+  return JSON.parse(res.body) as Attachment;
 }

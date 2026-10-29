@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { MAX_FILE, storeAttachment as storeFile } from "../attachments";
+import { MAX_FILE, storeAttachment as storeFile, streamAttachment } from "../attachments";
 import { callAll } from "../all-route";
 import { abandonTurns, activeTurns, answerTurnApproval, cancelTurn, compactSession, enqueueTurn, resetSession } from "../bot-runner";
 import { hermesSessionId } from "../company";
@@ -556,11 +556,30 @@ export const conversations = new Hono<AppEnv>()
     return c.body(null, 204);
   })
 
-  /** Uploads a file, to be sent with the next message (see storeAttachment in attachments.ts). */
+  /**
+   * Uploads a file, to be sent with the next message (see storeAttachment in attachments.ts).
+   * The file is the raw body, its name in X-Agora-Filename (URI-encoded): written to disk as it
+   * arrives. A multipart "file" field, what app builds before videos sent, is still read.
+   */
   .post("/:id/attachments", async (c) => {
     const conv = await loadConversation(c.get("user").id, c.req.param("id"));
     if (!conv) return c.json({ error: "not_found" }, 404);
     if (conv.directBot && !env.HERMES_HOME) return c.json({ error: "hermes_home_missing" }, 500);
+    const rawName = c.req.header("x-agora-filename");
+    if (rawName !== undefined) {
+      const body = c.req.raw.body;
+      if (!body || Number(c.req.header("content-length")) > MAX_FILE) return c.json({ error: "file_too_large", max: MAX_FILE }, 413);
+      let name: string;
+      try {
+        name = decodeURIComponent(rawName);
+      } catch {
+        return c.json({ error: "invalid" }, 400);
+      }
+      const mime = c.req.header("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+      const row = await streamAttachment(conv.conversation.id, conv.directBot?.agent.hermesProfile ?? null, name, mime, body);
+      if (!row) return c.json({ error: "file_too_large", max: MAX_FILE }, 413);
+      return c.json(publicAttachment(row), 201);
+    }
     const file = (await c.req.parseBody())["file"];
     if (!(file instanceof File)) return c.json({ error: "missing_file" }, 400);
     if (file.size === 0 || file.size > MAX_FILE) return c.json({ error: "file_too_large", max: MAX_FILE }, 413);
