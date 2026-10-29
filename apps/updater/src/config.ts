@@ -8,7 +8,7 @@ export const config = {
   stateFile: process.env.STATE_FILE ?? "/state/updates.json",
   backupsVolume: process.env.BACKUPS_VOLUME ?? "agora_backups",
   backupsDir: process.env.BACKUPS_DIR ?? "/backups",
-  keepBackups: Number(process.env.KEEP_BACKUPS ?? 7),
+  keepBackups: Number(process.env.KEEP_BACKUPS ?? 2),
   /** Local archives share the system disk; 0 disables the size budget. Always retain the latest. */
   backupBudgetPercent: Number(process.env.BACKUP_BUDGET_PERCENT ?? 20),
   hermesRepo: process.env.HERMES_REPO ?? "nousresearch/hermes-agent",

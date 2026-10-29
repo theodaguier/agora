@@ -106,12 +106,12 @@ to the other tested by the canary). Known caveats:
 ## Backups
 
 The updater backs up automatically before each update (volume
-`agora_backups`, last 7 kept). Two volumes hold all the state:
+`agora_backups`, last 2 kept). Two volumes hold all the state:
 
 - `agora_pgdata`: accounts, agents, conversations;
 - `agora_hermes-data`: Hermes profiles, memories, wiki, skills (`shared-skills/`: written by the bots, read by all of them), attachments, provider keys.
 
-Local rollback archives are limited by `KEEP_BACKUPS` (default 7) and
+Local rollback archives are limited by `KEEP_BACKUPS` (default 2) and
 `BACKUP_BUDGET_PERCENT` (default 20% of the backup filesystem capacity). Cleanup
 runs before a new backup, after success, at startup and hourly. It retains the
 newest consecutive archives within both limits and always keeps the most recent
