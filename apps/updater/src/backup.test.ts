@@ -142,3 +142,13 @@ test("free space for the next backup is measured again after removing the oldest
   expect(await listBackups()).toEqual([ids[2]!, ids[1]!]);
   expect(reads).toBe(3);
 });
+
+test("an archive the last one says won't fit fails up front, with the sizes", async () => {
+  const kept = await fixture("01");
+  // 2 GiB free, 1 GiB reserved: the last archive (1.5 GiB) plus its margin can't fit.
+  await truncate(join(root, kept, "hermes-data.tgz"), 1.5 * 1024 ** 3);
+  const err = await backup("app-0.48.0").catch((e) => e);
+  expect(err.code).toBe("backup_space");
+  expect(err.params).toEqual({ needed: 1.8, free: 1.1 });
+  expect(await readdir(root)).toEqual([kept]);
+});

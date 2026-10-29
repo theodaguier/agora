@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, readdir, rename, rm, stat, statfs } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { UpdaterError } from "./coded";
 import { config, hermesImage } from "./config";
 import { compose, must, run, volumeName } from "./exec";
 import { contractEnv } from "./prod";
@@ -38,6 +39,16 @@ export async function backup(label: string) {
     const reserveKiB = 1024 * 1024;
     if (!Number.isSafeInteger(availableKiB) || availableKiB <= reserveKiB) throw new Error("Not enough backup space (1 GiB reserve required)");
     const limit = (availableKiB - reserveKiB) * 1024;
+    // The archive takes many minutes: fail now if the last one, plus a margin, can't fit.
+    const needed = Math.ceil((await lastArchiveSize()) * 1.1);
+    if (needed > limit) {
+      const gb = (bytes: number) => Math.round(bytes / 1e8) / 10;
+      throw new UpdaterError(
+        `Espace disque insuffisant pour la sauvegarde : environ ${gb(needed)} Go nécessaires, ${gb(limit)} Go libres`,
+        "backup_space",
+        { needed: gb(needed), free: gb(limit) },
+      );
+    }
     // A timeout kills the docker client, not its container: remove the writer before its files.
     const { hermesVersion } = await contractEnv();
     await must([
@@ -93,6 +104,13 @@ async function backupDirectories() {
     throw err;
   });
   return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+}
+
+/** Size of the newest backup's Hermes archive, the best guess for the next one (0 without one). */
+async function lastArchiveSize() {
+  const [latest] = await listBackups();
+  if (!latest) return 0;
+  return (await stat(join(config.backupsDir, latest, "hermes-data.tgz"))).size;
 }
 
 async function complete(dir: string) {
