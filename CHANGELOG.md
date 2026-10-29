@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.49.0 — 2026-10-29
+
+### Features
+- **updater**: purge quotidienne des dépendances que les bots laissent sur le volume Hermes
+
 ## v0.48.2 — 2026-10-29
 
 ### Other
