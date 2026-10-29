@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.48.1 — 2026-10-29
+
+### Fixes
+- **updater**: garder les 2 dernières sauvegardes locales au lieu de 7
+- **updater**: sauvegarde refusée d'emblée si l'archive ne tient pas, vraie cause affichée
+
 ## v0.48.0 — 2026-10-29
 
 ### Features
