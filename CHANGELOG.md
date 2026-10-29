@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.48.2 — 2026-10-29
+
+### Other
+- **updater**: une mise à jour d'Agora ne sauvegarde plus que la base
+
 ## v0.48.1 — 2026-10-29
 
 ### Fixes
