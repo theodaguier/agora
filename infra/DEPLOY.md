@@ -77,6 +77,12 @@ line, `docker compose -p agora exec -it --user hermes hermes hermes model`.
     before it, and the build cache unused for 3 days. Every hour, past 85% of
     the disk used, it drops the whole build cache too. Without it each update
     left a few GB behind until the disk filled up and Postgres stopped writing.
+  - **Bots' dependencies**: at startup and once a day, the updater removes from
+    the Hermes volume the `node_modules`, `.turbo`, `.next`, `.nuxt`,
+    `.svelte-kit` and `.expo` folders not reinstalled for 2 days, in the bots'
+    folders only (Hermes's own `lazy-packages`, `plugins`, `profiles`… stay).
+    Sources and git history stay; a `pnpm install` brings them back. Six
+    installs of one monorepo, one per git worktree, held 55 GB on 2026-10-29.
 - **The server's checkout follows**: on each app update (and rollback), the
   updater moves the git checkout to the version's tag (`vX.Y.Z`), since
   `docker-compose.yml`, the api image's Dockerfile, the Hermes plugins and the
