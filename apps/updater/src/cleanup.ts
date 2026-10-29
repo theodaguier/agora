@@ -1,7 +1,7 @@
 import { statfs } from "node:fs/promises";
 import { config } from "./config";
 import { readEnv } from "./envfile";
-import { run } from "./exec";
+import { must, run, volumeName } from "./exec";
 import { loadState } from "./state";
 
 /** Share of the disk used beyond which the hourly round also drops the whole build cache. */
@@ -23,7 +23,8 @@ export async function diskUsage() {
  * stay, so the next app update still rebuilds in seconds.
  * Never during an update: the version being installed isn't in .env yet.
  */
-export async function reclaimDisk({ allBuildCache = false } = {}) {
+export async function reclaimDisk({ allBuildCache = false, dependencies = false } = {}) {
+  if (dependencies) await purgeStaleDependencies().catch((err) => console.error("disk: dependencies", err));
   const env = await readEnv();
   const { history } = await loadState();
   const previous = (target: "app" | "hermes") => history.findLast((r) => r.target === target && r.status === "succeeded")?.from;
@@ -52,3 +53,30 @@ export async function reclaimDisk({ allBuildCache = false } = {}) {
   await run(["docker", "builder", "prune", "-a", "-f", ...(allBuildCache ? [] : ["--filter", "until=72h"])], { timeoutMs: 10 * 60_000 });
   console.log(`disk: ${removed.length ? `removed ${removed.join(", ")}` : "no old image"}; ${Math.round((await diskUsage()) * 100)}% used`);
 }
+
+/** Installed dependencies and build outputs, rebuilt by the next install and left out of backups. */
+const DEPENDENCY_DIRS = ["node_modules", ".turbo", ".next", ".nuxt", ".svelte-kit", ".expo"];
+
+/** Top-level folders of the Hermes volume that belong to Hermes itself (its packages, plugins, profiles…). */
+const HERMES_OWN = ["bin", "cache", "cron", "home", "hooks", "lazy-packages", "logs", "memories", "plugins", "profiles", "sandboxes", "sessions", "shared-skills", "skills", "skins", "state", "wiki"];
+
+/**
+ * The bots clone projects onto the Hermes volume and install them, once per git worktree: six
+ * installs of one monorepo, left behind for weeks, held 55 GB on 2026-10-29 (the disk at 97 %).
+ * Removes, in the bots' folders, the dependency directories not reinstalled for 2 days; the
+ * sources and the git history stay, a `pnpm install` brings them back.
+ */
+export async function purgeStaleDependencies() {
+  const r = await must(["docker", "run", "--rm", "--network=none", "-v", `${volumeName("hermes-data")}:/data`, "alpine", "sh", "-c", STALE_DEPENDENCIES_SCRIPT, "sh", "/data"], { timeoutMs: 30 * 60_000 });
+  console.log(`disk: ${r.stdout.trim()} stale dependency folders removed from the Hermes volume`);
+}
+
+/** Run with the volume's root as $1; prints the number of folders removed. */
+export const STALE_DEPENDENCIES_SCRIPT = [
+  'cd "$1" || exit 1',
+  "for dir in */; do",
+  '  dir="${dir%/}"',
+  `  case " ${HERMES_OWN.join(" ")} " in *" $dir "*) continue ;; esac`,
+  `  find "$dir" -type d \\( ${DEPENDENCY_DIRS.map((name) => `-name ${name}`).join(" -o ")} \\) -prune -mtime +1 -print -exec rm -rf {} +`,
+  "done | wc -l",
+].join("\n");

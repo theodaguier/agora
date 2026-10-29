@@ -28,6 +28,9 @@ if (usesRegistry() && config.registryToken) {
 
 let running: { target: "hermes" | "app"; to: string } | null = null;
 let reclaiming = false;
+/** Last purge of the bots' stale dependencies (cleanup.ts): once a day, and at startup. */
+let purgedAt = 0;
+const DAY_MS = 24 * 60 * 60_000;
 
 /** Old images and build cache (cleanup.ts), never alongside an update. */
 async function reclaim(opts?: Parameters<typeof reclaimDisk>[0]) {
@@ -87,7 +90,10 @@ function inWindow(s: Settings) {
 async function tick() {
   if (running) return;
   await pruneBackups().catch((err) => console.error("backup retention", err));
-  if ((await diskUsage().catch(() => 0)) >= DISK_ALERT) await reclaim({ allBuildCache: true });
+  const full = (await diskUsage().catch(() => 0)) >= DISK_ALERT;
+  const purge = Date.now() - purgedAt >= DAY_MS;
+  if (purge) purgedAt = Date.now();
+  if (full || purge) await reclaim({ allBuildCache: full, dependencies: purge });
   await check().catch((e) => console.error("check", e));
   const state = await loadState();
   if (!inWindow(state.settings)) return;
@@ -191,5 +197,6 @@ console.log(`updater ready on :${config.port} (checking every ${config.checkEver
 await pruneBackups().catch((err) => console.error("backup retention", err));
 await check().catch((e) => console.error("initial check", e));
 // After an app update, this container is the new updater: the previous one's image is free now.
-await reclaim();
+purgedAt = Date.now();
+await reclaim({ dependencies: true });
 setInterval(() => void tick(), config.checkEveryMinutes * 60_000);
