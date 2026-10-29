@@ -78,7 +78,8 @@ line, `docker compose -p agora exec -it --user hermes hermes hermes model`.
     the disk used, it drops the whole build cache too. Without it each update
     left a few GB behind until the disk filled up and Postgres stopped writing.
   - **Bots' dependencies**: at startup and once a day, the updater removes from
-    the Hermes volume the `node_modules`, `.turbo`, `.next`, `.nuxt`,
+    the Hermes volume (bots' folders and the Claude Code sessions' worktrees in
+    `.agora/claude-code`) the `node_modules`, `.turbo`, `.next`, `.nuxt`,
     `.svelte-kit` and `.expo` folders not reinstalled for 2 days, in the bots'
     folders only (Hermes's own `lazy-packages`, `plugins`, `profiles`… stay).
     Sources and git history stay; a `pnpm install` brings them back. Six
