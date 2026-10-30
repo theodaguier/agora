@@ -1286,6 +1286,54 @@ function stopLeftovers(pids: number[]) {
   }
 }
 
+/* ---------- ports ---------- */
+
+/**
+ * The sessions share the container's network: left to themselves, their dev servers all reach for the
+ * framework's port (or the API's own PORT, inherited), and a session ends up testing another one's
+ * branch. Each gets a range of its own, kept while it runs or has something running; an idle one's
+ * goes back to the others.
+ */
+const PORT_BASE = 20_000;
+const PORT_RANGE = 10;
+const PORT_RANGES = 1_000;
+const portRanges = new Map<string, number>();
+
+type Ports = { first: number; last: number };
+
+async function portsOf(id: string): Promise<Ports> {
+  const busy = await sessionProcesses();
+  const taken = new Set<number>();
+  for (const [other, range] of portRanges) {
+    if (other === id) continue;
+    const l = live.get(other);
+    if (l?.running || l?.proc || busy.has(other)) taken.add(range);
+    else portRanges.delete(other);
+  }
+  // The same range as last time when it is still free, so its servers left running keep their address.
+  let range = portRanges.get(id) ?? Number.parseInt(id.slice(0, 8), 16) % PORT_RANGES;
+  while (taken.has(range)) range = (range + 1) % PORT_RANGES;
+  portRanges.set(id, range);
+  const first = PORT_BASE + range * PORT_RANGE;
+  return { first, last: first + PORT_RANGE - 1 };
+}
+
+/** What every process of the session inherits: its screen (and with it, its leftovers found by sessionProcesses), its ports. */
+async function sessionEnv(r: Row, ports: Ports) {
+  return {
+    ...(await screenEnv(r.conversationId, `code-${r.id}`).catch(() => ({}))),
+    PORT: String(ports.first),
+    AGORA_PORTS: `${ports.first}-${ports.last}`,
+  };
+}
+
+const portsNote = ({ first, last }: Ports) =>
+  [
+    `D'autres sessions travaillent en même temps sur cette machine, avec le même réseau. Les ports ${first} à ${last} sont à toi seul : PORT vaut ${first}, AGORA_PORTS donne la plage.`,
+    "Tout ce que tu lances et qui écoute (serveur de dev, API, base de données, Redis, mock, tunnel SSH) prend un de ces ports, avec l'option qui l'empêche de passer à un autre s'il est pris (Vite : --port et --strictPort). Sur un port hors de ta plage, ce qui répond peut être le serveur d'une autre session, sur une autre branche.",
+    "N'arrête jamais un processus par son nom ou par son port (pkill, killall, fuser -k, kill $(lsof -t …)) : tu arrêterais aussi ceux des autres sessions. Arrête seulement les PID de ce que tu as lancé.",
+  ].join("\n");
+
 export function startCodeSessionSweep() {
   setInterval(() => void sweepLeftovers().catch((err) => console.error("code sessions: leftovers", err)), SWEEP_MS);
 }
@@ -1426,7 +1474,9 @@ async function execute(s: Live, id: number): Promise<void> {
   const connectorsOf = bot?.profile ?? (await directBotProfile(r.conversationId));
   const connectors = connectorsOf ? await engineMcpOrNone(connectorsOf) : noMcp();
   const headless = r.engine !== "claude";
+  const ports = await portsOf(r.id);
   const appended = [
+    portsNote(ports),
     env.CHROMIUM_PATH && browserNote(env.CHROMIUM_PATH),
     r.worktree && r.repo && (await repoEnv(r.repo)) && CREDENTIALS_NOTE,
     // ask_bot is an MCP tool of Claude Code's control protocol.
@@ -1435,7 +1485,7 @@ async function execute(s: Live, id: number): Promise<void> {
   ]
     .filter(Boolean)
     .join("\n\n");
-  if (headless) return executeHeadless(s, id, headlessEngine(r.engine as Exclude<CodeEngine, "claude">), appended, connectors);
+  if (headless) return executeHeadless(s, id, headlessEngine(r.engine as Exclude<CodeEngine, "claude">), appended, connectors, ports);
   const own = agoraTools(s);
   const mcp = await claudeMcpConfig(connectors, own.length ? { [MCP_SERVER]: { type: "sdk", name: MCP_SERVER } } : {});
   const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools, ...own.map((t) => `mcp__${MCP_SERVER}__${t.name}`), ...mcp.allowed];
@@ -1472,7 +1522,7 @@ async function execute(s: Live, id: number): Promise<void> {
   const spawnEnv = {
     ...(await claudeCodeEnv()),
     ...githubEnv(await githubToken()),
-    ...(await screenEnv(r.conversationId, `code-${r.id}`).catch(() => ({}))),
+    ...(await sessionEnv(r, ports)),
     // Its question waits for the bot longer than an MCP call usually does.
     ...(s.bot && { MCP_TOOL_TIMEOUT: String(QUESTION_MS + 60_000) }),
   };
@@ -1632,7 +1682,7 @@ function account(s: Live, ev: Json) {
  * A run of a headless engine (Codex, Cursor): the instructions written so far in one prompt, its
  * output read until it exits. The next instruction resumes its thread in a new process.
  */
-async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, system: string, mcp: EngineMcp): Promise<void> {
+async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, system: string, mcp: EngineMcp, ports: Ports): Promise<void> {
   const r = s.row;
   const bin = engineBin(r.engine);
   if (!bin) throw new Error(`${CODE_ENGINE_NAMES[r.engine]} is not installed on the server.`);
@@ -1645,7 +1695,7 @@ async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, syst
   r.account = await engine.account().catch(() => null);
   touch(s, [], true);
   // As Claude Code's: git and gh reach GitHub with the vault's token, its browsers show on the conversation's screen.
-  const spawnEnv = cliEnv(bin, { ...run.env, ...githubEnv(await githubToken()), ...(await screenEnv(r.conversationId, `code-${r.id}`).catch(() => ({}))) });
+  const spawnEnv = cliEnv(bin, { ...run.env, ...githubEnv(await githubToken()), ...(await sessionEnv(r, ports)) });
   let proc: Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(run.args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
