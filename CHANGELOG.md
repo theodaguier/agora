@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.49.2 — 2026-10-30
+
+### Fixes
+- **code-sessions**: une plage de ports par session, au lieu du réseau partagé
+
 ## v0.49.1 — 2026-10-29
 
 ### Fixes
