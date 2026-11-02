@@ -1,4 +1,5 @@
-"""Stream Hermes files and online SQLite snapshots into a standard tar.gz archive."""
+"""Stream Hermes files and online SQLite snapshots into a standard tar.gz archive,
+or into an uncompressed tar on stdout when the output is "-"."""
 import fnmatch
 import fcntl
 import gzip
@@ -11,7 +12,7 @@ import sys
 import tarfile
 import tempfile
 import time
-from contextlib import closing
+from contextlib import ExitStack, closing
 from pathlib import Path
 
 
@@ -63,7 +64,12 @@ def stat_or_none(path):
 
 
 def create_archive(root, output, excludes, reserve_bytes=0):
-    root, output = Path(root).resolve(), Path(output)
+    # "-": uncompressed tar on stdout, for restic to chunk and deduplicate. A gzip stream
+    # differs from its first changed byte on, so each off-site run uploaded a full copy.
+    # SQLite snapshots then go to TMPDIR.
+    streaming = output == "-"
+    root, output = Path(root).resolve(), None if streaming else Path(output)
+    work = Path(tempfile.gettempdir()) if streaming else output.parent
     sqlite_paths = set()
     files = 0
 
@@ -73,9 +79,11 @@ def create_archive(root, output, excludes, reserve_bytes=0):
                    for pattern in excludes)
 
     try:
-        with tempfile.TemporaryDirectory(prefix=".sqlite-", dir=output.parent) as scratch:
-            with output.open("wb") as file, gzip.GzipFile(fileobj=ReservedWriter(file, reserve_bytes, output.parent), mode="wb", compresslevel=1) as compressed:
-                with tarfile.open(fileobj=compressed, mode="w|", pax_headers={"agora.archive.format": "sqlite-online-v1"}) as archive:
+        with tempfile.TemporaryDirectory(prefix=".sqlite-", dir=work) as scratch:
+            with ExitStack() as stack:
+                stream = sys.stdout.buffer if streaming else stack.enter_context(gzip.GzipFile(
+                    fileobj=ReservedWriter(stack.enter_context(output.open("wb")), reserve_bytes, work), mode="wb", compresslevel=1))
+                with tarfile.open(fileobj=stream, mode="w|", pax_headers={"agora.archive.format": "sqlite-online-v1"}) as archive:
                     def add(path, relative):
                         nonlocal files
                         if excluded(relative):
@@ -112,7 +120,7 @@ def create_archive(root, output, excludes, reserve_bytes=0):
                                 def snapshot(uri):
                                     with closing(sqlite3.connect(uri, uri=True, timeout=5)) as source:
                                         size = source.execute("PRAGMA page_count").fetchone()[0] * source.execute("PRAGMA page_size").fetchone()[0]
-                                        if reserve_bytes and shutil.disk_usage(output.parent).free < size + reserve_bytes:
+                                        if reserve_bytes and shutil.disk_usage(work).free < size + reserve_bytes:
                                             raise OSError("Insufficient SQLite snapshot space")
                                         with closing(sqlite3.connect(target)) as destination:
                                             source.backup(destination, pages=1024, progress=progress, sleep=0.05)
@@ -147,16 +155,20 @@ def create_archive(root, output, excludes, reserve_bytes=0):
                     add(root, ".")
         return {"files": files, "sqliteSnapshots": len(sqlite_paths)}
     except BaseException:
-        output.unlink(missing_ok=True)
+        if output:
+            output.unlink(missing_ok=True)
         raise
 
 
 if __name__ == "__main__":
-    signal.alarm(1200)
+    streaming = sys.argv[2] == "-"
+    # Streamed, the archive moves at the pace of the upload.
+    signal.alarm(4 * 3600 if streaming else 1200)
     try:
         with open(sys.argv[4], "a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            print(json.dumps(create_archive(sys.argv[1], sys.argv[2], json.loads(sys.argv[3]), reserve_bytes=1024 ** 3)))
+            result = create_archive(sys.argv[1], sys.argv[2], json.loads(sys.argv[3]), reserve_bytes=1024 ** 3)
+            print(json.dumps(result), file=sys.stderr if streaming else sys.stdout)
     except Exception as error:
         print(f"Hermes archive failed: {type(error).__name__}: {error}", file=sys.stderr, flush=True)
         # Exit without finalizers: after a failed write, gzip's buffer flushes into a collected

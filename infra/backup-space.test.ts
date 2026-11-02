@@ -17,6 +17,7 @@ async function run(space: string, fail = false, snapshotFails = false) {
   await writeFile(join(bin, "flock"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
   await writeFile(join(bin, "docker"), `#!/usr/bin/env bash
 printf '%s\\n' "$1" >> "$AUDIT_TRACE"
+printf '%s\\n' "$*" >> "$AUDIT_TRACE.args"
 if [[ "$1" == "compose" ]]; then
   if [[ " $* " == *" ps -q hermes "* ]]; then echo test-hermes; else echo test-dump; fi
 elif [[ "$1" == "run" ]]; then
@@ -25,7 +26,8 @@ elif [[ "$1" == "run" ]]; then
     [[ "$AUDIT_FAIL" == "0" ]] || exit 1
     echo "$AUDIT_SPACE"
   elif [[ " $* " == *" /archive.py "* && "$AUDIT_SNAPSHOT_FAIL" == "1" ]]; then exit 1
-  elif [[ " $* " == *" --stdin "* ]]; then cat >/dev/null; fi
+  elif [[ " $* " == *" snapshots "*"--tag files"* ]]; then echo '[{"tree":"7ee","id":"01d","short_id":"01d"}]'
+  elif [[ " $* " == *" --stdin "* ]]; then cat >/dev/null; echo '{"message_type":"summary","snapshot_id":"c0ffee"}'; fi
 fi
 `, { mode: 0o755 });
   const proc = Bun.spawn(["bash", join(dir, "agora"), "backup-offsite"], {
@@ -33,7 +35,8 @@ fi
     stdout: "pipe", stderr: "pipe",
   });
   const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-  return { code, stdout, stderr, commands: (await readFile(trace, "utf8")).trim().split("\n") };
+  const args = (await readFile(`${trace}.args`, "utf8")).trim().split("\n");
+  return { code, stdout, stderr, args, commands: (await readFile(trace, "utf8")).trim().split("\n") };
 }
 
 test("insufficient snapshot space fails before pausing Hermes and cleans its staging volume", async () => {
@@ -60,9 +63,22 @@ test("adequate space permits the existing snapshot and off-site flow", async () 
   expect(r.stdout).toContain("Off-site backup done");
 });
 
+test("Hermes data streams into restic as a plain tar, without the updater's archives", async () => {
+  const r = await run("2097152");
+  expect(r.args.some((a) => a.includes("/archive.py /from - "))).toBe(true);
+  expect(r.args.some((a) => a.includes("--tag hermes --stdin --stdin-filename hermes-data.tar"))).toBe(true);
+  expect(r.args.some((a) => a.includes("/data/backups"))).toBe(false);
+  expect(r.args.some((a) => a.includes("--tag env /data/env"))).toBe(true);
+  // The former format's full copies go once the new one holds the data; 3 days are kept.
+  expect(r.args.some((a) => / forget 01d$/.test(a))).toBe(true);
+  expect(r.args.some((a) => a.includes("forget --host agora --keep-daily 3 --prune"))).toBe(true);
+});
+
 test("a failed online snapshot leaves Hermes running and applies retention", async () => {
   const r = await run("2097152", false, true);
   expect(r.code).toBe(1);
+  // restic saved the cut stream: that snapshot is forgotten.
+  expect(r.args.some((a) => / forget c0ffee$/.test(a))).toBe(true);
   expect(r.commands).not.toContain("pause");
   expect(r.commands).not.toContain("unpause");
   expect(r.commands).toContain("retention");

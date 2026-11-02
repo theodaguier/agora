@@ -12,9 +12,9 @@ module = module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
-def archive(files):
+def archive(files, mode="w:gz"):
     out = io.BytesIO()
-    with tarfile.open(fileobj=out, mode="w:gz") as tar:
+    with tarfile.open(fileobj=out, mode=mode) as tar:
         for name, data in files.items():
             member = tarfile.TarInfo(name)
             member.size = len(data)
@@ -39,6 +39,17 @@ class BackupRestoreTests(unittest.TestCase):
                 self.assertFalse(Path(root, "escape.db").exists())
             finally:
                 db.close()
+
+    def test_plain_tar_from_off_site_snapshots_is_verified(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root, "state.db")
+            db = sqlite3.connect(path)
+            try:
+                db.execute("CREATE TABLE sample (value TEXT)"); db.commit()
+            finally:
+                db.close()
+            payload = archive({"state.db": path.read_bytes(), "notes.txt": b"source"}, mode="w")
+            self.assertEqual(module.verify(io.BytesIO(payload)), {"archive": "ok", "files": 2, "sqliteDatabasesRestored": 1})
 
     def test_bad_gzip_checksum_is_rejected_even_after_tar_end(self):
         payload = bytearray(archive({"notes.txt": b"fixture"}))

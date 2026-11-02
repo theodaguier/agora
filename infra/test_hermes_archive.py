@@ -1,5 +1,7 @@
 import importlib.util
 import fcntl
+import io
+import json
 import os
 import sqlite3
 import socket
@@ -163,6 +165,29 @@ class OnlineArchiveTests(unittest.TestCase):
                 with output.open("rb") as stream:
                     self.assertEqual(verifier.verify(stream)["sqliteDatabasesRestored"], 1)
             finally: db.close()
+
+    def test_off_site_stream_is_a_plain_tar_on_stdout_with_stats_on_stderr(self):
+        # restic deduplicates a plain tar; gzip made every off-site snapshot a full copy.
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch, "source"); root.mkdir()
+            work = Path(scratch, "scratch"); work.mkdir()
+            (root / "config.yaml").write_text("fixture")
+            db = sqlite3.connect(root / "state.db")
+            try:
+                db.execute("PRAGMA journal_mode=WAL")
+                db.execute("CREATE TABLE sample (value TEXT)")
+                db.execute("INSERT INTO sample VALUES ('kept')"); db.commit()
+                result = subprocess.run([sys.executable, spec.origin, str(root), "-", "[]", str(Path(scratch, "archive.lock"))],
+                                        capture_output=True, timeout=10, env={**os.environ, "TMPDIR": str(work)})
+            finally: db.close()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotEqual(result.stdout[:2], b"\x1f\x8b")
+            self.assertEqual(json.loads(result.stderr)["sqliteSnapshots"], 1)
+            self.assertEqual(list(work.iterdir()), [])
+            with tarfile.open(fileobj=io.BytesIO(result.stdout), mode="r:") as archive:
+                self.assertEqual(archive.extractfile("./config.yaml").read(), b"fixture")
+                self.assertNotIn("./state.db-wal", archive.getnames())
+            self.assertEqual(verifier.verify(io.BytesIO(result.stdout))["sqliteDatabasesRestored"], 1)
 
 
 if __name__ == "__main__": unittest.main()
