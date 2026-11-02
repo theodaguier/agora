@@ -1,13 +1,15 @@
-"""Read the complete gzip stream, restore SQLite files in isolation, and check integrity."""
+"""Read the complete archive (tar, or tar.gz with its checksum), restore SQLite files in
+isolation, and check integrity."""
 import gzip
 import hashlib
+import io
 import json
 import shutil
 import sqlite3
 import sys
 import tarfile
 import tempfile
-from contextlib import closing
+from contextlib import closing, nullcontext
 from pathlib import Path
 
 
@@ -15,9 +17,12 @@ def verify(stream):
     databases = set()
     files = 0
     online_format = False
+    # Off-site snapshots hold a plain tar; the updater's archives and older snapshots, a tar.gz.
+    stream = stream if hasattr(stream, "peek") else io.BufferedReader(stream)
+    gzipped = stream.peek(2)[:2] == b"\x1f\x8b"
     with tempfile.TemporaryDirectory(prefix="agora-restore-") as scratch:
-        with gzip.GzipFile(fileobj=stream) as compressed:
-            with tarfile.open(fileobj=compressed, mode="r|") as archive:
+        with (gzip.GzipFile(fileobj=stream) if gzipped else nullcontext(stream)) as payload:
+            with tarfile.open(fileobj=payload, mode="r|") as archive:
                 for member in archive:
                     online_format |= member.pax_headers.get("agora.archive.format") == "sqlite-online-v1"
                     if not member.isfile():
@@ -40,7 +45,7 @@ def verify(stream):
                             if header.read(16) == b"SQLite format 3\x00":
                                 databases.add(key)
             # tar ends before gzip's trailer: consume it too, so a bad CRC fails the check.
-            while compressed.read(1024 * 1024):
+            while payload.read(1024 * 1024):
                 pass
         for name in databases:
             with closing(sqlite3.connect(Path(scratch, name).as_uri() + "?mode=ro", uri=True)) as db:

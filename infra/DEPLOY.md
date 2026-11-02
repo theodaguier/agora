@@ -150,25 +150,36 @@ Backblaze B2 or an SFTP server.
    storage credentials (see `.env.example`). Use credentials that can write to
    the bucket but not delete from it when the provider allows it (B2 application
    key without `deleteFiles`, S3 Object Lock).
-2. `./agora backup-offsite`: the database (fresh dump), the `hermes-data` volume,
-   the updater's pre-update backups and `.env`. The repository is created on the
-   first run; 7 daily, 4 weekly and 6 monthly snapshots are kept.
-   Hermes data is staged as `hermes-data.tgz` with rebuildable dependency/cache
-   directories excluded. Source files, lockfiles and Git history are preserved.
+2. `./agora backup-offsite`: the database (fresh dump), the `hermes-data` volume
+   and `.env`. The repository is created on the first run; the snapshots of the
+   last 3 days are kept (`RETENTION` in `agora`).
+   Hermes data is streamed into restic as an uncompressed `hermes-data.tar` (tag
+   `hermes`): restic chunks it by content and compresses it, so a night only uploads
+   what changed (`data_added` in the summary line of the log). Rebuildable
+   dependency/cache directories are excluded, and so are the code sessions' worktrees
+   and shared clones (`.agora/{claude-code,codex}/{worktrees,repos}`: GitHub has them)
+   Claude Code's subagent worktrees (`.claude/worktrees`), its downloaded versions and
+   the browser profiles' caches. Sessions without a repository (`projects/`)
+   and their uploads are kept. Source files, lockfiles and Git history
+   are preserved. The updater's rollback archives stay local: they are the same data,
+   gzipped, and would not deduplicate.
    Runtime SQLite databases (including extensionless browser databases) use
    SQLite's online backup API; their live journals are omitted. Coding worktrees,
    repositories, uploads, attachments and Git objects retain their original bytes.
-   Hermes keeps running during both archiving
-   and upload. The archive streams files with one CPU and 512 MiB of memory; its
-   output is capped below the available disk space with a 1 GiB reserve.
+   Hermes keeps running during the copy. The archive streams files with one CPU and
+   512 MiB of memory; only the SQLite snapshots touch the disk, capped below the
+   available space with a 1 GiB reserve. A copy that fails midway has its partial
+   snapshot discarded.
    Each database is consistent at its own capture time; other files use normal
    streaming backup semantics and there is no transaction spanning all files.
-   Retention also runs after a failed file backup. A compressed archive
-   can reduce restic's deduplication across snapshots; monitor repository growth.
+   Retention also runs after a failed file backup.
+   Earlier snapshots (tags `files` and `local-archives`) held the Hermes data as a gzip
+   archive, plus the updater's archives: each one was a full copy. The first successful
+   run in the new format deletes them. Each run ends with the repository size.
 3. `./agora restore-check`: lists the snapshots, checks part of the data, and
    restores the latest dump into a throwaway Postgres (prints the account count).
-   For the compressed format it also reads the complete Hermes archive (including
-   the gzip checksum), restores its SQLite databases to temporary storage and
+   It also reads the complete Hermes archive (and the gzip checksum of older
+   snapshots), restores its SQLite databases to temporary storage and
    checks their integrity. No production database or volume is overwritten.
    Run it once after setting things up, then from time to time: an untested
    backup is not a backup.
@@ -200,19 +211,13 @@ then `systemctl enable --now agora-backup.timer`.
 **Full restore** on a new server: install Agora (`git clone`), then
 
 ```sh
-docker run --rm -it -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
-  -v "$PWD/restore:/restore" restic/restic:0.18.0 restore latest --host agora --tag files --target /restore
-cp restore/data/env/.env infra/.env      # same secrets as before
+restic() { docker run --rm -i -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
+  -e AWS_DEFAULT_REGION restic/restic:0.18.0 "$@"; }
+restic dump --host agora --tag env latest /data/env/.env > infra/.env   # same secrets as before
 cd infra && docker compose -p agora up -d postgres
-if [ -f ../restore/data/hermes-data.tgz ]; then
-  docker run --rm -v agora_hermes-data:/data -v "$PWD/../restore/data:/src:ro" alpine \
-    tar -xzf /src/hermes-data.tgz -C /data
-else
-  # Older snapshots used an uncompressed directory.
-  docker run --rm -v agora_hermes-data:/data -v "$PWD/../restore/data/hermes-data:/src:ro" alpine cp -a /src/. /data/
-fi
-docker run --rm -i -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
-  restic/restic:0.18.0 dump --host agora --tag db latest /agora-db.sql \
+restic dump --host agora --tag hermes latest /hermes-data.tar \
+  | docker run --rm -i -v agora_hermes-data:/data alpine tar -xf - -C /data
+restic dump --host agora --tag db latest /agora-db.sql \
   | docker compose -p agora exec -T postgres psql -U agora -d agora -v ON_ERROR_STOP=1 -q
 ./agora up
 ```
