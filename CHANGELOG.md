@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.49.3 — 2026-11-02
+
+### Fixes
+- **backup**: sauvegarde hors site dédupliquée, 3 jours de rétention
+
 ## v0.49.2 — 2026-10-30
 
 ### Fixes
