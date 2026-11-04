@@ -45,6 +45,7 @@ import {
   type IconComponent,
   CircleIcon,
   CloseIcon,
+  BanIcon,
   ChevronDownIcon,
   CloseCircleIcon,
   CodeIcon,
@@ -81,7 +82,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Badge } from "@/components/ui/badge";
-import { ListCard, ListCardRows } from "@/components/list-card";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -219,7 +220,7 @@ export function CodeSessionCard({
         <CardDescription className="flex min-w-0 items-center gap-2">
           {session && <StatusIcon session={session} />}
           <span className="shrink-0">{session ? <StatusText session={session} /> : gone ? t.gone : t.status[status]}</span>
-          {detail && <span className="min-w-0 truncate">{detail}</span>}
+          {detail && <span className={cn("min-w-0 truncate", status === "running" && !session?.approval && !session?.question && "typing-shimmer")}>{detail}</span>}
           {session && <span className="shrink-0">{CODE_ENGINE_NAMES[session.engine]}</span>}
         </CardDescription>
         {!gone && (
@@ -1462,6 +1463,8 @@ function Overview({
       ) : (
         <div className="flex flex-col gap-4">
           <Timeline steps={session.steps} running={running} />
+          {/* While it works and waits for nobody: what it does now, a light passing over the words. */}
+          {running && !pending && <p className="typing-shimmer text-sm">{session.activity || t.status.running}</p>}
           {pending}
         </div>
       )}
@@ -1471,17 +1474,20 @@ function Overview({
 }
 
 type ToolStepT = Extract<CodeStep, { kind: "tool" }>;
-type Block = { kind: "step"; step: Exclude<CodeStep, ToolStepT> } | { kind: "tools"; steps: ToolStepT[] };
+type Block = { kind: "step"; step: Exclude<CodeStep, ToolStepT> } | { kind: "tools"; steps: ToolStepT[] } | { kind: "agents"; steps: ToolStepT[] };
 const parentOf = (s: CodeStep) => ("parentId" in s ? s.parentId : undefined);
 
-/** Consecutive actions read as one block. */
+const isSubagent = (s: CodeStep): boolean => s.kind === "tool" && (s.name === "Agent" || s.name === "Task");
+
+/** Consecutive actions read as one block; subagents started together, as another, never folded. */
 function blocks(steps: CodeStep[]): Block[] {
   const out: Block[] = [];
   for (const step of steps) {
     const last = out.at(-1);
-    if (step.kind === "tool" && last?.kind === "tools") last.steps.push(step);
-    else if (step.kind === "tool") out.push({ kind: "tools", steps: [step] });
-    else out.push({ kind: "step", step });
+    const kind = isSubagent(step) ? "agents" : step.kind === "tool" ? "tools" : null;
+    if (kind && last?.kind === kind) last.steps.push(step as ToolStepT);
+    else if (kind) out.push({ kind, steps: [step as ToolStepT] });
+    else out.push({ kind: "step", step: step as Exclude<CodeStep, ToolStepT> });
   }
   return out;
 }
@@ -1493,7 +1499,9 @@ function Timeline({ steps, running, parentId }: { steps: CodeStep[]; running: bo
   return (
     <div className="flex flex-col gap-3">
       {blocks(own).map((b) =>
-        b.kind === "tools" ? (
+        b.kind === "agents" ? (
+          <SubagentBlock key={b.steps[0]!.id} steps={b.steps} all={steps} running={running} />
+        ) : b.kind === "tools" ? (
           <ToolBlock key={b.steps[0]!.id} steps={b.steps} all={steps} />
         ) : (
           <StepView key={b.step.id} step={b.step} streaming={running && b.step === last} />
@@ -1569,6 +1577,72 @@ function ToolBlock({ steps, all }: { steps: ToolStepT[]; all: CodeStep[] }) {
   );
 }
 
+type SubagentState = "running" | "done" | "error" | "stopped";
+
+/** Where a subagent stands: its own events when it runs in the background, else its call's. */
+function subagentState(step: ToolStepT, running: boolean): SubagentState {
+  const state: SubagentState = step.agent?.state ?? (step.status === "running" ? "running" : step.status === "done" ? "done" : "error");
+  // The session no longer runs: neither does its subagent.
+  return state === "running" && !running ? "stopped" : state;
+}
+
+/** Subagents started together: one row each, what it does, how far it got and how it ended. */
+function SubagentBlock({ steps, all, running }: { steps: ToolStepT[]; all: CodeStep[]; running: boolean }) {
+  const t = useT(messages);
+  return (
+    <ListCard size="sm">
+      <ListCardHeader>
+        <CardTitle className="text-sm">{t.subagents(steps.length)}</CardTitle>
+      </ListCardHeader>
+      <ListCardRows>
+        {steps.map((s) => (
+          <SubagentRow key={s.id} step={s} all={all} running={running} />
+        ))}
+      </ListCardRows>
+    </ListCard>
+  );
+}
+
+function SubagentRow({ step, all, running }: { step: ToolStepT; all: CodeStep[]; running: boolean }) {
+  const t = useT(messages);
+  const [open, setOpen] = useState(false);
+  const state = subagentState(step, running);
+  const own = all.filter((s) => parentOf(s) === step.id);
+  const tools = step.agent?.tools ?? own.filter((s) => s.kind === "tool").length;
+  const lastTool = step.agent?.last ?? own.findLast((s): s is ToolStepT => s.kind === "tool")?.name;
+  const progress = [tools ? t.subagentActions(tools) : null, state === "running" && lastTool ? t.subagentLast(toolLabel(lastTool, t.toolNames).name) : null].filter(Boolean).join(", ");
+  const description = state === "running" ? progress || t.subagentWaiting : step.agent?.summary || progress || t.subagentState[state];
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger render={<Item size="xs" className="w-full text-left hover:bg-muted" render={<button type="button" />} />}>
+        <ItemMedia variant="icon">
+          {state === "running" ? (
+            <Spinner />
+          ) : state === "done" ? (
+            <CheckCircleIcon className="text-success" />
+          ) : state === "error" ? (
+            <CloseCircleIcon className="text-destructive" />
+          ) : (
+            <BanIcon className="text-muted-foreground" />
+          )}
+        </ItemMedia>
+        <ItemContent className="min-w-0">
+          <ItemTitle className="w-full truncate">{step.title}</ItemTitle>
+          <ItemDescription className={cn("line-clamp-1", state === "running" && "typing-shimmer")}>{description}</ItemDescription>
+        </ItemContent>
+        <ItemActions>
+          <ChevronDownIcon className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")} />
+        </ItemActions>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-3 border-t px-3 py-3">
+        {step.input && <Detail label={t.input} text={step.input} />}
+        {own.length > 0 && <Timeline steps={all} running={false} parentId={step.id} />}
+        {step.output && <Detail label={t.output} text={step.output} />}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 /** A path reads as its file name; the folders it sits in on the server say nothing. */
 const shortTitle = (title: string) => title.replace(/\S*\/([^\s/]+)/g, "$1");
 
@@ -1583,7 +1657,7 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const row = (
     <>
       <span className="shrink-0 text-muted-foreground">{label.name}</span>
-      <span className="min-w-0 flex-1 truncate text-left">{detail}</span>
+      <span className={cn("min-w-0 flex-1 truncate text-left", step.status === "running" && "typing-shimmer")}>{detail}</span>
       {step.status === "running" ? <Spinner className="shrink-0" /> : step.status !== "done" && <CloseCircleIcon className="shrink-0 text-destructive" />}
     </>
   );

@@ -13,6 +13,9 @@ export type CodeSessionStatus = "running" | "waiting" | "idle" | "done" | "stopp
 
 export type CodeToolStatus = "running" | "done" | "error" | "denied";
 
+/** A subagent Claude Code started: running, or how it ended; its actions so far and the latest one. */
+export type CodeSubagent = { state: "running" | "done" | "error" | "stopped"; tools?: number; last?: string; summary?: string };
+
 export type CodeStep =
   /** What Claude Code writes between its actions (streamed). */
   | { id: string; kind: "text"; text: string; parentId?: string }
@@ -30,6 +33,8 @@ export type CodeStep =
       status: CodeToolStatus;
       /** A subagent's step: the Task/Agent call it belongs to. */
       parentId?: string;
+      /** A Task/Agent call: where its subagent stands (it may run on in the background after the call returned). */
+      agent?: CodeSubagent;
     }
   /** An instruction sent to the session: the initial task, then each follow-up; `by` is the sender's name, `files` the ones it joined. */
   | { id: string; kind: "user"; text: string; by: string | null; files?: CodeFile[] }

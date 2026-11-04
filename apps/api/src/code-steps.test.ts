@@ -55,6 +55,28 @@ describe("Transcript", () => {
     expect(t.get("toolu_sub")).toMatchObject({ title: "src/auth.ts" });
   });
 
+  test("a background subagent's progress and end show on its Agent call", () => {
+    const t = new Transcript(CWD);
+    t.apply(assistant("msg_bg", [{ type: "tool_use", id: "toolu_agent", name: "Agent", input: { description: "Médias", prompt: "…" } }]));
+    t.apply({ type: "system", subtype: "task_started", task_id: "task_1", tool_use_id: "toolu_agent", description: "Médias" });
+    expect(t.get("toolu_agent")).toMatchObject({ agent: { state: "running" } });
+    t.apply({ type: "system", subtype: "task_progress", task_id: "task_1", tool_use_id: "toolu_agent", usage: { tool_uses: 4 }, last_tool_name: "Edit" });
+    expect(t.get("toolu_agent")).toMatchObject({ agent: { state: "running", tools: 4, last: "Edit" } });
+    // The notification may only name the task.
+    t.apply({ type: "system", subtype: "task_notification", task_id: "task_1", status: "completed", summary: "Migration écrite" });
+    expect(t.get("toolu_agent")).toMatchObject({ agent: { state: "done", tools: 4, summary: "Migration écrite" } });
+    // Unknown task: nothing changes.
+    expect(t.apply({ type: "system", subtype: "task_progress", task_id: "nope" }).steps).toEqual([]);
+  });
+
+  test("a subagent still running when the process ends is stopped", () => {
+    const t = new Transcript(CWD);
+    t.apply(assistant("msg_bg2", [{ type: "tool_use", id: "toolu_a2", name: "Agent", input: { description: "Tri" } }]));
+    t.apply({ type: "system", subtype: "task_started", task_id: "task_2", tool_use_id: "toolu_a2" });
+    t.settle();
+    expect(t.get("toolu_a2")).toMatchObject({ agent: { state: "stopped" } });
+  });
+
   test("tool results made of blocks keep their text", () => {
     const t = new Transcript(CWD);
     t.apply(assistant("msg_5", [{ type: "tool_use", id: "toolu_3", name: "WebFetch", input: { url: "https://example.com" } }]));
