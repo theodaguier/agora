@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, join, sep } from "node:path";
 import type { Subprocess } from "bun";
@@ -289,26 +289,46 @@ export async function getCodeSession(id: string, conversationId?: string): Promi
   return { ...summary(s), steps: s.transcript.steps };
 }
 
+/**
+ * A list row: every column but the steps (a long session's transcript weighs megabytes; read for every
+ * session of a list, it held the API for seconds), with their count and the last instruction, read by
+ * Postgres itself.
+ */
+const { steps: _steps, ...listColumns } = getTableColumns(schema.codeSession);
+const listFields = {
+  ...listColumns,
+  stepCount: sql<number>`jsonb_array_length(${schema.codeSession.steps})`,
+  lastUser: sql<CodeStep | null>`(select e from jsonb_array_elements(${schema.codeSession.steps}) with ordinality as t(e, i) where e->>'kind' = 'user' order by i desc limit 1)`,
+};
+type ListRow = Omit<Row, "steps"> & { stepCount: number; lastUser: CodeStep | null };
+
+/** A session of a list: the live one when it runs, else from its row without loading its steps. */
+function listSummary({ stepCount, lastUser, ...row }: ListRow): CodeSession {
+  const s = live.get(row.id);
+  if (s) return summary(s);
+  return { ...summary(fromRow({ ...row, steps: [] })), stepCount, instruction: lastInstruction(lastUser ? [lastUser] : []) };
+}
+
 /** A conversation's sessions, newest first, without their steps. */
 export async function listCodeSessions(conversationId: string): Promise<CodeSession[]> {
   const rows = await db
-    .select()
+    .select(listFields)
     .from(schema.codeSession)
     .where(eq(schema.codeSession.conversationId, conversationId))
     .orderBy(desc(schema.codeSession.createdAt));
-  return rows.map((row) => summary(live.get(row.id) ?? fromRow(row)));
+  return rows.map(listSummary);
 }
 
 /** The latest sessions of these conversations, all together (the Sessions page): the last changed first. */
 export async function listCodeSessionsOf(conversationIds: string[], limit = 100): Promise<CodeSession[]> {
   if (!conversationIds.length) return [];
   const rows = await db
-    .select()
+    .select(listFields)
     .from(schema.codeSession)
     .where(inArray(schema.codeSession.conversationId, conversationIds))
     .orderBy(desc(schema.codeSession.updatedAt))
     .limit(limit);
-  return rows.map((row) => summary(live.get(row.id) ?? fromRow(row)));
+  return rows.map(listSummary);
 }
 
 /**
