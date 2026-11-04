@@ -1236,7 +1236,7 @@ function CodeSessionView({
               {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
               {branch && (
                 <span className="flex min-w-0 items-center gap-1">
-                  <BranchIcon className="shrink-0" />
+                  <BranchIcon className="size-3.5 shrink-0" />
                   <span className="truncate">{branch}</span>
                 </span>
               )}

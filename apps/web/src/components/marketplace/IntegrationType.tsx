@@ -3,7 +3,7 @@ import { integrations } from "@agora/core/i18n";
 import { BrandLogo } from "@/components/BrandLogo";
 import { IntegrationIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ItemMedia } from "@/components/ui/item";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useT } from "@/i18n";
@@ -93,5 +93,28 @@ export function IntegrationTypeMenu(props: { value: IntegrationType; onValueChan
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** The same choice, as a submenu of a row's "…" menu: its trigger names the current type. */
+export function IntegrationTypeSub(props: { value: IntegrationType; onValueChange: (type: IntegrationType) => void; disabled?: boolean }) {
+  const t = useT(integrations);
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger disabled={props.disabled}>
+        <IntegrationIcon type={props.value} />
+        {t.type}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-56">
+        <DropdownMenuRadioGroup value={props.value} onValueChange={(v) => props.onValueChange(v as IntegrationType)}>
+          {INTEGRATION_TYPES.map((type) => (
+            <DropdownMenuRadioItem key={type} value={type}>
+              <IntegrationIcon type={type} />
+              {t.types[type]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   );
 }

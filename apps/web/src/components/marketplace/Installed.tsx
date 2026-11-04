@@ -1,10 +1,11 @@
 import { confirmAction } from "@/lib/confirm";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PackageIcon, PuzzleIcon, TrashIcon } from "@/components/icons";
+import { MoreIcon, PackageIcon, PuzzleIcon, RefreshIcon, TrashIcon } from "@/components/icons";
 import { Loading, useRestartNeeded } from "@/components/admin/ui";
 import { Button } from "@/components/ui/button";
-import { Item, ItemContent, ItemDescription, ItemFooter, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemTitle } from "@/components/ui/item";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MarketSection, Tiles } from "./layout";
 import { Switch } from "@/components/ui/switch";
 import { SkillCreateDialog } from "@/components/SkillCreateDialog";
@@ -12,9 +13,13 @@ import { api, type McpRequest, type SkillRequest } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { common, connectors } from "@agora/core/i18n";
 import { mcpServersQuery, pluginsQuery, useSkillOwners } from "./data";
-import { InitialTile, IntegrationTile, IntegrationTypeMenu } from "./IntegrationType";
+import { InitialTile, IntegrationTile, IntegrationTypeSub } from "./IntegrationType";
+import { integrations } from "@agora/core/i18n";
 import { ReconfigureDialog } from "./ReconfigureDialog";
 import type { IntegrationType } from "@agora/core";
+
+/** A connector's name as people read it: "cloudflare" → "Cloudflare". */
+const serverName = (name: string) => name.charAt(0).toUpperCase() + name.slice(1);
 
 const messages = defineMessages({
   en: {
@@ -32,6 +37,7 @@ const messages = defineMessages({
     removeConfirm: (name: string) => `Remove the “${name}” connector?`,
     removeBody: "Bots will lose access to its tools. Its secrets stay in Hermes's .env.",
     removeAction: "Remove",
+    moreActions: (name: string) => `More actions for ${name}`,
     plugins: "Active plugins",
     noPlugins: "No plugins enabled.",
     skills: "Skills",
@@ -56,6 +62,7 @@ const messages = defineMessages({
     removeConfirm: (name: string) => `Retirer le connecteur « ${name} » ?`,
     removeBody: "Les bots perdront l'accès à ses outils. Ses secrets restent dans le .env de Hermes.",
     removeAction: "Retirer",
+    moreActions: (name: string) => `Plus d'actions pour ${name}`,
     plugins: "Plugins actifs",
     noPlugins: "Aucun plugin activé.",
     skills: "Skills",
@@ -71,6 +78,7 @@ export function Installed() {
   const t = useT(messages);
   const c = useT(common);
   const k = useT(connectors);
+  const it = useT(integrations);
   const qc = useQueryClient();
   const flagRestart = useRestartNeeded();
   const servers = useQuery(mcpServersQuery);
@@ -209,30 +217,41 @@ export function Installed() {
         {!!servers.data?.servers.length && (
           <Tiles>
             {servers.data.servers.map((s) => (
-              <Item variant="outline" className="items-start" key={s.name} role="listitem">
+              <Item variant="outline" key={s.name} role="listitem">
                 <IntegrationTile type={s.type} server={s.name} />
                 <ItemContent className="min-w-0">
-                  <ItemTitle title={s.url ?? s.command}>{s.name}</ItemTitle>
+                  <ItemTitle className="w-full truncate" title={s.url ?? s.command}>
+                    {serverName(s.name)}
+                  </ItemTitle>
+                  <ItemDescription>{it.types[s.type]}</ItemDescription>
                 </ItemContent>
-                <ItemFooter className="justify-end">
-                  <IntegrationTypeMenu value={s.type} disabled={setType.isPending} onValueChange={(type) => setType.mutate({ name: s.name, type })} />
-                  {s.source !== "plugin" && (
-                    <Button variant="ghost" size="sm" disabled={reconfigure.isPending} onClick={() => reconfigure.mutate(s.name)}>
-                      {k.reconfigure}
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t.remove(s.name)}
-                    onClick={async () =>
-                      (await confirmAction({ title: t.removeConfirm(s.name), description: t.removeBody, action: t.removeAction })) && removeMcp.mutate(s.name)
-                    }
-                  >
-                    <TrashIcon />
-                  </Button>
-                  <Switch aria-label={s.name} checked={s.enabled !== false} onCheckedChange={(enabled) => toggleMcp.mutate({ name: s.name, enabled })} />
-                </ItemFooter>
+                <ItemActions>
+                  <Switch aria-label={serverName(s.name)} checked={s.enabled !== false} onCheckedChange={(enabled) => toggleMcp.mutate({ name: s.name, enabled })} />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.moreActions(serverName(s.name))} />}>
+                      <MoreIcon />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <IntegrationTypeSub value={s.type} disabled={setType.isPending} onValueChange={(type) => setType.mutate({ name: s.name, type })} />
+                      {s.source !== "plugin" && (
+                        <DropdownMenuItem disabled={reconfigure.isPending} onClick={() => reconfigure.mutate(s.name)}>
+                          <RefreshIcon />
+                          {k.reconfigure}
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={async () =>
+                          (await confirmAction({ title: t.removeConfirm(s.name), description: t.removeBody, action: t.removeAction })) && removeMcp.mutate(s.name)
+                        }
+                      >
+                        <TrashIcon />
+                        {t.removeAction}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </ItemActions>
               </Item>
             ))}
           </Tiles>
@@ -252,15 +271,15 @@ export function Installed() {
         {enabledPlugins.length > 0 && (
           <Tiles>
             {enabledPlugins.map((p) => (
-              <Item variant="outline" className="items-start" key={p.name} role="listitem">
+              <Item variant="outline" key={p.name} role="listitem">
                 <InitialTile icon={<PuzzleIcon />} />
                 <ItemContent className="min-w-0">
-                  <ItemTitle>{p.name}</ItemTitle>
-                  <ItemDescription>{p.description}</ItemDescription>
+                  <ItemTitle className="w-full truncate">{p.name}</ItemTitle>
+                  <ItemDescription className="line-clamp-1">{p.description}</ItemDescription>
                 </ItemContent>
-                <ItemFooter className="justify-end">
+                <ItemActions>
                   <Switch aria-label={p.name} checked onCheckedChange={(enable) => togglePlugin.mutate({ name: p.name, enable })} />
-                </ItemFooter>
+                </ItemActions>
               </Item>
             ))}
           </Tiles>
