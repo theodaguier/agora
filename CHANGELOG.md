@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.52.2 — 2026-11-04
+
+### Fixes
+- **code**: la file ne bloque plus une session qui attend une tâche de fond
+
 ## v0.52.1 — 2026-11-04
 
 ### Fixes
