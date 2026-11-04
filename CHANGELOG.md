@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.50.0 — 2026-11-04
+
+### Features
+- coffre-fort, GitHub, sessions de code héritées, écran de l'agent et refonte shadcn du web
+
 ## v0.49.3 — 2026-11-02
 
 ### Fixes
