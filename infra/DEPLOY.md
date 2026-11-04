@@ -279,6 +279,23 @@ EOF
 sudo systemctl reload crowdsec
 ```
 
+The app itself also calls dozens of distinct `/api/...` paths on load and while it
+runs (sessions, pull requests, files): the same scenario banned the admin on
+2026-11-04. Successful API calls are left out too; unknown paths (404) and
+failed logins (401, 429) still count:
+
+```sh
+sudo tee /etc/crowdsec/parsers/s02-enrich/agora-api-whitelist.yaml <<'EOF'
+name: agora/api-whitelist
+description: "Agora: the web app's successful API calls are app traffic, not crawling"
+whitelist:
+  reason: "Agora API (the app calls dozens of distinct /api paths on load and while it runs: looks like a crawl)"
+  expression:
+    - "evt.Meta.http_path startsWith '/api/' && evt.Meta.http_status in ['200', '201', '202', '204', '206', '304']"
+EOF
+sudo systemctl reload crowdsec
+```
+
 A user banned anyway: `sudo cscli decisions delete --ip <ip>`.
 
 **SSH through Tailscale only.** Once `tailscale up` works and you can
