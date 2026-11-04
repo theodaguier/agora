@@ -523,7 +523,8 @@ export const conversations = new Hono<AppEnv>()
       .delete(queuedMessage)
       .where(and(eq(queuedMessage.id, c.req.param("queuedId")), eq(queuedMessage.conversationId, id), eq(queuedMessage.userId, me.id)))
       .returning();
-    if (!row) return c.json({ error: "not_found" }, 404);
+    // Already sent (a second click, or the bots finished meanwhile): the queue as it is now.
+    if (!row) return c.json(await queueOf(id, me.id));
     publishToUser(me.id, { type: "queue.updated", conversationId: id, items: await queueOf(id, me.id) });
     const body = messageBody.safeParse(row.body);
     if (!body.success) return c.json({ error: "invalid_body" }, 400);

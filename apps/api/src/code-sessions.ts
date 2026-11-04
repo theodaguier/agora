@@ -110,8 +110,10 @@ type Live = {
   prepare: { repo: string; branch: string; clone: string | null } | null;
   /** Instructions of a run whose clone failed: they go with the next one. */
   held: Instruction[];
-  /** Its owner's messages written during a run, sent once it ended well (or now, on request). */
+  /** Its owner's messages written during a run, sent once it ended (or now, on request, or once it only waits). */
   queued: (Instruction & { id: string })[];
+  /** Sends them once Claude Code has stayed quiet a while (watchQuiet). */
+  quietTimer: ReturnType<typeof setTimeout> | null;
   /** A git action of the owner is under way. */
   gitBusy: boolean;
   /** The clone's state being read (one read at a time), and when the last one started. */
@@ -259,6 +261,7 @@ function fromRow(row: Row): Live {
     prepare: null,
     held: [],
     queued: [],
+    quietTimer: null,
     gitBusy: false,
     gitReading: null,
     gitReadAt: 0,
@@ -396,6 +399,8 @@ function milestone(s: Live, reason: CodeMilestoneReason) {
 
 function touch(s: Live, steps: (CodeStep | undefined)[] = [], summaryChanged = false) {
   if (s.deleted) return;
+  // A step: it acts, its waiting messages wait a little longer.
+  if (s.queued.length && steps.length) watchQuiet(s);
   for (const step of steps) if (step) s.dirty.set(step.id, step);
   if (summaryChanged || steps.length) s.summaryDirty = true;
   s.flushTimer ??= setTimeout(() => void flush(s), FLUSH_MS);
@@ -674,6 +679,7 @@ export async function sendToCodeSession(id: string, text: string, by: string, co
   // Its owner writes while it works: the message waits for the end of the run (a question is answered at once).
   if (opts.queue && s.running && !s.stopping && !s.question) {
     s.queued.push({ ...m, id: crypto.randomUUID() });
+    watchQuiet(s);
     touch(s, [], true);
   } else instruct(s, m);
   return summary(s);
@@ -683,6 +689,8 @@ export async function sendToCodeSession(id: string, text: string, by: string, co
 export async function changeQueuedMessage(id: string, queuedId: string, change: { send: true } | { text: string } | { remove: true }, conversationId?: string) {
   const s = await load(id, conversationId);
   const i = s.queued.findIndex((m) => m.id === queuedId);
+  // Already sent or taken out (a second click, the run that ended meanwhile): nothing left to do.
+  if (i < 0 && !("text" in change)) return summary(s);
   if (i < 0) throw new CodeSessionError("gone");
   if ("send" in change) instruct(s, s.queued.splice(i, 1)[0]!);
   else if ("remove" in change) s.queued.splice(i, 1);
@@ -696,6 +704,26 @@ export async function changeQueuedMessage(id: string, queuedId: string, change: 
   }
   touch(s, [], true);
   return summary(s);
+}
+
+/**
+ * Claude Code done with its turn but not with its run: it waits on a background task (a long test suite,
+ * a wakeup) without acting. Waiting messages go after QUIET_MS without a new step and with no action
+ * under way, as it reads them between turns (the run would otherwise hold them for as long as the task).
+ */
+const QUIET_MS = 20_000;
+function watchQuiet(s: Live) {
+  if (s.quietTimer) clearTimeout(s.quietTimer);
+  s.quietTimer = null;
+  if (!s.queued.length || !s.running || s.row.engine !== "claude") return;
+  s.quietTimer = setTimeout(() => {
+    s.quietTimer = null;
+    if (!s.queued.length || !s.running || s.stopping || s.question || s.approval || !s.proc) return;
+    const acting = s.transcript.steps.some((st) => st.kind === "tool" && !st.parentId && st.status === "running");
+    if (acting) return watchQuiet(s);
+    for (const m of s.queued.splice(0)) instruct(s, m);
+    touch(s, [], true);
+  }, QUIET_MS);
 }
 
 /** The run ended well: the messages written meanwhile go, in order, as one next run. */
@@ -881,8 +909,6 @@ export async function stopCodeSession(id: string, conversationId?: string) {
   s.stopping = true;
   s.outbox = [];
   s.unread = [];
-  // Stopped by its owner: nothing written meanwhile goes on its own.
-  s.queued = [];
   s.approval = null;
   dropQuestion(s);
   const proc = s.proc;
@@ -1499,6 +1525,8 @@ function start(s: Live) {
       s.activity = null;
       // An instruction arrived while it was stopping: it starts the next run (a git action, or its worktree being deleted, starts it once done).
       if (s.outbox.length && !s.gitBusy) start(s);
+      // Stopped or failed: what its owner wrote meanwhile goes now, as they asked for "after".
+      else sendQueued(s);
     });
 }
 
