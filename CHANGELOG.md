@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.52.3 — 2026-11-04
+
+### Fixes
+- **infra**: les sessions de code ne peuvent plus faire tomber le serveur
+
 ## v0.52.2 — 2026-11-04
 
 ### Fixes
