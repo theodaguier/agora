@@ -21,6 +21,7 @@ import {
   listCodeSessionsOf,
   runGitAction,
   sendToCodeSession,
+  changeQueuedMessage,
   switchCodeSessionAccount,
   setCodeSessionMode,
   setCodeSessionPriority,
@@ -207,7 +208,28 @@ export const codeSessions = new Hono<AppEnv>()
     if (!body.success) return c.json({ error: "invalid" }, 400);
     const files = await attachmentsOf(owned.conversationId, body.data.attachmentIds);
     if (!files) return c.json({ error: "unknown_attachment" }, 400);
-    return sendToCodeSession(owned.sessionId, body.data.text, c.get("user").name, owned.conversationId, files).then((s) => c.json(s), (err) => failure(c, err));
+    // From its owner: while it works, the message waits for the end of the run, unless sent "now".
+    const now = c.req.query("now") === "1";
+    return sendToCodeSession(owned.sessionId, body.data.text, c.get("user").name, owned.conversationId, files, { queue: !now }).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
+  /** A message waiting for the end of the run: sent now, reworded, or taken out. */
+  .post("/:sessionId/queue/:queuedId/send", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    return changeQueuedMessage(owned.sessionId, c.req.param("queuedId"), { send: true }, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+  .patch("/:sessionId/queue/:queuedId", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    const body = z.object({ text: z.string().max(TEXT_MAX) }).safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "invalid" }, 400);
+    return changeQueuedMessage(owned.sessionId, c.req.param("queuedId"), { text: body.data.text }, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+  .delete("/:sessionId/queue/:queuedId", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    return changeQueuedMessage(owned.sessionId, c.req.param("queuedId"), { remove: true }, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
   })
 
   .post("/:sessionId/approval", async (c) => {

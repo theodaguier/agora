@@ -48,3 +48,6 @@ export function removeMessage<T extends Timed & { data?: { replyTo?: { id: strin
     return [{ ...m, data }];
   });
 }
+
+/** A message its author sent while the bots worked: it waits, in order, until they are done. */
+export type QueuedMessageDto = { id: string; text: string; files: number; createdAt: string };

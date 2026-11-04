@@ -320,6 +320,27 @@ export const conversationAgent = pgTable(
 );
 
 /**
+ * A message its author sent while the bots of the conversation were working: it waits, in order, and
+ * is sent as they would have once the bots are done (routes/conversations.ts flushQueue). `body` is the
+ * composer's request as it was posted.
+ */
+export const queuedMessage = pgTable(
+  "queued_message",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    body: jsonb("body").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [index("queued_message_conversation_idx").on(t.conversationId, t.createdAt)],
+);
+
+/**
  * Bot turn queued or under way (bot-runner.ts), deleted when it ends: after a
  * restart of the API, queued turns are resumed and interrupted ones reported.
  */

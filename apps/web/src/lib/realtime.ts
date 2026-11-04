@@ -1,7 +1,7 @@
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import type { ActiveTurn, ConversationDetail, ConversationKind, ConversationSummary, Inbox, Message, PendingApproval } from "./api";
-import { codeSessionState, insertMessage, removeMessage, type CodeSessionState, type Schedule } from "@agora/core";
+import { codeSessionState, insertMessage, removeMessage, type CodeSessionState, type QueuedMessageDto, type Schedule } from "@agora/core";
 import { notifyBotMessage, notifyCodeSession } from "./attention";
 import { applySchedule } from "./availability";
 import { applyAgentStatus, applyPresence, presenceQuery } from "./presence";
@@ -164,6 +164,7 @@ type ServerEvent =
   | { type: "read"; conversationId: string; userId: string }
   | { type: "typing"; conversationId: string; userId: string; name: string }
   | { type: "pins.changed"; conversationId: string }
+  | { type: "queue.updated"; conversationId: string; items: QueuedMessageDto[] }
   | { type: "bot.started"; conversationId: string; turnId: string; agentId: string; requestedBy: string | null; startedAt?: string }
   | { type: "bot.delta"; conversationId: string; turnId: string; text: string }
   | { type: "bot.tool"; conversationId: string; turnId: string; name: string; status: string }
@@ -250,6 +251,9 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
     case "pins.changed":
       qc.invalidateQueries({ queryKey: ["pins", cid] });
       return;
+    case "queue.updated":
+      qc.setQueryData<QueuedMessageDto[]>(["queue", cid], ev.items);
+      return;
     case "read":
       if (ev.userId === me) qc.invalidateQueries({ queryKey: ["conversations"] });
       return;
@@ -322,6 +326,7 @@ const EVENT_TYPES = [
   "read",
   "typing",
   "pins.changed",
+  "queue.updated",
   "bot.started",
   "bot.delta",
   "bot.tool",

@@ -34,7 +34,9 @@ export type AppEvent =
   /** The morning recap was just written (digest.ts). */
   | { type: "digest.ready"; id: string }
   /** Something landed in (or left) the account's inbox (inbox.ts). */
-  | { type: "inbox.changed" };
+  | { type: "inbox.changed" }
+  /** Your messages waiting in a conversation for its bots to finish (routes/conversations.ts). */
+  | { type: "queue.updated"; conversationId: string; items: import("@agora/core").QueuedMessageDto[] };
 
 type Listener = (event: AppEvent) => void;
 

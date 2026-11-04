@@ -99,8 +99,23 @@ function newTurn(req: TurnRequest): Turn {
   return turn;
 }
 
+/** A bot is replying in the conversation, or about to: its queued messages wait (routes/conversations.ts). */
+export const conversationBusy = (conversationId: string) => [...turns.values()].some((t) => t.conversationId === conversationId);
+
+const idleListeners: ((conversationId: string) => void)[] = [];
+/** Called once no bot works in a conversation any more. */
+export const onConversationIdle = (fn: (conversationId: string) => void) => void idleListeners.push(fn);
+/** A reply often calls the next one (a bot relaying to another, "@all"): idle only if still so a moment later. */
+const IDLE_SETTLE_MS = 1_500;
+
 function endTurn(turn: Turn) {
   turns.delete(turn.turnId);
+  if (!conversationBusy(turn.conversationId)) {
+    setTimeout(() => {
+      if (conversationBusy(turn.conversationId)) return;
+      for (const fn of idleListeners) fn(turn.conversationId);
+    }, IDLE_SETTLE_MS);
+  }
   if (turn.started) setWorking(turn.agentId, -1);
   db.delete(pendingTurn)
     .where(eq(pendingTurn.id, turn.turnId))

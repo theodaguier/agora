@@ -4,7 +4,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { MAX_FILE, storeAttachment as storeFile, streamAttachment } from "../attachments";
 import { callAll } from "../all-route";
-import { abandonTurns, activeTurns, answerTurnApproval, cancelTurn, compactSession, enqueueTurn, resetSession } from "../bot-runner";
+import { abandonTurns, activeTurns, answerTurnApproval, cancelTurn, compactSession, conversationBusy, enqueueTurn, onConversationIdle, resetSession } from "../bot-runner";
 import { hermesSessionId } from "../company";
 import {
   accessibleAgentIds,
@@ -34,7 +34,7 @@ import { defineMessages, tr } from "../i18n";
 import { allowedInvocations, type AttachmentRow, type Invocation } from "../prompt";
 import { sessionContext } from "../session-context";
 import { parseDraft } from "../views";
-import { ALL_HANDLE, mentionsAll, SCREEN_VIEWPORTS, type ViewAction, type ViewBlock } from "@agora/core";
+import { ALL_HANDLE, mentionsAll, SCREEN_VIEWPORTS, type QueuedMessageDto, type ViewAction, type ViewBlock } from "@agora/core";
 
 const messages = defineMessages({
   en: {
@@ -51,7 +51,7 @@ const messages = defineMessages({
   },
 });
 
-const { agent, attachment, conversation, conversationAgent, conversationMember, message, pin, user } = schema;
+const { agent, attachment, conversation, conversationAgent, conversationMember, message, pin, queuedMessage, user } = schema;
 
 const detail = (c: LoadedConversation) => ({
   id: c.conversation.id,
@@ -192,6 +192,123 @@ function replySnapshot(m: MessageDto): ReplyTo {
   };
 }
 
+/** What the composer sends: text, files, invocations, mentions, a reply, an answer to a draft. */
+const messageBody = z
+  .object({
+    text: z.string().trim().max(20_000),
+    attachmentIds: z.array(z.string()).max(10).default([]),
+    invocations: z
+      .array(
+        z.union([
+          z.object({ kind: z.enum(["skill", "mcp"]), name: z.string().regex(/^[\w.-]{1,80}$/), agentId: z.string().min(1).max(100).optional() }),
+          z.object({ kind: z.literal("routine"), id: z.string().regex(/^[\w-]{1,64}$/), name: z.string().max(120) }),
+        ]),
+      )
+      .max(5)
+      .default([]),
+    mentions: z.array(z.string()).max(20).default([]),
+    replyTo: z.string().min(1).max(100).optional(),
+    /** Answer to a draft the bot showed (```view``` block): the bot carries it out itself. */
+    viewAction: z
+      .object({
+        messageId: z.string().min(1).max(100),
+        index: z.number().int().min(0).max(10),
+        action: z.enum(["confirm", "cancel", "revise"]),
+        draft: z.unknown().optional(),
+        note: z.string().trim().max(2000).optional(),
+      })
+      .refine((a) => a.action !== "revise" || !!a.note)
+      .optional(),
+  })
+  .refine((b) => b.text || b.attachmentIds.length || b.invocations.length);
+type MessageBody = z.infer<typeof messageBody>;
+
+/** Checks a message body against the conversation and sends it: the message, or why it can't be sent. */
+async function sendFromBody(conv: LoadedConversation, me: { id: string; name: string; image?: string | null }, body: MessageBody) {
+  const id = conv.conversation.id;
+
+  const files = body.attachmentIds.length
+    ? await db.select().from(attachment).where(and(eq(attachment.conversationId, id), inArray(attachment.id, body.attachmentIds)))
+    : [];
+  if (files.length !== body.attachmentIds.length) return { error: "unknown_attachment" as const };
+  // Invocations target a specific bot: the direct one, or in a group the bot whose skill was picked (skills only).
+  const invocations = conv.directBot
+    ? await allowedInvocations(conv.directBot.agent.hermesProfile, id, body.invocations)
+    : conv.conversation.kind === "group"
+      ? await groupInvocations(conv, id, body.invocations)
+      : [];
+  // A bot whose skill is invoked is called as if mentioned.
+  const invoked = invocations.flatMap((v) => (v.kind !== "routine" && v.agentId ? [v.agentId] : []));
+  const mentions =
+    conv.conversation.kind === "group" ? [...new Set([...body.mentions, ...invoked])].filter((m) => conv.agents.some((a) => a.agent.id === m)) : [];
+  let replyTo: ReplyTo | undefined;
+  if (body.replyTo) {
+    const quoted = await getMessage(id, body.replyTo);
+    if (!quoted || quoted.kind === "event") return { error: "unknown_reply" as const };
+    replyTo = replySnapshot(quoted);
+  }
+
+  let viewAction: ViewAction | undefined;
+  if (body.viewAction) {
+    const { messageId, index, action, draft, note } = body.viewAction;
+    const source = await getMessage(id, messageId);
+    const view = (source?.data as { views?: ViewBlock[] } | null)?.views?.[index];
+    if (source?.kind !== "bot" || view?.kind !== "draft") return { error: "unknown_draft" as const };
+    // Confirmed or to rework: the values as the employee left them (edited or not).
+    const values = action === "cancel" ? undefined : parseDraft(view.type, draft ?? view.draft);
+    if (values === null) return { error: "invalid_draft" as const };
+    viewAction = { messageId, index, action, type: view.type, ...(values && { draft: values }), ...(action === "revise" && { note }) };
+    // In a group, the answer goes to the bot that wrote the draft.
+    if (source.author?.kind === "agent" && conv.conversation.kind === "group" && !mentions.includes(source.author.id)) mentions.push(source.author.id);
+  }
+
+  // "@all", unless a bot of the group is called that.
+  const all = conv.conversation.kind === "group" && mentionsAll(body.text) && !conv.agents.some((a) => a.agent.name.trim().toLowerCase() === ALL_HANDLE);
+  return { message: await sendUserMessage(conv, me, { text: body.text, files, invocations, mentions, replyTo, viewAction, all }) };
+}
+
+/* ---------- queue: messages sent while the bots work ---------- */
+
+/** A queued message as its author sees it: its words, how many files, when. */
+async function queueOf(conversationId: string, userId: string): Promise<QueuedMessageDto[]> {
+  const rows = await db
+    .select()
+    .from(queuedMessage)
+    .where(and(eq(queuedMessage.conversationId, conversationId), eq(queuedMessage.userId, userId)))
+    .orderBy(asc(queuedMessage.createdAt));
+  return rows.map((r) => {
+    const body = r.body as Partial<MessageBody>;
+    return { id: r.id, text: body.text ?? "", files: body.attachmentIds?.length ?? 0, createdAt: r.createdAt.toISOString() };
+  });
+}
+
+/**
+ * The bots of a conversation are done: its oldest waiting message is sent, as its author would have
+ * (their replies then queue it again behind them). One at a time, so each gets its own answer.
+ */
+async function flushQueue(conversationId: string) {
+  const [next] = await db.select().from(queuedMessage).where(eq(queuedMessage.conversationId, conversationId)).orderBy(asc(queuedMessage.createdAt)).limit(1);
+  if (!next) return;
+  const [taken] = await db.delete(queuedMessage).where(eq(queuedMessage.id, next.id)).returning();
+  // Taken by "send now", or another flush, in between.
+  if (!taken) return;
+  publishToUser(taken.userId, { type: "queue.updated", conversationId, items: await queueOf(conversationId, taken.userId) });
+  const [author] = await db.select({ id: schema.user.id, name: schema.user.name, image: schema.user.image }).from(schema.user).where(eq(schema.user.id, taken.userId));
+  const conv = author && (await loadConversation(author.id, conversationId));
+  const body = messageBody.safeParse(taken.body);
+  // Left the conversation, or what it pointed to is gone (a file, a quoted message): the next one goes.
+  const sent = conv && body.success ? await sendFromBody(conv, author, body.data) : null;
+  if (!sent || "error" in sent) await flushQueue(conversationId);
+}
+
+onConversationIdle((conversationId) => void flushQueue(conversationId).catch((err) => console.error("conversations: queue", err)));
+
+/** At startup: conversations with waiting messages and no bot at work get theirs. */
+export async function resumeQueues() {
+  const rows = await db.selectDistinct({ conversationId: queuedMessage.conversationId }).from(queuedMessage);
+  for (const r of rows) if (!conversationBusy(r.conversationId)) await flushQueue(r.conversationId).catch((err) => console.error("conversations: queue", err));
+}
+
 export const conversations = new Hono<AppEnv>()
   .use(requireUser)
 
@@ -326,80 +443,93 @@ export const conversations = new Hono<AppEnv>()
 
   /** Saves a message, broadcasts it, and queues replies from the relevant bots. */
   .post("/:id/messages", async (c) => {
-    const body = z
-      .object({
-        text: z.string().trim().max(20_000),
-        attachmentIds: z.array(z.string()).max(10).default([]),
-        invocations: z
-          .array(
-            z.union([
-              z.object({ kind: z.enum(["skill", "mcp"]), name: z.string().regex(/^[\w.-]{1,80}$/), agentId: z.string().min(1).max(100).optional() }),
-              z.object({ kind: z.literal("routine"), id: z.string().regex(/^[\w-]{1,64}$/), name: z.string().max(120) }),
-            ]),
-          )
-          .max(5)
-          .default([]),
-        mentions: z.array(z.string()).max(20).default([]),
-        replyTo: z.string().min(1).max(100).optional(),
-        /** Answer to a draft the bot showed (```view``` block): the bot carries it out itself. */
-        viewAction: z
-          .object({
-            messageId: z.string().min(1).max(100),
-            index: z.number().int().min(0).max(10),
-            action: z.enum(["confirm", "cancel", "revise"]),
-            draft: z.unknown().optional(),
-            note: z.string().trim().max(2000).optional(),
-          })
-          .refine((a) => a.action !== "revise" || !!a.note)
-          .optional(),
-      })
-      .refine((b) => b.text || b.attachmentIds.length || b.invocations.length)
-      .safeParse(await c.req.json());
+    const body = messageBody.safeParse(await c.req.json());
+    if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const sent = await sendFromBody(conv, me, body.data);
+    if ("error" in sent) return c.json({ error: sent.error }, 400);
+    return c.json(sent.message, 201);
+  })
+
+  /** Your messages waiting for the bots to finish (queue.ts below): sent one by one once they are done. */
+  .get("/:id/queue", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    return c.json(await queueOf(conv.conversation.id, me.id));
+  })
+
+  /** Sends now when no bot works in the conversation; otherwise the message waits in your queue. */
+  .post("/:id/queue", async (c) => {
+    const body = messageBody.safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid_body" }, 400);
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id"));
     if (!conv) return c.json({ error: "not_found" }, 404);
     const id = conv.conversation.id;
-
-    const files = body.data.attachmentIds.length
-      ? await db.select().from(attachment).where(and(eq(attachment.conversationId, id), inArray(attachment.id, body.data.attachmentIds)))
-      : [];
-    if (files.length !== body.data.attachmentIds.length) return c.json({ error: "unknown_attachment" }, 400);
-    // Invocations target a specific bot: the direct one, or in a group the bot whose skill was picked (skills only).
-    const invocations = conv.directBot
-      ? await allowedInvocations(conv.directBot.agent.hermesProfile, id, body.data.invocations)
-      : conv.conversation.kind === "group"
-        ? await groupInvocations(conv, id, body.data.invocations)
-        : [];
-    // A bot whose skill is invoked is called as if mentioned.
-    const invoked = invocations.flatMap((v) => (v.kind !== "routine" && v.agentId ? [v.agentId] : []));
-    const mentions =
-      conv.conversation.kind === "group" ? [...new Set([...body.data.mentions, ...invoked])].filter((m) => conv.agents.some((a) => a.agent.id === m)) : [];
-    let replyTo: ReplyTo | undefined;
-    if (body.data.replyTo) {
-      const quoted = await getMessage(id, body.data.replyTo);
-      if (!quoted || quoted.kind === "event") return c.json({ error: "unknown_reply" }, 400);
-      replyTo = replySnapshot(quoted);
+    if (!conversationBusy(id)) {
+      const sent = await sendFromBody(conv, me, body.data);
+      if ("error" in sent) return c.json({ error: sent.error }, 400);
+      return c.json({ sent: sent.message }, 201);
     }
+    await db.insert(queuedMessage).values({ id: crypto.randomUUID(), conversationId: id, userId: me.id, body: body.data });
+    const items = await queueOf(id, me.id);
+    publishToUser(me.id, { type: "queue.updated", conversationId: id, items });
+    return c.json({ queued: items }, 201);
+  })
 
-    let viewAction: ViewAction | undefined;
-    if (body.data.viewAction) {
-      const { messageId, index, action, draft, note } = body.data.viewAction;
-      const source = await getMessage(id, messageId);
-      const view = (source?.data as { views?: ViewBlock[] } | null)?.views?.[index];
-      if (source?.kind !== "bot" || view?.kind !== "draft") return c.json({ error: "unknown_draft" }, 400);
-      // Confirmed or to rework: the values as the employee left them (edited or not).
-      const values = action === "cancel" ? undefined : parseDraft(view.type, draft ?? view.draft);
-      if (values === null) return c.json({ error: "invalid_draft" }, 400);
-      viewAction = { messageId, index, action, type: view.type, ...(values && { draft: values }), ...(action === "revise" && { note }) };
-      // In a group, the answer goes to the bot that wrote the draft.
-      if (source.author?.kind === "agent" && conv.conversation.kind === "group" && !mentions.includes(source.author.id)) mentions.push(source.author.id);
-    }
+  /** Rewords a waiting message. */
+  .patch("/:id/queue/:queuedId", async (c) => {
+    const text = z.object({ text: z.string().trim().max(20_000) }).safeParse(await c.req.json());
+    if (!text.success) return c.json({ error: "invalid_body" }, 400);
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const id = conv.conversation.id;
+    const [row] = await db
+      .select()
+      .from(queuedMessage)
+      .where(and(eq(queuedMessage.id, c.req.param("queuedId")), eq(queuedMessage.conversationId, id), eq(queuedMessage.userId, me.id)));
+    if (!row) return c.json({ error: "not_found" }, 404);
+    const next = messageBody.safeParse({ ...row.body, text: text.data.text });
+    if (!next.success) return c.json({ error: "invalid_body" }, 400);
+    await db.update(queuedMessage).set({ body: next.data }).where(eq(queuedMessage.id, row.id));
+    const items = await queueOf(id, me.id);
+    publishToUser(me.id, { type: "queue.updated", conversationId: id, items });
+    return c.json(items);
+  })
 
-    // "@all", unless a bot of the group is called that.
-    const all = conv.conversation.kind === "group" && mentionsAll(body.data.text) && !conv.agents.some((a) => a.agent.name.trim().toLowerCase() === ALL_HANDLE);
-    const msg = await sendUserMessage(conv, me, { text: body.data.text, files, invocations, mentions, replyTo, viewAction, all });
-    return c.json(msg, 201);
+  /** Takes a message out of the queue, unsent. */
+  .delete("/:id/queue/:queuedId", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const id = conv.conversation.id;
+    await db.delete(queuedMessage).where(and(eq(queuedMessage.id, c.req.param("queuedId")), eq(queuedMessage.conversationId, id), eq(queuedMessage.userId, me.id)));
+    const items = await queueOf(id, me.id);
+    publishToUser(me.id, { type: "queue.updated", conversationId: id, items });
+    return c.json(items);
+  })
+
+  /** Sends a waiting message now: it goes into the thread, and the bots take it after their current reply. */
+  .post("/:id/queue/:queuedId/send", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const id = conv.conversation.id;
+    const [row] = await db
+      .delete(queuedMessage)
+      .where(and(eq(queuedMessage.id, c.req.param("queuedId")), eq(queuedMessage.conversationId, id), eq(queuedMessage.userId, me.id)))
+      .returning();
+    if (!row) return c.json({ error: "not_found" }, 404);
+    publishToUser(me.id, { type: "queue.updated", conversationId: id, items: await queueOf(id, me.id) });
+    const body = messageBody.safeParse(row.body);
+    if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    const sent = await sendFromBody(conv, me, body.data);
+    if ("error" in sent) return c.json({ error: sent.error }, 400);
+    return c.json(sent.message, 201);
   })
 
   /**
