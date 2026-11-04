@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.52.0 — 2026-11-04
+
+### Features
+- file d'attente des messages pendant que l'agent travaille
+
 ## v0.51.0 — 2026-11-04
 
 ### Features
