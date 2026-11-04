@@ -367,7 +367,7 @@ function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: 
               <IssueIcon />#{s.issue.number}
             </span>
           )}
-          {detail && <span className={cn("min-w-0 truncate", state === "waiting" && "text-state-you", state === "failed" && "text-priority-urgent")}>{detail}</span>}
+          {detail && <span className={cn("min-w-0 truncate", state === "running" && "typing-shimmer", state === "waiting" && "text-state-you", state === "failed" && "text-priority-urgent")}>{detail}</span>}
           {s.git?.pr?.state === "open" && !(state === "waiting" || state === "running") && <ChecksMark checks={s.git.pr.checks} />}
         </div>
       </ItemContent>

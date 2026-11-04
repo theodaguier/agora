@@ -1,11 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, PackageIcon, PlugIcon, PuzzleIcon, SearchIcon, CloseIcon } from "@/components/icons";
-import { useBrandLogo } from "@/components/BrandLogo";
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, PackageIcon, PuzzleIcon, SearchIcon, CloseIcon } from "@/components/icons";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { RestartProvider } from "@/components/admin/ui";
 import { AgentAvatar } from "@/components/AgentAvatar";
-import { Avatar, AvatarFallback, AvatarGroup, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -53,7 +51,7 @@ type View = { kind: "home" } | { kind: "all"; section: Section; query?: string }
 const messages = defineMessages<{
   titles: Record<Section, string>;
   title: string;
-  installed: (n: number) => string;
+  installed: string;
   searchPlaceholder: string;
   searchLabel: string;
   bots: string;
@@ -76,7 +74,7 @@ const messages = defineMessages<{
   en: {
     titles: { bots: "Team bots", mcp: "Connectors", registry: "MCP registry", skill: "Skills", skillsSh: "skills.sh", plugin: "Hermes plugins" },
     title: "Marketplace",
-    installed: (n) => `Installed: ${n}`,
+    installed: "Installed",
     searchPlaceholder: "Search connectors, skills, plugins and bots",
     searchLabel: "Search the marketplace",
     bots: "Bots",
@@ -106,7 +104,7 @@ const messages = defineMessages<{
   fr: {
     titles: { bots: "Bots de l'équipe", mcp: "Connecteurs", registry: "Registre MCP", skill: "Skills", skillsSh: "skills.sh", plugin: "Plugins Hermes" },
     title: "Marketplace",
-    installed: (n) => `Installés : ${n}`,
+    installed: "Installés",
     searchPlaceholder: "Rechercher des connecteurs, skills, plugins et bots",
     searchLabel: "Rechercher dans la marketplace",
     bots: "Bots",
@@ -255,7 +253,6 @@ function Home({ push, onClose }: { push: (v: View) => void; onClose: () => void 
           <SearchIcon />
         </InputGroupAddon>
         <InputGroupInput
-          autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t.searchPlaceholder}
@@ -471,36 +468,16 @@ function Row({ item, onAdd }: { item: Item; onAdd: () => void }) {
   );
 }
 
-/** The first installed apps' logos, the count, a chevron. */
+/** What is installed, with its count: the way to the page that manages it. */
 function InstalledButton({ onClick }: { onClick: () => void }) {
   const t = useT(messages);
   const market = useMarket("");
-  const { data } = useQuery(mcpServersQuery);
-  const logos = (data?.servers ?? []).slice(0, 4);
   return (
     <Button variant="ghost" size="sm" onClick={onClick}>
-      {logos.length > 0 && (
-        <AvatarGroup>
-          {logos.map((s) => (
-            <InstalledLogo key={s.name} server={s.name} />
-          ))}
-        </AvatarGroup>
-      )}
-      {t.installed(market.installedCount)}
+      {t.installed}
+      <Badge variant="secondary">{market.installedCount}</Badge>
       <ChevronRightIcon data-icon="inline-end" />
     </Button>
-  );
-}
-
-function InstalledLogo({ server }: { server: string }) {
-  const src = useBrandLogo({ server });
-  return (
-    <Avatar size="sm">
-      {src && <AvatarImage src={src} alt="" />}
-      <AvatarFallback>
-        <PlugIcon />
-      </AvatarFallback>
-    </Avatar>
   );
 }
 

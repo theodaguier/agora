@@ -1,5 +1,5 @@
 import { isAbsolute, relative } from "node:path";
-import type { CodeLimit, CodePermissionMode, CodeStep, CodeTodo } from "@agora/core";
+import type { CodeLimit, CodePermissionMode, CodeStep, CodeSubagent, CodeTodo } from "@agora/core";
 
 /**
  * Reads Claude Code's `stream-json` output (with --include-partial-messages)
@@ -42,6 +42,8 @@ export class Transcript {
   private streaming = new Map<string, string>();
   /** Task list calls, applied once their result says they worked. */
   private todoCalls = new Map<string, { name: string; input: Json }>();
+  /** Background subagents: their task id → the Task/Agent call that started them. */
+  private tasks = new Map<string, string>();
 
   constructor(
     private cwd: string,
@@ -81,6 +83,10 @@ export class Transcript {
         s.status = "error";
         changed.push(s);
       }
+      if (s.kind === "tool" && s.agent?.state === "running") {
+        s.agent = { ...s.agent, state: "stopped" };
+        if (!changed.includes(s)) changed.push(s);
+      }
     }
     return changed;
   }
@@ -106,6 +112,7 @@ export class Transcript {
           };
         }
         if (ev.subtype === "status" && isMode(ev.permissionMode)) return { steps: [], mode: ev.permissionMode };
+        if (ev.subtype === "task_started" || ev.subtype === "task_progress" || ev.subtype === "task_notification") return { steps: this.subagent(ev) };
         if (ev.subtype === "task_summary") return { steps: [], activity: typeof ev.detail === "string" && ev.detail.trim() ? ev.detail.trim() : null };
         // The Anthropic API is slow or refusing (overload, rate limit): said, rather than "working" in silence.
         if (ev.subtype === "api_retry") {
@@ -124,6 +131,32 @@ export class Transcript {
       default:
         return { steps: [] };
     }
+  }
+
+  /**
+   * A subagent's life, from Claude Code's task events: started, progress (its actions, the latest one),
+   * then its notification (completed, failed, stopped). Shown on the Task/Agent call that started it.
+   */
+  private subagent(ev: Json): CodeStep[] {
+    const taskId = ev.task_id ? String(ev.task_id) : "";
+    const callId = ev.tool_use_id ? String(ev.tool_use_id) : this.tasks.get(taskId);
+    if (taskId && callId) this.tasks.set(taskId, callId);
+    const step = callId ? this.byId.get(callId) : undefined;
+    if (step?.kind !== "tool") return [];
+    const prev: CodeSubagent = step.agent ?? { state: "running" };
+    if (ev.subtype === "task_notification") {
+      const state = ev.status === "completed" ? "done" : ev.status === "failed" ? "error" : ev.status === "stopped" ? "stopped" : prev.state;
+      step.agent = { ...prev, state, ...(typeof ev.summary === "string" && ev.summary.trim() && { summary: clip(ev.summary.trim(), 500) }) };
+    } else {
+      const tools = Number(ev.usage?.tool_uses);
+      step.agent = {
+        ...prev,
+        state: "running",
+        ...(Number.isFinite(tools) && tools > 0 && { tools }),
+        ...(typeof ev.last_tool_name === "string" && ev.last_tool_name && { last: ev.last_tool_name }),
+      };
+    }
+    return [step];
   }
 
   private streamEvent(e: Json, parentId?: string): CodeStep[] {

@@ -21,7 +21,7 @@ export function PaneHeader({
   children?: ReactNode;
 }) {
   return (
-    <Item render={<header />} className="shrink-0 flex-nowrap items-start">
+    <Item render={<header />} className="shrink-0 flex-nowrap items-start rounded-none border-b-border">
       {media && <ItemMedia className="mt-0.5">{media}</ItemMedia>}
       <ItemContent className="min-w-0">
         {/* The title is a flex box, whose text gets no ellipsis: the span truncates. */}
