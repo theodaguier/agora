@@ -62,6 +62,10 @@ services:
         HERMES_IMAGE: nousresearch/hermes-agent:${HERMES_VERSION:-v2026.9.21}
         HERMES_VERSION: ${HERMES_VERSION:-v2026.9.21}
     restart: unless-stopped
+    # The Claude Code sessions run here (their installs, tests, builds): capped, they can't take
+    # the whole machine (and with it SSH and the site) down; no swap, so they fail fast instead of thrashing.
+    mem_limit: ${AGORA_API_MEMORY:-5g}
+    memswap_limit: ${AGORA_API_MEMORY:-5g}
     network_mode: "service:hermes"
     pid: "service:hermes"
     # Same user as Hermes: shared profile files, restart signal.

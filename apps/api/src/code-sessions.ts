@@ -1,3 +1,4 @@
+import { setPriority } from "node:os";
 import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, join, sep } from "node:path";
@@ -1492,6 +1493,18 @@ export function remember(p: Permissions, suggestions: Json[]): Permissions {
   return { ...p, allowedTools: [...allowedTools], dirs: [...dirs], ...(mode && { mode }), ...(mode && mode !== "plan" && { actMode: mode }) };
 }
 
+/**
+ * A session's process, and all it starts (bun install, test suites, builds), gives way to the server:
+ * lower CPU priority, and first in line for the kernel when memory runs out. Ten installs at once
+ * filled the VPS's memory twice (2026-10-06, 2026-11-04) and took the whole site down with them.
+ */
+function yieldToTheServer(pid: number) {
+  try {
+    setPriority(pid, 10);
+  } catch {}
+  void Bun.write(`/proc/${pid}/oom_score_adj`, "1000").catch(() => {});
+}
+
 function start(s: Live) {
   if (s.idleTimer) clearTimeout(s.idleTimer);
   s.idleTimer = null;
@@ -1686,6 +1699,7 @@ async function execute(s: Live, id: number): Promise<void> {
   let proc: Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    yieldToTheServer(proc.pid);
   } catch (err) {
     await mcp.dispose();
     throw err;
@@ -1851,6 +1865,7 @@ async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, syst
   let proc: Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(run.args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    yieldToTheServer(proc.pid);
   } catch (err) {
     await run.cleanup?.();
     throw err;
