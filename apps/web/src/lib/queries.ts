@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import { mergeMessages, type CodeMergeMethod, type GitHubMergeRequestDto, type GitHubPullRequest, type VaultItem, type VaultItemSecret, type VaultRequestDto, type VaultSummary } from "@agora/core";
+import { mergeMessages, type CodeMergeMethod, type QueuedMessageDto, type GitHubMergeRequestDto, type GitHubPullRequest, type VaultItem, type VaultItemSecret, type VaultRequestDto, type VaultSummary } from "@agora/core";
 import {
   api,
   conversationPath,
@@ -68,6 +68,13 @@ export const messagesQuery = (conversationId: string) =>
       const fresh = await api<Message[]>(conversationPath(conversationId, "/messages"), { signal });
       return mergeMessages(fresh, client.getQueryData<Message[]>(queryKey), before);
     },
+  });
+
+/** Your messages waiting for the conversation's bots to finish (kept current by "queue.updated"). */
+export const queueQuery = (conversationId: string) =>
+  queryOptions({
+    queryKey: ["queue", conversationId],
+    queryFn: () => api<QueuedMessageDto[]>(conversationPath(conversationId, "/queue")),
   });
 
 export const pinsQuery = (conversationId: string) =>

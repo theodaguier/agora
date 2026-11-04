@@ -18,7 +18,7 @@ import { VaultRequestCard } from "@/components/VaultRequestCard";
 import { GitHubMergeCard } from "@/components/github/GitHubMergeCard";
 import { PullRequestLinks } from "@/components/github/PullRequestLinks";
 import { ViewCard } from "@/components/views/ViewCard";
-import { conversationTimeline, insertMessage, readPreviews, withoutMediaTags, withoutPreviews, type ViewAction } from "@agora/core";
+import { conversationTimeline, insertMessage, readPreviews, withoutMediaTags, withoutPreviews, type QueuedMessageDto, type ViewAction } from "@agora/core";
 import { common, integrations } from "@agora/core/i18n";
 import { Composer, type ComposerHandle } from "@/components/Composer";
 import { ConversationAvatar, ParticipantAvatar, PersonAvatar, useStatus } from "@/components/ConversationAvatar";
@@ -71,7 +71,8 @@ import { dividerLabel, needsDivider } from "@/lib/dates";
 import { ConversationFilesProvider } from "@/lib/conversation-files";
 import { codeSessionsQuery } from "@/lib/code-sessions";
 import { updateSide, useConversationSide, type ConversationSide } from "@/lib/conversation-side";
-import { conversationQuery, conversationsQuery, messagesQuery } from "@/lib/queries";
+import { conversationQuery, conversationsQuery, messagesQuery, queueQuery } from "@/lib/queries";
+import { QueueList } from "@/components/QueueList";
 import { seedTurns, useTurns, useTyping } from "@/lib/realtime";
 import { useOrgTitle } from "@/lib/org";
 import { openAgentProfile, openProfile } from "@/lib/profile";
@@ -497,6 +498,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
   const viewAnswers = new Map(messages.flatMap((m) => (m.data?.viewAction ? [[`${m.data.viewAction.messageId}:${m.data.viewAction.index}`, m.data.viewAction] as const] : [])));
   const { data: summaries } = useQuery(conversationsQuery);
   const turns = useTurns(conversationId);
+  const { data: queue = [] } = useQuery(queueQuery(conversationId));
   const typing = useTyping(conversationId);
   const conv = detail.data;
   /** Bots of the conversation and every colleague: all their mentions are colored. */
@@ -671,6 +673,22 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
 
   const send = async (text: string, attachments: Sending["attachments"], invocations: Invocation[], mentions: string[], reply?: ReplyTo, viewAction?: ViewAction) => {
     for (const attachment of attachments) pendingPreviews.adopt(attachment.previewUrl);
+    // A bot is replying: the message waits above the composer, and goes once the bots are done.
+    if (turns.length && !viewAction) {
+      const input = { text, attachmentIds: attachments.map((a) => a.id), invocations, mentions, replyTo: reply?.id };
+      try {
+        const res = await api<{ queued?: QueuedMessageDto[]; sent?: Message }>(conversationPath(conversationId, "/queue"), { method: "POST", body: JSON.stringify(input) });
+        if (res.queued) qc.setQueryData(queueQuery(conversationId).queryKey, res.queued);
+        if (res.sent) {
+          const sent = res.sent;
+          qc.setQueryData<Message[]>(messagesQuery(conversationId).queryKey, (old) => old && insertMessage(old, sent));
+          void playSound("sent");
+        }
+        return;
+      } catch {
+        // Fall through: sent as before, its failure shown on its bubble.
+      }
+    }
     const key = crypto.randomUUID();
     // Sending brings the reader back to the bottom, where their message and the reply appear.
     atBottom.current = true;
@@ -713,6 +731,15 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
     if (focusLoaded) requestAnimationFrame(() => jumpTo(focus));
     navigate({ to: "/c/$conversationId", params: { conversationId }, search: {}, replace: true });
   }, [focus, focusLoaded, isPending]);
+
+  const queueAction = (path: string, init: RequestInit) =>
+    api<QueuedMessageDto[] | Message>(conversationPath(conversationId, `/queue/${path}`), init).then((res) => {
+      if (Array.isArray(res)) qc.setQueryData(queueQuery(conversationId).queryKey, res);
+      else {
+        qc.setQueryData<Message[]>(messagesQuery(conversationId).queryKey, (old) => old && insertMessage(old, res));
+        void qc.invalidateQueries({ queryKey: queueQuery(conversationId).queryKey });
+      }
+    });
 
   const stop = (turnId: string) => api(conversationPath(conversationId, `/turns/${encodeURIComponent(turnId)}/cancel`), { method: "POST" }).catch(() => {});
 
@@ -1086,6 +1113,14 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
       </div>
 
       <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">
+        {conv && (
+          <QueueList
+            items={queue}
+            onEdit={(id, text) => queueAction(encodeURIComponent(id), { method: "PATCH", body: JSON.stringify({ text }) })}
+            onSendNow={(id) => queueAction(`${encodeURIComponent(id)}/send`, { method: "POST" })}
+            onRemove={(id) => queueAction(encodeURIComponent(id), { method: "DELETE" })}
+          />
+        )}
         {conv && (
           <Composer
             key={conversationId}

@@ -429,6 +429,9 @@ export function groupCodeSessions<T extends Groupable>(
 export const byCodePriority = <T extends { priority: CodePriority }>(list: T[]) =>
   [...list].sort((a, b) => CODE_PRIORITIES.indexOf(a.priority) - CODE_PRIORITIES.indexOf(b.priority));
 
+/** A message waiting for the session's run to end; `files`: how many are joined. */
+export type CodeQueuedMessage = { id: string; text: string; by: string | null; files: number };
+
 export type CodeSession = {
   id: string;
   conversationId: string;
@@ -464,6 +467,8 @@ export type CodeSession = {
   account: CodeAccount | null;
   /** What it is doing right now, in one line (Claude Code's own summary, or the running tool). */
   activity: string | null;
+  /** Its owner's messages written while it works, waiting for the end of the run (they go then, in order). */
+  queued?: CodeQueuedMessage[];
   /** Subscription usage warning, as Claude Code reports it. */
   limit: CodeLimit | null;
   approval: CodeApproval | null;

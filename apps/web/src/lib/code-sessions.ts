@@ -71,6 +71,14 @@ export const codeReposQuery = (conversationId: string) =>
 export const sendToCodeSession = (conversationId: string, id: string, text: string, attachmentIds: string[] = []) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/messages`), { method: "POST", body: JSON.stringify({ text, attachmentIds }) });
 
+/** A message waiting for the end of the run: sent now (read at its next step), reworded, or taken out. */
+export const sendQueuedNow = (conversationId: string, id: string, queuedId: string) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/queue/${encodeURIComponent(queuedId)}/send`), { method: "POST" });
+export const editQueued = (conversationId: string, id: string, queuedId: string, text: string) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/queue/${encodeURIComponent(queuedId)}`), { method: "PATCH", body: JSON.stringify({ text }) });
+export const removeQueued = (conversationId: string, id: string, queuedId: string) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/queue/${encodeURIComponent(queuedId)}`), { method: "DELETE" });
+
 /** An action allowed or denied, questions answered, a plan approved or sent back with what to change. */
 export const answerCodeApproval = (conversationId: string, id: string, approvalId: string, answer: CodeApprovalAnswer) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/approval`), { method: "POST", body: JSON.stringify({ approvalId, ...answer }) });

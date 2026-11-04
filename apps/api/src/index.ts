@@ -9,7 +9,7 @@ import { version } from "./version";
 import { admin } from "./routes/admin";
 import { agents } from "./routes/agents";
 import { attachments } from "./routes/attachments";
-import { conversations } from "./routes/conversations";
+import { conversations, resumeQueues } from "./routes/conversations";
 import { codeSessions, internalCode, mySessions } from "./routes/code-sessions";
 import { github, internalGithub } from "./routes/github";
 import { internalMcp } from "./mcp-gateway";
@@ -145,7 +145,9 @@ ensureHermesInstance()
 startUsageCollector();
 startServerSampler();
 startDigest();
-recoverTurns().catch((err) => console.error("bot-runner: recovery", err));
+recoverTurns()
+  .then(() => resumeQueues())
+  .catch((err) => console.error("bot-runner: recovery", err));
 startCodeWake();
 recoverCodeSessions().catch((err) => console.error("code sessions: recovery", err));
 startCodeSessionSweep();

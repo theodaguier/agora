@@ -83,6 +83,7 @@ import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Badge } from "@/components/ui/badge";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { QueueList } from "@/components/QueueList";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -135,6 +136,9 @@ import {
   dropCodeSession,
   detachCodeSessionIssue,
   sendToCodeSession,
+  sendQueuedNow,
+  editQueued,
+  removeQueued,
   setCodeSessionMode,
   setCodeSessionModel,
   startCodeSession,
@@ -2537,6 +2541,7 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
   const submit = () => {
     if (canSend) send.mutate({ value: text.trim(), attachmentIds: files.ids });
   };
+  const queueDone = (s: CodeSession) => applyCodeSession(qc, s);
   return (
     <form
       onSubmit={(e) => {
@@ -2545,6 +2550,12 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
       }}
       className="relative"
     >
+      <QueueList
+        items={session.queued ?? []}
+        onEdit={(id, value) => editQueued(conversationId, session.id, id, value).then(queueDone)}
+        onSendNow={(id) => sendQueuedNow(conversationId, session.id, id).then(queueDone)}
+        onRemove={(id) => removeQueued(conversationId, session.id, id).then(queueDone)}
+      />
       {slash.menu}
       <InputGroup>
         {files.files.length > 0 && (

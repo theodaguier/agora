@@ -110,6 +110,8 @@ type Live = {
   prepare: { repo: string; branch: string; clone: string | null } | null;
   /** Instructions of a run whose clone failed: they go with the next one. */
   held: Instruction[];
+  /** Its owner's messages written during a run, sent once it ended well (or now, on request). */
+  queued: (Instruction & { id: string })[];
   /** A git action of the owner is under way. */
   gitBusy: boolean;
   /** The clone's state being read (one read at a time), and when the last one started. */
@@ -196,6 +198,7 @@ function summary(s: Live): CodeSession {
     commands: r.commands,
     account: r.account,
     activity: s.activity,
+    ...(s.queued.length && { queued: s.queued.map((m) => ({ id: m.id, text: m.text, by: m.by, files: m.files?.length ?? 0 })) }),
     limit: s.limit,
     approval: a && {
       id: a.id,
@@ -255,6 +258,7 @@ function fromRow(row: Row): Live {
     stopping: false,
     prepare: null,
     held: [],
+    queued: [],
     gitBusy: false,
     gitReading: null,
     gitReadAt: 0,
@@ -643,11 +647,41 @@ export const announceCodeSession = (conversationId: string, sessionId: string, t
  * An instruction for the session: written to Claude Code while it works (it reads it at its next
  * tool call), or the start of a new run that resumes the session.
  */
-export async function sendToCodeSession(id: string, text: string, by: string, conversationId?: string, files: AttachmentRow[] = []) {
+export async function sendToCodeSession(id: string, text: string, by: string, conversationId?: string, files: AttachmentRow[] = [], opts: { queue?: boolean } = {}) {
   const s = await load(id, conversationId);
   if (!text.trim() && !files.length) throw new CodeSessionError("invalid");
-  instruct(s, await withFiles(await workspace(), s.row.id, { text: text.trim(), by }, files));
+  const m = await withFiles(await workspace(), s.row.id, { text: text.trim(), by }, files);
+  // Its owner writes while it works: the message waits for the end of the run (a question is answered at once).
+  if (opts.queue && s.running && !s.stopping && !s.question) {
+    s.queued.push({ ...m, id: crypto.randomUUID() });
+    touch(s, [], true);
+  } else instruct(s, m);
   return summary(s);
+}
+
+/** A waiting message: sent now (read at its next step), reworded, or taken out. */
+export async function changeQueuedMessage(id: string, queuedId: string, change: { send: true } | { text: string } | { remove: true }, conversationId?: string) {
+  const s = await load(id, conversationId);
+  const i = s.queued.findIndex((m) => m.id === queuedId);
+  if (i < 0) throw new CodeSessionError("gone");
+  if ("send" in change) instruct(s, s.queued.splice(i, 1)[0]!);
+  else if ("remove" in change) s.queued.splice(i, 1);
+  else {
+    const m = s.queued[i]!;
+    const text = change.text.trim();
+    if (!text && !m.files?.length) throw new CodeSessionError("invalid");
+    // The files' note follows the words.
+    const note = m.prompt && m.text ? m.prompt.slice(m.text.length) : m.prompt && !m.text ? `\n\n${m.prompt}` : "";
+    s.queued[i] = { ...m, text, ...(m.prompt && { prompt: `${text}${note}`.trim() }) };
+  }
+  touch(s, [], true);
+  return summary(s);
+}
+
+/** The run ended well: the messages written meanwhile go, in order, as one next run. */
+function sendQueued(s: Live) {
+  if (!s.queued.length || s.running || s.gitBusy || s.deleted) return;
+  for (const m of s.queued.splice(0)) instruct(s, m);
 }
 
 /** Where the files joined to a session's instructions are copied: out of its clone (nothing to commit), readable by it (--add-dir). */
@@ -827,6 +861,8 @@ export async function stopCodeSession(id: string, conversationId?: string) {
   s.stopping = true;
   s.outbox = [];
   s.unread = [];
+  // Stopped by its owner: nothing written meanwhile goes on its own.
+  s.queued = [];
   s.approval = null;
   dropQuestion(s);
   const proc = s.proc;
@@ -1456,6 +1492,7 @@ async function rest(s: Live) {
   await settle(s, "idle");
   // Written while it was settling.
   if (s.outbox.length && !s.running && !s.gitBusy) start(s);
+  else sendQueued(s);
 }
 
 /** Lets go of a warm process: its stdin closes, Claude Code stops its background tasks and exits. */
