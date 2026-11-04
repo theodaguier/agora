@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.51.0 — 2026-11-04
+
+### Features
+- **code**: sous-agents visibles et shimmer dans les flux agentiques
+
+### Fixes
+- **web**: en-tête des sessions, bouton Installés, cartes des connecteurs
+
 ## v0.50.0 — 2026-11-04
 
 ### Features
