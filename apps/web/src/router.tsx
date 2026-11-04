@@ -1,6 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect } from "@tanstack/react-router";
-import { api } from "./lib/api";
+import { api, ApiError } from "./lib/api";
+import { RouteError, RouteNotFound, RoutePending } from "./components/RouteStates";
 import { authClient } from "./lib/auth";
 import { Login } from "./screens/Login";
 import { orgQuery, setupQuery, useOrgLocale } from "./lib/org";
@@ -25,7 +26,15 @@ const Sessions = lazyRouteComponent(() => import("./screens/Sessions"), "Session
 
 export const queryClient = new QueryClient({
   mutationCache,
-  defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: true } },
+  defaultOptions: {
+    queries: {
+      staleTime: 10_000,
+      refetchOnWindowFocus: true,
+      // The server answered (Hermes down, 404…): asking again gives the same answer, so the screen shows it
+      // at once. Only a lost connection is retried, once.
+      retry: (count, error) => !(error instanceof ApiError) && count < 1,
+    },
+  },
 });
 
 const rootRoute = createRootRoute({ component: Root });
@@ -120,7 +129,7 @@ const agentRoute = createRoute({
     throw redirect({ to: "/c/$conversationId", params: { conversationId: id }, replace: true });
   },
 });
-/** Second brain graph alone, opened in its own window from the Memory settings (admins only, no app shell). */
+/** Second brain graph alone, opened in a new browser tab from the Memory settings (admins only, no app shell). */
 const memoryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/memory",
@@ -133,7 +142,7 @@ const memoryRoute = createRoute({
 });
 const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, memoryRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, sessionsRoute, inboxRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({ routeTree, defaultPendingComponent: RoutePending, defaultErrorComponent: RouteError, defaultNotFoundComponent: RouteNotFound });
 
 declare module "@tanstack/react-router" {
   interface Register {

@@ -1,13 +1,12 @@
 import { envFileValue, envValue, fileMatchesAccept, isUrlEnvName, mcpEnvAccept, mcpEnvInput, MCP_ENV_VALUE_MAX, type McpEnvField } from "@agora/core";
 import { useRef, useState } from "react";
 import { RequiredMark } from "@/components/FormLabel";
-import { FileTextIcon } from "@/components/icons";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { defineMessages, useT } from "@/i18n";
-import { cn } from "@/lib/utils";
 
 const messages = defineMessages({
   en: {
@@ -52,7 +51,6 @@ export function ConnectorField({
   const [fileError, setFileError] = useState<string | null>(null);
   const input = mcpEnvInput(field);
   const accept = mcpEnvAccept(field);
-  const control = "bg-background font-mono dark:bg-background";
   // An address typed without its scheme gets https:// when the field is left.
   const complete = () => {
     const next = envValue(field.name, value);
@@ -85,32 +83,28 @@ export function ConnectorField({
   };
 
   return (
-    <Field className={cn("gap-1.5", className)} data-invalid={invalid || undefined}>
-      <FieldLabel htmlFor={id} className="font-mono text-xs">
+    <Field className={className} data-invalid={invalid || undefined}>
+      <FieldLabel htmlFor={id}>
         {field.name}
         {field.required && <RequiredMark />}
       </FieldLabel>
       {input === "file" ? (
         <>
-          <button
+          <Button
             type="button"
+            variant="outline"
             id={id}
-            aria-invalid={invalid || undefined}
+            aria-invalid={invalid || !!fileError || undefined}
             onClick={() => fileRef.current?.click()}
-            className={cn(
-              "flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-background px-3 text-left text-sm outline-none focus-visible:border-ring",
-              fileName ? "text-foreground" : "text-muted-foreground",
-              (invalid || fileError) && "border-destructive/50",
-            )}
+            className="w-full justify-start"
           >
-            <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">{fileName || t.chooseFile}</span>
-          </button>
+            <span className="truncate">{fileName || t.chooseFile}</span>
+          </Button>
           <input ref={fileRef} type="file" accept={accept} className="sr-only" onChange={(e) => pick(e.target.files)} />
         </>
       ) : input === "select" ? (
         <Select items={(field.options ?? []).map((o) => ({ value: o, label: o }))} value={value || null} onValueChange={(v) => onChange(v ?? "")}>
-          <SelectTrigger id={id} aria-invalid={invalid || undefined} className={cn(control, "w-full px-3 data-[size=default]:h-10 dark:hover:bg-background")}>
+          <SelectTrigger id={id} aria-invalid={invalid || undefined} className="w-full">
             <SelectValue placeholder={field.placeholder || t.choose} />
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false} align="start">
@@ -131,7 +125,6 @@ export function ConnectorField({
           rows={4}
           autoComplete="off"
           onChange={(e) => onChange(e.target.value)}
-          className={cn(control, "font-mono")}
         />
       ) : (
         <Input
@@ -146,12 +139,11 @@ export function ConnectorField({
           spellCheck={false}
           onChange={(e) => onChange(e.target.value)}
           onBlur={complete}
-          className={control}
         />
       )}
-      {field.description && <FieldDescription className="text-xs">{field.description}</FieldDescription>}
+      {field.description && <FieldDescription>{field.description}</FieldDescription>}
       {(fileError || (invalid && input !== "text" && input !== "secret" && input !== "textarea" && !value)) && (
-        <FieldDescription className="text-xs text-destructive">{fileError ?? t.requiredValue}</FieldDescription>
+        <FieldError>{fileError ?? t.requiredValue}</FieldError>
       )}
     </Field>
   );

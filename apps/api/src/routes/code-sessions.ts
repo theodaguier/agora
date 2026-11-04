@@ -24,11 +24,13 @@ import {
   switchCodeSessionAccount,
   setCodeSessionMode,
   setCodeSessionPriority,
+  setCodeSessionParked,
   setCodeSessionModel,
   startCodeSession,
   stopCodeSession,
 } from "../code-sessions";
 import { listRepos, parseRepo } from "../code-git";
+import { sessionCommands } from "../code-skills";
 import { internalToken } from "../code-plugin";
 import { accessibleAgentIds, loadConversation } from "../conversations";
 import { db, schema } from "../db";
@@ -126,6 +128,19 @@ export const codeSessions = new Hono<AppEnv>()
     const engine = ENGINE.catch("claude").parse(c.req.query("engine") ?? "claude");
     if (!canUseEngine(me, engine)) return c.json({ error: "forbidden" }, 403);
     return c.json(await modelsOf(engine, me.id));
+  })
+
+  /**
+   * What "/" offers before a session runs: Claude Code's own commands, and the skills a session
+   * inherits from the bots the person may use (code-skills.ts). A running session adds its own.
+   */
+  .get("/commands", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id")!);
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const engine = ENGINE.catch("claude").parse(c.req.query("engine") ?? "claude");
+    if (!canUseEngine(me, engine)) return c.json({ error: "forbidden" }, 403);
+    return c.json(await sessionCommands(me.id, engine, conv.directBot?.agent.id ?? null));
   })
 
   /** The owner's Claude accounts signed in, the active one first: a session can move to another when one runs out. */
@@ -232,6 +247,15 @@ export const codeSessions = new Hono<AppEnv>()
     const body = z.object({ priority: z.enum(CODE_PRIORITIES as [CodePriority, ...CodePriority[]]) }).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid" }, 400);
     return setCodeSessionPriority(owned.sessionId, body.data.priority, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
+  })
+
+  /** Set aside (« Mettre de côté ») or brought back: Linear's backlog, out of the active sessions. */
+  .put("/:sessionId/parked", async (c) => {
+    const owned = await ownerOnly(c);
+    if (owned instanceof Response) return owned;
+    const body = z.object({ parked: z.boolean() }).safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "invalid" }, 400);
+    return setCodeSessionParked(owned.sessionId, body.data.parked, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
   })
 
   /** Its issue detached: the session linked one that is not its task. */

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { SCREEN_VIEWPORTS, type ScreenViewport } from "@agora/core";
 import { common } from "@agora/core/i18n";
-import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, RefreshIcon } from "@/components/icons";
+import { BrowserIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, RefreshIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -17,10 +18,15 @@ import { defineMessages, useT } from "@/i18n";
 const messages = defineMessages({
   en: {
     noScreen: "The agent isn't using a screen right now",
+    asleep: "The computer is asleep",
+    wake: "Click to wake it up",
+    waking: "Waking up…",
+    noBrowser: "No browser on this server to wake up.",
     screen: "Screen",
     screenOf: (name: string) => `${name}'s screen`,
     enlarge: "Enlarge",
     live: "Live view of the browser the agent drives.",
+    watch: "Watch",
     takeControl: "Take control",
     release: "Release control",
     back: "Back",
@@ -35,11 +41,16 @@ const messages = defineMessages({
   },
   fr: {
     noScreen: "L'agent n'utilise pas d'écran pour le moment",
+    asleep: "L'ordinateur est en veille",
+    wake: "Clique pour le réveiller",
+    waking: "Réveil en cours…",
+    noBrowser: "Aucun navigateur sur ce serveur pour le réveiller.",
     screen: "Écran",
     screenOf: (name: string) => `Écran de ${name}`,
     enlarge: "Agrandir",
     live: "Vue en direct du navigateur piloté par l'agent.",
-    takeControl: "Prendre la main",
+    watch: "Observation",
+    takeControl: "Prendre le contrôle",
     release: "Rendre la main",
     back: "Précédente",
     forward: "Suivante",
@@ -116,14 +127,6 @@ function useAgentScreen(conversationId: string) {
   return { frame, viewport };
 }
 
-const host = (url: string) => {
-  try {
-    return new URL(url).host || url;
-  } catch {
-    return url;
-  }
-};
-
 /** What was typed in the address field: a scheme is added (http for this machine, https otherwise). */
 const toUrl = (typed: string) => {
   const value = typed.trim();
@@ -149,32 +152,33 @@ function pagePoint(img: HTMLImageElement, frame: Frame, clientX: number, clientY
 function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={label} onClick={onClick} />}>{children}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
 }
 
 /**
- * The live image and, for an admin, its controls: history, address, and taking control, where clicks,
- * scrolling, keys and pastes on the image go to the page. `fill`: the image takes all the height given.
+ * The live image. As a thumbnail (`onEnlarge`), only the picture: a click opens it. Full size, the page
+ * fitted in all the space given and, for an admin, one switch under it between watching and taking
+ * control: then clicks, scrolling, keys and pastes on the image go to the page, and the address, history
+ * and screen size show above it.
  */
 function ScreenView({
   conversationId,
   frame,
   viewport,
   canControl,
-  fill,
   onEnlarge,
 }: {
   conversationId: string;
   frame: Frame;
   viewport: ScreenViewport;
   canControl: boolean;
-  fill?: boolean;
   onEnlarge?: () => void;
 }) {
   const t = useT(messages);
+  const full = !onEnlarge;
   const [controlling, setControlling] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const img = useRef<HTMLImageElement>(null);
@@ -237,11 +241,41 @@ function ScreenView({
     send({ type: "key", key: e.key, code: e.code, keyCode: e.keyCode, modifiers: modifiers(e) });
   };
 
-  const src = `data:image/jpeg;base64,${frame.data}`;
+  const surfaceView = (
+    <div
+      ref={surface}
+      role={controlling ? "application" : onEnlarge ? "button" : undefined}
+      tabIndex={controlling || onEnlarge ? 0 : undefined}
+      aria-label={controlling ? t.release : onEnlarge ? t.enlarge : undefined}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+      onPaste={(e) => {
+        if (!controlling) return;
+        const text = e.clipboardData.getData("text");
+        e.preventDefault();
+        if (text) send({ type: "text", text });
+      }}
+      className={cn(
+        "outline-none",
+        full ? "relative min-h-0 flex-1" : "cursor-zoom-in overflow-hidden rounded-xl border focus-visible:ring-3 focus-visible:ring-ring/50",
+      )}
+    >
+      <img
+        ref={img}
+        src={`data:image/jpeg;base64,${frame.data}`}
+        alt=""
+        draggable={false}
+        width={frame.width || undefined}
+        height={frame.height || undefined}
+        className={cn("block select-none", full ? "absolute inset-0 size-full object-contain" : "h-auto w-full")}
+      />
+    </div>
+  );
+  if (!full) return surfaceView;
 
   return (
-    <div className={cn("flex flex-col gap-2", fill && "min-h-0 flex-1")}>
-      {canControl && (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {controlling && (
         <form
           className="flex items-center gap-1"
           onSubmit={(e) => {
@@ -270,50 +304,14 @@ function ScreenView({
             }}
             onBlur={() => setDraft(null)}
             onKeyDown={(e) => e.key === "Escape" && e.currentTarget.blur()}
-            className="h-7 min-w-0 flex-1 rounded-lg text-[13px] md:text-[13px]"
+            className="min-w-0 flex-1"
           />
-        </form>
-      )}
-
-      <div
-        ref={surface}
-        role={controlling ? "application" : onEnlarge ? "button" : undefined}
-        tabIndex={controlling || onEnlarge ? 0 : undefined}
-        aria-label={controlling ? t.release : onEnlarge ? t.enlarge : undefined}
-        onClick={onClick}
-        onKeyDown={onKeyDown}
-        onPaste={(e) => {
-          if (!controlling) return;
-          const text = e.clipboardData.getData("text");
-          e.preventDefault();
-          if (text) send({ type: "text", text });
-        }}
-        className={cn(
-          "overflow-hidden rounded-lg border border-border bg-background outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          fill && "relative min-h-0 flex-1 border-transparent bg-transparent",
-          controlling ? "cursor-default ring-2 ring-brand focus-visible:ring-brand" : onEnlarge && "cursor-zoom-in",
-        )}
-      >
-        <img
-          ref={img}
-          src={src}
-          alt=""
-          draggable={false}
-          width={frame.width || undefined}
-          height={frame.height || undefined}
-          className={cn("block select-none", fill ? "absolute inset-0 size-full object-contain" : "mx-auto h-auto max-h-[70vh] w-auto max-w-full")}
-        />
-      </div>
-
-      {canControl ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
           <ToggleGroup
             aria-label={t.size}
             value={[viewport]}
             onValueChange={(v) => v[0] && v[0] !== viewport && send({ type: "viewport", viewport: v[0] as ScreenViewport })}
             variant="outline"
-            size="sm"
-            className="mr-auto"
+            spacing={0}
           >
             {SCREEN_VIEWPORTS.map((v) => (
               <ToggleGroupItem key={v} value={v}>
@@ -321,34 +319,44 @@ function ScreenView({
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
-          {onEnlarge && (
-            <Button variant="outline" size="sm" onClick={onEnlarge}>
-              {t.enlarge}
-            </Button>
-          )}
-          <Button variant={controlling ? "default" : "outline"} size="sm" onClick={() => setControlling((c) => !c)}>
-            {controlling ? t.release : t.takeControl}
-          </Button>
-        </div>
-      ) : (
-        !fill && (
-          <p className="truncate text-center text-[13px] text-muted-foreground" title={frame.url}>
-            {host(frame.url)}
-          </p>
-        )
+        </form>
+      )}
+
+      {surfaceView}
+
+      {canControl && (
+        <ToggleGroup
+          aria-label={t.screen}
+          value={[controlling ? "control" : "watch"]}
+          onValueChange={(v) => v[0] && setControlling(v[0] === "control")}
+          variant="outline"
+          spacing={0}
+          className="self-center"
+        >
+          <ToggleGroupItem value="watch">{t.watch}</ToggleGroupItem>
+          <ToggleGroupItem value="control">{t.takeControl}</ToggleGroupItem>
+        </ToggleGroup>
       )}
     </div>
   );
 }
 
-/** `agentName`: the bot of a direct conversation; without it, the conversation's screen (any of its bots or sessions). */
-export function AgentScreen({ conversationId, agentName }: { conversationId: string; agentName?: string }) {
+/**
+ * `agentName`: the bot of a direct conversation; without it, the conversation's screen (any of its bots or sessions).
+ * `mascotSrc` / `waking`: no screen yet, a framed space with the bot's mascot, asleep or waking up (as it works),
+ * and the screen's name under it; without them, one grey line.
+ */
+export function AgentScreen({ conversationId, agentName, mascotSrc, waking }: { conversationId: string; agentName?: string; mascotSrc?: string; waking?: boolean }) {
   const t = useT(messages);
   const { user } = useRouteContext({ from: "/app" });
   // The browser reaches the server's own network: only admins drive it (as the API checks).
   const canControl = user.role === "admin";
   const { frame, viewport } = useAgentScreen(conversationId);
   const [enlarged, setEnlarged] = useState(false);
+  const wake = useMutation({
+    mutationFn: () => api(conversationPath(conversationId, "/screen/wake"), { method: "POST" }),
+    meta: { error: false },
+  });
   // The browser closed while enlarged: don't reopen on the next session.
   if (!frame && enlarged) setEnlarged(false);
 
@@ -356,19 +364,37 @@ export function AgentScreen({ conversationId, agentName }: { conversationId: str
     <>
       {frame ? (
         <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={canControl} onEnlarge={() => setEnlarged(true)} />
+      ) : mascotSrc ? (
+        <div className="flex flex-col gap-2">
+          {/* Asleep: a click wakes it (a blank browser of the conversation), then the screen shows as soon as it runs. */}
+          <button
+            type="button"
+            disabled={waking || wake.isPending || wake.isSuccess}
+            onClick={() => wake.mutate()}
+            className="flex aspect-[16/10] flex-col items-center justify-center gap-1 rounded-xl border bg-muted transition-colors outline-none enabled:hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <img src={mascotSrc} alt="" draggable={false} className={cn("mb-1 size-12 object-contain", !(waking || wake.isPending || wake.isSuccess) && "opacity-60 grayscale")} />
+            {waking || wake.isPending || wake.isSuccess ? (
+              <span className="text-sm text-muted-foreground">{t.waking}</span>
+            ) : (
+              <>
+                <span className="text-sm font-medium">{t.asleep}</span>
+                <span className="text-sm text-muted-foreground">{wake.isError ? t.noBrowser : t.wake}</span>
+              </>
+            )}
+          </button>
+        </div>
       ) : (
         // No screen: one line, not an empty frame reserving the space.
-        <p className="pl-0.5 text-[13px] text-subtle">{t.noScreen}.</p>
+        <p className="text-sm text-muted-foreground">{t.noScreen}.</p>
       )}
 
-      {/* The whole window, the page fitted in it. */}
+      {/* The whole window for the screen alone, as on a remote desktop. */}
       <Dialog open={enlarged && !!frame} onOpenChange={setEnlarged}>
-        <DialogContent className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col gap-3 sm:max-w-none">
-          <DialogHeader className="pr-8">
-            <DialogTitle>{agentName ? t.screenOf(agentName) : t.screen}</DialogTitle>
-            <DialogDescription className="truncate">{canControl ? t.live : frame?.url || t.live}</DialogDescription>
-          </DialogHeader>
-          {frame && <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={canControl} fill />}
+        <DialogContent finalFocus={false} className="flex h-dvh w-screen max-w-none flex-col rounded-none p-4 pt-12 sm:max-w-none">
+          <DialogTitle className="sr-only">{agentName ? t.screenOf(agentName) : t.screen}</DialogTitle>
+          <DialogDescription className="sr-only">{t.live}</DialogDescription>
+          {frame && <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={canControl} />}
         </DialogContent>
       </Dialog>
     </>
@@ -383,11 +409,9 @@ export function ScreenPage({ conversationId, title, onClose }: { conversationId:
   const { frame, viewport } = useAgentScreen(conversationId);
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3">
-        <p className="min-w-0 flex-1 truncate text-[15px] font-medium">
-          {t.screen}
-          {title && <span className="font-normal text-muted-foreground"> · {title}</span>}
-        </p>
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+        <h2 className="shrink-0 text-sm font-medium">{t.screen}</h2>
+        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{title}</span>
         {onClose && (
           <Button variant="ghost" size="icon" aria-label={c.close} onClick={onClose}>
             <CloseIcon />
@@ -396,11 +420,14 @@ export function ScreenPage({ conversationId, title, onClose }: { conversationId:
       </header>
       <div className="flex min-h-0 flex-1 flex-col p-3">
         {frame ? (
-          <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={user.role === "admin"} fill />
+          <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={user.role === "admin"} />
         ) : (
           <Empty className="flex-1">
             <EmptyHeader>
-              <EmptyDescription>{t.noScreen}</EmptyDescription>
+              <EmptyMedia variant="icon">
+                <BrowserIcon />
+              </EmptyMedia>
+              <EmptyTitle>{t.noScreen}</EmptyTitle>
             </EmptyHeader>
           </Empty>
         )}

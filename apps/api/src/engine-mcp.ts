@@ -31,6 +31,8 @@ export type EngineMcpServer = {
   /** Hermes's tool selection (`tools.include` / `tools.exclude`): exact names or fnmatch globs. */
   include?: string[];
   exclude?: string[];
+  /** The profile whose declaration it is, when it differs from the run's (teamMcp): a local server runs in its home. */
+  profile?: string;
 };
 
 export type EngineMcp = { profile: string; servers: EngineMcpServer[] };
@@ -97,6 +99,17 @@ export const engineMcpOrNone = (profile: string) =>
     console.error(`engine mcp: ${profile}`, err);
     return noMcp(profile);
   });
+
+/**
+ * The connectors of several bots at once (a code session inherits its team's): each profile's enabled
+ * servers, merged by name, the first profile's declaration winning. Each keeps the profile it comes from.
+ */
+export async function teamMcp(profiles: string[]): Promise<EngineMcp> {
+  const all = await Promise.all(profiles.map((p) => engineMcpOrNone(p)));
+  const servers = new Map<string, EngineMcpServer>();
+  for (const mcp of all) for (const s of mcp.servers) if (!servers.has(s.name)) servers.set(s.name, { ...s, profile: mcp.profile });
+  return { profile: profiles[0] ?? "default", servers: [...servers.values()] };
+}
 
 /* ---------- Claude Code ---------- */
 

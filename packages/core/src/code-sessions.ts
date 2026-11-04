@@ -80,6 +80,26 @@ export type CodeWorktree = {
   clone?: string;
 };
 
+/** One CI check of a pull request's head commit (a GitHub check run or a commit status). */
+export type CodeCheck = {
+  name: string;
+  /** success | failure (failed, timed out, cancelled, action required) | pending (queued, running) | skipped (skipped, neutral). */
+  state: "success" | "failure" | "pending" | "skipped";
+  url: string | null;
+};
+
+/** The CI of a pull request's head commit, summed up. */
+export type CodeChecks = {
+  /** failure if any failed, else pending if any runs, else success; none without any check. */
+  state: "success" | "failure" | "pending" | "none";
+  passed: number;
+  failed: number;
+  pending: number;
+  checks: CodeCheck[];
+};
+
+export type CodeMergeMethod = "squash" | "merge" | "rebase";
+
 /** A pull request of the session's branch on GitHub. */
 export type CodePullRequest = {
   number: number;
@@ -88,6 +108,53 @@ export type CodePullRequest = {
   state: "open" | "closed" | "merged";
   draft: boolean;
   base: string;
+  /** Read when the pull request is open (absent on older rows): what merging depends on. */
+  head?: string;
+  additions?: number;
+  deletions?: number;
+  changedFiles?: number;
+  /** approved | changes_requested | review_required | none (no review asked). */
+  review?: "approved" | "changes_requested" | "review_required" | "none";
+  /** GitHub's answer: true, false (conflicts, blocked by rules), or null while it computes. */
+  mergeable?: boolean | null;
+  /** Why it can't be merged yet, in GitHub's words (dirty, blocked, behind, unstable…). */
+  mergeableState?: string;
+  checks?: CodeChecks;
+  /** Merge methods the repository allows. */
+  methods?: CodeMergeMethod[];
+};
+
+/** A pull request read on its own (GET /api/github/pulls/:owner/:repo/:number): a link pasted in a conversation. */
+export type GitHubPullRequest = CodePullRequest & {
+  /** owner/name on GitHub. */
+  repo: string;
+  /** The viewer may merge it (admins, and the people who can use code sessions). */
+  canMerge: boolean;
+};
+
+export type GitHubMergeRequestStatus = "pending" | "approved" | "denied" | "expired" | "failed";
+
+/** A bot asking to merge a pull request, shown as a card in the conversation (event github.merge). */
+export type GitHubMergeRequestDto = {
+  id: string;
+  /** approved: merged. failed: approved, but GitHub refused the merge (`error`). */
+  status: GitHubMergeRequestStatus;
+  repo: string;
+  number: number;
+  /** The pull request's title when the bot asked. */
+  title: string;
+  url: string;
+  method: CodeMergeMethod;
+  agentId: string;
+  agentName: string;
+  /** The code session whose pull request it is, when the bot named one. */
+  sessionId: string | null;
+  reason: string;
+  /** The person who started the turn: the only one who can answer. */
+  requestedBy: string | null;
+  error: string | null;
+  createdAt: string;
+  decidedAt: string | null;
 };
 
 /** Where the session's working directory stands, when it is a GitHub clone (read after each run and action). */
@@ -295,25 +362,30 @@ export type CodeIssue = { number: number; title: string; url: string; state: "op
  * waiting: it waits for an approval or an answer; idle: it waits for an instruction, without a pull request;
  * finished: it answered and its pull request is open (or closed unmerged); merged: its pull request is merged.
  */
-export type CodeSessionState = "waiting" | "running" | "idle" | "finished" | "merged" | "stopped" | "failed";
+export type CodeSessionState = "waiting" | "running" | "idle" | "parked" | "finished" | "merged" | "stopped" | "failed";
 
 /** The order of the groups by state: what needs you first, then what works, then what is over. */
-export const CODE_STATES: CodeSessionState[] = ["waiting", "running", "idle", "finished", "merged", "stopped", "failed"];
+export const CODE_STATES: CodeSessionState[] = ["waiting", "running", "idle", "parked", "finished", "merged", "stopped", "failed"];
 
-export function codeSessionState(s: { status: CodeSessionStatus; question?: CodeBotQuestion | null; git?: CodeGit | null }): CodeSessionState {
+export function codeSessionState(s: { status: CodeSessionStatus; question?: CodeBotQuestion | null; git?: CodeGit | null; parked?: boolean }): CodeSessionState {
   if (s.question || s.status === "waiting") return "waiting";
+  // Set aside by its owner, as Linear's backlog: out of the active ones until it gets an instruction.
+  if (s.parked && s.status !== "running") return "parked";
   if (s.status === "done") return "merged";
   if (s.status === "idle") return s.git?.pr ? "finished" : "idle";
   return s.status;
 }
 
-/** Actives: still to follow (working, waiting); Finies: over (finished, merged, stopped, failed). */
-export type CodeSessionView = "active" | "finished" | "all";
+/** Actives: still to follow (working, waiting); De côté: set aside by its owner; Finies: over (finished, merged, stopped, failed). */
+export type CodeSessionView = "active" | "parked" | "finished" | "all";
 
 const ACTIVE_STATES = new Set<CodeSessionState>(["waiting", "running", "idle"]);
 
 export const inCodeSessionView = (state: CodeSessionState, view: CodeSessionView) =>
-  view === "all" || (view === "active") === ACTIVE_STATES.has(state);
+  view === "all" ||
+  (view === "active" && ACTIVE_STATES.has(state)) ||
+  (view === "parked" && state === "parked") ||
+  (view === "finished" && !ACTIVE_STATES.has(state) && state !== "parked");
 
 export type CodeSessionGrouping = "state" | "priority" | "project";
 export type CodeSessionOrdering = "priority" | "updated" | "created";
@@ -321,7 +393,7 @@ export type CodeSessionOrdering = "priority" | "updated" | "created";
 /** Its project: the GitHub repository it works in ("" without one). */
 export const codeSessionProject = (s: { repo: string | null; git?: CodeGit | null }) => s.repo ?? s.git?.repo ?? "";
 
-type Groupable = Pick<CodeSession, "status" | "question" | "git" | "repo" | "priority" | "updatedAt" | "createdAt">;
+type Groupable = Pick<CodeSession, "status" | "question" | "git" | "repo" | "priority" | "parked" | "updatedAt" | "createdAt">;
 
 /**
  * A list of sessions in groups, as Linear shows issues: by state, priority or project, each group sorted
@@ -364,6 +436,8 @@ export type CodeSession = {
   title: string;
   status: CodeSessionStatus;
   priority: CodePriority;
+  /** Set aside by its owner (« Mettre de côté »): out of the active ones until its next instruction. */
+  parked: boolean;
   /** The GitHub issue it works on, once linked. */
   issue: CodeIssue | null;
   /** Working directory on the server. */

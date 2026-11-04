@@ -390,6 +390,49 @@ export async function screenEnv(conversationId: string, name: string): Promise<R
   return { AGORA_SCREEN: join(dir, `agora-${conversationId}-${name}`) };
 }
 
+/* ---------- waking the screen up ---------- */
+
+/** A woken browser nobody uses closes after this. */
+const WAKE_MS = 30 * 60_000;
+const waking = new Map<string, Promise<boolean>>();
+
+/** The agora-browser launcher: installed in the API image, else the repository's own (local development). */
+const launcher = async () => {
+  for (const path of ["/usr/local/bin/agora-browser", join(import.meta.dir, "../../../infra/agora-browser.sh")]) {
+    if (await stat(path).then(() => true, () => false)) return path;
+  }
+  return null;
+};
+
+/**
+ * The asleep screen clicked: a blank Chromium of the conversation's own, out of any bot's turn, shown on its
+ * screen until someone (a bot, a session, an admin taking control) uses it. True once it runs; false when this
+ * machine has no Chromium. It closes on its own after a while.
+ */
+export async function wakeScreen(conversationId: string): Promise<boolean> {
+  if (await findBrowser(conversationId)) return true;
+  let pending = waking.get(conversationId);
+  if (!pending) {
+    pending = (async () => {
+      const bin = await launcher();
+      const screen = await screenEnv(conversationId, "wake");
+      if (!bin || !screen.AGORA_SCREEN) return false;
+      const proc = Bun.spawn(["sh", bin], {
+        env: { ...process.env, ...screen, ...(env.CHROMIUM_PATH && { CHROMIUM_PATH: env.CHROMIUM_PATH }) },
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      if ((await proc.exited) !== 0) return false;
+      // Its profile names it: the browser stops with it, whatever its pid.
+      const profile = `${process.env.TMPDIR ?? "/tmp"}/${screen.AGORA_SCREEN.split("/").at(-1)}-browser`.replace(/\/\//g, "/");
+      setTimeout(() => void Bun.spawn(["pkill", "-f", profile]).exited.catch(() => {}), WAKE_MS).unref?.();
+      return true;
+    })().finally(() => waking.delete(conversationId));
+    waking.set(conversationId, pending);
+  }
+  return pending;
+}
+
 /* ---------- plugin in every profile ---------- */
 
 /** The agora_screen plugin (symlink + `plugins.enabled`). True when it was just enabled (the gateway loads plugins at startup). */

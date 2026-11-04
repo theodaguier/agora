@@ -209,6 +209,8 @@ export async function createProfile(profile: string, description: string) {
   await (await import("./memory")).installWikiPlugin(profile).catch((err) => console.error("memory: plugin", err));
   // Agent screen: members can watch the browser it drives. A new profile's manager loads it on first use.
   await (await import("./screen")).installScreenPlugin(profile).catch((err) => console.error("screen: plugin", err));
+  // Coffre-fort: what it reads is decided per vault by its members (vault-plugin.ts).
+  await (await import("./vault-plugin")).installVaultPlugin(profile).catch((err) => console.error("vault plugin", err));
   // Claude Code sessions, off until an admin turns them on for this agent (code-plugin.ts).
   const code = await import("./code-plugin");
   const linked = await code.linkCodePlugin(profile).then(
@@ -404,6 +406,15 @@ export async function setMcpOAuth(server: string, fields: Record<string, string 
     if (value) doc.setIn(["mcp_servers", server, "oauth", key], value);
     else doc.deleteIn(["mcp_servers", server, "oauth", key]);
   }
+  await writeFile(path, doc.toString());
+}
+
+/** `headers:` of an instance server: each header points to a ${VAR} of Hermes's .env, resolved by Hermes when it connects. */
+export async function setMcpHeaders(server: string, headers: Record<string, string>) {
+  const path = join(env.HERMES_HOME, "config.yaml");
+  const doc = await loadYaml(path);
+  if (!doc.hasIn(["mcp_servers", server])) throw new HermesError(tr(errors).unknownMcpServer, 404);
+  for (const [name, value] of Object.entries(headers)) doc.setIn(["mcp_servers", server, "headers", name], value);
   await writeFile(path, doc.toString());
 }
 

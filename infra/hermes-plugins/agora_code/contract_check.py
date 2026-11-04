@@ -5,7 +5,7 @@
 Everything happens in a temporary HERMES_HOME: nothing touches the real
 instance. The script checks what the plugin depends on:
 - loading a user plugin from `$HERMES_HOME/plugins/<name>` once listed in
-  `plugins.enabled`, its four tools landing in the `agora_code` toolset;
+  `plugins.enabled`, its tools landing in the `agora_code` toolset;
 - tool handlers receiving `session_id` (the API authorizes a call by the turn
   of that Hermes session);
 - the call to the API: URL and token read from `agora-code/api.json`, the
@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-TOOLS = ("claude_code_start", "claude_code_wait", "claude_code_send", "claude_code_stop")
+TOOLS = ("claude_code_start", "claude_code_wait", "claude_code_send", "claude_code_stop", "github_pull_request", "github_merge")
 SESSION = "agora-11111111-2222-4333-8444-555555555555"
 
 

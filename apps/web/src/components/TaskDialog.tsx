@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { FormLabel } from "@/components/FormLabel";
+import { CodePriorityIcon } from "@/components/CodeSessionMarks";
 import { OptionSelect } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -8,10 +9,11 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { Field, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type Task, type TaskPriority } from "@/lib/api";
 import { formatDueDate, fromDay, toDay } from "@/lib/dates";
-import { priorityMessages, TASK_PRIORITIES } from "@/lib/task-status";
+import { priorityMessages, TASK_PRIORITIES, taskPriorityMark } from "@/lib/task-status";
 import { enUS, fr } from "react-day-picker/locale";
 import { defineMessages, useLocale, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -111,13 +113,13 @@ function TaskForm({ task, onDone }: { task: Task; onDone: () => void }) {
             id={`${id}-priority`}
             name="priority"
             defaultValue={task.priority}
-            options={TASK_PRIORITIES.map((level) => ({ value: level, label: p.label[level] }))}
+            options={TASK_PRIORITIES.map((level) => ({ value: level, label: p.label[level], icon: <CodePriorityIcon priority={taskPriorityMark[level]} /> }))}
           />
         </Field>
         <Field>
           <FormLabel htmlFor={`${id}-due`}>{t.due}</FormLabel>
           <Popover open={picking} onOpenChange={setPicking}>
-            <PopoverTrigger render={<Button id={`${id}-due`} type="button" variant="outline" className="justify-start rounded-lg px-2.5 font-normal" />}>
+            <PopoverTrigger render={<Button id={`${id}-due`} type="button" variant="outline" className="justify-start" />}>
               {due ? formatDueDate(due) : <span className="text-muted-foreground">{t.noDue}</span>}
             </PopoverTrigger>
             <PopoverContent align="start" className="w-auto p-0">
@@ -132,7 +134,9 @@ function TaskForm({ task, onDone }: { task: Task; onDone: () => void }) {
                 }}
               />
               {due && (
-                <div className="border-t border-border p-2">
+                <>
+                <Separator />
+                <div className="p-2">
                   <Button
                     type="button"
                     variant="ghost"
@@ -146,13 +150,14 @@ function TaskForm({ task, onDone }: { task: Task; onDone: () => void }) {
                     {t.clearDue}
                   </Button>
                 </div>
+                </>
               )}
             </PopoverContent>
           </Popover>
         </Field>
       </FieldGroup>
       {save.error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {save.error.message || t.failed}
         </p>
       )}

@@ -1,4 +1,5 @@
 import { Children, isValidElement, memo, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { defaultRehypePlugins, Streamdown, type CustomRendererProps } from "streamdown";
 import { CHAT_LINE, prepareMarkdown, rehypeQuotes, remarkChat } from "@/lib/chat-markdown";
 import { asFile, asPath, fileOfUrl, linkClass, linkLabel, parseRepo, rehypeLinks, splitEntities } from "@/lib/links";
@@ -28,11 +29,36 @@ const streamedWords = { animation: "fadeIn", duration: 180, easing: "var(--ease-
 const SHIKI_THEME = ["github-dark", "github-dark"] as ["github-dark", "github-dark"];
 const LINK_SAFETY = { enabled: false };
 const REMARK_CHAT = [remarkChat];
+/** A table is read, not a tool: no copy/download/fullscreen bar over it. Code keeps its copy button. */
+const CONTROLS = { table: false, code: { copy: true, download: false }, mermaid: false } as const;
 
 /** Lists, paragraphs and blocks of a message's markdown, spaced for a bubble. */
-/** Code blocks and tables sit on white with a hairline: in the grey bubble (fond/bulle) a grey block would vanish. */
+/** Code blocks sit on the background with a border: in the muted bubble a muted block would vanish. */
 const proseClass =
-  "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_p]:my-0 [&>div>*+*]:mt-2.5 [&_[data-streamdown=code-block]]:rounded-[10px] [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border [&_[data-streamdown=code-block]]:bg-background [&_[data-streamdown=table-wrapper]]:rounded-[10px] [&_[data-streamdown=table-wrapper]]:bg-background";
+  "[&_p]:my-0 [&>div>*+*]:mt-2.5 [&_[data-streamdown=code-block]]:rounded-lg [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border [&_[data-streamdown=code-block]]:bg-background";
+
+type Md<T extends "table" | "thead" | "tbody" | "tr" | "th" | "td" | "ul" | "ol" | "li"> = ComponentProps<T> & { node?: unknown };
+
+/** Markdown tables are shadcn's Table: Streamdown's own wrapper boxes the table twice. */
+const tableComponents = {
+  table: ({ node, ...props }: Md<"table">) => <Table {...props} />,
+  thead: ({ node, ...props }: Md<"thead">) => <TableHeader {...props} />,
+  tbody: ({ node, ...props }: Md<"tbody">) => <TableBody {...props} />,
+  tr: ({ node, ...props }: Md<"tr">) => <TableRow {...props} />,
+  th: ({ node, ...props }: Md<"th">) => <TableHead {...props} />,
+  td: ({ node, ...props }: Md<"td">) => <TableCell {...props} />,
+};
+
+/**
+ * Lists as a chat writes them: the bullet or number outside the text (a long item wraps under its words,
+ * not under the bullet), a short indent, grey markers, little space between items. Streamdown's own put
+ * the marker inside the line with a wide gap.
+ */
+const listComponents = {
+  ul: ({ node, className, ...props }: Md<"ul">) => <ul {...props} className={cn("flex list-disc flex-col gap-1 pl-5 marker:text-muted-foreground", className)} />,
+  ol: ({ node, className, ...props }: Md<"ol">) => <ol {...props} className={cn("flex list-decimal flex-col gap-1 pl-5 marker:text-muted-foreground", className)} />,
+  li: ({ node, className, ...props }: Md<"li">) => <li {...props} className={cn("pl-0.5 [&>p]:inline", className)} />,
+};
 
 /**
  * The text of a message, as markdown: tables, code, quotes, lists; links, emails,
@@ -60,6 +86,8 @@ export const MessageText = memo(function MessageText({
   const components = useMemo(() => {
     const mention = mentionables.length ? mentionComponents(mentionables).span : undefined;
     return {
+      ...tableComponents,
+      ...listComponents,
       a: MessageLink,
       img: MessageImage,
       inlineCode: InlineCode,
@@ -88,13 +116,14 @@ export const MessageText = memo(function MessageText({
   );
   const markdown = useMemo(() => prepareMarkdown(text), [text]);
   return (
-    <div className={cn(proseClass, className)}>
+    <div className={cn("message-prose", proseClass, className)}>
       <Streamdown
         parseIncompleteMarkdown
         isAnimating={streaming}
         animated={streaming ? streamedWords : undefined}
         shikiTheme={SHIKI_THEME}
         linkSafety={LINK_SAFETY}
+        controls={CONTROLS}
         remarkPlugins={plain ? REMARK_CHAT : undefined}
         rehypePlugins={rehypePlugins}
         components={components}
@@ -183,7 +212,7 @@ function InlineCode({ node: _node, className, children, ...props }: ComponentPro
   if (!more.length && only && typeof only !== "string" && only.kind === "repo") return <RepoChip url={only.url} repo={only} label={only.text.startsWith("git@") ? only.text : undefined} />;
   const color = /^#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3})$/i.test(text.trim()) ? text.trim() : null;
   return (
-    <code {...props} className={cn("font-mono text-[0.85em]", className)}>
+    <code {...props} className={cn("font-mono text-xs", className)}>
       {color && <Swatch color={color} />}
       {children}
     </code>
@@ -207,17 +236,17 @@ function ChatQuote({ code, mentionables }: { code: string; mentionables: Mention
     else lines.push({ text: line });
   }
   return (
-    <div className="my-1 flex flex-col gap-2 border-l-[3px] border-foreground/20 py-0.5 pl-3">
+    <div className="my-1 flex flex-col gap-2 border-l-2 border-border pl-3">
       {contentKeys(lines, (l) => `${l.who}|${l.time}|${l.text}`).map(([key, l], i) => {
         const continued = i > 0 && lines[i - 1]!.who === l.who && !l.time;
         return (
           <div key={key} className={cn("flex flex-col", continued && "-mt-1.5")}>
             {!continued && l.who && (
-              <p className="flex items-baseline gap-1.5 text-[13px]">
+              <p className="flex items-baseline gap-1.5 text-xs">
                 <span className="font-medium" style={{ color: speakerColor(l.who) }}>
                   {l.who}
                 </span>
-                {l.time && <span className="text-subtle tabular-nums">{l.time}</span>}
+                {l.time && <span className="text-muted-foreground tabular-nums">{l.time}</span>}
               </p>
             )}
             <p className="whitespace-pre-wrap break-words">

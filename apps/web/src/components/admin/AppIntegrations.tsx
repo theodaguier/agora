@@ -4,25 +4,26 @@ import type { IntegrationType } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
-import { MoreIcon } from "@/components/icons";
+import { LogOutIcon, MoreIcon } from "@/components/icons";
 import { IntegrationTile } from "@/components/marketplace/IntegrationType";
-import { toneBadge } from "@/components/views/tone";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { CardContent, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { defineMessages, useT } from "@/i18n";
 import { api, type AppIntegration } from "@/lib/api";
 import { brandsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import { ErrorText, Loading, SectionHeader } from "./ui";
+import { ErrorText, LoadError, Loading, SectionHeader } from "./ui";
 
 type Id = AppIntegration["id"];
-type FieldSpec = { name: string; secret?: boolean; placeholder: string };
+type FieldSpec = { name: string; secret?: boolean };
 
 /** Each integration: its brand (for the logo), its fields, where to get them. */
 const SPECS: Record<Id, { name: string; domain: string; type: IntegrationType; docs: string; fields: FieldSpec[] }> = {
@@ -32,8 +33,8 @@ const SPECS: Record<Id, { name: string; domain: string; type: IntegrationType; d
     type: "mail",
     docs: "https://resend.com/api-keys",
     fields: [
-      { name: "apiKey", secret: true, placeholder: "re_…" },
-      { name: "from", placeholder: "Agora <no-reply@example.com>" },
+      { name: "apiKey", secret: true },
+      { name: "from" },
     ],
   },
   logodev: {
@@ -41,7 +42,7 @@ const SPECS: Record<Id, { name: string; domain: string; type: IntegrationType; d
     domain: "logo.dev",
     type: "other",
     docs: "https://www.logo.dev/dashboard/api-keys",
-    fields: [{ name: "publishableKey", placeholder: "pk_…" }],
+    fields: [{ name: "publishableKey" }],
   },
 };
 
@@ -49,6 +50,7 @@ const messages = defineMessages({
   en: {
     title: "Integrations",
     intro: "Services Agora itself runs on. Your agents' connectors are set in each agent.",
+    services: "Services",
     purpose: {
       resend: "Sends invitation and password reset emails.",
       logodev: "Shows brand logos in conversations and connectors.",
@@ -61,7 +63,7 @@ const messages = defineMessages({
     help: {
       apiKey: "A “Sending access” key is enough.",
       from: "Its domain must be verified in Resend.",
-      publishableKey: "The pk_… key: it's made to be read by the browser.",
+      publishableKey: "It's made to be read by the browser.",
     } as Record<string, string>,
     connected: "Connected",
     fromEnv: "From the environment",
@@ -78,7 +80,7 @@ const messages = defineMessages({
     dialogTitle: (name: string) => `Connect ${name}`,
     dialogText: "Checked with the service before being saved. Secret keys are stored encrypted.",
     getKey: (name: string) => `Get a key on ${name}`,
-    keep: (preview: string) => `Leave empty to keep ${preview}.`,
+    keep: "Leave empty to keep the current key.",
     show: "Show",
     hide: "Hide",
     checking: "Checking…",
@@ -86,6 +88,7 @@ const messages = defineMessages({
   fr: {
     title: "Intégrations",
     intro: "Services sur lesquels Agora s'appuie pour fonctionner. Les connecteurs de tes agents se règlent dans chaque agent.",
+    services: "Services",
     purpose: {
       resend: "Envoie les emails d'invitation et de réinitialisation du mot de passe.",
       logodev: "Affiche le logo des marques dans les conversations et les connecteurs.",
@@ -98,7 +101,7 @@ const messages = defineMessages({
     help: {
       apiKey: "Une clé « Sending access » suffit.",
       from: "Son domaine doit être vérifié dans Resend.",
-      publishableKey: "La clé pk_… : elle est faite pour être lue par le navigateur.",
+      publishableKey: "Elle est faite pour être lue par le navigateur.",
     },
     connected: "Connecté",
     fromEnv: "Via l'environnement",
@@ -115,7 +118,7 @@ const messages = defineMessages({
     dialogTitle: (name: string) => `Connecter ${name}`,
     dialogText: "Vérifiée auprès du service avant d'être enregistrée. Les clés secrètes sont stockées chiffrées.",
     getKey: (name: string) => `Obtenir une clé sur ${name}`,
-    keep: (preview: string) => `Laisse vide pour garder ${preview}.`,
+    keep: "Laisse vide pour garder la clé actuelle.",
     show: "Afficher",
     hide: "Masquer",
     checking: "Vérification…",
@@ -144,62 +147,75 @@ export function AppIntegrations() {
   return (
     <>
       <SectionHeader title={t.title} text={t.intro} />
-      <ErrorText error={error} />
-      {isPending ? (
-        <Loading />
-      ) : (
-        <ItemGroup className="gap-2">
-          {data?.map((i) => {
-            const spec = SPECS[i.id];
-            const details = spec.fields.map((f) => i.values[f.name]).filter(Boolean);
-            return (
-              <Item key={i.id} variant="outline">
-                <ItemMedia>
-                  <IntegrationTile type={spec.type} domain={spec.domain} className="size-10 rounded-lg" />
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <ItemTitle>
-                    {spec.name}
-                    {i.source && (
-                      <Badge variant="secondary" className={cn("font-normal", toneBadge[i.source === "app" ? "success" : "neutral"])}>
-                        {i.source === "app" ? t.connected : t.fromEnv}
-                      </Badge>
+      <ListCard>
+        <ListCardHeader>
+          <CardTitle>{t.services}</CardTitle>
+        </ListCardHeader>
+        {isPending ? (
+          <CardContent className="py-(--card-spacing)">
+            <Loading />
+          </CardContent>
+        ) : error ? (
+          <CardContent className="py-(--card-spacing)">
+            <LoadError error={error} />
+          </CardContent>
+        ) : (
+          <ListCardRows>
+            {data?.map((i) => {
+              const spec = SPECS[i.id];
+              // Keys and sender as saved: on hover only, they're raw technical strings.
+              const details = spec.fields.map((f) => i.values[f.name]).filter(Boolean);
+              return (
+                <Item size="xs" key={i.id}>
+                  <ItemMedia>
+                    <IntegrationTile type={spec.type} domain={spec.domain} className="size-6 rounded-md [&_img]:size-5 [&_svg]:size-4" />
+                  </ItemMedia>
+                  <ItemContent className="min-w-0">
+                    <ItemTitle>
+                      {spec.name}
+                      {i.source && (
+                        <Badge variant={i.source === "app" ? "default" : "secondary"}>
+                          {i.source === "app" ? t.connected : t.fromEnv}
+                        </Badge>
+                      )}
+                    </ItemTitle>
+                    <ItemDescription className="truncate" title={details.length ? details.join(", ") : undefined}>
+                      {t.purpose[i.id]}
+                    </ItemDescription>
+                  </ItemContent>
+                  <ItemActions>
+                    <Button variant="outline" size="sm" onClick={() => setEditing(i.id)}>
+                      {i.source ? t.edit : t.connect}
+                    </Button>
+                    {i.source === "app" && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.more(spec.name)} />}>
+                          <MoreIcon />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={async () =>
+                              (await confirmAction({
+                                title: t.disconnectTitle(spec.name),
+                                description: `${t.disconnectText[i.id]} ${t.envNote}`,
+                                action: t.disconnect,
+                              })) && remove.mutate(i.id)
+                            }
+                          >
+                            <LogOutIcon />
+                            {t.disconnect}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
-                  </ItemTitle>
-                  <ItemDescription className="truncate">{t.purpose[i.id]}</ItemDescription>
-                  {details.length > 0 && <ItemDescription className="truncate font-mono text-xs">{details.join(" · ")}</ItemDescription>}
-                </ItemContent>
-                <ItemActions>
-                  <Button variant="outline" size="sm" onClick={() => setEditing(i.id)}>
-                    {i.source ? t.edit : t.connect}
-                  </Button>
-                  {i.source === "app" && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.more(spec.name)} />}>
-                        <MoreIcon />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={async () =>
-                            (await confirmAction({
-                              title: t.disconnectTitle(spec.name),
-                              description: `${t.disconnectText[i.id]} ${t.envNote}`,
-                              action: t.disconnect,
-                            })) && remove.mutate(i.id)
-                          }
-                        >
-                          {t.disconnect}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </ItemActions>
-              </Item>
-            );
-          })}
-        </ItemGroup>
-      )}
+                  </ItemActions>
+                </Item>
+              );
+            })}
+          </ListCardRows>
+        )}
+      </ListCard>
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
         {editing && (
           <IntegrationDialog
@@ -262,7 +278,6 @@ function IntegrationDialog({ integration, onSaved }: { integration: AppIntegrati
               autoComplete: "off",
               spellCheck: false,
               autoFocus: n === 0,
-              placeholder: f.placeholder,
               value: values[f.name] ?? "",
               onChange: (e: React.ChangeEvent<HTMLInputElement>) => setValues((v) => ({ ...v, [f.name]: e.target.value })),
             };
@@ -284,7 +299,7 @@ function IntegrationDialog({ integration, onSaved }: { integration: AppIntegrati
                 ) : (
                   <Input {...props} />
                 )}
-                <FieldDescription>{preview ? t.keep(preview) : t.help[f.name]}</FieldDescription>
+                <FieldDescription title={preview}>{preview ? t.keep : t.help[f.name]}</FieldDescription>
               </Field>
             );
           })}

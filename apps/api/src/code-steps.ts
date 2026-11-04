@@ -30,6 +30,9 @@ export type TranscriptChange = {
 
 type Json = Record<string, any>;
 
+/** Tools whose result holds a secret (a password from the Coffre-fort, code-sessions.ts): never kept. */
+const SECRET_RESULTS = new Set(["mcp__agora__vault_use_login", "mcp__agora__vault_ask_login"]);
+
 export class Transcript {
   readonly steps: CodeStep[] = [];
   private byId = new Map<string, CodeStep>();
@@ -200,7 +203,8 @@ export class Transcript {
       }
       const step = this.byId.get(id);
       if (step?.kind !== "tool") continue;
-      const output = clip(text);
+      // A login from the vault: neither kept nor shown to the conversation.
+      const output = SECRET_RESULTS.has(step.name) ? "" : clip(text);
       if (output) step.output = output;
       if (step.status !== "denied") step.status = block.is_error ? "error" : "done";
       changed.push(step);

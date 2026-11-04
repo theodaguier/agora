@@ -4,12 +4,12 @@ import { useState } from "react";
 import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
 import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { TotpInput } from "@/components/TotpInput";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { authClient } from "@/lib/auth";
 import { orgQuery, useOrgName } from "@/lib/org";
 import { useQuery } from "@tanstack/react-query";
@@ -103,44 +103,44 @@ export function TwoFactor() {
 
   return (
     <>
-      <Item variant="outline">
-        <ItemContent>
-          <ItemTitle>{t.title}</ItemTitle>
-          <ItemDescription>{enabled ? (required ? t.requiredHelp : t.onHelp) : t.offHelp}</ItemDescription>
-        </ItemContent>
-        <ItemActions>
-          {enabled ? (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  if (await confirmAction({ title: t.newCodesTitle, description: t.newCodesDescription, action: t.create }))
-                    setStep({ kind: "password", intent: "codes" });
-                }}
-              >
-                {t.newCodes}
-              </Button>
-              {!required && (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t.title}</CardTitle>
+          <CardDescription>{enabled ? (required ? t.requiredHelp : t.onHelp) : t.offHelp}</CardDescription>
+          <CardAction className="flex gap-2">
+            {enabled ? (
+              <>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={async () => {
-                    if (await confirmAction({ title: t.offTitle, description: t.offDescription, action: t.turnOff }))
-                      setStep({ kind: "password", intent: "disable" });
+                    if (await confirmAction({ title: t.newCodesTitle, description: t.newCodesDescription, action: t.create }))
+                      setStep({ kind: "password", intent: "codes" });
                   }}
                 >
-                  {t.turnOff}
+                  {t.newCodes}
                 </Button>
-              )}
-            </>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => setStep({ kind: "password", intent: "enable" })}>
-              {t.turnOn}
-            </Button>
-          )}
-        </ItemActions>
-      </Item>
+                {!required && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      if (await confirmAction({ title: t.offTitle, description: t.offDescription, action: t.turnOff }))
+                        setStep({ kind: "password", intent: "disable" });
+                    }}
+                  >
+                    {t.turnOff}
+                  </Button>
+                )}
+              </>
+            ) : (
+              <Button size="sm" onClick={() => setStep({ kind: "password", intent: "enable" })}>
+                {t.turnOn}
+              </Button>
+            )}
+          </CardAction>
+        </CardHeader>
+      </Card>
       <TwoFactorDialog step={step} onStep={setStep} onClose={close} />
     </>
   );

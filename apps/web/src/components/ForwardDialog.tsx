@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -24,6 +25,8 @@ const messages = defineMessages({
     send: (n: number) => (n > 1 ? `Forward to ${n} conversations` : "Forward"),
     sending: "Forwarding…",
     failed: "Couldn't forward the message.",
+    none: "No conversation yet.",
+    unavailable: "Conversations unreachable for now.",
   },
   fr: {
     title: "Transférer le message",
@@ -34,6 +37,8 @@ const messages = defineMessages({
     send: (n: number) => (n > 1 ? `Transférer à ${n} conversations` : "Transférer"),
     sending: "Transfert…",
     failed: "Transfert impossible.",
+    none: "Aucune conversation pour l'instant.",
+    unavailable: "Conversations injoignables pour l'instant.",
   },
 });
 
@@ -44,7 +49,7 @@ export function ForwardDialog({ conversationId, message, onClose }: { conversati
   const { user } = useRouteContext({ from: "/app" });
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { data: conversations = [] } = useQuery(conversationsQuery);
+  const { data: conversations = [], isPending, isError } = useQuery(conversationsQuery);
   const [picked, setPicked] = useState<string[]>([]);
   const pickedIds = new Set(picked);
 
@@ -67,7 +72,7 @@ export function ForwardDialog({ conversationId, message, onClose }: { conversati
     setPicked((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : xs.length < MAX_TARGETS ? [...xs, id] : xs));
 
   const files = message?.data?.attachments?.length ?? 0;
-  const preview = [message?.text.replace(/\s+/g, " ").trim(), files ? t.files(files) : ""].filter(Boolean).join(" · ");
+  const preview = [message?.text.replace(/\s+/g, " ").trim(), files ? t.files(files) : ""].filter(Boolean).join(", ");
 
   return (
     <Dialog open={!!message} onOpenChange={(open) => !open && close()}>
@@ -78,17 +83,27 @@ export function ForwardDialog({ conversationId, message, onClose }: { conversati
         </DialogHeader>
         {/* Filter on the title only: the value holds the id, which must not match. */}
         <Command
-          className="rounded-xl border border-border p-1"
           filter={(_, search, keywords) => (keywords?.some((k) => k.toLowerCase().includes(search.trim().toLowerCase())) ? 1 : 0)}
         >
           <CommandInput placeholder={t.search} />
           <CommandList className="max-h-72">
-            <CommandEmpty>{t.empty}</CommandEmpty>
+            {isPending ? (
+              <div className="flex flex-col gap-1 p-1">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="flex items-center gap-2 px-2 py-1.5">
+                    <Skeleton className="size-6 rounded-full" />
+                    <Skeleton className="h-4 flex-1" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <CommandEmpty>{isError ? t.unavailable : conversations.length ? t.empty : t.none}</CommandEmpty>
+            )}
             {conversations.map((c) => {
               const title = conversationTitle(c, user.id);
               const checked = pickedIds.has(c.id);
               return (
-                <CommandItem key={c.id} value={c.id} keywords={[title]} onSelect={() => toggle(c.id)} size="sm">
+                <CommandItem key={c.id} value={c.id} keywords={[title]} onSelect={() => toggle(c.id)}>
                   <ConversationAvatar conversation={c} me={user.id} className="size-6" />
                   <span className="flex-1 truncate">{title}</span>
                   <Checkbox checked={checked} tabIndex={-1} aria-hidden className="pointer-events-none" />
@@ -98,7 +113,7 @@ export function ForwardDialog({ conversationId, message, onClose }: { conversati
           </CommandList>
         </Command>
         {forward.isError && (
-          <p role="alert" className="text-[13px] text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {t.failed}
           </p>
         )}

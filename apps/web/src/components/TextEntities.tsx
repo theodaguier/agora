@@ -16,8 +16,8 @@ const messages = defineMessages({
   fr: { copyPath: "Copier le chemin", copyName: "Copier le nom", copied: "Copié" },
 });
 
-// Plain mono in the sentence, like the Figma thread: no tile, no icon; a light ground on hover says it can be clicked.
-const chipClass = "-mx-0.5 rounded-[4px] px-0.5 text-left font-mono text-[0.85em] box-decoration-clone hover:bg-foreground/[0.07]";
+// Plain mono in the sentence: no tile, no icon; a light ground on hover says it can be clicked.
+const chipClass = "-mx-0.5 rounded-sm px-0.5 text-left font-mono text-xs box-decoration-clone hover:bg-muted";
 const chipIcon = "hidden";
 
 /**
@@ -34,7 +34,7 @@ export function FileChip({ name, path, url, children }: { name: string; path?: s
   const kind = fileKind(name);
   const Icon = path && isFolderPath(path) ? FolderIcon : FILE_ICONS[kind];
   // A short name stays on one line with its icon; a long path wraps anywhere.
-  const wrap = (path ?? name).length > 40 ? "[overflow-wrap:anywhere]" : "whitespace-nowrap";
+  const wrap = (path ?? name).length > 40 ? "wrap-anywhere" : "whitespace-nowrap";
 
   if (href) {
     const link = (
@@ -47,7 +47,7 @@ export function FileChip({ name, path, url, children }: { name: string; path?: s
     return (
       <HoverCard>
         <HoverCardTrigger delay={250} render={link} />
-        <HoverCardContent align="start" className="w-auto max-w-80 overflow-hidden p-1">
+        <HoverCardContent align="start" className="w-auto max-w-80">
           {kind === "image" ? (
             <img src={href} alt={name} className="max-h-60 rounded-md object-contain" />
           ) : (
@@ -86,7 +86,7 @@ export function FileChip({ name, path, url, children }: { name: string; path?: s
         {children}
       </TooltipTrigger>
       <TooltipContent>
-        {copied && <CheckIcon className="size-3.5" />}
+        {copied && <CheckIcon />}
         {copied ? t.copied : path ? t.copyPath : t.copyName}
       </TooltipContent>
     </Tooltip>
@@ -110,16 +110,16 @@ export function RepoChip({ url, repo, label }: { url: string; repo: Repo; label?
   const Logo = repo.host === "github" ? GitHubLogo : CodeIcon;
   // "owner/repo#12" stays on one line with its logo, as a whole; only a very long one wraps.
   const text = label ?? `${repo.owner}/${repo.name}${repo.ref ?? ""}`;
-  const wrap = text.length > 48 ? "[overflow-wrap:anywhere]" : "whitespace-nowrap";
+  const wrap = text.length > 48 ? "wrap-anywhere" : "whitespace-nowrap";
   return (
     <a
       href={url}
       target="_blank"
       rel="noreferrer noopener"
       title={url}
-      className={cn("rounded-[5px] bg-foreground/[0.07] px-1 py-px font-medium box-decoration-clone hover:bg-foreground/[0.12]", wrap)}
+      className={cn("rounded-sm bg-muted px-1 font-medium box-decoration-clone hover:bg-accent", wrap)}
     >
-      <Logo className="mr-1 inline size-[1em] align-[-0.14em]" fill="currentColor" />
+      <Logo className="mr-1 inline size-3.5 align-text-bottom" fill="currentColor" />
       {label ?? (
         <>
           {repo.owner}/{repo.name}
@@ -138,7 +138,7 @@ export function PortChip({ url, children }: { url: string; children: ReactNode }
       target="_blank"
       rel="noreferrer noopener"
       title={url}
-      className="-mx-0.5 whitespace-nowrap rounded-[4px] px-0.5 font-mono text-[0.85em] underline decoration-foreground/20 underline-offset-2 hover:bg-foreground/[0.07]"
+      className="-mx-0.5 whitespace-nowrap rounded-sm px-0.5 font-mono text-xs underline decoration-border underline-offset-2 hover:bg-muted"
     >
       {children}
     </a>
@@ -147,12 +147,12 @@ export function PortChip({ url, children }: { url: string; children: ReactNode }
 
 /** A small square of the color, before its value. The value is checked as hex before it reaches CSS. */
 export function Swatch({ color }: { color: string }) {
-  return <span className="mr-1 inline-block size-[0.85em] rounded-[3px] align-[-0.08em] ring-1 ring-foreground/15" style={{ backgroundColor: color }} />;
+  return <span className="mr-1 inline-block size-3 rounded-sm align-middle ring-1 ring-border" style={{ backgroundColor: color }} />;
 }
 
 export function ColorValue({ color, children }: { color: string; children: ReactNode }) {
   return (
-    <span className="whitespace-nowrap font-mono text-[0.85em]">
+    <span className="whitespace-nowrap font-mono text-xs">
       {/^#[0-9a-f]{6,8}$/i.test(color) && <Swatch color={color} />}
       {children}
     </span>

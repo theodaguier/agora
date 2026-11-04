@@ -25,7 +25,7 @@ import { HermesError, agentMcpServers, forgetSessions } from "../hermes-admin";
 import { syncSessionSearch } from "../session-search";
 import { allowedClaudeCodeModels, allowedCodexModels, allowedModelOptions } from "../models";
 import { deleteRoutine, findRoutine, listRoutines, updateRoutine } from "../routines";
-import { screenInput, watchScreen } from "../screen";
+import { screenInput, wakeScreen, watchScreen } from "../screen";
 import { excerpt, groupCalls, newChain, type Forwarded, type ReplyTo } from "../group";
 import { deleteMessage, getMessage, getMessages, listMessages, postEvent, postMessage, userAuthor, type MessageDto } from "../messages";
 import { requireUser, type AppEnv } from "../middleware";
@@ -645,6 +645,14 @@ export const conversations = new Hono<AppEnv>()
       clearInterval(ping);
       stop();
     });
+  })
+
+  /** Wakes the asleep screen up: a blank browser of the conversation, on display for its members. */
+  .post("/:id/screen/wake", async (c) => {
+    const conv = await loadConversation(c.get("user").id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const ok = await wakeScreen(conv.conversation.id).catch(() => false);
+    return ok ? c.body(null, 204) : c.json({ error: "no_browser" }, 503);
   })
 
   /**

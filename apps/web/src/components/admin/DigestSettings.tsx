@@ -1,13 +1,13 @@
 import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { confirmAction } from "@/lib/confirm";
-import { FormLabel } from "@/components/FormLabel";
+import { BanIcon, CalendarDayIcon } from "@/components/icons";
 import { OptionSelect, timeOptions } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { defineMessages, getLocale, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 import { api, type DigestAdmin, type DigestConfig } from "@/lib/api";
@@ -16,31 +16,31 @@ import { setDigestOpen } from "@/lib/digest";
 import { digestQuery } from "@/lib/queries";
 import { weekdays } from "@/lib/routines";
 import { closeSettings } from "@/lib/settings";
-import { SectionHeader } from "./ui";
+import { LoadFailed, Loading, SectionHeader } from "./ui";
 
 const messages = defineMessages({
   en: {
     title: "Recaps",
-    intro: "Every morning the AI writes a recap of the previous day for the whole team, with a part addressed to each member.",
+    intro: "A recap of the previous day every morning, for the team and for each member.",
     enabled: "Morning recap",
     enabledHelp: "Opens once for each member on their next visit, and stays in their user menu.",
     time: "Time",
     timeHelp: (tz: string) => `Time zone of the organization (${tz.replaceAll("_", " ")}).`,
     days: "Days",
     daysHelp: "On a day after days without a recap, it covers all of them (the weekend on Monday, if only weekdays are checked).",
-    weekly: "Weekly recap",
+    weekly: "Weekly recap on",
     weeklyHelp: "That day, the recap looks back on the whole previous week.",
     never: "Never",
-    personal: "Part addressed to each member",
+    personal: "A part for each member",
     personalHelp: "Written from their own tasks and conversations. Without it, only the team part.",
-    usage: "Token usage visible to members",
+    usage: "Tokens visible to members",
     usageHelp: "Otherwise, tokens and estimated cost are shown to admins only.",
     status: "Latest recap",
     none: "No recap written yet.",
     running: "Being written… it takes a few minutes.",
-    written: (period: string, at: string) => `${period} — written ${at}.`,
-    empty: (period: string) => `${period} — nothing happened, no recap.`,
-    failed: (period: string) => `${period} — failed.`,
+    written: (period: string, at: string) => `${period}, written ${at}.`,
+    empty: (period: string) => `${period}, nothing to recap.`,
+    failed: (period: string) => `${period}, failed.`,
     next: (day: string, time: string) => `Next: ${day} at ${time}.`,
     off: "Recaps are turned off.",
     generate: "Write now",
@@ -51,26 +51,26 @@ const messages = defineMessages({
   },
   fr: {
     title: "Récaps",
-    intro: "Chaque matin, l'IA rédige un récap de la veille pour toute l'équipe, avec une partie adressée à chaque membre.",
+    intro: "Un récap de la veille chaque matin, pour l'équipe et pour chacun.",
     enabled: "Récap du matin",
     enabledHelp: "Il s'ouvre une fois pour chaque membre à sa prochaine visite, puis reste dans son menu utilisateur.",
     time: "Heure",
     timeHelp: (tz: string) => `Fuseau de l'organisation (${tz.replaceAll("_", " ")}).`,
     days: "Jours",
     daysHelp: "Après des jours sans récap, il les couvre tous (le week-end le lundi, si seuls les jours ouvrés sont cochés).",
-    weekly: "Récap de la semaine",
+    weekly: "Récap de la semaine le",
     weeklyHelp: "Ce jour-là, le récap revient sur toute la semaine précédente.",
     never: "Jamais",
-    personal: "Partie adressée à chaque membre",
+    personal: "Une partie pour chaque membre",
     personalHelp: "Rédigée à partir de ses tâches et de ses conversations. Sans elle, seule la partie équipe.",
-    usage: "Consommation de tokens visible par les membres",
+    usage: "Tokens visibles par les membres",
     usageHelp: "Sinon, les tokens et le coût estimé ne sont montrés qu'aux admins.",
     status: "Dernier récap",
     none: "Aucun récap rédigé pour l'instant.",
     running: "Rédaction en cours… cela prend quelques minutes.",
-    written: (period: string, at: string) => `${period} — rédigé ${at}.`,
-    empty: (period: string) => `${period} — aucune activité, pas de récap.`,
-    failed: (period: string) => `${period} — échec.`,
+    written: (period: string, at: string) => `${period}, rédigé ${at}.`,
+    empty: (period: string) => `${period}, rien à récapituler.`,
+    failed: (period: string) => `${period}, échec.`,
     next: (day: string, time: string) => `Prochain : ${day} à ${time}.`,
     off: "Les récaps sont désactivés.",
     generate: "Rédiger maintenant",
@@ -90,7 +90,7 @@ export function DigestSettings() {
   const id = useId();
   const qc = useQueryClient();
   // Polled while a recap is being written.
-  const { data } = useQuery({ ...configQuery, refetchInterval: (q) => (q.state.data?.running ? 3000 : false) });
+  const { data, isPending, error, refetch } = useQuery({ ...configQuery, refetchInterval: (q) => (q.state.data?.running ? 3000 : false) });
   const [form, setForm] = useState<DigestConfig | null>(null);
   useEffect(() => {
     if (data) setForm(data.config);
@@ -110,7 +110,13 @@ export function DigestSettings() {
     meta: { success: t.running },
   });
 
-  if (!form || !data) return null;
+  if (!form || !data)
+    return (
+      <>
+        <SectionHeader title={t.title} text={t.intro} />
+        {isPending || data ? <Loading /> : <LoadFailed error={error} onRetry={() => void refetch()} />}
+      </>
+    );
   const dirty = JSON.stringify(form) !== JSON.stringify(data.config);
   const days = weekdays("long");
   const chosenDays = new Set(form.days);
@@ -120,95 +126,85 @@ export function DigestSettings() {
     <>
       <SectionHeader title={t.title} text={t.intro} />
       <form
-        className="flex flex-col gap-6"
         onSubmit={(e) => {
           e.preventDefault();
           save.mutate(form);
         }}
       >
-        <Field orientation="horizontal">
-          <FieldContent>
-            <FieldLabel htmlFor={`${id}-enabled`}>{t.enabled}</FieldLabel>
-            <FieldDescription>{t.enabledHelp}</FieldDescription>
-          </FieldContent>
-          <Switch id={`${id}-enabled`} checked={form.enabled} onCheckedChange={(enabled) => set({ enabled })} />
-        </Field>
-
-        {form.enabled && (
-          <>
-            <div className="grid items-start gap-5 sm:grid-cols-2 sm:gap-4">
-              <Field>
-                <FormLabel htmlFor={`${id}-time`} required>
-                  {t.time}
-                </FormLabel>
-                <OptionSelect id={`${id}-time`} options={timeOptions(form.time)} value={form.time} onValueChange={(time) => set({ time })} />
-                <FieldDescription>{t.timeHelp(data.timezone)}</FieldDescription>
-              </Field>
-              <Field>
-                <FormLabel htmlFor={`${id}-weekly`} required>
-                  {t.weekly}
-                </FormLabel>
-                <OptionSelect
-                  id={`${id}-weekly`}
-                  value={form.weeklyDay === null ? "never" : String(form.weeklyDay)}
-                  onValueChange={(v) => set({ weeklyDay: v === "never" ? null : Number(v) })}
-                  options={[
-                    ...days.filter((d) => chosenDays.has(d.value)).map((d) => ({ value: String(d.value), label: capitalize(d.label) })),
-                    { value: "never", label: t.never },
-                  ]}
-                />
-                <FieldDescription>{t.weeklyHelp}</FieldDescription>
-              </Field>
-            </div>
-
-            <Field>
-              <FormLabel required>{t.days}</FormLabel>
-              <ToggleGroup
-                multiple
-                variant="outline"
-                size="sm"
-                spacing={1}
-                className="flex-wrap"
-                value={form.days.map(String)}
-                onValueChange={(v) => {
-                  if (!v.length) return;
-                  const next = v.map(Number).sort((a, b) => a - b);
-                  // The weekly day can only be one of the recap days.
-                  set({ days: next, weeklyDay: form.weeklyDay !== null && next.includes(form.weeklyDay) ? form.weeklyDay : null });
-                }}
-              >
-                {weekdays("short").map((d) => (
-                  <ToggleGroupItem key={d.value} value={String(d.value)} className="capitalize">
-                    {d.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              <FieldDescription>{t.daysHelp}</FieldDescription>
-            </Field>
-
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldLabel htmlFor={`${id}-personal`}>{t.personal}</FieldLabel>
-                <FieldDescription>{t.personalHelp}</FieldDescription>
-              </FieldContent>
-              <Switch id={`${id}-personal`} checked={form.personal} onCheckedChange={(personal) => set({ personal })} />
-            </Field>
-
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldLabel htmlFor={`${id}-usage`}>{t.usage}</FieldLabel>
-                <FieldDescription>{t.usageHelp}</FieldDescription>
-              </FieldContent>
-              <Switch id={`${id}-usage`} checked={form.usageForMembers} onCheckedChange={(usageForMembers) => set({ usageForMembers })} />
-            </Field>
-          </>
-        )}
-
-        <Field orientation="horizontal">
-          <Button type="submit" disabled={!dirty || save.isPending}>
-            {save.isPending ? c.saving : c.save}
-          </Button>
-        </Field>
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <label htmlFor={`${id}-enabled`}>{t.enabled}</label>
+            </CardTitle>
+            <CardAction>
+              <Switch id={`${id}-enabled`} checked={form.enabled} onCheckedChange={(enabled) => set({ enabled })} />
+            </CardAction>
+          </CardHeader>
+          {form.enabled && (
+            <CardContent>
+              {/* One setting per line: its name on the left, its control on the right. */}
+              <FieldGroup className="gap-4">
+                <Field orientation="horizontal">
+                  <FieldLabel htmlFor={`${id}-time`} title={t.timeHelp(data.timezone)}>
+                    {t.time}
+                  </FieldLabel>
+                  <OptionSelect id={`${id}-time`} className="w-36" options={timeOptions(form.time)} value={form.time} onValueChange={(time) => set({ time })} />
+                </Field>
+                <Field orientation="horizontal">
+                  <FieldLabel>{t.days}</FieldLabel>
+                  <div className="flex flex-wrap justify-end gap-x-4 gap-y-2">
+                    {weekdays("short").map((d) => (
+                      <Field key={d.value} orientation="horizontal" className="w-auto">
+                        <Checkbox
+                          id={`${id}-day-${d.value}`}
+                          checked={chosenDays.has(d.value)}
+                          onCheckedChange={(on) => {
+                            const next = (on ? [...form.days, d.value] : form.days.filter((x) => x !== d.value)).sort((a, b) => a - b);
+                            if (!next.length) return;
+                            // The weekly day can only be one of the recap days.
+                            set({ days: next, weeklyDay: form.weeklyDay !== null && next.includes(form.weeklyDay) ? form.weeklyDay : null });
+                          }}
+                        />
+                        <FieldLabel htmlFor={`${id}-day-${d.value}`} className="font-normal">
+                          {capitalize(d.label)}
+                        </FieldLabel>
+                      </Field>
+                    ))}
+                  </div>
+                </Field>
+                <Field orientation="horizontal">
+                  <FieldLabel htmlFor={`${id}-weekly`}>{t.weekly}</FieldLabel>
+                  <OptionSelect
+                    id={`${id}-weekly`}
+                    className="w-36"
+                    value={form.weeklyDay === null ? "never" : String(form.weeklyDay)}
+                    onValueChange={(v) => set({ weeklyDay: v === "never" ? null : Number(v) })}
+                    options={[
+                      ...days.filter((d) => chosenDays.has(d.value)).map((d) => ({ value: String(d.value), label: capitalize(d.label), icon: <CalendarDayIcon /> })),
+                      { value: "never", label: t.never, icon: <BanIcon /> },
+                    ]}
+                  />
+                </Field>
+                <Field orientation="horizontal">
+                  <FieldLabel htmlFor={`${id}-personal`}>{t.personal}</FieldLabel>
+                  <Switch id={`${id}-personal`} checked={form.personal} onCheckedChange={(personal) => set({ personal })} />
+                </Field>
+                <Field orientation="horizontal">
+                  <FieldLabel htmlFor={`${id}-usage`}>{t.usage}</FieldLabel>
+                  <Switch id={`${id}-usage`} checked={form.usageForMembers} onCheckedChange={(usageForMembers) => set({ usageForMembers })} />
+                </Field>
+              </FieldGroup>
+            </CardContent>
+          )}
+          {/* Saved on demand: the button only shows once something changed. */}
+          {dirty && (
+            <CardFooter className="justify-end">
+              <Button type="submit" disabled={save.isPending}>
+                {save.isPending ? c.saving : c.save}
+              </Button>
+            </CardFooter>
+          )}
+        </Card>
       </form>
 
       <Status
@@ -253,32 +249,32 @@ function Status({ state, generating, onGenerate }: { state: DigestAdmin; generat
     : t.off;
 
   return (
-    <Item variant="outline" className="mt-8">
-      <ItemContent>
-        <ItemTitle>{t.status}</ItemTitle>
-        <ItemDescription className="line-clamp-none">
+    <Card>
+      <CardHeader>
+        <CardTitle>{t.status}</CardTitle>
+        {/* The failure's technical cause stays in the tooltip. */}
+        <CardDescription title={last?.status === "failed" && !state.running ? (last.error ?? undefined) : undefined}>
           {lastText}
-          {last?.status === "failed" && last.error && !state.running && <span className="block text-destructive">{last.error}</span>}
           <span className="block">{next}</span>
-        </ItemDescription>
-      </ItemContent>
-      <ItemActions>
-        {last?.status === "ready" && !state.running && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              closeSettings();
-              setDigestOpen(true);
-            }}
-          >
-            {t.view}
+        </CardDescription>
+        <CardAction className="flex gap-2">
+          {last?.status === "ready" && !state.running && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                closeSettings();
+                setDigestOpen(true);
+              }}
+            >
+              {t.view}
+            </Button>
+          )}
+          <Button size="sm" disabled={state.running || generating} onClick={onGenerate}>
+            {t.generate}
           </Button>
-        )}
-        <Button size="sm" disabled={state.running || generating} onClick={onGenerate}>
-          {t.generate}
-        </Button>
-      </ItemActions>
-    </Item>
+        </CardAction>
+      </CardHeader>
+    </Card>
   );
 }

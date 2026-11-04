@@ -1,7 +1,8 @@
+import { ChoiceOption } from "@/components/QuestionsCard";
 import { modelName } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { createContext, Fragment, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type ReactNode, type Ref } from "react";
+import { createContext, Fragment, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from "react";
 import {
   CODE_ENGINE_NAMES,
   codeDetailLine,
@@ -19,6 +20,7 @@ import {
   rankByQuery,
   type CodeApproval,
   type CodeBotQuestion,
+  type CodeCommand,
   type CodeSessionDetail,
   type CodeEngine,
   type CodePermissionMode,
@@ -34,23 +36,40 @@ import {
   ArrowUpIcon,
   BranchIcon,
   CheckCircleIcon,
+  CheckIcon,
+  CommandIcon,
+  FileTextIcon,
+  LayersIcon,
+  PlayIcon,
+  SearchIcon,
+  type IconComponent,
   CircleIcon,
   CloseIcon,
   ChevronDownIcon,
   CloseCircleIcon,
   CodeIcon,
+  DownloadIcon,
+  ExternalLinkIcon,
+  FileEditIcon,
+  FolderIcon,
+  KeyIcon,
   MoreIcon,
   PlusIcon,
+  ShieldAlertIcon,
+  ShieldCheckIcon,
   SparklesIcon,
+  SplitIcon,
   StopIcon,
+  TaskListIcon,
   TerminalIcon,
+  TrashIcon,
   WarningIcon,
 } from "@/components/icons";
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
 import { BesideButton, besideMessages } from "@/components/BesideButton";
 import { PaneHeader } from "@/components/PaneHeader";
 import { CodePriorityIcon, CodeStateIcon, IssueIcon } from "@/components/CodeSessionMarks";
-import { CodePriorityMenu, priorityOfKey, useSetCodePriority } from "@/components/CodePriorityMenu";
+import { CodePriorityMenu, priorityOfKey, useSetCodeParked, useSetCodePriority } from "@/components/CodePriorityMenu";
 import { markCodeSessionSeen, useCodeSessionUnread } from "@/lib/code-seen";
 import { UserBubble } from "@/components/Bubbles";
 import { TabChip } from "@/components/TabChip";
@@ -61,7 +80,9 @@ import { ModelLogo } from "@/components/ProviderLogo";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ListCard, ListCardRows } from "@/components/list-card";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -76,7 +97,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -93,7 +115,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SlashMenu, type SlashItem } from "@/components/SlashMenu";
 import { BrandLogo } from "@/components/BrandLogo";
-import { useT } from "@/i18n";
+import { ChecksMark, PullRequestCard, PullRequestStatus, pullRequestMessages } from "@/components/github/PullRequestCard";
+import { defineMessages, useT } from "@/i18n";
 import {
   answerCodeApproval,
   applyCodeSession,
@@ -104,6 +127,7 @@ import {
   runCodeGit,
   switchCodeSessionAccount,
   type CodeGitRequest,
+  codeCommandsQuery,
   codeSessionQuery,
   codeSessionsQuery,
   deleteCodeSession,
@@ -129,11 +153,31 @@ import { cn } from "@/lib/utils";
 
 const messages = codeSessions;
 
+/** What a session or the list says when they can't be reached. */
+const stateMessages = defineMessages({
+  en: {
+    unreachableTitle: "Session unreachable",
+    unreachable: "This session couldn't be loaded for now. Try again in a moment.",
+    listUnreachable: "Sessions are unreachable for now.",
+    reposUnreachable: "Repositories are unreachable for now.",
+    credentialsUnreachable: "The credentials are unreachable for now. Try again in a moment.",
+  },
+  fr: {
+    unreachableTitle: "Session injoignable",
+    unreachable: "Cette session n'a pas pu être chargée pour le moment. Réessaie dans un instant.",
+    listUnreachable: "Sessions injoignables pour le moment.",
+    reposUnreachable: "Dépôts injoignables pour le moment.",
+    credentialsUnreachable: "Les identifiants sont injoignables pour le moment. Réessaie dans un instant.",
+  },
+});
+
+const noSessions: CodeSession[] = [];
+
 const active = (s: CodeSessionStatus) => s === "running" || s === "waiting";
 
 const STATE_TEXT_TONE: Partial<Record<CodeSessionState, string>> = { waiting: "text-state-you", failed: "text-priority-urgent" };
 
-/** Its state as a mark (Figma « Statut de session »): one shape and one color per state. */
+/** Its state as a mark: one shape and one color per state. */
 function StatusIcon({ session, className }: { session: Pick<CodeSession, "status" | "question" | "git">; className?: string }) {
   return <CodeStateIcon state={codeSessionState(session)} className={className} />;
 }
@@ -167,38 +211,43 @@ export function CodeSessionCard({
   const gone = !!data && !session;
   const status = session?.status ?? "running";
   const detail = session && codeDetailLine(session);
-  const card = (
-    // Figma « Carte de PR »: white, hairline, the engine's logo in a bordered tile, the title, where it stands, one grey pill.
-    <div className={cn("flex w-full max-w-[520px] items-center gap-3 rounded-[14px] border border-border bg-background p-3", !session?.question && className)}>
-      <EngineTile engine={session?.engine} />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="truncate text-[15px] leading-[21px]">{session?.title ?? title}</p>
-        <p className="flex min-w-0 items-center gap-2 text-[13px] leading-[18px] text-muted-foreground">
-          {session && <StatusIcon session={session} className="size-3.5" />}
+  return (
+    <Card size="sm" className={cn("w-full max-w-lg", className)}>
+      {/* One line: what it is and where it stands, the way in on the right. */}
+      <CardHeader>
+        <CardTitle className="truncate">{session?.title ?? title}</CardTitle>
+        <CardDescription className="flex min-w-0 items-center gap-2">
+          {session && <StatusIcon session={session} />}
           <span className="shrink-0">{session ? <StatusText session={session} /> : gone ? t.gone : t.status[status]}</span>
           {detail && <span className="min-w-0 truncate">{detail}</span>}
-        </p>
-      </div>
-      {!gone && (
-        <Button variant="secondary" onClick={onOpen}>
-          {active(status) ? t.follow : t.open}
-        </Button>
+          {session && <span className="shrink-0">{CODE_ENGINE_NAMES[session.engine]}</span>}
+        </CardDescription>
+        {!gone && (
+          <CardAction>
+            <Button variant="outline" size="sm" onClick={onOpen}>
+              {active(status) ? t.follow : t.open}
+            </Button>
+          </CardAction>
+        )}
+      </CardHeader>
+      {/* Its pull request: state and CI on one line. */}
+      {session?.git?.pr && (
+        <CardContent>
+          <PullRequestStatus pr={session.git.pr} />
+        </CardContent>
       )}
-    </div>
-  );
-  if (!session?.question) return card;
-  // Figma « Échange »: its question to its bot, under the card, until it is answered.
-  return (
-    <div className={cn("flex w-full max-w-[520px] flex-col gap-1.5", className)}>
-      {card}
-      <p className="flex min-w-0 items-center gap-1.5 px-3 text-[13px] leading-[18px]">
-        <ModelLogo provider={session.engine === "codex" ? "codex" : session.engine === "cursor" ? "cursor" : "claude-code"} className="size-3.5 shrink-0" />
-        <span className="shrink-0 font-medium">{CODE_ENGINE_NAMES[session.engine]}</span>
-        <span className="min-w-0 truncate text-muted-foreground">
-          {t.view.asks} {session.question.text}
-        </span>
-      </p>
-    </div>
+      {/* Its question to its bot, until it is answered. */}
+      {session?.question && (
+        <CardContent>
+          <p className="flex min-w-0 items-center gap-2">
+            <ModelLogo provider={session.engine === "codex" ? "codex" : session.engine === "cursor" ? "cursor" : "claude-code"} className="size-4 shrink-0" />
+            <span className="min-w-0 truncate text-muted-foreground">
+              {t.view.asks} {session.question.text}
+            </span>
+          </p>
+        </CardContent>
+      )}
+    </Card>
   );
 }
 
@@ -226,7 +275,7 @@ export function ReplyWithSessions({
   const parts = placeCodeSessions(text, sessions);
   const last = parts.at(-1);
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-2">
       {parts.map((p) =>
         p.kind === "text" ? (
           <Fragment key={`text:${p.text.slice(0, 40)}:${p.text.length}`}>{bubble(p.text, !!streaming && p === last)}</Fragment>
@@ -282,7 +331,9 @@ export function CodeSessionsButton({
   const confirmDelete = async (s: CodeSession) => {
     if (await confirmAction({ title: t.deleteTitle(s.title), description: t.deleteHelp, action: t.deleteSession })) remove.mutate(s.id);
   };
-  const { data: sessions = [] } = useQuery(codeSessionsQuery(conversationId));
+  const st = useT(stateMessages);
+  const sessionsQ = useQuery(codeSessionsQuery(conversationId));
+  const sessions = sessionsQ.data ?? noSessions;
   // The engines that are theirs and installed: none, they cannot start a session.
   const { data: engines = [] } = useQuery({ ...codeEnginesQuery(conversationId), retry: false });
   const canStart = engines.length > 0;
@@ -308,7 +359,7 @@ export function CodeSessionsButton({
         <TooltipTrigger
           render={
             <PopoverTrigger
-              render={<Button variant="ghost" size="icon-sm" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden aria-pressed:bg-black/5 lg:inline-flex" />}
+              render={<Button variant="ghost" size="icon-sm" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden lg:inline-flex" />}
             />
           }
         >
@@ -317,10 +368,10 @@ export function CodeSessionsButton({
         </TooltipTrigger>
         <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" sideOffset={6} className="w-80 gap-1 p-1.5">
-        <PopoverHeader className="px-2 pt-1">
-          <PopoverTitle className="text-xs text-subtle">{t.sessions}</PopoverTitle>
-          {!sorted.length && <PopoverDescription>{t.none}</PopoverDescription>}
+      <PopoverContent align="end" sideOffset={6} className="w-96">
+        <PopoverHeader>
+          <PopoverTitle>{t.sessions}</PopoverTitle>
+          {!sorted.length && <PopoverDescription>{sessionsQ.isError ? st.listUnreachable : t.none}</PopoverDescription>}
         </PopoverHeader>
         <div className="flex max-h-96 flex-col gap-0.5 overflow-y-auto">
           {sorted.map((s) => {
@@ -329,6 +380,7 @@ export function CodeSessionsButton({
               <Item
                 key={s.id}
                 size="xs"
+                variant={s.id === current ? "muted" : "default"}
                 aria-current={s.id === current || undefined}
                 render={
                   <button
@@ -339,25 +391,30 @@ export function CodeSessionsButton({
                     }}
                   />
                 }
-                className="flex-nowrap items-start text-left hover:bg-muted/60 aria-[current]:bg-muted"
+                className="flex-nowrap items-start text-left"
               >
-                <ItemMedia className="mt-0.5 gap-1.5">
-                  <CodePriorityIcon priority={s.priority} className="size-3.5" />
-                  <StatusIcon session={s} className="size-3.5" />
+                <ItemMedia className="gap-1.5">
+                  <CodePriorityIcon priority={s.priority} />
+                  <StatusIcon session={s} />
                 </ItemMedia>
                 <ItemContent className="min-w-0">
-                  <ItemTitle className="w-full truncate font-normal">{s.title}</ItemTitle>
-                  <ItemDescription className="flex min-w-0 items-center gap-2 text-xs">
+                  <ItemTitle className="w-full truncate">{s.title}</ItemTitle>
+                  <ItemDescription className="flex min-w-0 items-center gap-2">
                     <span className="shrink-0">
                       <StatusText session={s} />
                     </span>
                     {s.issue && <IssueRef issue={s.issue} />}
-                    {s.git?.pr ? <span className="shrink-0">PR #{s.git.pr.number}</span> : s.git?.branch && <span className="truncate">{s.git.branch}</span>}
+                    {s.git?.pr ? (
+                      <span className="flex shrink-0 items-center gap-1">
+                        PR #{s.git.pr.number}
+                        {s.git.pr.state === "open" && <ChecksMark checks={s.git.pr.checks} />}
+                      </span>
+                    ) : s.git?.branch && <span className="truncate">{s.git.branch}</span>}
                     {s.worktree?.removedAt && <span className="shrink-0">{t.worktree.listGone}</span>}
-                    <span className="ml-auto shrink-0 text-subtle">{dividerLabel(new Date(s.updatedAt))}</span>
+                    <span className="ml-auto shrink-0">{dividerLabel(new Date(s.updatedAt))}</span>
                   </ItemDescription>
                   {s.instruction && (
-                    <ItemDescription className="text-xs">
+                    <ItemDescription>
                       {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
                     </ItemDescription>
                   )}
@@ -377,12 +434,14 @@ export function CodeSessionsButton({
                         onOpenBeside(s.id);
                       }}
                     >
+                      <SplitIcon />
                       {beside.beside}
                     </ContextMenuItem>
                   )}
                   {onOpenBeside && deletable && <ContextMenuSeparator />}
                   {deletable && (
                     <ContextMenuItem variant="destructive" disabled={remove.isPending} onClick={() => void confirmDelete(s)}>
+                      <TrashIcon />
                       {t.deleteSession}
                     </ContextMenuItem>
                   )}
@@ -394,23 +453,15 @@ export function CodeSessionsButton({
         {canStart && (
           <>
             <Separator />
-            <Item
-              size="xs"
-              render={
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    onOpen(NEW_CODE_SESSION);
-                  }}
-                />
-              }
-              className="text-left hover:bg-muted/60"
+            <Button
+              className="w-full"
+              onClick={() => {
+                setOpen(false);
+                onOpen(NEW_CODE_SESSION);
+              }}
             >
-              <ItemContent>
-                <ItemTitle className="font-normal">{t.newSession}</ItemTitle>
-              </ItemContent>
-            </Item>
+              {t.newSession}
+            </Button>
           </>
         )}
       </PopoverContent>
@@ -517,7 +568,7 @@ export function CodeSessionPanel({
   if (!wide) {
     return (
       <Sheet open onOpenChange={(open) => !open && onClose()}>
-        <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:sm:max-w-2xl">
+        <SheetContent side="right" showCloseButton={false} className="w-full gap-0 data-[side=right]:sm:max-w-2xl">
           <SheetTitle className="sr-only">{t.codeSession}</SheetTitle>
           {view}
         </SheetContent>
@@ -553,10 +604,10 @@ function CodeSessionTabs({
   const others = byCodePriority(sessions.filter((s) => !tabs.includes(s.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
   // The most pressing first (a stable sort: the opening order within a priority); a new session stays last.
   const order = [...byCodePriority(tabs.flatMap((id) => sessions.filter((s) => s.id === id))).map((s) => s.id), ...tabs.filter((id) => !sessions.some((s) => s.id === id))];
-  // Figma 10: the ones set aside (Low) fold behind « De côté », so the tabs you focus on stay readable.
+  // The ones set aside (Low) fold behind « De côté », so the tabs you focus on stay readable.
   const aside = order.filter((id) => id !== active && sessions.find((s) => s.id === id)?.priority === "low");
   return (
-    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-1.5">
+    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b px-2">
       {order
         .filter((id) => !aside.includes(id))
         .map((id) => (
@@ -564,21 +615,23 @@ function CodeSessionTabs({
         ))}
       {aside.length > 0 && (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="shrink-0 gap-1.5 px-2 font-normal text-muted-foreground" />}>
-            <CodePriorityIcon priority="low" className="size-3.5" />
+          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="shrink-0" />}>
+            <CodePriorityIcon priority="low" />
             {t.board.aside}
-            <span className="text-subtle tabular-nums">{aside.length}</span>
+            <Badge variant="secondary">{aside.length}</Badge>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-72">
-            {aside.map((id) => {
-              const s = sessions.find((x) => x.id === id)!;
-              return (
-                <DropdownMenuItem key={id} onClick={() => onSelect(id)}>
-                  <StatusIcon session={s} className="size-3.5" />
-                  <span className="truncate">{s.title}</span>
-                </DropdownMenuItem>
-              );
-            })}
+            <DropdownMenuGroup>
+              {aside.map((id) => {
+                const s = sessions.find((x) => x.id === id)!;
+                return (
+                  <DropdownMenuItem key={id} onClick={() => onSelect(id)}>
+                    <StatusIcon session={s} />
+                    <span className="truncate">{s.title}</span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -594,24 +647,26 @@ function CodeSessionTabs({
           </Tooltip>
           <DropdownMenuContent align="start" className="w-80">
             {canStart && (
-              <DropdownMenuItem onClick={() => onOpen(NEW_CODE_SESSION)}>
-                <PlusIcon />
-                {t.newSession}
-              </DropdownMenuItem>
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => onOpen(NEW_CODE_SESSION)}>
+                  <PlusIcon />
+                  {t.newSession}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
             )}
             {canStart && others.length > 0 && <DropdownMenuSeparator />}
             {others.length > 0 && (
               // Two lines per session, as in the Sessions popover: its title, then its state and when.
-              <DropdownMenuGroup className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
+              <DropdownMenuGroup className="max-h-80 overflow-y-auto">
                 {others.map((s) => (
-                  <DropdownMenuItem key={s.id} onClick={() => onOpen(s.id)} className="h-auto items-start py-1.5">
-                    <CodePriorityIcon priority={s.priority} className="mt-0.5 size-3.5" />
-                    <StatusIcon session={s} className="mt-0.5 size-3.5" />
+                  <DropdownMenuItem key={s.id} onClick={() => onOpen(s.id)} className="items-start">
+                    <CodePriorityIcon priority={s.priority} />
+                    <StatusIcon session={s} />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate text-sm">{s.title}</span>
+                      <span className="truncate">{s.title}</span>
                       <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                         <StatusText session={s} />
-                        <span className="ml-auto shrink-0 text-subtle">{dividerLabel(new Date(s.updatedAt))}</span>
+                        <span className="ml-auto shrink-0">{dividerLabel(new Date(s.updatedAt))}</span>
                       </span>
                     </span>
                   </DropdownMenuItem>
@@ -625,7 +680,7 @@ function CodeSessionTabs({
   );
 }
 
-/** Figma « Onglet de session »: its priority, its state, its title; a blue dot when an answer waits to be read. */
+/** A session's tab: its priority, its state, its title; a blue dot when an answer waits to be read. */
 function SessionTab({ id, session, active, onSelect, onClose }: { id: string; session?: CodeSession; active: boolean; onSelect: () => void; onClose: () => void }) {
   const t = useT(messages);
   const c = useT(common);
@@ -651,7 +706,7 @@ function SessionTab({ id, session, active, onSelect, onClose }: { id: string; se
       onSelect={onSelect}
       onClose={onClose}
       // Readable titles: the bar scrolls rather than cutting them to two letters.
-      className="min-w-[200px] max-w-[240px]"
+      className="min-w-48 max-w-60"
     />
   );
 }
@@ -718,6 +773,8 @@ function NewSessionView({
   };
   const { user } = useRouteContext({ from: "/app" });
   const [text, setText] = useDraft(`${user.id}:code:${conversationId}:new`);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const slash = useSlashPalette(conversationId, engine, [], text, setText, area);
   const files = useInstructionFiles(conversationId);
   const start = useMutation({
     mutationFn: ({ task, attachmentIds }: { task: string; attachmentIds: string[] }) =>
@@ -763,20 +820,32 @@ function NewSessionView({
             e.preventDefault();
             submit();
           }}
-          // Like the conversation's composer (Figma « Composer »): white, hairline, a soft shadow.
-          className="rounded-[23px] border border-border bg-background p-1.5 shadow-card transition-[border-color] focus-within:border-black/15 dark:focus-within:border-white/20"
+          className="relative"
         >
-          <PendingFiles items={files.files} onRemove={files.remove} />
-          <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+          {slash.menu}
+          <InputGroup>
+            {files.files.length > 0 && (
+              <InputGroupAddon align="block-start">
+                <PendingFiles items={files.files} onRemove={files.remove} />
+              </InputGroupAddon>
+            )}
             <InputGroupTextarea
+              ref={area}
               rows={2}
               value={text}
               autoFocus
               readOnly={start.isPending}
+              aria-expanded={slash.open}
+              aria-autocomplete="list"
               placeholder={t.placeholderNew(CODE_ENGINE_NAMES[engine])}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                slash.onChange(e.target.selectionStart);
+              }}
+              onSelect={(e) => slash.onSelect(e.currentTarget.selectionStart)}
               onPaste={files.onPaste}
               onKeyDown={(e) => {
+                if (slash.onKeyDown(e)) return;
                 if (e.key === "Tab" && e.shiftKey) {
                   e.preventDefault();
                   setMode(nextCodeMode(mode, engine));
@@ -787,18 +856,18 @@ function NewSessionView({
                   submit();
                 }
               }}
-              className="max-h-60 min-h-0 min-w-0 px-2 py-1 text-[15px] leading-6 md:text-[15px]"
+              className="max-h-60"
             />
-            <InputGroupAddon align="block-end" className="cursor-default gap-1 px-0 pb-0">
+            <InputGroupAddon align="block-end">
               <AttachButton onFiles={files.add} disabled={start.isPending} />
               <RepoPicker conversationId={conversationId} recent={recent} value={repo} onSelect={setRepo} />
               <ModePicker engine={engine} value={mode} onSelect={setMode} />
               <span className="flex-1" />
               {engines.length > 1 && <EnginePicker engines={engines} value={engine} onSelect={pickEngine} />}
               <CodeModelPicker conversationId={conversationId} engine={engine} value={model} onSelect={setModel} />
-              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="rounded-full disabled:opacity-40">
-                {start.isPending ? <Spinner /> : <ArrowUpIcon strokeWidth={2.25} />}
-              </Button>
+              <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} disabled={!canSend}>
+                {start.isPending ? <Spinner /> : <ArrowUpIcon />}
+              </InputGroupButton>
             </InputGroupAddon>
           </InputGroup>
         </form>
@@ -890,7 +959,7 @@ function AttachButton({ onFiles, disabled }: { onFiles: (files: FileList) => voi
         }}
       />
       <InputGroupButton size="icon-sm" aria-label={t.attachFiles} disabled={disabled} onClick={() => picker.current?.click()}>
-        <PlusIcon className="size-5" strokeWidth={1.75} />
+        <PlusIcon />
       </InputGroupButton>
     </>
   );
@@ -899,12 +968,18 @@ function AttachButton({ onFiles, disabled }: { onFiles: (files: FileList) => voi
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
 /** Where a new session works: a repository of the conversation, one the instance's GitHub token reaches, one typed, or none. */
+/** A GitHub repository in a list: GitHub's logo, else the branch mark (same as the Sessions list). */
+function RepoLogo() {
+  return <BrandLogo domain="github.com" fallback={<BranchIcon />} className="size-4 dark:invert" />;
+}
+
 function RepoPicker({ conversationId, recent, value, onSelect }: { conversationId: string; recent: string[]; value: string | null; onSelect: (repo: string | null) => void }) {
   const t = useT(messages);
   const [open, setOpen] = useState(false);
   const [credentials, setCredentials] = useState(false);
   const [search, setSearch] = useState("");
-  const { data: repos = [], isPending } = useQuery({ ...codeReposQuery(conversationId), enabled: open });
+  const st = useT(stateMessages);
+  const { data: repos = [], isPending, isError } = useQuery({ ...codeReposQuery(conversationId), enabled: open });
   const others = repos.filter((r) => !recent.includes(r.repo));
   // A repository typed in full, that no list holds (another owner's, or one the token does not list).
   const typed = search.trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$|\/$/g, "");
@@ -916,31 +991,34 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" aria-label={t.repo} />} className="min-w-0 max-w-[60%] shrink gap-1.5">
-        <BranchIcon className="size-3.5 shrink-0" />
+      <PopoverTrigger render={<InputGroupButton size="sm" aria-label={t.repo} />} className="min-w-0 max-w-1/2 shrink">
+        <BranchIcon />
         <span className="truncate">{value ?? t.noRepo}</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="start" sideOffset={8} className="w-80 p-0">
         <Command>
           <CommandInput placeholder={t.searchRepo} value={search} onValueChange={setSearch} />
           <CommandList className="max-h-80">
-            <CommandEmpty>{isPending ? <Spinner className="mx-auto size-4" /> : t.noRepos}</CommandEmpty>
+            <CommandEmpty>{isPending ? <Spinner className="mx-auto" /> : isError ? st.reposUnreachable : t.noRepos}</CommandEmpty>
             {custom && (
               <CommandGroup>
-                <CommandItem value={custom} onSelect={() => choose(custom)} size="sm">
+                <CommandItem value={custom} onSelect={() => choose(custom)}>
+                  <RepoLogo />
                   {t.useRepo(custom)}
                 </CommandItem>
               </CommandGroup>
             )}
             <CommandGroup>
-              <CommandItem value={t.noRepo} data-checked={!value} onSelect={() => choose(null)} size="sm">
+              <CommandItem value={t.noRepo} data-checked={!value} onSelect={() => choose(null)}>
+                <FolderIcon />
                 {t.noRepo}
               </CommandItem>
             </CommandGroup>
             {recent.length > 0 && (
               <CommandGroup heading={t.recentRepos}>
                 {recent.map((r) => (
-                  <CommandItem key={r} value={r} data-checked={r === value} onSelect={() => choose(r)} size="sm">
+                  <CommandItem key={r} value={r} data-checked={r === value} onSelect={() => choose(r)}>
+                    <RepoLogo />
                     <span className="truncate">{r}</span>
                   </CommandItem>
                 ))}
@@ -949,7 +1027,8 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
             {others.length > 0 && (
               <CommandGroup heading="GitHub">
                 {others.map((r) => (
-                  <CommandItem key={r.repo} value={r.repo} data-checked={r.repo === value} onSelect={() => choose(r.repo)} size="sm">
+                  <CommandItem key={r.repo} value={r.repo} data-checked={r.repo === value} onSelect={() => choose(r.repo)}>
+                    <RepoLogo />
                     <span className="truncate">{r.repo}</span>
                   </CommandItem>
                 ))}
@@ -960,7 +1039,6 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
                 <CommandSeparator alwaysRender />
                 <CommandGroup forceMount>
                   <CommandItem
-                    size="sm"
                     forceMount
                     value="__credentials"
                     onSelect={() => {
@@ -968,6 +1046,7 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
                       setCredentials(true);
                     }}
                   >
+                    <KeyIcon />
                     {t.credentials.open}
                   </CommandItem>
                 </CommandGroup>
@@ -988,7 +1067,8 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
 function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conversationId: string; repo: string; open: boolean; onClose: () => void }) {
   const t = useT(messages).credentials;
   const c = useT(common);
-  const { data, isPending } = useQuery({ ...repoEnvQuery(conversationId, repo), enabled: open });
+  const st = useT(stateMessages);
+  const { data, isPending, isError, error } = useQuery({ ...repoEnvQuery(conversationId, repo), enabled: open });
   const save = useMutation({
     mutationFn: (env: string) => saveRepoEnv(conversationId, repo, env),
     onSuccess: onClose,
@@ -1004,14 +1084,18 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
           }}
         >
           <DialogHeader>
-            <DialogTitle className="pr-6">{t.title(repo)}</DialogTitle>
+            <DialogTitle>{t.title(repo)}</DialogTitle>
             <DialogDescription>{t.help}</DialogDescription>
           </DialogHeader>
           <FieldGroup className="my-5">
             <Field>
               <FormLabel htmlFor="code-repo-env">{t.label}</FormLabel>
               {isPending ? (
-                <Spinner className="size-4 text-muted-foreground" />
+                <Skeleton className="h-56 w-full" />
+              ) : isError ? (
+                <p className="text-sm text-muted-foreground" title={error.message}>
+                  {st.credentialsUnreachable}
+                </p>
               ) : (
                 <Textarea
                   key={repo}
@@ -1023,7 +1107,7 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
                   autoComplete="off"
                   defaultValue={data?.env ?? ""}
                   placeholder={t.placeholder}
-                  className="max-h-96 font-mono text-xs leading-5 md:text-xs"
+                  className="max-h-96 font-mono"
                 />
               )}
             </Field>
@@ -1031,7 +1115,7 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
           </FieldGroup>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
-            <Button type="submit" disabled={isPending || save.isPending}>
+            <Button type="submit" disabled={isPending || isError || save.isPending}>
               {save.isPending ? c.saving : c.save}
             </Button>
           </DialogFooter>
@@ -1042,7 +1126,7 @@ function RepoCredentialsDialog({ conversationId, repo, open, onClose }: { conver
 }
 
 /**
- * A session, as wide as the conversation beside it (Figma « En-tête de session », « Fil »): its header
+ * A session, as wide as the conversation beside it: its header
  * (state, engine, issue, branch; its priority), then one stream: its pull request and files, its
  * tasks, what it said and did, and what waits for an answer at the end. The owner's field stays at the
  * bottom. `page`: a tab of its own, the close button closes it.
@@ -1063,7 +1147,8 @@ function CodeSessionView({
   const t = useT(messages);
   const c = useT(common);
   const { user } = useRouteContext({ from: "/app" });
-  const { data: session } = useQuery(codeSessionQuery(conversationId, sessionId));
+  const st = useT(stateMessages);
+  const { data: session, error, refetch } = useQuery(codeSessionQuery(conversationId, sessionId));
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -1134,19 +1219,23 @@ function CodeSessionView({
       <PaneHeader
         media={<EngineTile engine={session?.engine} />}
         title={session?.title ?? t.codeSession}
-        // One line, as in Figma: its state, the engine said once, its issue, its branch; no « · », each with its mark.
+        // One line: its state, the engine said once, its issue, its branch, each with its mark.
         description={
           session && (
             <span className="flex min-w-0 items-center gap-2.5">
-              <span className="flex shrink-0 items-center gap-1.5">
-                <StatusIcon session={session} className="size-3.5" />
-                <StatusText session={session} />
-              </span>
+              {owner ? (
+                <StatusMenu session={session} />
+              ) : (
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <StatusIcon session={session} />
+                  <StatusText session={session} />
+                </span>
+              )}
               <span className="shrink-0">{engineName}</span>
               {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
               {branch && (
                 <span className="flex min-w-0 items-center gap-1">
-                  <BranchIcon className="size-3.5 shrink-0" />
+                  <BranchIcon className="shrink-0" />
                   <span className="truncate">{branch}</span>
                 </span>
               )}
@@ -1159,10 +1248,11 @@ function CodeSessionView({
               (owner ? (
                 <CodePriorityMenu
                   session={session}
+                  park={false}
                   trigger={
-                    <Button variant="ghost" size="sm" aria-label={`${t.priority} ${t.priorities[session.priority]}`} className="gap-1.5 px-2 font-normal text-muted-foreground">
+                    <Button variant="ghost" size="sm" aria-label={`${t.priority} ${t.priorities[session.priority]}`}>
                       <CodePriorityIcon priority={session.priority} />
-                      {t.priorities[session.priority]}
+                      {session.priority === "none" ? t.priority : t.priorities[session.priority]}
                     </Button>
                   }
                 />
@@ -1180,11 +1270,35 @@ function CodeSessionView({
         }
       />
 
-      {!session ? (
+      {!session && error ? (
         <div className="flex min-h-0 flex-1">
           <Empty>
-            <Spinner className="size-5 text-muted-foreground" />
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <WarningIcon />
+              </EmptyMedia>
+              <EmptyTitle>{st.unreachableTitle}</EmptyTitle>
+              <EmptyDescription title={error.message}>{st.unreachable}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="secondary" onClick={() => void refetch()}>
+                {c.retry}
+              </Button>
+            </EmptyContent>
           </Empty>
+        </div>
+      ) : !session ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-4 px-5 pt-2 pb-4">
+          <Skeleton className="h-16 w-full" />
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex items-start gap-2.5">
+              <Skeleton className="size-4 rounded-full" />
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Skeleton className="h-3.5 w-1/2" />
+                <Skeleton className="h-3 w-5/6" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <>
@@ -1209,7 +1323,7 @@ function CodeSessionView({
               <Button
                 variant="secondary"
                 size="sm"
-                className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full"
+                className="absolute bottom-3 left-1/2 -translate-x-1/2"
                 onClick={() => {
                   follow.current = true;
                   scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
@@ -1221,7 +1335,7 @@ function CodeSessionView({
           </div>
 
           <div className="shrink-0 px-4 pt-2 pb-4">
-            {owner ? <SessionComposer ref={composer} conversationId={conversationId} session={session} /> : <p className="px-1 text-[13px] text-muted-foreground">{t.readOnly}</p>}
+            {owner ? <SessionComposer ref={composer} conversationId={conversationId} session={session} /> : <p className="text-sm text-muted-foreground">{t.readOnly}</p>}
           </div>
         </>
       )}
@@ -1250,31 +1364,37 @@ function IssueMenu({ conversationId, session, issue, owner }: { conversationId: 
   });
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<button type="button" title={issue.title} className="flex shrink-0 items-center gap-1 rounded-sm outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50" />}>
-        <IssueIcon />#{issue.number}
+      <DropdownMenuTrigger render={<Button variant="ghost" size="xs" title={issue.title} className="shrink-0" />}>
+        <IssueIcon data-icon="inline-start" />#{issue.number}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel className="truncate">{issue.title}</DropdownMenuLabel>
-        <DropdownMenuItem render={<a href={issue.url} target="_blank" rel="noreferrer" />}>{t.issue.open}</DropdownMenuItem>
-        {owner && (
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={async () => {
-              if (await confirmAction({ title: t.issue.detachTitle(issue.number), description: t.issue.detachHelp, action: t.issue.detach })) detach.mutate();
-            }}
-          >
-            {t.issue.detach}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="truncate">{issue.title}</DropdownMenuLabel>
+          <DropdownMenuItem render={<a href={issue.url} target="_blank" rel="noreferrer" />}>
+            <ExternalLinkIcon />
+            {t.issue.open}
           </DropdownMenuItem>
-        )}
+          {owner && (
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={async () => {
+                if (await confirmAction({ title: t.issue.detachTitle(issue.number), description: t.issue.detachHelp, action: t.issue.detach })) detach.mutate();
+              }}
+            >
+              <CloseIcon />
+              {t.issue.detach}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-/** A session's tile (Figma « Carte de session »): the terminal glyph, whatever the engine; its name in the title. */
+/** A session's tile: the terminal glyph, whatever the engine; its name in the title. */
 function EngineTile({ engine, className }: { engine?: CodeEngine; className?: string }) {
   return (
-    <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-border bg-background", className)} title={engine ? CODE_ENGINE_NAMES[engine] : undefined}>
+    <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background", className)} title={engine ? CODE_ENGINE_NAMES[engine] : undefined}>
       <TerminalIcon className="size-5 text-muted-foreground" />
     </span>
   );
@@ -1283,10 +1403,8 @@ function EngineTile({ engine, className }: { engine?: CodeEngine; className?: st
 /** A part of a tab: its legend, then what it holds. */
 function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
-    <FieldSet className="gap-2">
-      <FieldLegend variant="label" className="mb-0 font-normal text-muted-foreground">
-        {title}
-      </FieldLegend>
+    <FieldSet>
+      <FieldLegend variant="label">{title}</FieldLegend>
       {children}
     </FieldSet>
   );
@@ -1313,22 +1431,23 @@ function Overview({
     <div className="flex flex-1 flex-col gap-6">
       <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
       {session.todos.length > 0 && (
-        <Section title={<>{v.tasks}<span className="ml-2 text-subtle tabular-nums">{v.tasksCount(done, session.todos.length)}</span></>}>
-          {/* Figma « Tâches »: a hairline card. */}
-          <ItemGroup className="gap-0 rounded-xl border border-border px-3 py-1 has-data-[size=xs]:gap-0">
-            {session.todos.map((todo) => (
-              <Item key={todo.id} size="xs" className="px-0 py-1.5">
-                <ItemMedia variant="icon">
-                  <TodoMark status={todo.status} running={running} />
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <ItemTitle className={cn("line-clamp-2 font-normal", todo.status === "completed" && "text-muted-foreground")}>
-                    {todo.status === "in_progress" && todo.activeForm && running ? todo.activeForm : todo.content}
-                  </ItemTitle>
-                </ItemContent>
-              </Item>
-            ))}
-          </ItemGroup>
+        <Section title={<>{v.tasks}<Badge variant="secondary" className="ml-2">{v.tasksCount(done, session.todos.length)}</Badge></>}>
+          <ListCard size="sm">
+            <ListCardRows>
+              {session.todos.map((todo) => (
+                <Item key={todo.id} size="xs">
+                  <ItemMedia variant="icon">
+                    <TodoMark status={todo.status} running={running} />
+                  </ItemMedia>
+                  <ItemContent className="min-w-0">
+                    <ItemTitle className={cn("line-clamp-2", todo.status === "completed" && "text-muted-foreground")}>
+                      {todo.status === "in_progress" && todo.activeForm && running ? todo.activeForm : todo.content}
+                    </ItemTitle>
+                  </ItemContent>
+                </Item>
+              ))}
+            </ListCardRows>
+          </ListCard>
         </Section>
       )}
       {session.steps.length === 0 && !pending ? (
@@ -1391,19 +1510,19 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
       return (
         <div className="flex flex-col items-end gap-1">
           {step.by && <span className="px-1 text-xs text-muted-foreground">{step.by}</span>}
-          {!!step.files?.length && <SentAttachments items={step.files} className="max-w-[88%]" />}
-          {step.text && <UserBubble text={step.text} className="max-w-[88%] text-sm" />}
+          {!!step.files?.length && <SentAttachments items={step.files} className="max-w-5/6" />}
+          {step.text && <UserBubble text={step.text} className="max-w-5/6 text-sm" />}
         </div>
       );
     case "text":
       return <MessageText text={step.text} streaming={streaming} className="text-sm" />;
     case "git":
       return (
-        <div className={cn("flex items-start gap-2 text-[13px]", step.ok ? "text-muted-foreground" : "text-destructive")}>
+        <div className={cn("flex items-start gap-2 text-xs", step.ok ? "text-muted-foreground" : "text-destructive")}>
           {step.ok ? <BranchIcon className="mt-0.5 size-3.5 shrink-0" /> : <CloseCircleIcon className="mt-0.5 size-3.5 shrink-0" />}
           <span className="min-w-0 break-words">
             {step.text}
-            {step.by && <span className="ml-2 text-subtle">{step.by}</span>}
+            {step.by && <span className="ml-2 text-muted-foreground">{step.by}</span>}
           </span>
         </div>
       );
@@ -1422,7 +1541,7 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
         );
       }
       return (
-        <div className="text-center text-[13px] text-muted-foreground">
+        <div className="text-center text-xs text-muted-foreground">
           {t.notices[step.code]}
           {step.text && <CodeBlock className="mt-1.5 text-left">{step.text}</CodeBlock>}
         </div>
@@ -1439,7 +1558,7 @@ function ToolBlock({ steps, all }: { steps: ToolStepT[]; all: CodeStep[] }) {
   return (
     <div className="-mx-2 flex flex-col">
       {hidden > 0 && (
-        <Button variant="ghost" size="xs" className="justify-start px-2 text-muted-foreground" onClick={() => setOpen(true)}>
+        <Button variant="ghost" size="xs" className="justify-start" onClick={() => setOpen(true)}>
           {t.earlierActions(hidden)}
         </Button>
       )}
@@ -1464,14 +1583,14 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const row = (
     <>
       <span className="shrink-0 text-muted-foreground">{label.name}</span>
-      <span className="min-w-0 flex-1 truncate text-left text-foreground/80">{detail}</span>
-      {step.status === "running" ? <Spinner className="size-3.5 shrink-0" /> : step.status !== "done" && <CloseCircleIcon className="size-3.5 shrink-0 text-destructive" />}
+      <span className="min-w-0 flex-1 truncate text-left">{detail}</span>
+      {step.status === "running" ? <Spinner className="shrink-0" /> : step.status !== "done" && <CloseCircleIcon className="shrink-0 text-destructive" />}
     </>
   );
-  if (!expandable) return <div className="flex h-7 items-center gap-2 px-2 text-[13px]">{row}</div>;
+  if (!expandable) return <div className="flex h-6 items-center gap-2 px-2 text-xs">{row}</div>;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger render={<Button variant="ghost" size="xs" className="w-full justify-start gap-2 font-normal" />}>{row}</CollapsibleTrigger>
+      <CollapsibleTrigger render={<Button variant="ghost" size="xs" className="w-full justify-start" />}>{row}</CollapsibleTrigger>
       <CollapsibleContent className="ml-2 flex flex-col gap-2 border-l py-1.5 pr-2 pl-3">
         {step.input && (step.name === "ExitPlanMode" ? <MessageText text={step.input} className="text-sm" /> : <Detail label={t.input} text={step.input} />)}
         {nested && <Timeline steps={all} running={false} parentId={step.id} />}
@@ -1485,7 +1604,7 @@ function Detail({ label, text }: { label: string; text: string }) {
   return (
     <div>
       <p className="mb-1 text-xs text-muted-foreground">{label}</p>
-      <CodeBlock className="max-h-72 leading-relaxed">{text}</CodeBlock>
+      <CodeBlock className="max-h-72">{text}</CodeBlock>
     </div>
   );
 }
@@ -1524,69 +1643,99 @@ const usageTime = (u: NonNullable<CodeSession["usage"]>) => {
   return minutes < 1 ? `${Math.max(1, Math.round(u.durationMs / 1000))} s` : `${Math.round(minutes)} min`;
 };
 
-/** After the status: what the session cost and how long it ran; the detail in its details. */
 /**
- * The session's details, out of the header: its folder, what it consumed, the model for those who
- * cannot change it; for its owner, the account and the repository's credentials.
+ * The session's « … » menu: its details as plain lines (the model for those who cannot change it, the
+ * account, what it consumed), then its owner's actions (set it aside or bring it back, the repository's
+ * secrets). Nothing to show: no button.
  */
+/**
+ * The session's state under its title, changed right there (as its priority beside): set it aside or
+ * bring it back, stop it while it works. Its owner only; others read it.
+ */
+function StatusMenu({ session }: { session: CodeSession }) {
+  const tc = useT(codeSessions);
+  const qc = useQueryClient();
+  const park = useSetCodeParked();
+  const stop = useMutation({
+    mutationFn: () => stopCodeSession(session.conversationId, session.id),
+    onSuccess: (s) => applyCodeSession(qc, s),
+  });
+  const state = codeSessionState(session);
+  const working = state === "running" || state === "waiting";
+  const set = (parked: boolean) => park.mutate({ conversationId: session.conversationId, id: session.id, parked });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="xs" className="-ml-2 text-muted-foreground" />}>
+        <StatusIcon session={session} />
+        <StatusText session={session} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        <DropdownMenuGroup>
+          {session.parked ? (
+            <DropdownMenuItem onClick={() => set(false)}>
+              <CodeStateIcon state="idle" />
+              {tc.unpark}
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled={working} onClick={() => set(true)}>
+              <CodeStateIcon state="parked" />
+              {tc.park}
+            </DropdownMenuItem>
+          )}
+          {working && (
+            <DropdownMenuItem disabled={stop.isPending} onClick={() => stop.mutate()}>
+              <CodeStateIcon state="stopped" />
+              {stop.isPending ? tc.stopping : tc.stop}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function SessionDetails({ conversationId, session, showModel, owner }: { conversationId: string; session: CodeSession; showModel: boolean; owner: boolean }) {
   const t = useT(messages);
   const f = useFormat();
   const [credentials, setCredentials] = useState(false);
   const u = session.usage;
+  const lines = [
+    showModel && session.model ? { label: t.model, value: modelName(session.model) } : null,
+    owner && session.account?.email ? { label: t.account, value: session.account.email } : null,
+    u ? { label: t.usage, value: `${t.estimated(f.cost(u.costUsd))}, ${usageTime(u)}`, title: t.costNote } : null,
+  ].filter((x) => x !== null);
+  const canSecrets = owner && !!session.repo;
+  if (!lines.length && !canSecrets) return null;
   return (
     <>
-      <Popover>
+      <DropdownMenu>
         <Tooltip>
-          <TooltipTrigger render={<PopoverTrigger render={<Button variant="ghost" size="icon" aria-label={t.details} />} />}>
+          <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={t.details} />} />}>
             <MoreIcon />
           </TooltipTrigger>
           <TooltipContent>{t.details}</TooltipContent>
         </Tooltip>
-        <PopoverContent align="end" sideOffset={6} className="w-80 gap-0 p-1.5">
-          {showModel && session.model && (
-            <Item size="sm">
-              <ItemContent className="min-w-0">
-                <ItemTitle>{t.model}</ItemTitle>
-                <ItemDescription>{session.model && modelName(session.model)}</ItemDescription>
-              </ItemContent>
-            </Item>
+        <DropdownMenuContent align="end" className="w-72">
+          {lines.length > 0 && (
+            <DropdownMenuGroup>
+              {lines.map((l) => (
+                <div key={l.label} title={l.title} className="flex h-8 items-center justify-between gap-4 px-2 text-xs">
+                  <span className="shrink-0 text-muted-foreground">{l.label}</span>
+                  <span className="min-w-0 truncate tabular-nums">{l.value}</span>
+                </div>
+              ))}
+            </DropdownMenuGroup>
           )}
-          {owner && session.account?.email && (
-            <Item size="sm">
-              <ItemContent className="min-w-0">
-                <ItemTitle>{t.account}</ItemTitle>
-                <ItemDescription className="truncate">
-                  {session.account.email}
-                  {session.account.plan && <span className="ml-2 text-subtle">{session.account.plan}</span>}
-                </ItemDescription>
-              </ItemContent>
-            </Item>
+          {lines.length > 0 && canSecrets && <DropdownMenuSeparator />}
+          {canSecrets && (
+            <DropdownMenuItem onClick={() => setCredentials(true)}>
+              <KeyIcon />
+              {t.credentials.open}
+            </DropdownMenuItem>
           )}
-          {u && (
-            <Item size="sm">
-              <ItemContent className="min-w-0">
-                <ItemTitle>{t.usage}</ItemTitle>
-                {/* The cost is an estimate at API prices: said in its tooltip, not as a paragraph. */}
-                <Tooltip>
-                  <TooltipTrigger render={<ItemDescription className="w-fit tabular-nums" />}>
-                    {t.estimated(f.cost(u.costUsd))} · {usageTime(u)}
-                  </TooltipTrigger>
-                  <TooltipContent>{t.costNote}</TooltipContent>
-                </Tooltip>
-              </ItemContent>
-            </Item>
-          )}
-          {owner && session.repo && (
-            <div className="px-2.5 pb-1.5 pt-1">
-              <Button variant="secondary" size="sm" onClick={() => setCredentials(true)}>
-                {t.credentials.open}
-              </Button>
-            </div>
-          )}
-        </PopoverContent>
-      </Popover>
-      {owner && session.repo && <RepoCredentialsDialog conversationId={conversationId} repo={session.repo} open={credentials} onClose={() => setCredentials(false)} />}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {canSecrets && <RepoCredentialsDialog conversationId={conversationId} repo={session.repo!} open={credentials} onClose={() => setCredentials(false)} />}
     </>
   );
 }
@@ -1603,7 +1752,7 @@ function WorktreeBanner({ conversationId, session, worktree }: { conversationId:
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { loading: t.removing, success: t.removed },
   });
-  if (worktree.removedAt) return active(session.status) ? null : <p className="px-4 py-2.5 text-[13px] text-muted-foreground">{t.gone(worktree.branch)}</p>;
+  if (worktree.removedAt) return active(session.status) ? null : <p className="px-4 py-2 text-xs text-muted-foreground">{t.gone(worktree.branch)}</p>;
   // Its task is over: its PR merged, or closed without being merged.
   const closed = session.status === "idle" && session.git?.pr?.state === "closed";
   if (session.status !== "done" && !closed) return null;
@@ -1677,6 +1826,7 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
   const all = useT(messages);
   const t = all.git;
   const v = all.view;
+  const tp = useT(pullRequestMessages);
   const c = useT(common);
   const qc = useQueryClient();
   const [message, setMessage] = useState("");
@@ -1716,18 +1866,13 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
   const working = active(session.status);
   const busy = working || run.isPending || generate.isPending;
   const commitReq = (): CodeGitRequest => ({ action: "commit", message: message.trim() });
-  const merge = async () => {
-    if (openPr && (await confirmAction({ title: t.mergeTitle(openPr.number, openPr.base), description: t.mergeHelp, action: t.merge, destructive: false }))) {
-      run.mutate([{ action: "merge", method: "squash" }]);
-    }
-  };
 
-  type Action = { label: string; onSelect: () => void };
+  type Action = { label: string; icon: ReactNode; onSelect: () => void };
   const commitActions: Action[] =
     owner && git.changes > 0
       ? [
-          { label: t.commit, onSelect: () => run.mutate([commitReq()]) },
-          ...(git.github && !onBase ? [{ label: openPr ? t.commitPushPr(openPr.number) : t.commitPush, onSelect: () => run.mutate([commitReq(), { action: "push" }]) }] : []),
+          { label: t.commit, icon: <CheckIcon />, onSelect: () => run.mutate([commitReq()]) },
+          ...(git.github && !onBase ? [{ label: openPr ? t.commitPushPr(openPr.number) : t.commitPush, icon: <ArrowUpIcon />, onSelect: () => run.mutate([commitReq(), { action: "push" }]) }] : []),
         ]
       : [];
   const canPush = git.github && !onBase && git.ahead > 0;
@@ -1735,11 +1880,12 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
   const branchActions: Action[] = !owner
     ? []
     : [
-        ...(canPush ? [{ label: t.push, onSelect: () => run.mutate([{ action: "push" }]) }] : []),
-        ...(canOpenPr ? [{ label: t.openPr, onSelect: () => setPrDialog(true) }] : []),
-        ...(git.pushed && git.behind > 0 ? [{ label: t.pull, onSelect: () => run.mutate([{ action: "pull" }]) }] : []),
-        ...(git.github && openPr && !canPush ? [{ label: t.merge, onSelect: () => void merge() }] : []),
+        ...(canPush ? [{ label: t.push, icon: <ArrowUpIcon />, onSelect: () => run.mutate([{ action: "push" }]) }] : []),
+        ...(canOpenPr ? [{ label: t.openPr, icon: <BranchIcon />, onSelect: () => setPrDialog(true) }] : []),
+        ...(git.pushed && git.behind > 0 ? [{ label: t.pull, icon: <DownloadIcon />, onSelect: () => run.mutate([{ action: "pull" }]) }] : []),
       ];
+  // Merged from its card: once the session has finished, and what is committed is on GitHub.
+  const mergeBlocked = working ? t.busy : canPush ? tp.unpushed : null;
 
   const where = [
     pr ? `${t.pr(pr.number)} ${t.prState[pr.state]}` : git.branch,
@@ -1747,15 +1893,43 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
     git.behind ? t.behind(git.behind) : null,
     !pr && !git.ahead && !git.behind && !git.changes ? t.clean : null,
   ].filter(Boolean);
-  const card = (
+  // With a pull request: its card, then where the branch stands beside it (commits to push, to pull, files changed).
+  const branchLine = where.slice(1);
+  const card = pr ? (
+    <div className="flex flex-col gap-2">
+      <PullRequestCard
+        pr={pr}
+        repo={git.repo}
+        onMerge={owner && git.github && openPr ? (method) => run.mutate([{ action: "merge", method }]) : undefined}
+        merging={run.isPending && run.variables?.at(-1)?.action === "merge"}
+        blocked={mergeBlocked}
+        actions={branchActions.length > 0 && <GitActions actions={branchActions} busy={busy} pending={run.isPending && run.variables?.at(-1)?.action !== "merge"} working={working} />}
+      />
+      {(branchLine.length > 0 || git.changes > 0) && (
+        <p className="flex min-w-0 flex-wrap items-center gap-x-2.5 text-sm text-muted-foreground">
+          {branchLine.map((w) => (
+            <span key={w} className="shrink-0">
+              {w}
+            </span>
+          ))}
+          {git.changes > 0 && (
+            <Button variant="link" size="xs" onClick={() => setFilesOpen((o) => !o)} className="shrink-0">
+              {t.changes(git.changes)}
+            </Button>
+          )}
+        </p>
+      )}
+      {owner && !git.github && <FieldDescription>{t.noGithub}</FieldDescription>}
+    </div>
+  ) : (
     <div className="flex flex-col gap-2">
       <Item variant="outline">
-        <ItemMedia variant="image" className="rounded-[10px] border border-border">
-          <BrandLogo domain="github.com" fallback={<BranchIcon className="size-5 text-muted-foreground" />} className="size-[22px] dark:invert" />
+        <ItemMedia variant="image">
+          <BrandLogo domain="github.com" fallback={<BranchIcon className="size-5 text-muted-foreground" />} className="size-6 dark:invert" />
         </ItemMedia>
         <ItemContent className="min-w-0">
-          <ItemTitle className={cn("w-full font-normal", !pr && "font-mono text-xs")}>
-            <span className="truncate">{pr?.title ?? git.branch ?? "?"}</span>
+          <ItemTitle className="w-full font-mono">
+            <span className="truncate">{git.branch ?? "?"}</span>
           </ItemTitle>
           <ItemDescription className="flex min-w-0 items-center gap-2.5">
             {where.map((w) => (
@@ -1764,19 +1938,14 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
               </span>
             ))}
             {git.changes > 0 && (
-              <button type="button" onClick={() => setFilesOpen((o) => !o)} className="shrink-0 underline-offset-2 hover:text-foreground hover:underline">
+              <Button variant="link" size="xs" onClick={() => setFilesOpen((o) => !o)} className="shrink-0">
                 {t.changes(git.changes)}
-              </button>
+              </Button>
             )}
           </ItemDescription>
         </ItemContent>
         <ItemActions>
           {branchActions.length > 0 && <GitActions actions={branchActions} busy={busy} pending={run.isPending} working={working} />}
-          {pr && (
-            <Button variant="secondary" nativeButton={false} render={<a href={pr.url} target="_blank" rel="noreferrer" />}>
-              {all.open}
-            </Button>
-          )}
         </ItemActions>
       </Item>
       {owner && !git.github && <FieldDescription>{t.noGithub}</FieldDescription>}
@@ -1789,24 +1958,26 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
       {filesOpen && (git.changes > 0 || files.length > 0) && (
         <Section title={v.uncommitted(git.changes)}>
           {files.length > 0 && (
-            <ItemGroup className="gap-0 has-data-[size=xs]:gap-0">
+            <ItemGroup>
               {files.map((f) => (
-                <Item key={f.path} size="xs" className="px-0" title={f.path}>
-                  <ItemMedia className={cn("w-3 font-mono text-xs font-medium", FILE_TONE[f.state])}>{FILE_STATE[f.state]}</ItemMedia>
+                <Item key={f.path} size="xs" title={f.path}>
+                  <ItemMedia>
+                    <span className={cn("w-3 font-mono text-xs font-medium", FILE_TONE[f.state])}>{FILE_STATE[f.state]}</span>
+                  </ItemMedia>
                   <ItemContent className="min-w-0">
-                    <ItemTitle className="w-full font-mono text-xs font-normal" dir="rtl">
-                      <bdi className="truncate">{f.path}</bdi>
+                    <ItemTitle className="w-full" dir="rtl">
+                      <bdi className="truncate font-mono text-xs">{f.path}</bdi>
                     </ItemTitle>
                   </ItemContent>
                   {f.added !== null && (
-                    <ItemActions className="font-mono text-xs tabular-nums">
-                      {f.added > 0 && <span className="text-success">+{f.added}</span>}
-                      {!!f.removed && <span className="text-destructive">−{f.removed}</span>}
+                    <ItemActions>
+                      {f.added > 0 && <span className="font-mono text-xs tabular-nums text-success">+{f.added}</span>}
+                      {!!f.removed && <span className="font-mono text-xs tabular-nums text-destructive">−{f.removed}</span>}
                     </ItemActions>
                   )}
                 </Item>
               ))}
-              {git.changes > files.length && <ItemDescription className="text-xs">{t.moreFiles(git.changes - files.length)}</ItemDescription>}
+              {git.changes > files.length && <ItemDescription>{t.moreFiles(git.changes - files.length)}</ItemDescription>}
             </ItemGroup>
           )}
           {commitActions.length > 0 && (
@@ -1824,12 +1995,12 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
                       run.mutate([commitReq()]);
                     }
                   }}
-                  className="max-h-32 min-h-0 font-mono text-xs leading-5 md:text-xs"
+                  className="max-h-32"
                 />
                 <InputGroupAddon align="inline-end">
                   <Tooltip>
                     <TooltipTrigger render={<InputGroupButton size="icon-xs" aria-label={t.generate} disabled={busy} onClick={() => generate.mutate()} />}>
-                      {generate.isPending ? <Spinner className="size-3.5" /> : <SparklesIcon />}
+                      {generate.isPending ? <Spinner /> : <SparklesIcon />}
                     </TooltipTrigger>
                     <TooltipContent>{t.generate}</TooltipContent>
                   </Tooltip>
@@ -1855,8 +2026,8 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
   );
 }
 
-/** The next git action as a grey pill, the others behind its arrow; unavailable while Claude Code works. */
-function GitActions({ actions, busy, pending, working }: { actions: { label: string; onSelect: () => void }[]; busy: boolean; pending: boolean; working: boolean }) {
+/** The next git action as a button, the others behind its arrow; unavailable while Claude Code works. */
+function GitActions({ actions, busy, pending, working }: { actions: { label: string; icon: ReactNode; onSelect: () => void }[]; busy: boolean; pending: boolean; working: boolean }) {
   const t = useT(messages).git;
   const c = useT(common);
   const [primary, ...more] = actions;
@@ -1873,11 +2044,14 @@ function GitActions({ actions, busy, pending, working }: { actions: { label: str
               <ChevronDownIcon />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-52">
-              {more.map((a) => (
-                <DropdownMenuItem key={a.label} onClick={a.onSelect}>
-                  {a.label}
-                </DropdownMenuItem>
-              ))}
+              <DropdownMenuGroup>
+                {more.map((a) => (
+                  <DropdownMenuItem key={a.label} onClick={a.onSelect}>
+                    {a.icon}
+                    {a.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -1911,7 +2085,7 @@ function PullRequestDialog(props: {
           }}
         >
           <DialogHeader>
-            <DialogTitle className="pr-6">{t.prTitle}</DialogTitle>
+            <DialogTitle>{t.prTitle}</DialogTitle>
             <DialogDescription>{t.prHelp(props.branch, props.base)}</DialogDescription>
           </DialogHeader>
           <FieldGroup className="my-5">
@@ -2017,6 +2191,7 @@ function BotQuestionBlock({ conversationId, session, question, canAnswer }: { co
         <CardDescription>{help}</CardDescription>
       </CardHeader>
       <form
+        className="contents"
         onSubmit={(e) => {
           e.preventDefault();
           if (value && !answer.isPending) answer.mutate(value);
@@ -2026,22 +2201,20 @@ function BotQuestionBlock({ conversationId, session, question, canAnswer }: { co
           <div className="flex flex-col gap-2">
             <MessageText text={question.text} className="text-sm font-medium" />
             {question.context && (
-              <div className="max-h-[30vh] overflow-y-auto text-muted-foreground">
-                <MessageText text={question.context} className="text-[13px]" />
+              <div className="max-h-48 overflow-y-auto text-muted-foreground">
+                <MessageText text={question.context} className="text-sm" />
               </div>
             )}
           </div>
           {options.length > 0 && (
-            <FieldSet disabled={!canAnswer || answer.isPending} aria-label={question.text} className="gap-3">
-              <RadioGroup value={choice.picked[0] ?? ""} onValueChange={(v) => setChoice((all) => ({ ...all, picked: [String(v)] }))} className="gap-2.5">
+            <FieldSet disabled={!canAnswer || answer.isPending} aria-label={question.text}>
+              <RadioGroup value={choice.picked[0] ?? ""} onValueChange={(v) => setChoice((all) => ({ ...all, picked: [String(v)] }))}>
                 {options.map((o, i) => (
                   <Field key={o.value} orientation="horizontal">
                     <RadioGroupItem value={o.value} id={id(i)} />
                     <FieldContent>
-                      <FieldLabel htmlFor={id(i)} className="font-normal">
-                        {o.label}
-                      </FieldLabel>
-                      {o.description && <FieldDescription className="text-[13px]">{o.description}</FieldDescription>}
+                      <FieldLabel htmlFor={id(i)}>{o.label}</FieldLabel>
+                      {o.description && <FieldDescription>{o.description}</FieldDescription>}
                     </FieldContent>
                   </Field>
                 ))}
@@ -2057,14 +2230,14 @@ function BotQuestionBlock({ conversationId, session, question, canAnswer }: { co
               )}
             </FieldSet>
           )}
-          {canAnswer && options.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" size="sm" disabled={!value || answer.isPending}>
-                {answer.isPending ? c.inProgress : t.question.answer}
-              </Button>
-            </div>
-          )}
         </CardContent>
+        {canAnswer && options.length > 0 && (
+          <CardFooter className="flex-wrap gap-2">
+            <Button type="submit" size="sm" disabled={!value || answer.isPending}>
+              {answer.isPending ? c.inProgress : t.question.answer}
+            </Button>
+          </CardFooter>
+        )}
       </form>
     </Card>
   );
@@ -2111,38 +2284,38 @@ function QuestionBlock({
   const complete = questions.every((q) => answerOf(choices[q.question]));
   return (
     <Card size="sm" role="region" aria-label={questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}>
+      <CardHeader>
+        <CardTitle>{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</CardTitle>
+        {!canAnswer && <CardDescription>{t.waitingOwner}</CardDescription>}
+      </CardHeader>
       <form
+        className="contents"
         onSubmit={(e) => {
           e.preventDefault();
           if (complete && !answer.isPending) answer.mutate(false);
         }}
       >
-        <CardContent className="flex flex-col gap-4">
-          <FieldGroup className="gap-5">
+        <CardContent>
+          <FieldGroup>
             {questions.map((q, qi) => {
               const choice = choices[q.question];
               const picked = choice?.picked ?? [];
               const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
               const id = (i: number) => `code-q${qi}-${i}`;
               const row = (o: (typeof options)[number], i: number, control: ReactNode) => (
-                <Field key={o.value} orientation="horizontal">
+                <ChoiceOption key={o.value} id={id(i)} label={o.label} description={o.description}>
                   {control}
-                  <FieldContent>
-                    <FieldLabel htmlFor={id(i)} className="font-normal">
-                      {o.label}
-                    </FieldLabel>
-                    {o.description && <FieldDescription className="text-[13px]">{o.description}</FieldDescription>}
-                  </FieldContent>
-                </Field>
+                </ChoiceOption>
               );
               return (
-                <FieldSet key={q.question} disabled={!canAnswer} className="gap-3">
-                  <FieldLegend variant="label" className="mb-0 leading-snug">
-                    {q.header && <span className="text-muted-foreground">{q.header} · </span>}
-                    {q.question}
-                  </FieldLegend>
+                <FieldSet key={q.question} disabled={!canAnswer}>
+                  {/* Its short tag above, then the question alone. */}
+                  <div className="flex flex-col gap-1">
+                    {q.header && <FieldDescription>{q.header}</FieldDescription>}
+                    <FieldLegend className="mb-0">{q.question}</FieldLegend>
+                  </div>
                   {q.multiSelect ? (
-                    <div data-slot="checkbox-group" className="flex flex-col gap-2.5">
+                    <div data-slot="checkbox-group" className="flex flex-col gap-2">
                       {options.map((o, i) =>
                         row(
                           o,
@@ -2156,7 +2329,7 @@ function QuestionBlock({
                       )}
                     </div>
                   ) : (
-                    <RadioGroup value={picked[0] ?? ""} onValueChange={(v) => set(q.question, { picked: [String(v)] })} className="gap-2.5">
+                    <RadioGroup className="gap-2" value={picked[0] ?? ""} onValueChange={(v) => set(q.question, { picked: [String(v)] })}>
                       {options.map((o, i) => row(o, i, <RadioGroupItem value={o.value} id={id(i)} />))}
                     </RadioGroup>
                   )}
@@ -2173,19 +2346,17 @@ function QuestionBlock({
               );
             })}
           </FieldGroup>
-          {canAnswer ? (
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" size="sm" disabled={!complete || answer.isPending}>
-                {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
-              </Button>
-              <Button type="button" size="sm" variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate(true)}>
-                {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
-              </Button>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t.waitingOwner}</p>
-          )}
         </CardContent>
+        {canAnswer && (
+          <CardFooter className="flex-wrap gap-2">
+            <Button type="submit" size="sm" disabled={!complete || answer.isPending}>
+              {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate(true)}>
+              {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
+            </Button>
+          </CardFooter>
+        )}
       </form>
     </Card>
   );
@@ -2217,7 +2388,7 @@ function PlanBlock({ conversationId, session, approval, canAnswer }: { conversat
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {approval.plan && (
-          <div className="max-h-[40vh] overflow-y-auto">
+          <div className="max-h-96 overflow-y-auto">
             <MessageText text={approval.plan} className="text-sm" />
           </div>
         )}
@@ -2265,9 +2436,7 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
   const area = useRef<HTMLTextAreaElement>(null);
   const { user } = useRouteContext({ from: "/app" });
   const [text, setText] = useDraft(`${user.id}:code:${conversationId}:${session.id}`);
-  const [caret, setCaret] = useState(0);
-  const [highlight, setHighlight] = useState(0);
-  const [dismissed, setDismissed] = useState(false);
+  const slash = useSlashPalette(conversationId, session.engine, session.commands, text, setText, area);
   const files = useInstructionFiles(conversationId);
   useImperativeHandle(ref, () => ({ addFiles: files.add }));
   const send = useMutation({
@@ -2288,21 +2457,11 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { success: (s: CodeSession) => t.modeChanged(t.modes[s.mode]) },
   });
-  const query = dismissed ? null : slashQuery(text, caret);
-  const items = query === null ? [] : commandItems(session, query);
   // While Claude Code works, the send button stops it; typing turns it back into send (an instruction mid-run).
   const stoppable = active(session.status) && !text.trim() && !files.files.length;
   const canSend = !files.uploading && !send.isPending && (!!text.trim() || files.ids.length > 0);
   const submit = () => {
     if (canSend) send.mutate({ value: text.trim(), attachmentIds: files.ids });
-  };
-  const pick = (item: SlashItem) => {
-    const next = `/${item.name} ${text.slice(caret).trimStart()}`;
-    const at = item.name.length + 2;
-    setText(next);
-    setCaret(at);
-    setDismissed(true);
-    requestAnimationFrame(() => area.current?.setSelectionRange(at, at));
   };
   return (
     <form
@@ -2310,55 +2469,39 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
         e.preventDefault();
         submit();
       }}
-      // Like the conversation's composer (Figma « Composer »): white, hairline, a soft shadow.
-      className="relative rounded-[23px] border border-border bg-background p-1.5 shadow-card transition-[border-color] focus-within:border-black/15 dark:focus-within:border-white/20"
+      className="relative"
     >
-      {query !== null && items.length > 0 && <SlashMenu items={items} active={Math.min(highlight, items.length - 1)} onHover={setHighlight} onPick={pick} />}
-      <PendingFiles items={files.files} onRemove={files.remove} />
-      <InputGroup className="h-auto flex-col items-stretch border-0 bg-transparent shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0">
+      {slash.menu}
+      <InputGroup>
+        {files.files.length > 0 && (
+          <InputGroupAddon align="block-start">
+            <PendingFiles items={files.files} onRemove={files.remove} />
+          </InputGroupAddon>
+        )}
         <InputGroupTextarea
           ref={area}
           rows={1}
           value={text}
           autoFocus
-          aria-expanded={query !== null && items.length > 0}
+          aria-expanded={slash.open}
           aria-autocomplete="list"
           placeholder={
             session.question
               ? t.placeholderAnswer
               : active(session.status)
                 ? t.placeholderRunning
-                : session.commands.length
+                : slash.available
                   ? t.placeholderIdleCommands
                   : t.placeholderIdle
           }
           onChange={(e) => {
             setText(e.target.value);
-            setCaret(e.target.selectionStart);
-            setHighlight(0);
-            setDismissed(false);
+            slash.onChange(e.target.selectionStart);
           }}
-          onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+          onSelect={(e) => slash.onSelect(e.currentTarget.selectionStart)}
           onPaste={files.onPaste}
           onKeyDown={(e) => {
-            if (query !== null && items.length) {
-              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                e.preventDefault();
-                const n = items.length;
-                setHighlight((a) => (Math.min(a, n - 1) + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
-                return;
-              }
-              if ((e.key === "Enter" && !e.shiftKey) || (e.key === "Tab" && !e.shiftKey)) {
-                e.preventDefault();
-                pick(items[Math.min(highlight, items.length - 1)]!);
-                return;
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setDismissed(true);
-                return;
-              }
-            }
+            if (slash.onKeyDown(e)) return;
             if (e.key === "Tab" && e.shiftKey) {
               e.preventDefault();
               if (!mode.isPending) mode.mutate(nextCodeMode(session.mode, session.engine));
@@ -2369,21 +2512,21 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
               submit();
             }
           }}
-          className="max-h-40 min-h-0 min-w-0 px-2 py-1 text-[15px] leading-6 md:text-[15px]"
+          className="max-h-40"
         />
-        <InputGroupAddon align="block-end" className="cursor-default gap-1 px-0 pb-0">
+        <InputGroupAddon align="block-end">
           <AttachButton onFiles={files.add} />
           <ModePicker engine={session.engine} value={session.mode} disabled={mode.isPending} onSelect={(value) => value !== session.mode && mode.mutate(value)} />
           <span className="flex-1" />
           <SessionModelPicker conversationId={conversationId} session={session} />
           {stoppable ? (
-            <Button type="button" size="icon" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()} className="rounded-full disabled:opacity-40">
-              {stop.isPending ? <Spinner /> : <StopIcon className="size-5" />}
-            </Button>
+            <InputGroupButton variant="default" size="icon-sm" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()}>
+              {stop.isPending ? <Spinner /> : <StopIcon />}
+            </InputGroupButton>
           ) : (
-            <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} className="rounded-full disabled:opacity-40">
-              <ArrowUpIcon strokeWidth={2.25} />
-            </Button>
+            <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} disabled={!canSend}>
+              <ArrowUpIcon />
+            </InputGroupButton>
           )}
         </InputGroupAddon>
       </InputGroup>
@@ -2391,18 +2534,93 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
   );
 }
 
-/** Its skills first, then its commands, best matches of the query first. */
-function commandItems(session: CodeSession, query: string): SlashItem[] {
-  const all = [...session.commands].sort((a, b) => Number(b.skill) - Number(a.skill));
-  return rankByQuery(
-    all.map((c) => ({
-      key: `${c.skill ? "skill" : "command"}:${c.name}`,
-      kind: c.skill ? "skill" : "command",
-      name: c.name,
-      description: c.argumentHint ? `${c.argumentHint}  ${c.description}` : c.description,
-    })),
-    query.toLowerCase(),
-  );
+/** What Claude Code's own commands do, at a glance. */
+const commandIcons: Record<string, IconComponent> = {
+  compact: LayersIcon,
+  init: FileTextIcon,
+  review: SearchIcon,
+  "code-review": SearchIcon,
+  "security-review": ShieldCheckIcon,
+  simplify: SparklesIcon,
+  verify: CheckCircleIcon,
+  run: PlayIcon,
+  goal: TaskListIcon,
+};
+
+/** Its commands, then its skills, each group's best matches of the query first. */
+function commandItems(commands: CodeCommand[], query: string): SlashItem[] {
+  const items = (skill: boolean) =>
+    rankByQuery(
+      commands
+        .filter((c) => c.skill === skill)
+        .map((c): SlashItem => ({
+          key: `${skill ? "skill" : "command"}:${c.name}`,
+          kind: skill ? "skill" : "command",
+          name: c.name,
+          description: c.argumentHint ? `${c.argumentHint}  ${c.description}` : c.description,
+          ...(!skill && { icon: commandIcons[c.name] ?? CommandIcon }),
+        })),
+      query.toLowerCase(),
+    );
+  return [...items(false), ...items(true)];
+}
+
+/**
+ * The "/" palette of a session's field: what a session of this engine has before it runs (the
+ * server's list: Claude Code's commands, the team's skills) and the session's own once it ran, the
+ * session's winning on a name. Nothing to offer (an engine without the team's skills): no palette.
+ */
+function useSlashPalette(conversationId: string, engine: CodeEngine, own: CodeCommand[], text: string, setText: (value: string) => void, area: RefObject<HTMLTextAreaElement | null>) {
+  const [caret, setCaret] = useState(0);
+  const [highlight, setHighlight] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const { data: base = [] } = useQuery({ ...codeCommandsQuery(conversationId, engine), retry: false });
+  const names = new Set(own.map((c) => c.name));
+  const commands = [...own, ...base.filter((c) => !names.has(c.name))];
+  const query = dismissed ? null : slashQuery(text, caret);
+  const items = query === null ? [] : commandItems(commands, query);
+  const open = items.length > 0;
+  const active = Math.min(highlight, items.length - 1);
+  const pick = (item: SlashItem) => {
+    const next = `/${item.name} ${text.slice(caret).trimStart()}`;
+    const at = item.name.length + 2;
+    setText(next);
+    setCaret(at);
+    setDismissed(true);
+    requestAnimationFrame(() => area.current?.setSelectionRange(at, at));
+  };
+  return {
+    open,
+    available: commands.length > 0,
+    menu: open ? <SlashMenu items={items} active={active} onHover={setHighlight} onPick={pick} /> : null,
+    onChange: (at: number) => {
+      setCaret(at);
+      setHighlight(0);
+      setDismissed(false);
+    },
+    onSelect: setCaret,
+    /** True when the key was the palette's. */
+    onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (!open) return false;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const n = items.length;
+        setHighlight((a) => (Math.min(a, n - 1) + (e.key === "ArrowDown" ? 1 : n - 1)) % n);
+        return true;
+      }
+      if ((e.key === "Enter" && !e.shiftKey) || (e.key === "Tab" && !e.shiftKey)) {
+        e.preventDefault();
+        pick(items[active]!);
+        return true;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDismissed(true);
+        return true;
+      }
+      return false;
+    },
+  };
 }
 
 /** The agent CLI a new session runs on, among the ones installed on the server that are the person's. */
@@ -2410,14 +2628,14 @@ function EnginePicker({ engines, value, onSelect }: { engines: { id: CodeEngine;
   const t = useT(messages);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={t.engine} className="min-w-0 shrink gap-1.5" />}>
-        <ModelLogo provider={value} className="size-3.5" />
+      <DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={t.engine} className="min-w-0 shrink" />}>
+        <ModelLogo provider={value} />
         <span className="truncate">{CODE_ENGINE_NAMES[value]}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-48">
         <DropdownMenuRadioGroup value={value} onValueChange={(v) => onSelect(v as CodeEngine)}>
           {engines.map((e) => (
-            <DropdownMenuRadioItem key={e.id} value={e.id} className="gap-2">
+            <DropdownMenuRadioItem key={e.id} value={e.id}>
               <ModelLogo provider={e.id} />
               {e.name}
             </DropdownMenuRadioItem>
@@ -2427,6 +2645,14 @@ function EnginePicker({ engines, value, onSelect }: { engines: { id: CodeEngine;
     </DropdownMenu>
   );
 }
+
+/** What each permission mode lets the engine do: ask first, edit freely, only plan, everything. */
+const MODE_ICONS: Record<CodePermissionMode, ReactNode> = {
+  default: <ShieldCheckIcon />,
+  acceptEdits: <FileEditIcon />,
+  plan: <TaskListIcon />,
+  bypassPermissions: <ShieldAlertIcon />,
+};
 
 /** Claude Code's permission mode, each with what it lets it do. */
 function ModePicker({ engine, value, onSelect, disabled }: { engine: CodeEngine; value: CodePermissionMode; onSelect: (mode: CodePermissionMode) => void; disabled?: boolean }) {
@@ -2440,7 +2666,8 @@ function ModePicker({ engine, value, onSelect, disabled }: { engine: CodeEngine;
       <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-72">
         <DropdownMenuRadioGroup value={value} onValueChange={(v) => onSelect(v as CodePermissionMode)}>
           {codeEngineModes(engine).map((m) => (
-            <DropdownMenuRadioItem key={m} value={m} className="h-auto items-start py-2">
+            <DropdownMenuRadioItem key={m} value={m} className="items-start">
+              {MODE_ICONS[m]}
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span>{t.modes[m]}</span>
                 <span className="text-xs text-muted-foreground">{t.modeHelp[m]}</span>
@@ -2456,9 +2683,9 @@ function ModePicker({ engine, value, onSelect, disabled }: { engine: CodeEngine;
 /* ---------- task list ---------- */
 
 function TodoMark({ status, running }: { status: CodeTodo["status"]; running: boolean }) {
-  if (status === "completed") return <CheckCircleIcon className="mt-0.5 size-3.5 shrink-0 text-success" />;
-  if (status === "in_progress" && running) return <Spinner className="mt-0.5 size-3.5 shrink-0" />;
-  return <CircleIcon className={cn("mt-0.5 size-3.5 shrink-0", status === "in_progress" ? "text-foreground" : "text-muted-foreground")} />;
+  if (status === "completed") return <CheckCircleIcon className="shrink-0 text-success" />;
+  if (status === "in_progress" && running) return <Spinner className="shrink-0" />;
+  return <CircleIcon className={cn("shrink-0", status === "in_progress" ? "text-foreground" : "text-muted-foreground")} />;
 }
 
 /** The session's model, among the ones its owner may use. */
@@ -2493,8 +2720,8 @@ const CodeModelPicker = memo(function CodeModelPicker({ conversationId, engine, 
   const key = (m: { id: string; label?: string }) => `${m.id} ${m.label ?? ""}`;
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" />} className="min-w-0 shrink gap-1.5">
-        <ModelLogo provider={vendor} model={value ?? undefined} className="size-3.5" />
+      <PopoverTrigger render={<InputGroupButton size="sm" />} className="min-w-0 shrink">
+        <ModelLogo provider={vendor} model={value ?? undefined} />
         <span className="truncate">{current?.label ?? (value ? modelName(value) : t.model)}</span>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
@@ -2509,6 +2736,7 @@ const CodeModelPicker = memo(function CodeModelPicker({ conversationId, engine, 
                   value={key(m)}
                   label={"label" in m && m.label ? m.label : modelName(m.id)}
                   description={"description" in m ? m.description : undefined}
+                  logo={<ModelLogo model={m.id} provider={engine} />}
                   active={m.id === value}
                   onSelect={() => {
                     setOpen(false);

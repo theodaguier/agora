@@ -1,22 +1,23 @@
 import { ABSENCE_KINDS, availability, DEFAULT_HOURS, type AbsenceKind, type TimeRange, type WeeklyHours } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import type { DateRange } from "react-day-picker";
 import { enUS, fr } from "react-day-picker/locale";
 import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
-import { CloseIcon, PlusIcon } from "@/components/icons";
+import { BuildingIcon, CalendarIcon, CloseIcon, GlobeIcon, PlaneIcon, PlusIcon, ThermometerIcon, WarningIcon } from "@/components/icons";
 import { OptionSelect, SearchSelect, timeOptions } from "@/components/Pickers";
-import { ErrorText } from "@/components/admin/ui";
+import { ErrorText, Loading } from "@/components/admin/ui";
 import { Button } from "@/components/ui/button";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { defineMessages, intlLocale, useLocale, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -26,13 +27,13 @@ import { fromDay, toDay } from "@/lib/dates";
 
 const messages = defineMessages({
   en: {
+    unavailable: "Availability unreachable for now",
+    unavailableHint: "The schedule couldn't be fetched. Try again in a moment.",
     dnd: "Do not disturb",
     dndOff: "Off",
     dndOn: "On",
-    dndOffHelp: "Turn it on for a while:",
     turnOff: "Turn off",
     hours: "Working hours",
-    setHours: "Set working hours",
     setHoursHelp: "Outside these hours, colleagues are told before writing and bots avoid calling on you.",
     setHoursHelpOther: "Outside these hours, colleagues are told before writing and bots avoid calling on this person.",
     notWorked: "Not worked",
@@ -61,13 +62,13 @@ const messages = defineMessages({
     removeBody: "Colleagues and bots will see the person as available again on those days.",
   },
   fr: {
+    unavailable: "Disponibilités injoignables pour l'instant",
+    unavailableHint: "Le planning n'a pas pu être récupéré. Réessaie dans un instant.",
     dnd: "Ne pas déranger",
     dndOff: "Désactivé",
     dndOn: "Activé",
-    dndOffHelp: "L'activer pour :",
     turnOff: "Désactiver",
     hours: "Horaires de travail",
-    setHours: "Définir des horaires",
     setHoursHelp: "En dehors, tes collègues sont prévenus avant d'écrire et les bots évitent de te solliciter.",
     setHoursHelpOther: "En dehors, les collègues sont prévenus avant d'écrire et les bots évitent de solliciter cette personne.",
     notWorked: "Non travaillé",
@@ -99,6 +100,8 @@ const messages = defineMessages({
 
 const ORG = "org";
 
+const ABSENCE_ICONS: Record<AbsenceKind, ReactNode> = { vacation: <PlaneIcon />, sick: <ThermometerIcon />, other: <CalendarIcon /> };
+
 /** Monday first, like the stored hours. */
 function weekdayNames(locale: string) {
   // 1 Jan 2024 was a Monday.
@@ -111,28 +114,32 @@ function weekdayNames(locale: string) {
  */
 export function AvailabilityEditor({ userId, self }: { userId: string; self: boolean }) {
   const t = useT(messages);
-  const { data } = useQuery(scheduleSettingsQuery(userId));
-  if (!data)
+  const c = useT(common);
+  const { data, isError, error, refetch, isFetching } = useQuery(scheduleSettingsQuery(userId));
+  if (!data && isError)
     return (
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-16 rounded-lg" />
-        <Skeleton className="h-64 rounded-lg" />
-      </div>
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <WarningIcon />
+          </EmptyMedia>
+          <EmptyTitle>{t.unavailable}</EmptyTitle>
+          <EmptyDescription title={error instanceof Error ? error.message : undefined}>{t.unavailableHint}</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button variant="outline" disabled={isFetching} onClick={() => void refetch()}>
+            {c.retry}
+          </Button>
+        </EmptyContent>
+      </Empty>
     );
+  if (!data) return <Loading />;
   return (
-    <FieldGroup>
-      <FieldSet>
-        <FieldLegend>{t.dnd}</FieldLegend>
-        <DndCard userId={userId} settings={data} />
-      </FieldSet>
-      <FieldSeparator />
+    <>
+      <DndCard userId={userId} settings={data} />
       <HoursForm key={JSON.stringify([data.timezone, data.hours])} userId={userId} settings={data} self={self} />
-      <FieldSeparator />
-      <FieldSet>
-        <FieldLegend>{t.absences}</FieldLegend>
-        <Absences userId={userId} settings={data} />
-      </FieldSet>
-    </FieldGroup>
+      <Absences userId={userId} settings={data} />
+    </>
   );
 }
 
@@ -149,25 +156,28 @@ function DndCard({ userId, settings }: { userId: string; settings: ScheduleSetti
   const presets = useMemo(() => dndPresets({ timezone, hours: settings.hours }), [timezone, settings.hours]);
 
   return (
-    <Item variant="outline">
-      <ItemContent>
-        <ItemTitle>{active ? t.dndOn : t.dndOff}</ItemTitle>
-        <ItemDescription>{status ?? t.dndOffHelp}</ItemDescription>
-      </ItemContent>
-      <ItemActions className="flex-wrap">
-        {active ? (
-          <Button variant="outline" size="sm" disabled={change.isPending} onClick={() => change.mutate(null)}>
-            {t.turnOff}
-          </Button>
-        ) : (
-          presets.map((p) => (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t.dnd}</CardTitle>
+        <CardDescription>{active ? (status ?? t.dndOn) : t.dndOff}</CardDescription>
+        {active && (
+          <CardAction>
+            <Button variant="outline" size="sm" disabled={change.isPending} onClick={() => change.mutate(null)}>
+              {t.turnOff}
+            </Button>
+          </CardAction>
+        )}
+      </CardHeader>
+      {!active && (
+        <CardContent className="flex flex-wrap gap-2">
+          {presets.map((p) => (
             <Button key={p.label} variant="outline" size="sm" disabled={change.isPending} onClick={() => change.mutate(p.until)}>
               {p.label}
             </Button>
-          ))
-        )}
-      </ItemActions>
-    </Item>
+          ))}
+        </CardContent>
+      )}
+    </Card>
   );
 }
 
@@ -207,36 +217,38 @@ function HoursForm({ userId, settings, self }: { userId: string; settings: Sched
         save.mutate();
       }}
     >
-      <FieldSet>
-        <FieldLegend>{t.hours}</FieldLegend>
-        <FieldDescription>{self ? t.setHoursHelp : t.setHoursHelpOther}</FieldDescription>
-        <FieldGroup>
-          <Field orientation="horizontal">
-            <FieldLabel htmlFor={`${id}-enabled`}>{t.setHours}</FieldLabel>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <label htmlFor={`${id}-enabled`}>{t.hours}</label>
+          </CardTitle>
+          <CardDescription>{self ? t.setHoursHelp : t.setHoursHelpOther}</CardDescription>
+          <CardAction>
             <Switch id={`${id}-enabled`} checked={enabled} onCheckedChange={setEnabled} />
-          </Field>
-
-          {enabled && (
-            <div className="flex flex-col gap-3">
-              {hours.map((ranges, day) => (
-                <div key={day} className="flex items-start gap-4">
-                  <Field orientation="horizontal" className="h-10 w-36 shrink-0">
-                    <Switch
-                      id={`${id}-day-${day}`}
-                      checked={ranges.length > 0}
-                      onCheckedChange={(on) => setDay(day, on ? (DEFAULT_HOURS[0] ?? []) : [])}
-                    />
-                    <FieldLabel htmlFor={`${id}-day-${day}`} className="capitalize">
-                      {days[day]}
-                    </FieldLabel>
-                  </Field>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            {enabled &&
+              hours.map((ranges, day) => (
+                <Field key={day} orientation="horizontal" className="items-start justify-between">
+                  <Switch
+                    id={`${id}-day-${day}`}
+                    size="sm"
+                    className="mt-2"
+                    checked={ranges.length > 0}
+                    onCheckedChange={(on) => setDay(day, on ? (DEFAULT_HOURS[0] ?? []) : [])}
+                  />
+                  <FieldLabel htmlFor={`${id}-day-${day}`} className="mt-1.5">
+                    {capitalize(days[day]!)}
+                  </FieldLabel>
                   {ranges.length ? (
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col items-end gap-2">
                       {ranges.map((r, i) => (
                         <div key={i} className="flex items-center gap-2">
                           <OptionSelect
                             aria-label={t.from(days[day]!)}
-                            className="w-24"
+                            className="w-28"
                             options={timeOptions(r.start)}
                             value={r.start}
                             onValueChange={(v) => setDay(day, ranges.map((x, j) => (j === i ? { ...x, start: v } : x)))}
@@ -244,7 +256,7 @@ function HoursForm({ userId, settings, self }: { userId: string; settings: Sched
                           <span className="text-muted-foreground">–</span>
                           <OptionSelect
                             aria-label={t.to(days[day]!)}
-                            className="w-24"
+                            className="w-28"
                             options={timeOptions(r.end, true)}
                             value={r.end}
                             onValueChange={(v) => setDay(day, ranges.map((x, j) => (j === i ? { ...x, end: v } : x)))}
@@ -262,14 +274,7 @@ function HoursForm({ userId, settings, self }: { userId: string; settings: Sched
                               <PlusIcon />
                             </Button>
                           ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={t.removeRange}
-                              title={t.removeRange}
-                              onClick={() => setDay(day, ranges.filter((_, j) => j !== i))}
-                            >
+                            <Button type="button" variant="ghost" size="icon-sm" aria-label={t.removeRange} title={t.removeRange} onClick={() => setDay(day, ranges.filter((_, j) => j !== i))}>
                               <CloseIcon />
                             </Button>
                           )}
@@ -277,32 +282,35 @@ function HoursForm({ userId, settings, self }: { userId: string; settings: Sched
                       ))}
                     </div>
                   ) : (
-                    <FieldDescription className="flex h-10 items-center">{t.notWorked}</FieldDescription>
+                    <span className="mt-1.5 text-sm text-muted-foreground">{t.notWorked}</span>
                   )}
-                </div>
+                </Field>
               ))}
-            </div>
-          )}
-
-          <Field>
-            <FieldLabel htmlFor={`${id}-tz`}>{t.timezone}</FieldLabel>
-            <SearchSelect
-              id={`${id}-tz`}
-              options={zones}
-              value={zone}
-              onValueChange={setZone}
-              label={(z) => (z === ORG ? t.orgTimezone(settings.orgTimezone) : z.replaceAll("_", " "))}
-              placeholder={t.searchTimezone}
-            />
-          </Field>
-
-          <Field orientation="horizontal">
-            <Button type="submit" disabled={!dirty || save.isPending}>
+            <Field>
+              <FormLabel htmlFor={`${id}-tz`} required>
+                {t.timezone}
+              </FormLabel>
+              <SearchSelect
+                id={`${id}-tz`}
+                options={zones}
+                value={zone}
+                onValueChange={setZone}
+                label={(z) => (z === ORG ? t.orgTimezone(settings.orgTimezone) : z.replaceAll("_", " "))}
+                icon={(z) => (z === ORG ? <BuildingIcon /> : <GlobeIcon />)}
+                placeholder={t.searchTimezone}
+              />
+            </Field>
+          </FieldGroup>
+        </CardContent>
+        {/* Saved on demand: the button only shows once something changed. */}
+        {dirty && (
+          <CardFooter className="justify-end">
+            <Button type="submit" disabled={save.isPending}>
               {save.isPending ? c.saving : c.save}
             </Button>
-          </Field>
-        </FieldGroup>
-      </FieldSet>
+          </CardFooter>
+        )}
+      </Card>
     </form>
   );
 }
@@ -335,54 +343,49 @@ function Absences({ userId, settings }: { userId: string; settings: ScheduleSett
       <DialogContent className="sm:max-w-md">{adding && <AbsenceForm userId={userId} onDone={() => setAdding(false)} />}</DialogContent>
     </Dialog>
   );
-  const addButton = (
-    <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-      {t.addAbsence}
-    </Button>
-  );
-
-  if (!settings.absences.length)
-    return (
-      <Empty className="p-4">
-        <EmptyHeader>
-          <EmptyTitle>{t.noAbsences}</EmptyTitle>
-          <EmptyDescription>{t.noAbsencesHelp}</EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>{addButton}</EmptyContent>
-        {dialog}
-      </Empty>
-    );
-
   return (
-    <>
-      <ItemGroup className="gap-2">
-        {settings.absences.map((a) => (
-          <Item key={a.id} variant="outline" role="listitem">
-            <ItemContent>
-              <ItemTitle>{t.kinds[a.kind]}</ItemTitle>
-              <ItemDescription>
-                {a.startOn === a.endOn ? t.oneDay(day(a.startOn)) : t.range(day(a.startOn), day(a.endOn))}
-                {a.note && ` · ${a.note}`}
-              </ItemDescription>
-            </ItemContent>
-            <ItemActions>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t.remove}
-                title={t.remove}
-                disabled={remove.isPending}
-                onClick={async () => (await confirmAction({ title: t.removeTitle, description: t.removeBody, action: t.remove })) && remove.mutate(a.id)}
-              >
-                <CloseIcon />
-              </Button>
-            </ItemActions>
-          </Item>
-        ))}
-      </ItemGroup>
-      <div>{addButton}</div>
+    <ListCard>
+      <ListCardHeader>
+        <CardTitle>{t.absences}</CardTitle>
+        <CardDescription>{t.noAbsencesHelp}</CardDescription>
+        <CardAction>
+          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+            {t.addAbsence}
+          </Button>
+        </CardAction>
+      </ListCardHeader>
+      {!settings.absences.length ? (
+        <CardContent className="py-(--card-spacing)">
+          <p className="text-sm text-muted-foreground">{t.noAbsences}</p>
+        </CardContent>
+      ) : (
+        <ListCardRows>
+          {settings.absences.map((a) => (
+            <Item size="xs" key={a.id}>
+              <ItemContent>
+                <ItemTitle>{t.kinds[a.kind]}</ItemTitle>
+                <ItemDescription>
+                  {[a.startOn === a.endOn ? t.oneDay(day(a.startOn)) : t.range(day(a.startOn), day(a.endOn)), a.note].filter(Boolean).join(", ")}
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.remove}
+                  title={t.remove}
+                  disabled={remove.isPending}
+                  onClick={async () => (await confirmAction({ title: t.removeTitle, description: t.removeBody, action: t.remove })) && remove.mutate(a.id)}
+                >
+                  <CloseIcon />
+                </Button>
+              </ItemActions>
+            </Item>
+          ))}
+        </ListCardRows>
+      )}
       {dialog}
-    </>
+    </ListCard>
   );
 }
 
@@ -409,7 +412,7 @@ function AbsenceForm({ userId, onDone }: { userId: string; onDone: () => void })
 
   return (
     <form
-      className="flex flex-col gap-5"
+      className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (!range?.from) return;
@@ -421,7 +424,7 @@ function AbsenceForm({ userId, onDone }: { userId: string; onDone: () => void })
         <DialogTitle>{t.addAbsence}</DialogTitle>
         <DialogDescription>{t.pickDates}</DialogDescription>
       </DialogHeader>
-      <FieldGroup className="gap-4">
+      <FieldGroup>
         <Field>
           <FormLabel htmlFor={`${id}-kind`} required>
             {t.kind}
@@ -430,7 +433,7 @@ function AbsenceForm({ userId, onDone }: { userId: string; onDone: () => void })
             id={`${id}-kind`}
             value={kind}
             onValueChange={(v) => setKind(v as AbsenceKind)}
-            options={ABSENCE_KINDS.map((k) => ({ value: k, label: t.kinds[k] }))}
+            options={ABSENCE_KINDS.map((k) => ({ value: k, label: t.kinds[k], icon: ABSENCE_ICONS[k] }))}
           />
         </Field>
         <Field>
@@ -438,7 +441,7 @@ function AbsenceForm({ userId, onDone }: { userId: string; onDone: () => void })
             {t.dates}
           </FormLabel>
           <Popover open={picking} onOpenChange={setPicking}>
-            <PopoverTrigger render={<Button id={`${id}-dates`} type="button" variant="outline" className="justify-start font-normal" />}>
+            <PopoverTrigger render={<Button id={`${id}-dates`} type="button" variant="outline" className="justify-start" />}>
               {range?.from ? (
                 range.to && toDay(range.to) !== toDay(range.from) ? (
                   t.range(day(range.from), day(range.to))
@@ -477,3 +480,6 @@ function AbsenceForm({ userId, onDone }: { userId: string; onDone: () => void })
     </form>
   );
 }
+
+/** Weekday names come lowercase from Intl in French. */
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

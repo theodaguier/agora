@@ -13,12 +13,16 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api, type Person, type Task, type TaskPriority } from "@/lib/api";
 import { formatDueDate, fromDay, toDay } from "@/lib/dates";
 import { usePeople } from "@/lib/people";
-import { priorityMessages, TASK_PRIORITIES } from "@/lib/task-status";
+import { CodePriorityIcon } from "@/components/CodeSessionMarks";
+import { priorityMessages, TASK_PRIORITIES, taskPriorityMark } from "@/lib/task-status";
 import { defineMessages, useLocale, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +40,7 @@ const messages = defineMessages({
     add: "Add",
     adding: "Adding…",
     failed: "Couldn't add the task.",
+    priority: (level: string) => `Priority: ${level.toLowerCase()}`,
   },
   fr: {
     placeholder: "Ajouter une tâche, @quelqu'un pour l'assigner, puis Entrée",
@@ -50,6 +55,7 @@ const messages = defineMessages({
     add: "Ajouter",
     adding: "Ajout…",
     failed: "Ajout impossible.",
+    priority: (level: string) => `Priorité ${level.toLowerCase()}`,
   },
 });
 
@@ -169,15 +175,16 @@ export function QuickAddTask({ assignee, autoFocus, onCancel }: { assignee?: { i
 
   return (
     <form
-      // Figma « Carte »: white, a hairline, the field then its options on one line.
-      className="relative flex flex-col gap-2 rounded-[14px] border border-border bg-background px-3.5 py-3 transition-[border-color] focus-within:border-black/15 dark:focus-within:border-white/20"
+      className="relative flex flex-col gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         if (title && !add.isPending) add.mutate();
       }}
     >
-      <div className="relative">
-        <Input
+      {/* The field, then its options on one line under it. */}
+      <InputGroup>
+      <div className="relative w-full">
+        <InputGroupInput
           ref={input}
           autoFocus={autoFocus}
           onScroll={(e) => overlay.current && (overlay.current.scrollLeft = e.currentTarget.scrollLeft)}
@@ -208,14 +215,14 @@ export function QuickAddTask({ assignee, autoFocus, onCancel }: { assignee?: { i
           placeholder={placeholder}
           aria-label={t.label}
           aria-expanded={suggestions.length > 0}
-          className={cn("h-[21px] rounded-none border-0 bg-transparent px-0 text-[15px] leading-[21px] shadow-none focus-visible:ring-0 md:text-[15px] dark:bg-transparent", highlighted && "text-transparent caret-foreground")}
+          className={cn(highlighted && "text-transparent caret-foreground")}
         />
         {/* The field's text turns transparent and a copy with colored tags is drawn over it. */}
         {highlighted && (
           <div
             ref={overlay}
             aria-hidden
-            className="pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre border border-transparent text-[15px] leading-[21px]"
+            className="pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre border border-transparent px-2.5 text-base md:text-sm"
           >
             {splitTags(text, people).map((part, i) =>
               part.tag ? (
@@ -229,8 +236,22 @@ export function QuickAddTask({ assignee, autoFocus, onCancel }: { assignee?: { i
           </div>
         )}
       </div>
+      {title && (
+        <InputGroupAddon align="block-end" className="flex-wrap">
+          <Badge variant="secondary" className="min-w-0 truncate">
+            {forYou ? t.forYou : t.forPeople(targets.map((p) => (p.id === user.id ? p.name.split(" ")[0] : p.name)).join(", "))}
+          </Badge>
+          <DuePicker value={due} onChange={setDue} />
+          <PriorityPicker value={priority} onChange={setPriority} />
+          <InputGroupButton type="submit" variant="default" size="xs" className="ml-auto" disabled={add.isPending}>
+            {add.isPending ? t.adding : t.add}
+          </InputGroupButton>
+        </InputGroupAddon>
+      )}
+      </InputGroup>
       {current && (
-        <Command value={current.id} shouldFilter={false} className="absolute top-10 z-20 h-auto w-64 border border-border shadow-md">
+        <Card size="sm" className="absolute top-10 z-20 w-64">
+        <Command value={current.id} shouldFilter={false}>
           <CommandList>
             {suggestions.map((p) => (
               <CommandItem
@@ -238,7 +259,6 @@ export function QuickAddTask({ assignee, autoFocus, onCancel }: { assignee?: { i
                 value={p.id}
                 onMouseDown={(e) => e.preventDefault()}
                 onSelect={() => complete(p)}
-                className="h-9 gap-2.5 rounded-lg px-2.5 text-sm"
               >
                 <PersonAvatar person={p} className="size-5" />
                 <span className="truncate">{p.name}</span>
@@ -247,21 +267,10 @@ export function QuickAddTask({ assignee, autoFocus, onCancel }: { assignee?: { i
             ))}
           </CommandList>
         </Command>
-      )}
-      {title && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="flex h-6 min-w-0 items-center truncate rounded-full bg-secondary px-2.5 text-xs text-muted-foreground">
-            {forYou ? t.forYou : t.forPeople(targets.map((p) => (p.id === user.id ? p.name.split(" ")[0] : p.name)).join(", "))}
-          </span>
-          <DuePicker value={due} onChange={setDue} />
-          <PriorityPicker value={priority} onChange={setPriority} />
-          <Button type="submit" size="sm" className="ml-auto" disabled={add.isPending}>
-            {add.isPending ? t.adding : t.add}
-          </Button>
-        </div>
+        </Card>
       )}
       {add.error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {add.error.message || t.failed}
         </p>
       )}
@@ -279,7 +288,7 @@ function DuePicker({ value, onChange }: { value: string | null; onChange: (day: 
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<Button type="button" variant="secondary" size="xs" className="font-normal text-muted-foreground" />}>
+      <PopoverTrigger render={<Button type="button" variant="secondary" size="xs" />}>
         {value ? t.due(formatDueDate(value)) : t.noDue}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-0">
@@ -291,11 +300,14 @@ function DuePicker({ value, onChange }: { value: string | null; onChange: (day: 
           onSelect={(d) => set(d ? toDay(d) : null)}
         />
         {value && (
-          <div className="border-t border-border p-2">
-            <Button type="button" variant="ghost" size="sm" className="w-full" onClick={() => set(null)}>
-              {t.clearDue}
-            </Button>
-          </div>
+          <>
+            <Separator />
+            <div className="p-2">
+              <Button type="button" variant="ghost" size="sm" className="w-full" onClick={() => set(null)}>
+                {t.clearDue}
+              </Button>
+            </div>
+          </>
         )}
       </PopoverContent>
     </Popover>
@@ -304,15 +316,17 @@ function DuePicker({ value, onChange }: { value: string | null; onChange: (day: 
 
 function PriorityPicker({ value, onChange }: { value: TaskPriority; onChange: (priority: TaskPriority) => void }) {
   const p = useT(priorityMessages);
+  const t = useT(messages);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button type="button" variant="secondary" size="xs" className="font-normal text-muted-foreground" />}>
-        {p.priority} · {p.label[value]}
+      <DropdownMenuTrigger render={<Button type="button" variant="secondary" size="xs" />}>
+        {t.priority(p.label[value])}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-40">
         <DropdownMenuRadioGroup value={value} onValueChange={(v) => onChange(v as TaskPriority)}>
           {TASK_PRIORITIES.map((level) => (
             <DropdownMenuRadioItem key={level} value={level}>
+              <CodePriorityIcon priority={taskPriorityMark[level]} />
               {p.label[level]}
             </DropdownMenuRadioItem>
           ))}

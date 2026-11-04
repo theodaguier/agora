@@ -25,7 +25,7 @@ import { conversationsQuery } from "@/lib/queries";
 
 type Display = { view: CodeSessionView; group: CodeSessionGrouping; order: CodeSessionOrdering; showStopped: boolean };
 
-const VIEWS: CodeSessionView[] = ["active", "finished", "all"];
+const VIEWS: CodeSessionView[] = ["active", "parked", "finished", "all"];
 const GROUPINGS: CodeSessionGrouping[] = ["state", "priority", "project"];
 const ORDERINGS: CodeSessionOrdering[] = ["priority", "updated", "created"];
 

@@ -1,3 +1,4 @@
+import { modelName } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { FormLabel } from "@/components/FormLabel";
@@ -8,17 +9,19 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { CardAction, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { api } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
 import { adminModelsQuery, providersQuery, type AiProvider } from "@/lib/queries";
 import { providerName } from "@/lib/providers";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
-import { ErrorText, Loading } from "./ui";
+import { ErrorText, LoadError, Loading } from "./ui";
 
 const messages = defineMessages({
   en: {
@@ -28,8 +31,8 @@ const messages = defineMessages({
     noneText: "Agents can't reply until you add a provider.",
     defaultModel: "Default model",
     notChosen: "Not chosen: agents without a provider can't reply",
-    viaKey: (n: number) => (n === 1 ? "API key · 1 model" : `API key · ${n} models`),
-    viaServer: (n: number) => (n === 1 ? "Signed in on the server · 1 model" : `Signed in on the server · ${n} models`),
+    viaKey: (n: number) => (n === 1 ? "API key, 1 model" : `API key, ${n} models`),
+    viaServer: (n: number) => (n === 1 ? "Signed in on the server, 1 model" : `Signed in on the server, ${n} models`),
     add: "Add a provider",
     change: "Change",
     replaceKey: "Replace key",
@@ -42,7 +45,7 @@ const messages = defineMessages({
     noMatch: "No provider matches.",
     keyTitle: (name: string) => `${name} key`,
     keyText: "Checked with the provider, then given to every agent. Hermes restarts to load it (about 10 seconds).",
-    apiKey: (env: string) => `API key (${env})`,
+    apiKey: "API key",
     show: "Show",
     hide: "Hide",
     checking: "Checking and restarting Hermes…",
@@ -66,8 +69,8 @@ const messages = defineMessages({
     noneText: "Les agents ne peuvent pas répondre tant que tu n'as pas ajouté de fournisseur.",
     defaultModel: "Modèle par défaut",
     notChosen: "Pas choisi : les agents sans fournisseur ne peuvent pas répondre",
-    viaKey: (n: number) => `Clé API · ${n} modèle${n > 1 ? "s" : ""}`,
-    viaServer: (n: number) => `Connecté sur le serveur · ${n} modèle${n > 1 ? "s" : ""}`,
+    viaKey: (n: number) => `Clé API, ${n} modèle${n > 1 ? "s" : ""}`,
+    viaServer: (n: number) => `Connecté sur le serveur, ${n} modèle${n > 1 ? "s" : ""}`,
     add: "Ajouter un fournisseur",
     change: "Modifier",
     replaceKey: "Remplacer la clé",
@@ -80,7 +83,7 @@ const messages = defineMessages({
     noMatch: "Aucun fournisseur ne correspond.",
     keyTitle: (name: string) => `Clé ${name}`,
     keyText: "Vérifiée auprès du fournisseur, puis donnée à tous les agents. Hermes redémarre pour la charger (une dizaine de secondes).",
-    apiKey: (env: string) => `Clé API (${env})`,
+    apiKey: "Clé API",
     show: "Afficher",
     hide: "Masquer",
     checking: "Vérification et redémarrage de Hermes…",
@@ -119,48 +122,61 @@ export function Providers() {
   const current = data && connected.find((p) => p.slug === data.current.provider);
 
   return (
-    <FieldSet>
-      <FieldLegend>{t.title}</FieldLegend>
-      <FieldDescription>{t.text}</FieldDescription>
-      {isPending ? (
-        <Loading />
-      ) : !data ? (
-        <ErrorText error={error} />
-      ) : (
-        <>
-          {connected.length === 0 && (
-            <Alert variant="destructive">
-              <AlertTitle>{t.noneTitle}</AlertTitle>
-              <AlertDescription>{t.noneText}</AlertDescription>
-            </Alert>
+    <>
+      {data && connected.length === 0 && (
+        <Alert variant="destructive">
+          <AlertTitle>{t.noneTitle}</AlertTitle>
+          <AlertDescription>{t.noneText}</AlertDescription>
+        </Alert>
+      )}
+      <ListCard>
+        <ListCardHeader>
+          <CardTitle>{t.title}</CardTitle>
+          <CardDescription>{t.text}</CardDescription>
+          {data && (
+            <CardAction>
+              <Button variant="outline" size="sm" onClick={() => setDialog({ kind: "pick" })}>
+                {t.add}
+              </Button>
+            </CardAction>
           )}
-          <ItemGroup className="gap-2">
-            {connected.length > 0 && (
-              <Item variant="outline">
-                <ItemMedia>
-                  <ModelLogo provider={current?.slug ?? data.current.provider} model={current ? data.current.model : undefined} className="size-5" />
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <ItemTitle>{t.defaultModel}</ItemTitle>
-                  <ItemDescription className="truncate">
-                    {current ? `${providerName(current.slug)} · ${data.current.model}` : t.notChosen}
-                  </ItemDescription>
-                </ItemContent>
-                <ItemActions>
-                  <Button variant="outline" size="sm" onClick={() => setDialog({ kind: "model" })}>
-                    {t.change}
-                  </Button>
-                </ItemActions>
-              </Item>
-            )}
+        </ListCardHeader>
+        {isPending ? (
+          <CardContent className="py-(--card-spacing)">
+            <Loading />
+          </CardContent>
+        ) : !data ? (
+          <CardContent className="py-(--card-spacing)">
+            <LoadError error={error} />
+          </CardContent>
+        ) : connected.length === 0 ? (
+          <CardContent className="py-(--card-spacing)">
+            <p className="text-sm text-muted-foreground">{t.noneTitle}</p>
+          </CardContent>
+        ) : (
+          <ListCardRows>
+            <Item size="xs">
+              <ItemMedia>
+                <ModelLogo provider={current?.slug ?? data.current.provider} model={current ? data.current.model : undefined} className="size-6" />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>{t.defaultModel}</ItemTitle>
+                <ItemDescription>{current ? `${providerName(current.slug)}, ${modelName(data.current.model)}` : t.notChosen}</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <Button variant="outline" size="sm" onClick={() => setDialog({ kind: "model" })}>
+                  {t.change}
+                </Button>
+              </ItemActions>
+            </Item>
             {connected.map((p) => (
-              <Item key={p.slug} variant="outline">
+              <Item size="xs" key={p.slug}>
                 <ItemMedia>
-                  <ModelLogo provider={p.slug} className="size-5" />
+                  <ModelLogo provider={p.slug} className="size-6" />
                 </ItemMedia>
-                <ItemContent className="min-w-0">
+                <ItemContent>
                   <ItemTitle>{p.name}</ItemTitle>
-                  <ItemDescription className="truncate">{p.keyEnv ? t.viaKey(p.models.length) : t.viaServer(p.models.length)}</ItemDescription>
+                  <ItemDescription>{p.keyEnv ? t.viaKey(p.models.length) : t.viaServer(p.models.length)}</ItemDescription>
                 </ItemContent>
                 {p.keyEnv && (
                   <ItemActions>
@@ -181,14 +197,9 @@ export function Providers() {
                 )}
               </Item>
             ))}
-          </ItemGroup>
-          <div>
-            <Button variant="outline" onClick={() => setDialog({ kind: "pick" })}>
-              {t.add}
-            </Button>
-          </div>
-        </>
-      )}
+          </ListCardRows>
+        )}
+      </ListCard>
 
       <Dialog open={dialog !== null} onOpenChange={(open) => !open && setDialog(null)}>
         {data && dialog?.kind === "pick" && (
@@ -210,7 +221,7 @@ export function Providers() {
           />
         )}
       </Dialog>
-    </FieldSet>
+    </>
   );
 }
 
@@ -230,12 +241,12 @@ function PickDialog({ providers, onPick }: { providers: AiProvider[]; onPick: (p
         <DialogTitle>{t.pickTitle}</DialogTitle>
         <DialogDescription>{t.pickText}</DialogDescription>
       </DialogHeader>
-      <Command className="rounded-xl border border-border p-1">
+      <Command>
         <CommandInput placeholder={t.search} autoFocus />
-        <CommandList className="max-h-80 pt-1">
+        <CommandList className="max-h-80">
           <CommandEmpty>{t.noMatch}</CommandEmpty>
           {providers.map((p) => (
-            <CommandItem key={p.slug} value={p.slug} keywords={[p.name]} onSelect={() => onPick(p)} size="sm">
+            <CommandItem key={p.slug} value={p.slug} keywords={[p.name]} onSelect={() => onPick(p)}>
               <ModelLogo provider={p.slug} className="size-4" />
               <span className="truncate">{p.name}</span>
             </CommandItem>
@@ -275,15 +286,15 @@ function KeyDialog({ provider, onSaved }: { provider: AiProvider; onSaved: () =>
           if (value.trim().length >= 8) save.mutate();
         }}
       >
-        <FieldGroup className="gap-5">
+        <FieldGroup>
           <Field>
+            {/* The variable it's stored under stays out of the label, on hover only. */}
             <FormLabel htmlFor="provider-key-value" required>
-              {t.apiKey(provider.keyEnv!)}
+              <span title={provider.keyEnv ?? undefined}>{t.apiKey}</span>
             </FormLabel>
             <InputGroup>
               <InputGroupInput
                 id="provider-key-value"
-                className="font-mono"
                 type={shown ? "text" : "password"}
                 autoComplete="new-password"
                 spellCheck={false}
@@ -344,23 +355,23 @@ function ModelDialog({ providers, initial, currentModel, onClose }: { providers:
         <DialogTitle>{t.modelTitle}</DialogTitle>
         <DialogDescription>{t.modelText}</DialogDescription>
       </DialogHeader>
-      <FieldGroup className="gap-5">
+      <FieldGroup>
         <Field>
           <FormLabel htmlFor="default-provider" required>
             {t.provider}
           </FormLabel>
-          <OptionSelect id="default-provider" options={providers.map((p) => ({ value: p.slug, label: p.name }))} value={slug} onValueChange={pickProvider} />
+          <OptionSelect id="default-provider" options={providers.map((p) => ({ value: p.slug, label: p.name, icon: <ModelLogo provider={p.slug} /> }))} value={slug} onValueChange={pickProvider} />
         </Field>
         <Field>
           <FormLabel htmlFor="default-model" required>
             {t.model}
           </FormLabel>
-          <SearchSelect id="default-model" options={models} value={model} onValueChange={(m) => (setModel(m), apply.reset())} placeholder={t.searchModel} />
+          <SearchSelect id="default-model" options={models} value={model} onValueChange={(m) => (setModel(m), apply.reset())} icon={(m) => <ModelLogo model={m} provider={slug} />} placeholder={t.searchModel} />
         </Field>
-        <Collapsible>
-          <CollapsibleTrigger render={<Button variant="link" className="h-auto p-0 font-normal text-muted-foreground" />}>{t.baseUrl}</CollapsibleTrigger>
+        <Collapsible className="flex flex-col gap-2">
+          <CollapsibleTrigger render={<Button variant="link" size="sm" className="self-start" />}>{t.baseUrl}</CollapsibleTrigger>
           <CollapsibleContent>
-            <Field className="mt-2">
+            <Field>
               <Input aria-label={t.baseUrl} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://…/v1" />
               <FieldDescription>{t.baseUrlHelp}</FieldDescription>
             </Field>

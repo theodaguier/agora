@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StatusTone } from "@agora/core";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { Button } from "@/components/ui/button";
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { BlockCard, BlockFooter, StatusLine } from "@/components/views/block";
 import { api, type BotRequest } from "@/lib/api";
@@ -18,6 +19,7 @@ const messages = defineMessages({
     approve: "Create",
     reject: "Reject",
     adminMust: "An admin must approve these bots before they're created.",
+    unreachable: "This bot request is unreachable for now.",
   },
   fr: {
     status: { pending: "En attente de validation", creating: "Création…", created: "Création terminée", rejected: "Refusé" },
@@ -25,6 +27,7 @@ const messages = defineMessages({
     approve: "Créer",
     reject: "Refuser",
     adminMust: "Un administrateur doit valider ces bots avant leur création.",
+    unreachable: "Cette demande de bot est injoignable pour le moment.",
   },
 });
 
@@ -44,29 +47,45 @@ export function BotRequestCard({ id }: { id: string }) {
     meta: { error: false },
   });
 
-  if (error || !req) return null;
+  if (error)
+    return (
+      <BlockCard>
+        <CardHeader>
+          <CardDescription title={error.message}>{t.unreachable}</CardDescription>
+        </CardHeader>
+      </BlockCard>
+    );
+  if (!req)
+    return (
+      <BlockCard>
+        <CardHeader>
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-56" />
+        </CardHeader>
+      </BlockCard>
+    );
 
   const decides = req.status === "pending" && req.canDecide;
 
   return (
     <BlockCard>
       <CardHeader>
-        <CardTitle className="text-[15px] leading-[21px] font-medium">{t.title(req.bots.length)}</CardTitle>
+        <CardTitle>{t.title(req.bots.length)}</CardTitle>
         {req.reason && <CardDescription>{req.reason}</CardDescription>}
-        <StatusLine tone={STATUS_TONE[req.status]} className="mt-1">
-          {t.status[req.status]}
-        </StatusLine>
+        <CardAction>
+          <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <ItemGroup className="gap-0 overflow-hidden rounded-[10px] border">
+        <ItemGroup>
           {req.bots.map((bot, i) => (
-            <Item key={i} className="rounded-none border-0 border-border px-3.5 py-2.5 not-last:border-b">
+            <Item key={i} variant="outline" size="sm">
               <ItemMedia>
                 <AgentAvatar agent={bot} className="size-8" />
               </ItemMedia>
-              <ItemContent className="gap-0">
+              <ItemContent>
                 <ItemTitle>{bot.name}</ItemTitle>
-                {(bot.role || bot.mission) && <ItemDescription className="line-clamp-1 text-[13px]">{bot.role ?? bot.mission}</ItemDescription>}
+                {(bot.role || bot.mission) && <ItemDescription>{bot.role ?? bot.mission}</ItemDescription>}
               </ItemContent>
             </Item>
           ))}

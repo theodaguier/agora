@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
 import { useId } from "react";
-import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
 import { common } from "@agora/core/i18n";
 import { defineMessages, useT } from "@/i18n";
+import { LoadError, Loading } from "./ui";
 
 const messages = defineMessages({
   en: {
@@ -45,7 +46,7 @@ export function RequireTwoFactor() {
   const qc = useQueryClient();
   const { user } = useRouteContext({ from: "/app" });
   const ownEnabled = !!(user as { twoFactorEnabled?: boolean | null }).twoFactorEnabled;
-  const { data } = useQuery({ queryKey: ["admin", "org"], queryFn: () => api<{ requireTwoFactor: boolean }>("/admin/org") });
+  const { data, isPending, error } = useQuery({ queryKey: ["admin", "org"], queryFn: () => api<{ requireTwoFactor: boolean }>("/admin/org") });
   const save = useMutation({
     mutationFn: (requireTwoFactor: boolean) => api("/admin/org", { method: "PUT", body: JSON.stringify({ requireTwoFactor }) }),
     onSuccess: () => {
@@ -54,24 +55,28 @@ export function RequireTwoFactor() {
     },
     meta: { success: c.saved },
   });
-  if (!data) return null;
+  if (!data) return <Pending title={t.require} text={ownEnabled ? t.requireHelp : t.ownFirst} isPending={isPending} error={error} />;
 
   return (
-    <Field orientation="horizontal" data-disabled={(!ownEnabled && !data.requireTwoFactor) || undefined}>
-      <FieldContent>
-        <FieldLabel htmlFor={id}>{t.require}</FieldLabel>
-        <FieldDescription>{ownEnabled ? t.requireHelp : t.ownFirst}</FieldDescription>
-      </FieldContent>
-      <Switch
-        id={id}
-        checked={save.isPending ? save.variables : data.requireTwoFactor}
-        disabled={save.isPending || (!ownEnabled && !data.requireTwoFactor)}
-        onCheckedChange={async (on) => {
-          if (on && !(await confirmAction({ title: t.confirmTitle, description: t.confirmText, action: t.confirm, destructive: false }))) return;
-          save.mutate(on);
-        }}
-      />
-    </Field>
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <label htmlFor={id}>{t.require}</label>
+        </CardTitle>
+        <CardDescription>{ownEnabled ? t.requireHelp : t.ownFirst}</CardDescription>
+        <CardAction>
+          <Switch
+            id={id}
+            checked={save.isPending ? save.variables : data.requireTwoFactor}
+            disabled={save.isPending || (!ownEnabled && !data.requireTwoFactor)}
+            onCheckedChange={async (on) => {
+              if (on && !(await confirmAction({ title: t.confirmTitle, description: t.confirmText, action: t.confirm, destructive: false }))) return;
+              save.mutate(on);
+            }}
+          />
+        </CardAction>
+      </CardHeader>
+    </Card>
   );
 }
 
@@ -81,29 +86,46 @@ export function NewBotsAllTools() {
   const c = useT(common);
   const id = useId();
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["admin", "org"], queryFn: () => api<{ newBotsAllTools: boolean }>("/admin/org") });
+  const { data, isPending, error } = useQuery({ queryKey: ["admin", "org"], queryFn: () => api<{ newBotsAllTools: boolean }>("/admin/org") });
   const save = useMutation({
     mutationFn: (newBotsAllTools: boolean) => api("/admin/org", { method: "PUT", body: JSON.stringify({ newBotsAllTools }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "org"] }),
     meta: { success: c.saved },
   });
-  if (!data) return null;
+  if (!data) return <Pending title={t.allTools} text={t.allToolsHelp} isPending={isPending} error={error} />;
 
   return (
-    <Field orientation="horizontal">
-      <FieldContent>
-        <FieldLabel htmlFor={id}>{t.allTools}</FieldLabel>
-        <FieldDescription>{t.allToolsHelp}</FieldDescription>
-      </FieldContent>
-      <Switch
-        id={id}
-        checked={save.isPending ? save.variables : data.newBotsAllTools}
-        disabled={save.isPending}
-        onCheckedChange={async (on) => {
-          if (on && !(await confirmAction({ title: t.allToolsTitle, description: t.allToolsText, action: t.allToolsConfirm, destructive: false }))) return;
-          save.mutate(on);
-        }}
-      />
-    </Field>
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <label htmlFor={id}>{t.allTools}</label>
+        </CardTitle>
+        <CardDescription>{t.allToolsHelp}</CardDescription>
+        <CardAction>
+          <Switch
+            id={id}
+            checked={save.isPending ? save.variables : data.newBotsAllTools}
+            disabled={save.isPending}
+            onCheckedChange={async (on) => {
+              if (on && !(await confirmAction({ title: t.allToolsTitle, description: t.allToolsText, action: t.allToolsConfirm, destructive: false }))) return;
+              save.mutate(on);
+            }}
+          />
+        </CardAction>
+      </CardHeader>
+    </Card>
+  );
+}
+
+/** A setting whose current value is still loading or couldn't be fetched: its card, without the switch. */
+function Pending({ title, text, isPending, error }: { title: string; text: string; isPending: boolean; error: unknown }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{text}</CardDescription>
+      </CardHeader>
+      <CardContent>{isPending ? <Loading /> : <LoadError error={error} />}</CardContent>
+    </Card>
   );
 }

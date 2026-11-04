@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { Fragment } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { toolServer } from "@/lib/tools";
+import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import type { Mentionable } from "@/lib/mentions";
 import { brandsQuery } from "@/lib/queries";
@@ -44,26 +45,26 @@ export function BotBubble({
       text={text}
       streaming={streaming}
       mentionables={mentionables}
-      className={cn("w-fit min-w-0 max-w-[min(520px,100%)] rounded-[14px] bg-secondary px-3 py-[9px] text-[15px] leading-[21px]", className)}
+      className={cn("w-fit min-w-0 max-w-lg rounded-2xl bg-muted px-3 py-2 text-sm", className)}
     />
   );
 }
 
-/** Figma « Bulle » Moi: the bot's colour (--primary in a conversation), white text. */
+/** Our message: the bot's colour (--primary in a conversation). */
 export function UserBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
   return (
     <MessageText
       plain
       text={text}
       mentionables={mentionables}
-      className={cn("bubble-mine ml-auto w-fit min-w-0 max-w-[min(520px,80%)] break-words rounded-[14px] bg-primary px-3 py-[9px] text-[15px] leading-[21px] text-primary-foreground", className)}
+      className={cn("bubble-mine ml-auto w-fit min-w-0 max-w-lg break-words rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground", className)}
     />
   );
 }
 
 export function TypingBubble({ label, className }: { label: string; className?: string }) {
   return (
-    <div className={cn("flex w-fit gap-1 rounded-[14px] bg-secondary px-3.5 py-3", className)} aria-label={label}>
+    <div className={cn("flex w-fit gap-1 rounded-2xl bg-muted p-3", className)} aria-label={label}>
       {[0, 1, 2].map((d) => (
         <span key={d} className="typing-dot size-1.5 rounded-full bg-muted-foreground" style={{ animationDelay: `${d * 150}ms` }} />
       ))}
@@ -77,13 +78,13 @@ export function TypingLine({ entries, className }: { entries: { key: string; nam
   const writers = entries.filter((e) => !e.tool);
   const users = entries.filter((e) => e.tool);
   const avatars = (list: typeof entries) =>
-    list.some((e) => e.avatar) && <span className="flex -space-x-1">{list.map((e) => e.avatar && <Fragment key={e.key}>{e.avatar}</Fragment>)}</span>;
+    list.some((e) => e.avatar) && <span className="flex *:not-first:-ml-1">{list.map((e) => e.avatar && <Fragment key={e.key}>{e.avatar}</Fragment>)}</span>;
   if (!entries.length) return null;
   return (
-    <p className={cn("mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-muted-foreground", className)} aria-live="polite">
+    <p className={cn("mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground", className)} aria-live="polite">
       {users.map((e, i) => (
         <Fragment key={e.key}>
-          {i > 0 && <span aria-hidden>·</span>}
+          {i > 0 && <Separator orientation="vertical" />}
           {avatars([e])}
           <span className="typing-shimmer">{t.usingTool(e.name)}</span>
           <ToolBadge name={e.tool!} />
@@ -91,7 +92,7 @@ export function TypingLine({ entries, className }: { entries: { key: string; nam
       ))}
       {writers.length > 0 && (
         <>
-          {users.length > 0 && <span aria-hidden>·</span>}
+          {users.length > 0 && <Separator orientation="vertical" />}
           {avatars(writers)}
           <span className="typing-shimmer">{t.typing(writers.map((e) => e.name).join(", "), writers.length)}</span>
         </>
@@ -104,8 +105,8 @@ function ToolBadge({ name }: { name: string }) {
   const { data: brands } = useQuery(brandsQuery);
   const servers = Object.keys(brands?.servers ?? {});
   return (
-    <span className="inline-flex items-center gap-1 text-foreground/80">
-      <BrandLogo server={toolServer(name, servers)} fallback={<ToolIcon name={name} className="size-3.5" />} className="size-3.5 rounded-[3px]" />
+    <span className="inline-flex items-center gap-1 text-foreground">
+      <BrandLogo server={toolServer(name, servers)} fallback={<ToolIcon name={name} className="size-3.5" />} className="size-3.5 rounded-sm" />
       {name}
     </span>
   );
@@ -118,8 +119,8 @@ export function ToolLine({ tools, running, className }: { tools: { name: string;
   const names = [...new Set(tools.map((tool) => tool.name))].filter((n) => !n.startsWith("claude_code_"));
   if (!names.length) return null;
   return (
-    <p className={cn("my-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-muted-foreground", className)}>
-      {running ? <Spinner className="size-3.5" /> : <CheckIcon className="size-3.5" />}
+    <p className={cn("my-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground", className)}>
+      {running ? <Spinner /> : <CheckIcon className="size-4" />}
       {running ? t.using : t.used}
       {names.map((n) => (
         <ToolBadge key={n} name={n} />
@@ -131,12 +132,12 @@ export function ToolLine({ tools, running, className }: { tools: { name: string;
 export function EventLine({ label, routines }: { label: string; routines: string[] }) {
   const t = useT(messages);
   return (
-    <p className="my-2 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-center text-[13px] text-muted-foreground">
+    <p className="my-2 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-center text-xs text-muted-foreground">
       {label}
       {routines.map((r, i) => (
         <Fragment key={r}>
           {i > 0 && <span>{t.and}</span>}
-          <span className="inline-flex items-center gap-1 text-foreground/80">
+          <span className="inline-flex items-center gap-1 text-foreground">
             <ClockIcon className="size-3.5" /> {r}
           </span>
         </Fragment>
@@ -148,12 +149,12 @@ export function EventLine({ label, routines }: { label: string; routines: string
 /** Centered line (date, event); `conversationId` makes it a link to that conversation. */
 export function DateDivider({ label, conversationId }: { label: string; conversationId?: string }) {
   return (
-    <p className="my-3 text-center text-[13px] text-subtle">
+    <p className="my-3 text-center text-xs text-muted-foreground">
       {conversationId ? (
         <Link
           to="/c/$conversationId"
           params={{ conversationId }}
-          className="rounded-sm underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="rounded-sm underline underline-offset-4 outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
         >
           {label}
         </Link>
@@ -171,7 +172,7 @@ export function PeerBubble({ text, mentionables, className }: { text: string; me
       plain
       text={text}
       mentionables={mentionables}
-      className={cn("w-fit min-w-0 max-w-[min(520px,80%)] break-words rounded-[14px] bg-secondary px-3 py-[9px] text-[15px] leading-[21px]", className)}
+      className={cn("w-fit min-w-0 max-w-lg break-words rounded-2xl bg-muted px-3 py-2 text-sm", className)}
     />
   );
 }
@@ -179,7 +180,7 @@ export function PeerBubble({ text, mentionables, className }: { text: string; me
 /** Author name at the start of a run of messages, in a group. */
 export function AuthorLine({ avatar, name, className }: { avatar: React.ReactNode; name: string; className?: string }) {
   return (
-    <p className={cn("mt-2 flex items-center gap-1.5 text-[13px] text-muted-foreground", className)}>
+    <p className={cn("mt-2 flex items-center gap-1.5 text-xs text-muted-foreground", className)}>
       {avatar}
       {name}
     </p>

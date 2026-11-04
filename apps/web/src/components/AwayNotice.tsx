@@ -28,10 +28,10 @@ function AwayLine({ person }: { person: { id: string; name: string } }) {
   const label = availabilityLabel(useAvailability(person.id));
   if (!label) return null;
   return (
-    <p className="flex items-start gap-2 text-[13px] text-muted-foreground">
-      <MoonIcon className="mt-0.5 size-3.5 shrink-0" />
+    <p className="flex items-start gap-2 text-sm text-muted-foreground">
+      <MoonIcon className="mt-0.5 size-4 shrink-0" />
       <span>
-        <span className="font-medium text-foreground">{person.name.split(" ")[0]}</span> · {label}. {t.later}
+        <span className="font-medium text-foreground">{person.name.split(" ")[0]}</span> ({label}). {t.later}
       </span>
     </p>
   );

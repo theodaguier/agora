@@ -1,6 +1,6 @@
 import { PanelBar } from "@/components/PaneHeader";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MoreIcon, FileTextIcon, PinIcon, SearchIcon } from "@/components/icons";
+import { CopyIcon, DownloadIcon, EyeIcon, MoreIcon, FileTextIcon, PinIcon, PinOffIcon, SearchIcon, WarningIcon } from "@/components/icons";
 import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { AgentScreen } from "@/components/AgentScreen";
@@ -8,6 +8,8 @@ import { BesideButton } from "@/components/BesideButton";
 import { ImageViewer } from "@/components/Attachments";
 import { isImage } from "@/lib/files";
 import { PersonAvatar } from "@/components/ConversationAvatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
@@ -18,9 +20,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 import { attachmentUrl, setPinned, type Attachment, type Author, type Message, type Pin, type PinTarget } from "@/lib/api";
@@ -64,6 +67,8 @@ const messages = defineMessages({
     copyLink: "Copy link",
     open: (url: string) => `Open ${url}`,
     seeAll: (n: number) => `See all ${n}`,
+    errorTitle: "Unavailable for now",
+    error: "This conversation couldn't be loaded. Try again in a moment.",
   },
   fr: {
     screen: "Écran",
@@ -95,6 +100,8 @@ const messages = defineMessages({
     copyLink: "Copier le lien",
     open: (url: string) => `Ouvrir ${url}`,
     seeAll: (n: number) => `Voir les ${n}`,
+    errorTitle: "Indisponible pour le moment",
+    error: "Cette conversation n’a pas pu être chargée. Réessaie dans un instant.",
   },
 });
 
@@ -110,7 +117,8 @@ const pinKey = (t: PinTarget) => `${t.messageId}:${t.attachmentId ?? ""}`;
 export function usePins(conversationId: string) {
   const t = useT(messages);
   const qc = useQueryClient();
-  const { data: pins = noPins } = useQuery(pinsQuery(conversationId));
+  const query = useQuery(pinsQuery(conversationId));
+  const pins = query.data ?? noPins;
   const pinned = useMemo(() => new Set(pins.map((p) => pinKey({ messageId: p.message.id, attachmentId: p.attachment?.id }))), [pins]);
   const toggle = useMutation({
     mutationFn: ({ target, pin }: { target: PinTarget; pin: boolean }) => setPinned(conversationId, target, pin),
@@ -120,6 +128,7 @@ export function usePins(conversationId: string) {
   const isPinned = (target: PinTarget) => pinned.has(pinKey(target));
   return {
     pins,
+    query,
     isPinned,
     toggle: (target: PinTarget) => toggle.mutate({ target, pin: !isPinned(target) }),
   };
@@ -177,11 +186,11 @@ export function PinnedBar({ conversationId, onJump, onSeeAll }: { conversationId
     return p.message.author ? `${p.message.author.name} : ${text}` : text;
   };
   return (
-    <nav aria-label={t.pinnedBar} className="flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/60 px-3">
-      <PinIcon aria-hidden className="mr-0.5 size-3.5 shrink-0 text-muted-foreground" />
+    <nav aria-label={t.pinnedBar} className="flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b px-3">
+      <PinIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       {shown.map((p) => {
         const link = p.attachment ? undefined : firstUrl(p.message.text);
-        const chip = "max-w-60 shrink-0 rounded-md font-normal text-muted-foreground hover:text-foreground";
+        const chip = "max-w-60 shrink-0";
         return (
         <ContextMenu key={p.id}>
           <ContextMenuTrigger
@@ -193,7 +202,7 @@ export function PinnedBar({ conversationId, onJump, onSeeAll }: { conversationId
                   rel="noreferrer noopener"
                   aria-label={t.open(link.url)}
                   title={link.url}
-                  className={cn(buttonVariants({ variant: "ghost", size: "xs" }), chip, "text-brand hover:text-brand")}
+                  className={cn(buttonVariants({ variant: "link", size: "xs" }), chip)}
                 />
               ) : (
                 <Button
@@ -210,16 +219,27 @@ export function PinnedBar({ conversationId, onJump, onSeeAll }: { conversationId
           </ContextMenuTrigger>
           <ContextMenuContent className="w-56">
             <ContextMenuGroup>
-              {link && <ContextMenuItem onClick={() => copyText(link.url)}>{t.copyLink}</ContextMenuItem>}
-              <ContextMenuItem onClick={() => onJump(p.message.id)}>{t.show}</ContextMenuItem>
-              <ContextMenuItem onClick={() => toggle({ messageId: p.message.id, attachmentId: p.attachment?.id })}>{t.unpin}</ContextMenuItem>
+              {link && (
+                <ContextMenuItem onClick={() => copyText(link.url)}>
+                  <CopyIcon />
+                  {t.copyLink}
+                </ContextMenuItem>
+              )}
+              <ContextMenuItem onClick={() => onJump(p.message.id)}>
+                <EyeIcon />
+                {t.show}
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => toggle({ messageId: p.message.id, attachmentId: p.attachment?.id })}>
+                <PinOffIcon />
+                {t.unpin}
+              </ContextMenuItem>
             </ContextMenuGroup>
           </ContextMenuContent>
         </ContextMenu>
         );
       })}
       {pins.length > BAR_MAX && (
-        <Button variant="ghost" size="xs" onClick={onSeeAll} className="shrink-0 rounded-md font-normal text-muted-foreground hover:text-foreground">
+        <Button variant="ghost" size="xs" onClick={onSeeAll} className="shrink-0">
           {t.seeAll(pins.length)}
         </Button>
       )}
@@ -251,7 +271,7 @@ function search(list: Message[], query: string): Hit[] {
     const m = list[i]!;
     if (m.kind === "event") continue;
     const text = plain(m.text);
-    const files = (m.data?.attachments ?? []).map((a) => a.name).join(" · ");
+    const files = (m.data?.attachments ?? []).map((a) => a.name).join(", ");
     // Folding keeps one character per character for Latin text, so offsets still line up.
     let at = fold(text).indexOf(q);
     let shown = text;
@@ -280,14 +300,15 @@ function Excerpt({ hit }: { hit: Hit }) {
 
 function SearchPanel({ conversationId, onJump }: { conversationId: string; onJump: (id: string) => void }) {
   const t = useT(messages);
-  const { data: list = noMessages } = useQuery(messagesQuery(conversationId));
+  const thread = useQuery(messagesQuery(conversationId));
+  const list = thread.data ?? noMessages;
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query);
   const hits = useMemo(() => search(list, deferred).slice(0, 100), [list, deferred]);
   return (
     <>
       <div className="shrink-0 px-3 pb-2">
-        <InputGroup className="h-8 bg-background">
+        <InputGroup>
           <InputGroupAddon>
             <SearchIcon />
           </InputGroupAddon>
@@ -300,23 +321,27 @@ function SearchPanel({ conversationId, onJump }: { conversationId: string; onJum
             aria-label={t.searchPlaceholder}
           />
         </InputGroup>
-        {deferred.trim() && hits.length > 0 && <p className="mt-2 text-[13px] text-muted-foreground">{t.results(hits.length)}</p>}
+        {deferred.trim() && hits.length > 0 && <p className="mt-2 text-sm text-muted-foreground">{t.results(hits.length)}</p>}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         {!deferred.trim() ? (
-          <p className="px-1 text-sm text-subtle">{t.searchHint}</p>
+          <p className="px-1 text-sm text-muted-foreground">{t.searchHint}</p>
+        ) : thread.isPending ? (
+          <PanelLoading />
+        ) : thread.isError ? (
+          <PanelError error={thread.error} onRetry={() => void thread.refetch()} />
         ) : hits.length === 0 ? (
           <PanelEmpty icon={<SearchIcon />} title={t.noMatchTitle}>
             {t.noMatch}
           </PanelEmpty>
         ) : (
-          <div className="-mx-2 flex flex-col">
+          <ItemGroup>
             {hits.map((h) => (
               <MessageItem key={h.message.id} message={h.message} onClick={() => onJump(h.message.id)}>
                 <Excerpt hit={h} />
               </MessageItem>
             ))}
-          </div>
+          </ItemGroup>
         )}
       </div>
     </>
@@ -326,17 +351,17 @@ function SearchPanel({ conversationId, onJump }: { conversationId: string; onJum
 /** A message in a panel list: its author, date and a line of text. */
 function MessageItem({ message, onClick, actions, children }: { message: Message; onClick: () => void; actions?: ReactNode; children: ReactNode }) {
   return (
-    <Item size="sm" className="items-start px-2 py-2 hover:bg-muted/60">
-      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-start gap-2.5 text-left outline-none">
-        <ItemMedia className="pt-0.5">
+    <Item size="sm" role="listitem" className="flex-nowrap items-start hover:bg-muted">
+      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-start gap-2.5 text-left">
+        <ItemMedia>
           <AuthorAvatar author={message.author} />
         </ItemMedia>
-        <ItemContent className="min-w-0 gap-0.5">
-          <ItemTitle className="w-full justify-between gap-2 font-normal">
+        <ItemContent className="min-w-0">
+          <ItemTitle className="w-full justify-between">
             <span className="truncate">{message.author?.name ?? "?"}</span>
-            <span className="shrink-0 text-xs text-subtle">{dividerLabel(new Date(message.createdAt))}</span>
+            <span className="shrink-0 text-xs font-normal text-muted-foreground">{dividerLabel(new Date(message.createdAt))}</span>
           </ItemTitle>
-          <ItemDescription className="line-clamp-3 text-[13px]">{children}</ItemDescription>
+          <ItemDescription className="line-clamp-3">{children}</ItemDescription>
         </ItemContent>
       </button>
       {actions && <ItemActions>{actions}</ItemActions>}
@@ -347,16 +372,21 @@ function MessageItem({ message, onClick, actions, children }: { message: Message
 function AuthorAvatar({ author }: { author: Author }) {
   if (author?.kind === "agent") return <AgentAvatar agent={author} className="size-6" />;
   if (author?.kind === "user") return <PersonAvatar person={author} className="size-6" />;
-  return <span className="size-6" />;
+  return (
+    <Avatar size="sm">
+      <AvatarFallback />
+    </Avatar>
+  );
 }
 
 /* ---------- Files ---------- */
 
 type FileEntry = { file: Attachment; message: Message };
 
-function FilesPanel({ conversationId, onJump }: { conversationId: string; onJump: (id: string) => void }) {
+export function FilesPanel({ conversationId, onJump }: { conversationId: string; onJump: (id: string) => void }) {
   const t = useT(messages);
-  const { data: list = noMessages } = useQuery(messagesQuery(conversationId));
+  const thread = useQuery(messagesQuery(conversationId));
+  const list = thread.data ?? noMessages;
   const { isPinned, toggle } = usePins(conversationId);
   const entries = useMemo(
     () => list.flatMap((m) => (m.data?.attachments ?? []).map((file) => ({ file, message: m }))).reverse(),
@@ -366,11 +396,12 @@ function FilesPanel({ conversationId, onJump }: { conversationId: string; onJump
   const documents = entries.filter((e) => !isImage(e.file.mime));
   const section = (title: string, items: FileEntry[]) =>
     items.length > 0 && (
-      <section>
-        <h2 className="mb-1 mt-4 px-1 text-[13px] font-medium text-muted-foreground first:mt-0">
-          {title} · {t.files_(items.length)}
+      <section className="flex flex-col gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+          {title}
+          <Badge variant="secondary">{t.files_(items.length)}</Badge>
         </h2>
-        <div className="-mx-2 flex flex-col">
+        <ItemGroup>
           {items.map((e) => {
             const target = { messageId: e.message.id, attachmentId: e.file.id };
             return (
@@ -383,20 +414,24 @@ function FilesPanel({ conversationId, onJump }: { conversationId: string; onJump
               />
             );
           })}
-        </div>
+        </ItemGroup>
       </section>
     );
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-      {entries.length === 0 ? (
+      {thread.isPending ? (
+        <PanelLoading />
+      ) : thread.isError ? (
+        <PanelError error={thread.error} onRetry={() => void thread.refetch()} />
+      ) : entries.length === 0 ? (
         <PanelEmpty icon={<FileTextIcon />} title={t.noFilesTitle}>
           {t.noFiles}
         </PanelEmpty>
       ) : (
-        <>
+        <div className="flex flex-col gap-4">
           {section(t.images, images)}
           {section(t.documents, documents)}
-        </>
+        </div>
       )}
     </div>
   );
@@ -418,7 +453,7 @@ function FileItem({
   const t = useT(messages);
   const [viewing, setViewing] = useState<number | null>(null);
   return (
-    <Item size="sm" className="px-2 py-1.5 hover:bg-muted/60">
+    <Item size="sm" role="listitem" className="flex-nowrap hover:bg-muted">
       <a
         href={attachmentUrl(file.id, !isImage(file.mime))}
         target={isImage(file.mime) ? "_blank" : undefined}
@@ -429,31 +464,40 @@ function FileItem({
           e.preventDefault();
           setViewing(0);
         }}
-        className="flex min-w-0 flex-1 items-center gap-2.5 outline-none"
+        className="flex min-w-0 flex-1 items-center gap-2.5"
       >
         {isImage(file.mime) ? (
-          <ItemMedia variant="image" className="size-9 rounded-md">
+          <ItemMedia variant="image">
             <img src={attachmentUrl(file.id)} alt="" loading="lazy" />
           </ItemMedia>
         ) : (
-          <ItemMedia variant="icon" className="size-9 rounded-md">
-            <FileTextIcon className="text-muted-foreground" />
+          <ItemMedia variant="icon">
+            <FileTextIcon />
           </ItemMedia>
         )}
-        <ItemContent className="min-w-0 gap-0">
-          <ItemTitle className="w-full truncate font-normal">{file.name}</ItemTitle>
-          <ItemDescription className="truncate text-xs">
-            {description ?? `${formatSize(file.size)} · ${message.author?.name ?? "?"} · ${dividerLabel(new Date(message.createdAt))}`}
+        <ItemContent className="min-w-0">
+          <ItemTitle className="w-full">{file.name}</ItemTitle>
+          <ItemDescription className="line-clamp-1">
+            {description ?? `${formatSize(file.size)}, ${message.author?.name ?? "?"}, ${dividerLabel(new Date(message.createdAt))}`}
           </ItemDescription>
         </ItemContent>
       </a>
       {isImage(file.mime) && <ImageViewer images={[file]} index={viewing} onIndexChange={setViewing} />}
       <ItemActions>
         <ActionsMenu>
-          <DropdownMenuItem onClick={onJump}>{t.show}</DropdownMenuItem>
-          <DropdownMenuItem onClick={onTogglePin}>{pinned ? t.unpin : t.pin}</DropdownMenuItem>
+          <DropdownMenuItem onClick={onJump}>
+            <EyeIcon />
+            {t.show}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onTogglePin}>
+            {pinned ? <PinOffIcon /> : <PinIcon />}
+            {pinned ? t.unpin : t.pin}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem render={<a href={attachmentUrl(file.id, true)} download={file.name} />}>{t.download}</DropdownMenuItem>
+          <DropdownMenuItem render={<a href={attachmentUrl(file.id, true)} download={file.name} />}>
+            <DownloadIcon />
+            {t.download}
+          </DropdownMenuItem>
         </ActionsMenu>
       </ItemActions>
     </Item>
@@ -464,7 +508,7 @@ function ActionsMenu({ children }: { children: ReactNode }) {
   const t = useT(messages);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.actions} className="text-muted-foreground" />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.actions} />}>
         <MoreIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
@@ -478,7 +522,7 @@ function ActionsMenu({ children }: { children: ReactNode }) {
 
 function PinsPanel({ conversationId, onJump }: { conversationId: string; onJump: (id: string) => void }) {
   const t = useT(messages);
-  const { pins, toggle } = usePins(conversationId);
+  const { pins, query, toggle } = usePins(conversationId);
   const describe = (p: Pin) => {
     const text = plain(p.message.text);
     if (text) return text;
@@ -487,12 +531,16 @@ function PinsPanel({ conversationId, onJump }: { conversationId: string; onJump:
   };
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-      {pins.length === 0 ? (
+      {query.isPending ? (
+        <PanelLoading />
+      ) : query.isError ? (
+        <PanelError error={query.error} onRetry={() => void query.refetch()} />
+      ) : pins.length === 0 ? (
         <PanelEmpty icon={<PinIcon />} title={t.noPinsTitle}>
           {t.noPins}
         </PanelEmpty>
       ) : (
-        <div className="-mx-2 flex flex-col">
+        <ItemGroup>
           {[...pins].reverse().map((p) => {
             const target = { messageId: p.message.id, attachmentId: p.attachment?.id };
             return p.attachment ? (
@@ -511,8 +559,14 @@ function PinsPanel({ conversationId, onJump }: { conversationId: string; onJump:
                 onClick={() => onJump(p.message.id)}
                 actions={
                   <ActionsMenu>
-                    <DropdownMenuItem onClick={() => onJump(p.message.id)}>{t.show}</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => toggle(target)}>{t.unpin}</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onJump(p.message.id)}>
+                      <EyeIcon />
+                      {t.show}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toggle(target)}>
+                      <PinOffIcon />
+                      {t.unpin}
+                    </DropdownMenuItem>
                   </ActionsMenu>
                 }
               >
@@ -520,21 +574,60 @@ function PinsPanel({ conversationId, onJump }: { conversationId: string; onJump:
               </MessageItem>
             );
           })}
-        </div>
+        </ItemGroup>
       )}
     </div>
   );
 }
 
-/** Figma « État vide », Petit: its icon in a grey tile, a title, one sentence. */
+/** Empty state of a panel: its icon, a title, one sentence. */
 function PanelEmpty({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
-    <Empty className="mt-10 p-0">
-      <EmptyHeader className="gap-1">
+    <Empty className="mt-10">
+      <EmptyHeader>
         <EmptyMedia variant="icon">{icon}</EmptyMedia>
-        <EmptyTitle className="text-sm">{title}</EmptyTitle>
-        <EmptyDescription className="text-[13px] leading-[18px]">{children}</EmptyDescription>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{children}</EmptyDescription>
       </EmptyHeader>
+    </Empty>
+  );
+}
+
+/** A panel still loading: rows shaped like its items. */
+function PanelLoading() {
+  return (
+    <div className="flex flex-col gap-3 px-1 pt-2">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex items-start gap-2.5">
+          <Skeleton className="size-6 rounded-full" />
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Skeleton className="h-3.5 w-1/3" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A panel whose data couldn't load: said plainly, with a way to try again. */
+function PanelError({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const t = useT(messages);
+  const c = useT(common);
+  return (
+    <Empty className="mt-10">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <WarningIcon />
+        </EmptyMedia>
+        <EmptyTitle>{t.errorTitle}</EmptyTitle>
+        <EmptyDescription title={error.message}>{t.error}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button variant="secondary" onClick={onRetry}>
+          {c.retry}
+        </Button>
+      </EmptyContent>
     </Empty>
   );
 }

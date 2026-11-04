@@ -9,6 +9,8 @@ or deny the actions it asks about, and stop it.
     claude_code_wait(session_id)                     wait for it (short tasks only)
     claude_code_send(session_id, message)            another instruction, return right away
     claude_code_stop(session_id)
+    github_pull_request(session_id | url)            a pull request: state, checks, review, mergeability
+    github_merge(session_id | url, reason, method)   ask the user to merge it, wait for their answer
 
 The agent does not hold its reply open while a session works: the API wakes it
 (a turn of its own, with the session's report) when the session finishes,
@@ -37,6 +39,8 @@ TOOLSET = "agora_code"
 POLL_SECONDS = 3
 DEFAULT_WAIT_MINUTES = 10
 MAX_WAIT_MINUTES = 30
+MERGE_POLL_SECONDS = 2
+MERGE_WAIT_SECONDS = 10 * 60
 
 
 def _root_home() -> Path:
@@ -180,6 +184,58 @@ def claude_code_stop(args: dict, session_id: str = "", **_: Any) -> str:
         return _error(str(exc))
 
 
+def _target(args: dict) -> Optional[dict]:
+    body = {}
+    for key in ("session_id", "url"):
+        if args.get(key):
+            body[key] = str(args[key]).strip()
+    return body or None
+
+
+def github_pull_request(args: dict, session_id: str = "", **_: Any) -> str:
+    target = _target(args)
+    if not target:
+        return _error("session_id or url is required")
+    try:
+        return json.dumps(_call("POST", "/github/pull", {"hermes_session": session_id, **target}), ensure_ascii=False)
+    except Exception as exc:
+        return _error(str(exc))
+
+
+def github_merge(args: dict, session_id: str = "", **_: Any) -> str:
+    target = _target(args)
+    reason = str(args.get("reason") or "").strip()
+    if not target or not reason:
+        return _error("reason, and session_id or url, are required")
+    body = {"hermes_session": session_id, "reason": reason, **target}
+    if args.get("method"):
+        body["method"] = str(args["method"])
+    try:
+        created = _call("POST", "/github/merge-requests", body)
+        request_id = created["request_id"]
+        deadline = time.monotonic() + MERGE_WAIT_SECONDS
+        status = created
+        while status.get("status") == "pending":
+            if time.monotonic() >= deadline or _interrupted():
+                return json.dumps({"success": False, "status": "pending", "request_id": request_id,
+                                   "note": "The user has not answered yet. Do not merge another way; tell them the card is waiting in the conversation."},
+                                  ensure_ascii=False)
+            time.sleep(MERGE_POLL_SECONDS)
+            status = _call("GET", f"/github/merge-requests/{urllib.parse.quote(request_id)}", query={"hermes_session": session_id})
+        state = status.get("status")
+        if state == "approved":
+            return json.dumps({"success": True, "status": "merged", "pull_request": status.get("pull_request")}, ensure_ascii=False)
+        notes = {
+            "denied": "The user refused the merge. Do not merge it another way; ask them what to change.",
+            "expired": "The user did not answer in time: the request expired. Ask again only if they want it.",
+            "failed": "The user approved, but GitHub refused the merge (`error`). Tell them why; fix the cause (conflicts, CI) before asking again.",
+        }
+        return json.dumps({"success": False, "status": state, **({"error": status["error"]} if status.get("error") else {}),
+                           "note": notes.get(state, "")}, ensure_ascii=False)
+    except Exception as exc:
+        return _error(str(exc))
+
+
 _WAIT = {
     "type": "number",
     "description": f"How long to wait for Claude Code before this call returns (default {DEFAULT_WAIT_MINUTES}, max {MAX_WAIT_MINUTES}). It keeps working after.",
@@ -282,8 +338,49 @@ STOP = {
 }
 
 
+_TARGET = {
+    "session_id": {"type": "string", "description": "A Claude Code session of this conversation: its pull request."},
+    "url": {"type": "string", "description": "A pull request link: https://github.com/owner/repo/pull/123."},
+}
+
+PULL = {
+    "name": "github_pull_request",
+    "description": (
+        "Read a GitHub pull request: state (open, draft, merged, closed), base and head, size (additions, deletions, "
+        "changedFiles), CI checks of its head commit (`checks`: state success/failure/pending/none, counts, each check), "
+        "reviews (`review`: approved, changes_requested, review_required, none), whether GitHub can merge it "
+        "(`mergeable`, `mergeableState`) and the merge methods the repository allows. Give a Claude Code session's id "
+        "(its pull request) or a pull request link."
+    ),
+    "parameters": {"type": "object", "properties": dict(_TARGET), "additionalProperties": False},
+}
+
+MERGE = {
+    "name": "github_merge",
+    "description": (
+        "Ask the user to merge a GitHub pull request: they get a card in the conversation and approve or refuse it; on "
+        "approval Agora merges it. Never merge any other way (gh, git, the GitHub connector). Check it first with "
+        "github_pull_request (CI, review, conflicts) and say in `reason` why it is ready, or what is still failing. "
+        "Only the person who started this reply can approve, and only an admin or someone who uses code sessions. "
+        "This call waits for their answer (up to 10 minutes): merged, refused, expired or failed (GitHub's reason)."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            **_TARGET,
+            "method": {"type": "string", "enum": ["squash", "merge", "rebase"], "description": "Merge method (default: squash, or the first the repository allows)."},
+            "reason": {"type": "string", "description": "One or two sentences for the user: why this pull request can be merged now."},
+        },
+        "required": ["reason"],
+        "additionalProperties": False,
+    },
+}
+
+
 def register(ctx) -> None:
     ctx.register_tool(name="claude_code_start", toolset=TOOLSET, schema=START, handler=claude_code_start, emoji="🧑‍💻")
     ctx.register_tool(name="claude_code_wait", toolset=TOOLSET, schema=WAIT, handler=claude_code_wait, emoji="⏳")
     ctx.register_tool(name="claude_code_send", toolset=TOOLSET, schema=SEND, handler=claude_code_send, emoji="💬")
     ctx.register_tool(name="claude_code_stop", toolset=TOOLSET, schema=STOP, handler=claude_code_stop, emoji="⏹")
+    ctx.register_tool(name="github_pull_request", toolset=TOOLSET, schema=PULL, handler=github_pull_request, emoji="🔀")
+    ctx.register_tool(name="github_merge", toolset=TOOLSET, schema=MERGE, handler=github_merge, emoji="✅")

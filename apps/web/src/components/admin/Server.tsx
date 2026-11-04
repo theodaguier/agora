@@ -1,13 +1,13 @@
 import { byteUnit, CHART_COLORS, durationParts, type ServerHistoryRange, type ServerReport } from "@agora/core";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { ErrorText, Loading, SectionHeader } from "@/components/admin/ui";
-import { Button } from "@/components/ui/button";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Label, PolarAngleAxis, PolarRadiusAxis, RadialBar, RadialBarChart, XAxis, YAxis } from "recharts";
+import { LoadFailed, Loading, SectionHeader } from "@/components/admin/ui";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { Progress } from "@/components/ui/progress";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
+import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { defineMessages, intlLocale, useLocale, useT } from "@/i18n";
 import { dateFormat, numberFormat } from "@/lib/intl";
@@ -16,11 +16,10 @@ import { api } from "@/lib/api";
 const messages = defineMessages({
   en: {
     title: "Server",
-    intro: "The machine the instance runs on, and what it holds. Refreshed every 15 seconds.",
-    loadError: "Server metrics could not be loaded.",
+    intro: "The machine the instance runs on, and what it holds.",
     refresh: "Refresh",
     refreshing: "Refreshing…",
-    updatedAt: (time: string) => `Updated at ${time}`,
+    updatedAt: (time: string) => `Updated at ${time}, every 15 seconds.`,
     cpu: "Processor",
     cores: (n: number) => (n === 1 ? "1 core" : `${n} cores`),
     load: (l: string) => `Load ${l}`,
@@ -40,12 +39,12 @@ const messages = defineMessages({
     series: { cpu: "Processor", mem: "Memory" },
     live: "Right now",
     online: "Members online",
-    working: "Bots working",
-    queued: "Replies queued",
+    working: "Active bots",
+    queued: "Queued replies",
     activity: "Activity",
     activityIntro: "Messages per day, over the last 30 days.",
     kinds: { user: "Members", bot: "Bots" },
-    activeUsers: "Active members",
+    activeUsers: "Members active this week",
     activeIntro: "Members who wrote at least one message.",
     periods: { day: "24 hours", week: "7 days", month: "30 days" },
     content: "Content",
@@ -55,6 +54,8 @@ const messages = defineMessages({
     table: "Table",
     size: "Size",
     rows: "Rows",
+    rowCount: (n: string) => `${n} rows`,
+    noRows: "Empty",
     machine: "Machine",
     host: "Host",
     system: "System",
@@ -65,11 +66,10 @@ const messages = defineMessages({
   },
   fr: {
     title: "Serveur",
-    intro: "La machine sur laquelle tourne l'instance, et ce qu'elle contient. Actualisé toutes les 15 secondes.",
-    loadError: "Impossible de charger les métriques du serveur.",
+    intro: "La machine sur laquelle tourne l'instance, et ce qu'elle contient.",
     refresh: "Actualiser",
     refreshing: "Actualisation…",
-    updatedAt: (time: string) => `Actualisé à ${time}`,
+    updatedAt: (time: string) => `Actualisé à ${time}, toutes les 15 secondes.`,
     cpu: "Processeur",
     cores: (n: number) => (n === 1 ? "1 cœur" : `${n} cœurs`),
     load: (l: string) => `Charge ${l}`,
@@ -89,12 +89,12 @@ const messages = defineMessages({
     series: { cpu: "Processeur", mem: "Mémoire" },
     live: "En ce moment",
     online: "Membres en ligne",
-    working: "Bots au travail",
-    queued: "Réponses en attente",
+    working: "Bots actifs",
+    queued: "En attente",
     activity: "Activité",
     activityIntro: "Messages par jour, sur les 30 derniers jours.",
     kinds: { user: "Membres", bot: "Bots" },
-    activeUsers: "Membres actifs",
+    activeUsers: "Membres actifs cette semaine",
     activeIntro: "Membres ayant écrit au moins un message.",
     periods: { day: "24 heures", week: "7 jours", month: "30 jours" },
     content: "Contenu",
@@ -104,6 +104,8 @@ const messages = defineMessages({
     table: "Table",
     size: "Taille",
     rows: "Lignes",
+    rowCount: (n: string) => `${n} lignes`,
+    noRows: "Vide",
     machine: "Machine",
     host: "Hôte",
     system: "Système",
@@ -156,7 +158,7 @@ export function Server() {
   const t = useT(messages);
   const [range, setRange] = useState<ServerHistoryRange>("1h");
   const f = useFormat();
-  const { data, isPending, isError, isFetching, refetch } = useQuery({
+  const { data, isPending, error, isFetching, refetch } = useQuery({
     queryKey: ["admin", "server", range],
     queryFn: () => api<ServerReport>(`/admin/server?range=${range}`),
     placeholderData: keepPreviousData,
@@ -165,16 +167,8 @@ export function Server() {
 
   return (
     <>
-      <SectionHeader title={t.title} text={t.intro} />
-      <div className="-mt-2 mb-5 flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground tabular-nums" aria-live="polite">
-          {isFetching ? t.refreshing : data ? t.updatedAt(f.clock(data.at)) : null}
-        </p>
-        <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
-          {t.refresh}
-        </Button>
-      </div>
-      {isPending ? <Loading /> : isError ? <ErrorText error={new Error(t.loadError)} /> : <Report report={data} range={range} onRange={setRange} />}
+      <SectionHeader title={t.title} />
+      {data ? <Report report={data} range={range} onRange={setRange} /> : isPending ? <Loading /> : <LoadFailed error={error} onRetry={() => void refetch()} />}
     </>
   );
 }
@@ -186,121 +180,134 @@ function Report({ report, range, onRange }: { report: ServerReport; range: Serve
   const disk = report.disks[0];
 
   return (
-    <div className="grid gap-5">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Gauge
-          label={t.cpu}
-          value={now.cpu === null ? "—" : f.percent(now.cpu)}
-          share={now.cpu}
-          note={`${t.cores(host.cpuCount)} · ${t.load(host.loadavg.map(f.decimal).join(" "))}`}
-        />
-        <Gauge
-          label={t.memory}
-          value={f.percent(now.memory.used / now.memory.total)}
-          share={now.memory.used / now.memory.total}
-          note={now.memory.swap ? `${t.of(f.bytes(now.memory.used), f.bytes(now.memory.total))} · ${t.swap(f.bytes(now.memory.swap.used), f.bytes(now.memory.swap.total))}` : t.of(f.bytes(now.memory.used), f.bytes(now.memory.total))}
-        />
-        {disk && (
-          <Gauge
-            label={t.disk}
-            value={f.percent((disk.total - disk.free) / disk.total)}
-            share={(disk.total - disk.free) / disk.total}
-            note={`${t.of(f.bytes(disk.total - disk.free), f.bytes(disk.total))} · ${t.free(f.bytes(disk.free))}`}
-          />
-        )}
-        <Gauge label={t.uptime} value={f.duration(host.uptime)} note={t.appUptime(f.duration(process.uptime))} />
-      </div>
+    <>
+      {/* What the machine and the team are doing right now, in one card: capacities, then live activity. */}
+      <Card>
+        <CardContent className="flex flex-col gap-6">
+          {/* Capacities as rings, how full each one is at a glance. */}
+          <div className="grid gap-6 sm:grid-cols-3">
+            <Ring label={t.cpu} share={now.cpu} value={now.cpu === null ? "—" : f.percent(now.cpu)} color={CHART_COLORS[0]!} />
+            <Ring
+              label={t.memory}
+              share={now.memory.used / now.memory.total}
+              value={f.percent(now.memory.used / now.memory.total)}
+              note={t.of(f.bytes(now.memory.used), f.bytes(now.memory.total))}
+              color={CHART_COLORS[1]!}
+            />
+            {disk && (
+              <Ring
+                label={t.disk}
+                share={(disk.total - disk.free) / disk.total}
+                value={f.percent((disk.total - disk.free) / disk.total)}
+                note={t.free(f.bytes(disk.free))}
+                color={CHART_COLORS[2]!}
+              />
+            )}
+          </div>
+          <Separator />
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label={t.uptime} value={f.duration(host.uptime)} />
+            <Stat label={t.online} value={f.whole(now.online)} />
+            <Stat label={t.working} value={f.whole(now.working)} />
+            <Stat label={t.queued} value={f.whole(activity.queuedTurns)} />
+          </div>
+        </CardContent>
+      </Card>
 
       <LoadChart report={report} range={range} onRange={onRange} />
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Gauge label={t.online} value={f.whole(now.online)} />
-        <Gauge label={t.working} value={f.whole(now.working)} />
-        <Gauge label={t.queued} value={f.whole(activity.queuedTurns)} />
-      </div>
-
       <ActivityChart report={report} />
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card className="rounded-[14px] bg-background">
-          <CardHeader>
-            <CardTitle>{t.activeUsers}</CardTitle>
-            <CardDescription>{t.activeIntro}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Facts
-              rows={(["day", "week", "month"] as const).map((p) => [t.periods[p], `${f.whole(activity.activeUsers[p])} / ${f.whole(activity.totals.users)}`])}
-            />
-          </CardContent>
-        </Card>
-        <Card className="rounded-[14px] bg-background">
-          <CardHeader>
-            <CardTitle>{t.content}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Facts
-              rows={[
-                [t.totals.users, f.whole(activity.totals.users)],
-                [t.totals.agents, f.whole(activity.totals.agents)],
-                [t.totals.conversations, f.whole(activity.totals.conversations)],
-                [t.totals.messages, f.whole(activity.totals.messages)],
-                [t.totals.tasks, f.whole(activity.totals.tasks)],
-                [t.totals.files, `${f.whole(activity.totals.files)} · ${f.bytes(activity.totals.filesBytes)}`],
-              ]}
-            />
-          </CardContent>
-        </Card>
-      </div>
+      <ListCard>
+        <ListCardHeader>
+          <CardTitle>{t.content}</CardTitle>
+        </ListCardHeader>
+        <Facts
+          rows={[
+            [t.activeUsers, `${f.whole(activity.activeUsers.week)} / ${f.whole(activity.totals.users)}`],
+            [t.totals.agents, f.whole(activity.totals.agents)],
+            [t.totals.conversations, f.whole(activity.totals.conversations)],
+            [t.totals.messages, f.whole(activity.totals.messages)],
+            [t.totals.tasks, f.whole(activity.totals.tasks)],
+            [t.totals.files, `${f.whole(activity.totals.files)}, ${f.bytes(activity.totals.filesBytes)}`],
+          ]}
+        />
+      </ListCard>
 
-      <Database report={report} />
-
-      <Card className="rounded-[14px] bg-background">
-        <CardHeader>
+      <ListCard>
+        <ListCardHeader>
           <CardTitle>{t.machine}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Facts
-            rows={[
-              [t.host, host.hostname],
-              [t.system, `${host.platform} ${host.release} (${host.arch})`],
-              [t.cpu, `${host.cpuModel ?? "—"} · ${t.cores(host.cpuCount)}`],
-              [t.runtime, process.runtime],
-              [t.version, [`Agora ${process.app}`, `Hermes ${process.hermes}`, process.commit?.slice(0, 7)].filter(Boolean).join(" · ")],
-              [t.appMemory, f.bytes(process.rss)],
-            ]}
-          />
-        </CardContent>
-      </Card>
+        </ListCardHeader>
+        <Facts
+          rows={[
+            [t.host, host.hostname],
+            [t.system, `${host.platform} ${host.release} (${host.arch})`],
+            [t.cpu, `${host.cpuModel ?? "—"}, ${t.cores(host.cpuCount)}`],
+            [t.database, [report.database.version && `PostgreSQL ${report.database.version}`, f.bytes(report.database.bytes)].filter(Boolean).join(", ")],
+            [t.version, [`Agora ${process.app}`, `Hermes ${process.hermes}`, process.commit?.slice(0, 7)].filter(Boolean).join(", ")],
+            [t.appMemory, f.bytes(process.rss)],
+          ]}
+        />
+      </ListCard>
+    </>
+  );
+}
+
+/** A figure. */
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="text-xl font-semibold whitespace-nowrap tabular-nums">{value}</p>
     </div>
   );
 }
 
-/** A figure, and how full it is when it measures a capacity. */
-function Gauge({ label, value, note, share }: { label: string; value: string; note?: string; share?: number | null }) {
+/** A capacity as a ring (shadcn's radial chart): filled to its share, the figure in the middle. */
+function Ring({ label, share, value, note, color }: { label: string; share: number | null; value: string; note?: string; color: (typeof CHART_COLORS)[number] }) {
+  const config = { v: { label, theme: color } } satisfies ChartConfig;
   return (
-    <Card className="rounded-[14px] bg-background">
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-[22px] leading-7 font-semibold tabular-nums">{value}</CardTitle>
-        {share != null && <Progress value={Math.round(share * 100)} aria-label={label} className="mt-1" />}
-        {note && <CardDescription className="text-xs">{note}</CardDescription>}
-      </CardHeader>
-    </Card>
+    <div className="flex flex-col items-center gap-1 text-center">
+      <ChartContainer config={config} className="aspect-square h-32">
+        <RadialBarChart data={[{ v: Math.round((share ?? 0) * 100) }]} startAngle={90} endAngle={-270} innerRadius="78%" outerRadius="100%">
+          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} axisLine={false} />
+          <RadialBar dataKey="v" background={{ fill: "var(--muted)" }} cornerRadius={8} fill="var(--color-v)" isAnimationActive={false} />
+          <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
+            <Label
+              content={({ viewBox }) =>
+                viewBox && "cx" in viewBox ? (
+                  <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle" className="fill-foreground text-xl font-semibold tabular-nums">
+                    {value}
+                  </text>
+                ) : null
+              }
+            />
+          </PolarRadiusAxis>
+        </RadialBarChart>
+      </ChartContainer>
+      <p className="text-sm font-medium">{label}</p>
+      {note && <p className="text-xs text-muted-foreground">{note}</p>}
+    </div>
   );
 }
 
+/** A label and its value per row, as the rows of a ListCard. */
 function Facts({ rows }: { rows: [string, string][] }) {
   return (
-    <dl className="grid gap-2 text-sm">
+    <ListCardRows>
       {rows.map(([k, v]) => (
-        <div key={k} className="flex items-baseline justify-between gap-4">
-          <dt className="text-muted-foreground">{k}</dt>
-          <dd className="min-w-0 truncate text-right tabular-nums" title={v}>
-            {v}
-          </dd>
-        </div>
+        <Item size="xs" key={k} role="listitem">
+          <ItemContent>
+            <ItemTitle>{k}</ItemTitle>
+          </ItemContent>
+          <ItemActions className="min-w-0">
+            <span className="truncate text-muted-foreground tabular-nums" title={v}>
+              {v}
+            </span>
+          </ItemActions>
+        </Item>
       ))}
-    </dl>
+    </ListCardRows>
   );
 }
 
@@ -313,10 +320,9 @@ function LoadChart({ report, range, onRange }: { report: ServerReport; range: Se
   const config = { cpu: { ...colors.cpu, label: t.series.cpu }, mem: { ...colors.mem, label: t.series.mem } } satisfies ChartConfig;
 
   return (
-    <Card className="rounded-[14px] bg-background">
+    <Card>
       <CardHeader>
         <CardTitle>{t.history}</CardTitle>
-        <CardDescription>{report.history.since ? t.since(f.dateTime(report.history.since)) : t.historyIntro}</CardDescription>
         <CardAction>
           <ToggleGroup aria-label={t.period} value={[range]} onValueChange={(v) => v[0] && onRange(v[0] as ServerHistoryRange)} variant="outline" size="sm">
             {(Object.keys(t.ranges) as ServerHistoryRange[]).map((r) => (
@@ -329,7 +335,7 @@ function LoadChart({ report, range, onRange }: { report: ServerReport; range: Se
       </CardHeader>
       <CardContent>
         {data.length < 2 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">{t.noHistory}</p>
+          <p className="text-sm text-muted-foreground">{t.noHistory}</p>
         ) : (
           <ChartContainer config={config} className="aspect-auto h-56 w-full">
             <AreaChart data={data} margin={{ left: 4, right: 4, top: 8 }}>
@@ -369,10 +375,9 @@ function ActivityChart({ report }: { report: ServerReport }) {
   const kinds = ["user", "bot"] as const;
 
   return (
-    <Card className="rounded-[14px] bg-background">
+    <Card>
       <CardHeader>
         <CardTitle>{t.activity}</CardTitle>
-        <CardDescription>{t.activityIntro}</CardDescription>
       </CardHeader>
       <CardContent>
         <ChartContainer config={config} className="aspect-auto h-56 w-full">
@@ -396,57 +401,6 @@ function ActivityChart({ report }: { report: ServerReport }) {
             <ChartLegend content={<ChartLegendContent />} />
           </BarChart>
         </ChartContainer>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Database({ report }: { report: ServerReport }) {
-  const t = useT(messages);
-  const f = useFormat();
-  const { database } = report;
-
-  return (
-    <Card className="rounded-[14px] bg-background">
-      <CardHeader>
-        <CardTitle>{t.database}</CardTitle>
-        <CardDescription>
-          {[database.version && `PostgreSQL ${database.version}`, f.bytes(database.bytes), t.connections(database.connections.active, database.connections.total)]
-            .filter(Boolean)
-            .join(" · ")}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.table}</TableHead>
-                <TableHead className="text-right">{t.rows}</TableHead>
-                <TableHead className="w-40">{t.size}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {database.tables.map((table) => {
-                const share = database.bytes ? table.bytes / database.bytes : 0;
-                return (
-                  <TableRow key={table.name}>
-                    <TableCell className="font-mono text-xs">{table.name}</TableCell>
-                    <TableCell className="text-right tabular-nums">{table.rows > 0 ? f.whole(table.rows) : "—"}</TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2">
-                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                          <span className="block h-full rounded-full bg-foreground/80" style={{ width: `${Math.max(share * 100, share > 0 ? 2 : 0)}%` }} />
-                        </span>
-                        <span className="w-16 text-right text-xs tabular-nums text-muted-foreground">{f.bytes(table.bytes)}</span>
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
       </CardContent>
     </Card>
   );

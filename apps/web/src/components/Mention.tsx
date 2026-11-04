@@ -23,7 +23,7 @@ export function Mention({ text, target }: { text: string; color?: string; target
       <HoverCardTrigger delay={300} render={<span className={`${mentionClass} cursor-default whitespace-nowrap`} />}>
         {text}
       </HoverCardTrigger>
-      <HoverCardContent align="start" className="w-72 p-3">
+      <HoverCardContent align="start" className="w-72">
         {target.kind === "agent" ? <AgentCard agent={target.agent} /> : <PersonCard person={target.person} />}
       </HoverCardContent>
     </HoverCard>
@@ -47,7 +47,7 @@ function AgentCard({ agent }: { agent: Extract<MentionTarget, { kind: "agent" }>
         <AgentAvatar agent={agent} className="size-10" />
         <div className="min-w-0">
           <p className="truncate font-medium">{agent.name}</p>
-          <p className="text-[13px] text-muted-foreground">{t.bot}</p>
+          <p className="text-xs text-muted-foreground">{t.bot}</p>
         </div>
       </div>
       <div className="flex gap-2">
@@ -73,10 +73,11 @@ function PersonCard({ person }: { person: Extract<MentionTarget, { kind: "person
         <PersonAvatar person={person} className="size-10" />
         <div className="min-w-0">
           <p className="truncate font-medium">{person.name}</p>
-          <p className="truncate text-[13px] text-muted-foreground">{[title, `@${person.handle}`].filter(Boolean).join(" · ")}</p>
+          {title && <p className="truncate text-xs text-muted-foreground">{title}</p>}
+          <p className="truncate text-xs text-muted-foreground">@{person.handle}</p>
         </div>
       </div>
-      {profile?.bio && <p className="line-clamp-3 text-[13px] text-muted-foreground">{profile.bio}</p>}
+      {profile?.bio && <p className="line-clamp-3 text-xs text-muted-foreground">{profile.bio}</p>}
       <Button variant="secondary" size="sm" onClick={() => openProfile(person.id)}>
         {t.viewProfile}
       </Button>

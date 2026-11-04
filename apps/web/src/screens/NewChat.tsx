@@ -1,16 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { Command as CommandPrimitive } from "cmdk";
-import { ChevronLeftIcon, PlusIcon, UsersIcon, CloseIcon } from "@/components/icons";
+import { ChevronLeftIcon, PlusIcon, UsersIcon, CloseIcon, SearchIcon, WarningIcon } from "@/components/icons";
 import { useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { PersonAvatar, StatusAvatar } from "@/components/ConversationAvatar";
 import { type Participant } from "@/lib/participants";
 import { closeOrGoHome } from "@/lib/workspace";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupText } from "@/components/ui/input-group";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -40,6 +44,10 @@ const messages = defineMessages({
     groupName: "Group name",
     pickTwo: "Pick at least two participants",
     noMatch: "No one matches.",
+    noMatchHint: "Check the spelling, or search for another name.",
+    noOneLeft: "No one else to add.",
+    errorTitle: "List unavailable",
+    error: "Bots and colleagues can't be reached right now.",
   },
   fr: {
     colleague: "Collègue",
@@ -56,6 +64,10 @@ const messages = defineMessages({
     groupName: "Nom du groupe",
     pickTwo: "Choisis au moins deux participants",
     noMatch: "Personne ne correspond.",
+    noMatchHint: "Vérifie l'orthographe, ou cherche un autre nom.",
+    noOneLeft: "Personne d'autre à ajouter.",
+    errorTitle: "Liste indisponible",
+    error: "Les Bots et collègues sont injoignables pour le moment.",
   },
 });
 
@@ -70,8 +82,12 @@ export function NewChat() {
   const t = useT(messages);
   const c = useT(common);
   useOrgTitle(t.newConversation);
-  const { data: agents = [] } = useQuery(agentsQuery);
-  const { data: people = [] } = useQuery(usersQuery);
+  const agentsList = useQuery(agentsQuery);
+  const peopleList = useQuery(usersQuery);
+  const agents = agentsList.data ?? [];
+  const people = peopleList.data ?? [];
+  const listPending = agentsList.isPending || peopleList.isPending;
+  const listError = agentsList.error ?? peopleList.error;
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState("");
   const [groupMode, setGroupMode] = useState(false);
@@ -123,7 +139,7 @@ export function NewChat() {
     key: participantKey(p),
     label: participantName(p),
     hint: p.kind === "user" ? t.colleague : undefined,
-    icon: <StatusAvatar p={p} className="size-9" />,
+    icon: <StatusAvatar p={p} className="size-8" />,
     run: () => {
       if (groupMode) {
         setPicked((xs) => [...xs, p]);
@@ -145,9 +161,9 @@ export function NewChat() {
                 label: createBot.isPending ? t.creatingBot : t.createBot,
                 run: () => !createBot.isPending && createBot.mutate(),
                 icon: (
-                  <span className="grid size-9 place-items-center rounded-full bg-secondary text-icon">
-                    {createBot.isPending ? <Spinner /> : <PlusIcon className="size-4" />}
-                  </span>
+                  <Avatar>
+                    <AvatarFallback>{createBot.isPending ? <Spinner /> : <PlusIcon />}</AvatarFallback>
+                  </Avatar>
                 ),
               },
             ]
@@ -161,9 +177,11 @@ export function NewChat() {
             setSelected("");
           },
           icon: (
-            <span className="grid size-9 place-items-center rounded-full bg-secondary text-icon">
-              <UsersIcon className="size-4" />
-            </span>
+            <Avatar>
+              <AvatarFallback>
+                <UsersIcon />
+              </AvatarFallback>
+            </Avatar>
           ),
         },
         ...candidates.map(pickRow),
@@ -178,40 +196,19 @@ export function NewChat() {
       label={t.newConversation}
       value={current}
       onValueChange={setSelected}
-      className="h-full min-w-0 flex-1 rounded-none! bg-background p-0 text-foreground"
+      className="h-full min-w-0 flex-1"
     >
-      <div className="mx-auto w-full max-w-[712px] px-4 pt-4 md:pt-10">
-      {/* Figma « Composer »: the recipients field is a pill (46 px), the matches below it without a frame. */}
-      <header className="flex min-h-[46px] shrink-0 items-center gap-1.5 rounded-[23px] border border-border bg-background py-[5px] pr-2 pl-4 shadow-card">
-        <Button
-          variant="ghost"
-          size="icon"
-          nativeButton={false}
-          render={<Link to="/" aria-label={c.back} />}
-          className="-ml-1 hover:bg-transparent md:hidden"
-        >
-          <ChevronLeftIcon className="size-5" />
-        </Button>
-        <label className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-[15px]">
-          <span className="text-[15px] text-muted-foreground">{t.to}</span>
-          {picked.map((p) => (
-            <Badge key={participantKey(p)} variant="secondary" className="h-7 gap-1.5 rounded-full bg-secondary pr-1 pl-1 text-[13px] font-normal text-foreground">
-              <span className="flex">
-                {p.kind === "agent" ? <AgentAvatar agent={p.agent} className="size-5" /> : <PersonAvatar person={p.person} className="size-5" />}
-              </span>
-              {participantName(p)}
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t.removeName(participantName(p))}
-                onClick={() => setPicked((xs) => xs.filter((x) => participantKey(x) !== participantKey(p)))}
-                className="hover:bg-accent"
-              >
-                <CloseIcon />
-              </Button>
-            </Badge>
-          ))}
+      <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-3 px-4 pt-4 md:pt-10">
+      {/* The recipients field, the people picked under it, then the matches. */}
+      <InputGroup>
+        <InputGroupAddon>
+          <InputGroupButton size="icon-xs" nativeButton={false} render={<Link to="/" aria-label={c.back} />} className="md:hidden">
+            <ChevronLeftIcon />
+          </InputGroupButton>
+          <InputGroupText>{t.to}</InputGroupText>
+        </InputGroupAddon>
           <CommandPrimitive.Input
+            data-slot="input-group-control"
             autoFocus
             key={groupMode ? "group" : "pick"}
             value={q}
@@ -231,13 +228,28 @@ export function NewChat() {
               }
             }}
             placeholder={groupMode ? (picked.length ? t.addSomeone : t.groupMembers) : t.searchOrCreate}
-            className="min-w-[8rem] flex-1 bg-transparent text-[15px] leading-[21px] outline-none placeholder:text-subtle"
+            className="w-full min-w-0 flex-1 text-sm outline-hidden placeholder:text-muted-foreground"
           />
-        </label>
-      </header>
+      </InputGroup>
+
+      {picked.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {picked.map((p) => (
+            <Badge
+              key={participantKey(p)}
+              variant="secondary"
+              render={<button type="button" aria-label={t.removeName(participantName(p))} onClick={() => setPicked((xs) => xs.filter((x) => participantKey(x) !== participantKey(p)))} />}
+            >
+              {p.kind === "agent" ? <AgentAvatar agent={p.agent} className="size-4" /> : <PersonAvatar person={p.person} className="size-4" />}
+              {participantName(p)}
+              <CloseIcon data-icon="inline-end" />
+            </Badge>
+          ))}
+        </div>
+      )}
 
       {groupMode && (
-        <div className="flex items-center gap-2 pt-3">
+        <div className="flex items-center gap-2">
           <Input
             value={title}
             maxLength={80}
@@ -249,40 +261,73 @@ export function NewChat() {
             }}
             placeholder={t.groupNamePlaceholder}
             aria-label={t.groupName}
-            className="h-9 rounded-full px-3.5"
           />
           <Button
             disabled={!canCreate}
             onClick={() => createGroup.mutate()}
             title={picked.length < 2 ? t.pickTwo : undefined}
-            className="disabled:opacity-40"
           >
             {createGroup.isPending ? c.creating : c.create}
           </Button>
         </div>
       )}
 
-      <div className="relative pt-3">
-        <CommandList className="max-h-[70vh] bg-background">
-          <CommandEmpty>{t.noMatch}</CommandEmpty>
+        <CommandList className="max-h-none min-h-0 flex-1">
           <CommandGroup>
             {rows.map((r) => (
               <CommandItem
                 key={r.key}
                 value={r.key}
                 onSelect={r.run}
-                className={cn("min-h-[54px] cursor-pointer gap-3 rounded-xl px-2 py-[9px]", r.key === "create" && createBot.isPending && "cursor-progress")}
+                className={cn(r.key === "create" && createBot.isPending && "cursor-progress")}
               >
                 {r.icon}
                 <span className="grid min-w-0 flex-1">
-                  <span className="truncate text-[15px] leading-[21px]">{r.label}</span>
-                  {r.hint && <span className="truncate text-sm leading-5 text-muted-foreground">{r.hint}</span>}
+                  <span className="truncate">{r.label}</span>
+                  {r.hint && <span className="truncate text-xs text-muted-foreground">{r.hint}</span>}
                 </span>
               </CommandItem>
             ))}
           </CommandGroup>
+          {listPending ? (
+            <div className="flex flex-col gap-2 p-1">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : !candidates.length && listError && !(agents.length + people.length) ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <WarningIcon />
+                </EmptyMedia>
+                <EmptyTitle>{t.errorTitle}</EmptyTitle>
+                <EmptyDescription title={listError.message}>{t.error}</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    void agentsList.refetch();
+                    void peopleList.refetch();
+                  }}
+                >
+                  {c.retry}
+                </Button>
+              </EmptyContent>
+            </Empty>
+          ) : !candidates.length && (query || groupMode) ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <SearchIcon />
+                </EmptyMedia>
+                <EmptyTitle>{query ? t.noMatch : t.noOneLeft}</EmptyTitle>
+                {query && <EmptyDescription>{t.noMatchHint}</EmptyDescription>}
+              </EmptyHeader>
+            </Empty>
+          ) : null}
         </CommandList>
-      </div>
       </div>
     </Command>
   );

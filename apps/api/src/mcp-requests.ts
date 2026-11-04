@@ -22,6 +22,7 @@ import {
   restartGateway,
   restoreMcpServer,
   setAgentMcp,
+  setMcpHeaders,
   setMcpOAuth,
   shareMcpTokens,
   snapshotMcpServer,
@@ -67,9 +68,7 @@ type Row = typeof mcpServer.$inferSelect;
 
 const envName = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
 
-/** Block emitted by the bot. */
-export const mcpRequestSchema = z
-  .object({
+const blockFields = {
     name: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/),
     title: z.string().trim().min(1).max(80).optional(),
     description: z.string().trim().max(500).default(""),
@@ -98,12 +97,32 @@ export const mcpRequestSchema = z
     auth: z.enum(["none", "header", "oauth"]).default("none"),
     docs: z.string().transform(withHttps).pipe(z.string().url()).optional(),
     type: z.enum(INTEGRATION_TYPES).optional(),
-  })
-  .refine((r) => !!r.url !== !!r.command, "url or command, not both")
-  .refine((r) => !r.command || r.auth === "none", "auth is only for remote servers")
-  .refine((r) => !r.url || (!r.env.length && !r.args.length), "env and args are only for commands");
+    headers: z.array(z.object({ name: z.string().regex(/^[A-Za-z0-9-]{1,60}$/) })).max(10).default([]),
+};
+
+const declaration = <T extends z.ZodRawShape>(shape: T) =>
+  z
+    .object(shape)
+    .refine((r: any) => !!r.url !== !!r.command, "url or command, not both")
+    .refine((r: any) => !r.command || r.auth === "none", "auth is only for remote servers")
+    .refine((r: any) => !r.url || (!r.env.length && !r.args.length), "env and args are only for commands")
+    .refine((r: any) => !r.command || !r.headers.length, "headers are only for remote servers");
+
+/** Block emitted by the bot: an https server or a plain command name. */
+export const mcpRequestSchema = declaration(blockFields);
+
+/**
+ * Connector declared by an admin in the marketplace: it may also point to a server on the local network
+ * (http://localhost:8080/mcp, a NAS) and run a command by its full path (/usr/local/bin/…).
+ */
+export const mcpCustomSchema = declaration({
+  ...blockFields,
+  url: z.string().transform(withHttps).pipe(z.string().url().regex(/^https?:\/\//)).optional(),
+  command: z.string().regex(/^[\w./@+-]{1,200}$/).optional(),
+});
 
 export type McpRequestBlock = z.infer<typeof mcpRequestSchema>;
+export type McpCustomBlock = z.infer<typeof mcpCustomSchema>;
 
 /** Instruction added to the bots' context. */
 export const MCP_REQUEST_PROMPT = [
@@ -343,7 +362,7 @@ export async function createRequest(block: McpRequestBlock, ctx: RequestCtx) {
  * Custom connector declared by an admin from the marketplace: approved right
  * away, then installed by the same steps as a bot's request (secrets or OAuth).
  */
-export async function createCustom(block: McpRequestBlock & { type: IntegrationType }, admin: { id: string; role?: string | null }) {
+export async function createCustom(block: McpCustomBlock & { type: IntegrationType }, admin: { id: string; role?: string | null }) {
   await releaseStale(block.name);
   if (await nameTaken(block.name)) throw new HermesError(tr(messages).nameTaken(block.name), 409);
   const [row] = await db
@@ -358,6 +377,7 @@ export async function createCustom(block: McpRequestBlock & { type: IntegrationT
       args: block.args,
       env: block.env,
       auth: block.auth,
+      headers: block.headers,
       docsUrl: block.docs ?? null,
       status: "approved",
       requestedBy: admin.id,
@@ -449,7 +469,7 @@ export type OAuthClient = { client_id: string; client_secret?: string; scope?: s
 /** Hermes .env variable holding a server's OAuth client secret (never in the database or config.yaml). */
 const clientSecretVar = (name: string) => `MCP_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_CLIENT_SECRET`;
 
-type InstallSecrets = { env?: Record<string, string>; bearer_token?: string; oauth_client?: OAuthClient; auth?: Row["auth"] };
+type InstallSecrets = { env?: Record<string, string>; headers?: Record<string, string>; bearer_token?: string; oauth_client?: OAuthClient; auth?: Row["auth"] };
 
 export async function install(
   rowOrId: Row | string,
@@ -475,6 +495,10 @@ async function installLocked(id: string, secrets: InstallSecrets) {
   if (missing.length) throw new HermesError(tr(messages).missing(missing.map((e) => e.name).join(", ")), 400);
   const bearer = secrets.bearer_token || kept.bearer;
   if (row.auth === "header" && !bearer) throw new HermesError(tr(errors).accessTokenRequired, 400);
+  // A header left empty on a reconfiguration keeps its value in Hermes's .env.
+  const headerValues = Object.fromEntries(row.headers.map((h) => [h.name, secrets.headers?.[h.name] ?? ""]));
+  const missingHeaders = row.headers.filter((h) => !headerValues[h.name] && !(reconfiguring && (previous?.cfg.headers as Record<string, string> | undefined)?.[h.name]));
+  if (missingHeaders.length) throw new HermesError(tr(messages).missing(missingHeaders.map((h) => h.name).join(", ")), 400);
 
   const body = row.url
     ? { name: row.name, url: row.url, auth: row.auth, ...(row.auth === "header" && { bearer_token: bearer }) }
@@ -488,6 +512,15 @@ async function installLocked(id: string, secrets: InstallSecrets) {
     throw err;
   }
   if (previous) await carryMcpSettings(row.name, previous.cfg);
+  if (row.url && row.headers.length) {
+    const refs: Record<string, string> = {};
+    for (const h of row.headers) {
+      const key = headerVar(row.name, h.name);
+      if (headerValues[h.name]) await dashboard("/api/env", { method: "PUT", body: JSON.stringify({ key, value: headerValues[h.name] }) });
+      refs[h.name] = `\${${key}}`;
+    }
+    await setMcpHeaders(row.name, refs);
+  }
 
   if (row.auth === "oauth") {
     const client = secrets.oauth_client ? { ...kept.client, ...secrets.oauth_client, client_secret: secrets.oauth_client.client_secret || kept.client?.client_secret } : kept.client;
@@ -521,6 +554,9 @@ async function installLocked(id: string, secrets: InstallSecrets) {
   if (!reconfiguring) await dashboard(`/api/mcp/servers/${row.name}/enabled`, { method: "PUT", body: JSON.stringify({ enabled: true }) });
   await finish(row, (test.tools ?? []).map((t) => t.name));
 }
+
+/** The .env variable holding a header's value: MCP_<SERVER>_<HEADER>. */
+const headerVar = (server: string, header: string) => `MCP_${server}_${header}`.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
 
 export const oauthRedirectUri = (name: string) => `${env.WEB_ORIGIN.replace(/\/$/, "")}/api/mcp-oauth/callback/${encodeURIComponent(name)}`;
 

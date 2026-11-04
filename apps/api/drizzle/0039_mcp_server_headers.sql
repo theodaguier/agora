@@ -1,0 +1,1 @@
+ALTER TABLE "mcp_server" ADD COLUMN "headers" jsonb DEFAULT '[]'::jsonb NOT NULL;

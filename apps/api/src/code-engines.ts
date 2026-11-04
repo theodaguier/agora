@@ -58,7 +58,7 @@ export type HeadlessEngine = {
     mode: CodePermissionMode;
     thread: string | null;
     system: string;
-    /** The connectors of the bot that started the session (engine-mcp.ts); engines without MCP ignore them. */
+    /** The connectors the session inherits from the team's bots (engine-mcp.ts teamMcp); engines without MCP ignore them. */
     mcp?: EngineMcp;
   }): Promise<HeadlessRun>;
   /** Reads one run's output, adding its steps to the session's transcript. */

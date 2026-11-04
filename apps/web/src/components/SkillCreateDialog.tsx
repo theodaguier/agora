@@ -52,11 +52,11 @@ function Review({ request, onClose }: { request: SkillRequest; onClose: () => vo
           {request.description} {t.shared}
         </DialogDescription>
       </DialogHeader>
-      <ScrollArea className="max-h-96 rounded-xl border border-border">
-        <pre className="whitespace-pre-wrap break-words p-3 font-mono text-xs leading-relaxed">{request.content}</pre>
+      <ScrollArea className="max-h-96">
+        <pre className="rounded-lg bg-muted p-3 font-mono text-xs break-words whitespace-pre-wrap">{request.content}</pre>
       </ScrollArea>
       {approve.error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {approve.error.message}
         </p>
       )}

@@ -52,13 +52,13 @@ export function TabChip({
         onClose();
       }}
       className={cn(
-        "group/tab flex h-[30px] min-w-0 max-w-[200px] flex-1 select-none items-center gap-[7px] rounded-[9px] pr-1.5 pl-2.5 text-[13px] tracking-[-0.05px] text-muted-foreground outline-none hover:bg-black/4 focus-visible:ring-3 focus-visible:ring-ring/30 dark:hover:bg-white/5",
-        active && "bg-background font-medium text-foreground ring-1 ring-black/8 dark:ring-white/10 hover:bg-background dark:bg-accent dark:hover:bg-accent",
+        "group/tab flex h-8 min-w-0 max-w-48 flex-1 select-none items-center gap-2 rounded-md pr-1.5 pl-2.5 text-sm text-muted-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50",
+        active && "bg-background font-medium text-foreground shadow-sm ring-1 ring-border hover:bg-background",
         active && dimmed && "text-muted-foreground",
         className,
       )}
     >
-      <span className="flex h-3.5 min-w-3.5 shrink-0 items-center justify-center gap-1 [&_svg]:size-3.5">{icon}</span>
+      <span className="flex min-w-4 shrink-0 items-center justify-center gap-1">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{title}</span>
       {unread && !active && <span className="size-1.5 shrink-0 rounded-full bg-brand" />}
       <Button
@@ -69,7 +69,7 @@ export function TabChip({
           e.stopPropagation();
           onClose();
         }}
-        className={cn("size-4 shrink-0 rounded-[4px] opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100 [&_svg:not([class*='size-'])]:size-3", active && "opacity-100")}
+        className={cn("shrink-0 opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100", active && "opacity-100")}
       >
         <CloseIcon />
       </Button>

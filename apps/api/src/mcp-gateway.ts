@@ -118,7 +118,7 @@ function upstreamOf(s: EngineMcpServer, profile: string): Transport {
       // Its declared variables over a minimal environment (PATH, HOME…), never the API's.
       env: s.env,
       // Where Hermes runs it: its profile's home.
-      cwd: env.HERMES_HOME ? profileHome(profile) : undefined,
+      cwd: env.HERMES_HOME ? profileHome(s.profile ?? profile) : undefined,
       stderr: "pipe",
     });
   }

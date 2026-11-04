@@ -3,7 +3,9 @@ import { integrations } from "@agora/core/i18n";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
-import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupTextarea } from "@/components/ui/input-group";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { BlockFooter, StatusLine } from "./block";
@@ -51,45 +53,26 @@ export function DraftCard(props: {
   };
 
   /**
-   * One row of the draft's group: its label muted on the left (above, for a long text), the value
-   * borderless. `cell`: one of the columns of a row split in two or three. `bare`: the label is
-   * only read out, the text being the draft itself (a mail's body, a message).
+   * One field of the draft. `cell`: one of the columns of a row split in two or three (laid out by
+   * the caller). `bare`: the label is only read out, the text being the draft itself (a mail's body, a message).
    */
   const text = (
     k: string,
     label: string,
     value: string | undefined,
     onChange: (v: string) => void,
-    opts: { area?: boolean; rows?: number; type?: string; cell?: boolean; bare?: boolean } = {},
+    opts: { area?: boolean; rows?: number; type?: string; bare?: boolean } = {},
   ) => (
-    <InputGroup
-      key={k}
-      className={cn(
-        "h-auto rounded-none border-0 border-border bg-transparent focus-within:bg-muted/40 dark:bg-transparent",
-        opts.cell ? "border-b last:border-0 sm:border-b-0 sm:border-r" : "not-last:border-b",
-      )}
-    >
-      <InputGroupAddon
-        align={opts.area ? "block-start" : "inline-start"}
-        className={cn(opts.area ? "px-3.5 pt-3 pb-0" : "w-[72px] justify-start pl-3.5", opts.bare && "sr-only")}
-      >
-        <label htmlFor={id(k)} className="text-[13px] font-normal text-muted-foreground">
-          {label}
-        </label>
-      </InputGroupAddon>
+    <Field key={k}>
+      <FieldLabel htmlFor={id(k)} className={cn(opts.bare && "sr-only")}>
+        {label}
+      </FieldLabel>
       {opts.area ? (
-        <InputGroupTextarea
-          id={id(k)}
-          value={value ?? ""}
-          readOnly={locked}
-          rows={opts.rows ?? 5}
-          onChange={(e) => onChange(e.target.value)}
-          className="min-h-0 px-3.5 py-3 leading-relaxed"
-        />
+        <Textarea id={id(k)} value={value ?? ""} readOnly={locked} rows={opts.rows ?? 5} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <InputGroupInput id={id(k)} type={opts.type} value={value ?? ""} readOnly={locked} onChange={(e) => onChange(e.target.value)} className="font-medium" />
+        <Input id={id(k)} type={opts.type} value={value ?? ""} readOnly={locked} onChange={(e) => onChange(e.target.value)} />
       )}
-    </InputGroup>
+    </Field>
   );
 
   const fields = () => {
@@ -110,9 +93,9 @@ export function DraftCard(props: {
         return (
           <>
             {text("title", t.title, d.title, (v) => set({ title: v }))}
-            <div className="grid border-border not-last:border-b sm:grid-cols-2">
-              {text("start", t.start, toLocalInput(d.start), (v) => set({ start: fromLocalInput(v) }), { type: "datetime-local", cell: true })}
-              {text("end", t.end, toLocalInput(d.end), (v) => set({ end: fromLocalInput(v) || undefined }), { type: "datetime-local", cell: true })}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {text("start", t.start, toLocalInput(d.start), (v) => set({ start: fromLocalInput(v) }), { type: "datetime-local" })}
+              {text("end", t.end, toLocalInput(d.end), (v) => set({ end: fromLocalInput(v) || undefined }), { type: "datetime-local" })}
             </div>
             {text("location", t.location, d.location, (v) => set({ location: v }))}
             {text("attendees", t.attendees, d.attendees?.join(", "), (v) => set({ attendees: list(v) }))}
@@ -135,10 +118,10 @@ export function DraftCard(props: {
           <>
             {text("title", t.title, d.title, (v) => set({ title: v }))}
             {(d.description || !locked) && text("description", t.description, d.description, (v) => set({ description: v }), { area: true, rows: 3 })}
-            <div className="grid border-border not-last:border-b sm:grid-cols-3">
-              {text("assignee", t.assignee, d.assignee, (v) => set({ assignee: v }), { cell: true })}
-              {text("due", t.due, d.due, (v) => set({ due: v }), { type: "date", cell: true })}
-              {text("project", t.project, d.project, (v) => set({ project: v }), { cell: true })}
+            <div className="grid gap-4 sm:grid-cols-3">
+              {text("assignee", t.assignee, d.assignee, (v) => set({ assignee: v }))}
+              {text("due", t.due, d.due, (v) => set({ due: v }), { type: "date" })}
+              {text("project", t.project, d.project, (v) => set({ project: v }))}
             </div>
           </>
         );
@@ -150,8 +133,8 @@ export function DraftCard(props: {
 
   return (
     <>
-      <CardContent className="flex flex-col gap-3">
-        <div className="overflow-hidden rounded-[10px] border">{fields()}</div>
+      <CardContent className="flex flex-col gap-4">
+        <FieldGroup>{fields()}</FieldGroup>
         {props.answer && (
           <StatusLine tone={ANSWER_TONE[props.answer]}>{{ confirm: t.confirmed, cancel: t.cancelled, revise: t.revised }[props.answer]}</StatusLine>
         )}
@@ -163,8 +146,7 @@ export function DraftCard(props: {
               if (note.trim()) answer("revise");
             }}
           >
-            <InputGroup className="h-auto rounded-[10px] border-border bg-transparent dark:bg-transparent">
-              <InputGroupTextarea
+            <Textarea
                 autoFocus
                 aria-label={t.revise}
                 placeholder={t.revisePlaceholder}
@@ -179,9 +161,7 @@ export function DraftCard(props: {
                   }
                   if (e.key === "Escape") setNote(null);
                 }}
-                className="min-h-0 px-3.5 py-2.5"
               />
-            </InputGroup>
           </form>
         )}
       </CardContent>

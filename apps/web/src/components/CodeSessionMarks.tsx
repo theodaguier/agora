@@ -3,14 +3,17 @@ import { cn } from "@/lib/utils";
 
 /**
  * A session's state and priority as marks, the Figma « Statut de session » and « Priorité de session »
- * components: one shape and one color per state, Linear's bars for the priority. Same marks in the
- * Sessions list, the tabs, the panel's header and the cards of the thread.
+ * components. Each state has its own shape, never just a colour: rings for the open ones (working,
+ * waiting for an instruction, set aside), a filled disc with its own glyph for the others. Linear's bars
+ * for the priority; no priority draws nothing (its dashes read as the « … » menu next to them).
+ * Same marks in the Sessions list, the tabs, the panel's header and the cards of the thread.
  */
 
 const STATE_TONE: Record<CodeSessionState, string> = {
   running: "text-state-running",
   waiting: "text-state-you",
   idle: "text-state-neutral",
+  parked: "text-state-neutral",
   finished: "text-state-finished",
   merged: "text-state-merged",
   stopped: "text-state-neutral",
@@ -28,12 +31,13 @@ export function CodeStateIcon({ state, className }: { state: CodeSessionState; c
           <path d="M8 4.5a3.5 3.5 0 0 1 0 7z" fill="currentColor" />
         </svg>
       );
-    // A ring with a dot: something for you to answer.
+    // A question mark: something for you to answer (a ring and a dot is a GitHub issue).
     case "waiting":
       return (
         <svg viewBox="0 0 16 16" className={svg} aria-hidden>
-          <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
-          <circle cx="8" cy="8" r="3" fill="currentColor" />
+          <circle cx="8" cy="8" r="7" fill="currentColor" />
+          <path d="M6.2 6.3a1.85 1.85 0 1 1 2.6 1.7c-.5.25-.8.6-.8 1.1v.4" fill="none" stroke="var(--background)" strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="8" cy="11.6" r="0.9" fill="var(--background)" />
         </svg>
       );
     // An empty ring: waits for an instruction.
@@ -41,6 +45,13 @@ export function CodeStateIcon({ state, className }: { state: CodeSessionState; c
       return (
         <svg viewBox="0 0 16 16" className={svg} aria-hidden>
           <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      );
+    // A dashed ring: set aside, as Linear's backlog.
+    case "parked":
+      return (
+        <svg viewBox="0 0 16 16" className={svg} aria-hidden>
+          <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2.2 2.2" />
         </svg>
       );
     case "finished":
@@ -61,7 +72,15 @@ export function CodeStateIcon({ state, className }: { state: CodeSessionState; c
           <circle cx="10.4" cy="9.2" r="1.3" fill="var(--background)" />
         </svg>
       );
+    // A stop square: stopped by someone, nothing went wrong.
     case "stopped":
+      return (
+        <svg viewBox="0 0 16 16" className={svg} aria-hidden>
+          <circle cx="8" cy="8" r="7" fill="currentColor" />
+          <rect x="5.5" y="5.5" width="5" height="5" rx="1" fill="var(--background)" />
+        </svg>
+      );
+    // A cross: it failed.
     case "failed":
       return (
         <svg viewBox="0 0 16 16" className={svg} aria-hidden>
@@ -78,7 +97,8 @@ const BARS: Record<Exclude<CodePriority, "urgent" | "none">, { n: number; tone: 
   low: { n: 1, tone: "text-priority-low" },
 };
 
-export function CodePriorityIcon({ priority, className }: { priority: CodePriority; className?: string }) {
+/** `showNone`: draw the dashes of « Sans priorité » (in the priority menu, where it is an option). */
+export function CodePriorityIcon({ priority, className, showNone }: { priority: CodePriority; className?: string; showNone?: boolean }) {
   const svg = cn("size-4 shrink-0", className);
   if (priority === "urgent") {
     return (
@@ -90,8 +110,9 @@ export function CodePriorityIcon({ priority, className }: { priority: CodePriori
     );
   }
   if (priority === "none") {
+    if (!showNone) return null;
     return (
-      <svg viewBox="0 0 16 16" className={cn(svg, "text-subtle")} aria-hidden>
+      <svg viewBox="0 0 16 16" className={cn(svg, "text-muted-foreground")} aria-hidden>
         {[1.5, 6.5, 11.5].map((x) => (
           <rect key={x} x={x} y="7.25" width="3" height="1.5" rx="0.75" fill="currentColor" />
         ))}

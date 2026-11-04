@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PackageIcon, PuzzleIcon, TrashIcon } from "@/components/icons";
 import { Loading, useRestartNeeded } from "@/components/admin/ui";
 import { Button } from "@/components/ui/button";
+import { Item, ItemContent, ItemDescription, ItemFooter, ItemTitle } from "@/components/ui/item";
+import { MarketSection, Tiles } from "./layout";
 import { Switch } from "@/components/ui/switch";
 import { SkillCreateDialog } from "@/components/SkillCreateDialog";
 import { api, type McpRequest, type SkillRequest } from "@/lib/api";
@@ -25,6 +27,7 @@ const messages = defineMessages({
     stdioWarning: "Command runs on the Hermes machine.",
     mcpServers: "MCP connectors",
     noServers: "No connectors installed.",
+    unavailable: "Unreachable for now.",
     remove: (name: string) => `Remove ${name}`,
     removeConfirm: (name: string) => `Remove the “${name}” connector?`,
     removeBody: "Bots will lose access to its tools. Its secrets stay in Hermes's .env.",
@@ -48,6 +51,7 @@ const messages = defineMessages({
     stdioWarning: "Commande exécutée sur la machine Hermes.",
     mcpServers: "Connecteurs MCP",
     noServers: "Aucun connecteur installé.",
+    unavailable: "Injoignable pour l'instant.",
     remove: (name: string) => `Retirer ${name}`,
     removeConfirm: (name: string) => `Retirer le connecteur « ${name} » ?`,
     removeBody: "Les bots perdront l'accès à ses outils. Ses secrets restent dans le .env de Hermes.",
@@ -128,137 +132,165 @@ export function Installed() {
   const enabledPlugins = (plugins.data ?? []).filter((p) => /^enabled/i.test(p.status));
 
   return (
-    <>
-      <h1 className="mb-5 text-[15px] leading-5 font-medium">{t.title}</h1>
+    <div className="flex flex-col gap-8">
+      <h1 className="text-base font-medium">{t.title}</h1>
 
       {pendingSkills.length > 0 && (
-        <>
-          <h2 className="mb-2 text-[15px] font-medium">{t.skillRequests}</h2>
-          <div className="mb-8 flex flex-col">
+        <MarketSection title={t.skillRequests}>
+          <Tiles>
             {pendingSkills.map((r) => (
-              <div key={r.id} className="flex items-center gap-3.5 py-2.5">
+              <Item variant="outline" className="items-start" key={r.id} role="listitem">
                 <InitialTile icon={<PackageIcon />} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[15px]">{r.name}</div>
-                  {(r.kind === "create" ? r.description : r.reason) && (
-                    <div className="truncate text-sm text-muted-foreground">{r.kind === "create" ? r.description : r.reason}</div>
+                <ItemContent className="min-w-0">
+                  <ItemTitle>{r.name}</ItemTitle>
+                  {(r.kind === "create" ? r.description : r.reason) && <ItemDescription>{r.kind === "create" ? r.description : r.reason}</ItemDescription>}
+                  {r.kind !== "create" && (
+                    <ItemDescription>
+                      <code>{r.identifier}</code>
+                    </ItemDescription>
                   )}
-                  {r.kind !== "create" && <div className="truncate font-mono text-xs text-muted-foreground">{r.identifier}</div>}
-                  {r.error && <div className="truncate text-xs text-destructive">{r.error}</div>}
-                </div>
-                <Button variant="ghost" size="sm" disabled={decideSkill.isPending} onClick={() => decideSkill.mutate({ id: r.id, approve: false })}>
-                  {t.reject}
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={decideSkill.isPending}
-                  onClick={() => (r.kind === "create" ? setReviewing(r) : decideSkill.mutate({ id: r.id, approve: true }))}
-                >
-                  {r.error ? c.retry : r.kind === "create" ? t.review : t.approve}
-                </Button>
-              </div>
+                  {r.error && <p className="truncate text-xs text-destructive">{r.error}</p>}
+                </ItemContent>
+                <ItemFooter className="justify-end">
+                  <Button variant="ghost" size="sm" disabled={decideSkill.isPending} onClick={() => decideSkill.mutate({ id: r.id, approve: false })}>
+                    {t.reject}
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={decideSkill.isPending}
+                    onClick={() => (r.kind === "create" ? setReviewing(r) : decideSkill.mutate({ id: r.id, approve: true }))}
+                  >
+                    {r.error ? c.retry : r.kind === "create" ? t.review : t.approve}
+                  </Button>
+                </ItemFooter>
+              </Item>
             ))}
-          </div>
+          </Tiles>
           <SkillCreateDialog request={reviewing} onClose={() => setReviewing(null)} />
-        </>
+        </MarketSection>
       )}
 
       {pending.length > 0 && (
-        <>
-          <h2 className="mb-2 text-[15px] font-medium">{t.mcpRequests}</h2>
-          <div className="mb-8 flex flex-col">
+        <MarketSection title={t.mcpRequests}>
+          <Tiles>
             {pending.map((r) => (
-              <div key={r.id} className="flex items-center gap-3.5 py-2.5">
+              <Item variant="outline" className="items-start" key={r.id} role="listitem">
                 <IntegrationTile type={r.type} server={r.name} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[15px]">{r.title}</div>
-                  {r.description && <div className="truncate text-sm text-muted-foreground">{r.description}</div>}
-                  <div className="truncate font-mono text-xs text-muted-foreground">{r.url ?? r.command}</div>
-                  {r.transport === "stdio" && <div className="text-xs text-warning">{t.stdioWarning}</div>}
-                </div>
-                <Button variant="ghost" size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: r.id, approve: false })}>
-                  {t.reject}
-                </Button>
-                <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: r.id, approve: true })}>
-                  {t.approve}
-                </Button>
-              </div>
+                <ItemContent className="min-w-0">
+                  <ItemTitle>{r.title}</ItemTitle>
+                  {r.description && <ItemDescription>{r.description}</ItemDescription>}
+                  <ItemDescription>
+                    <code>{r.url ?? r.command}</code>
+                  </ItemDescription>
+                  {r.transport === "stdio" && <p className="text-xs text-warning">{t.stdioWarning}</p>}
+                </ItemContent>
+                <ItemFooter className="justify-end">
+                  <Button variant="ghost" size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: r.id, approve: false })}>
+                    {t.reject}
+                  </Button>
+                  <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ id: r.id, approve: true })}>
+                    {t.approve}
+                  </Button>
+                </ItemFooter>
+              </Item>
             ))}
-          </div>
-        </>
+          </Tiles>
+        </MarketSection>
       )}
 
-      <h2 className="mb-2 text-[15px] font-medium">{t.mcpServers}</h2>
-      {servers.isPending && <Loading />}
-      {servers.data?.servers.length === 0 && <p className="mb-8 text-sm text-muted-foreground">{t.noServers}</p>}
-      <div className="mb-8 flex flex-col">
-        {servers.data?.servers.map((s) => (
-          <div key={s.name} className="flex items-center gap-3.5 py-2.5">
-            <IntegrationTile type={s.type} server={s.name} />
-            <div className="min-w-0 flex-1">
-              <div className="text-[15px]">{s.name}</div>
-              <div className="truncate font-mono text-xs text-muted-foreground">{s.url ?? s.command}</div>
-            </div>
-            <IntegrationTypeMenu value={s.type} disabled={setType.isPending} onValueChange={(type) => setType.mutate({ name: s.name, type })} />
-            {s.source !== "plugin" && (
-              <Button variant="ghost" size="sm" disabled={reconfigure.isPending} onClick={() => reconfigure.mutate(s.name)}>
-                {k.reconfigure}
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t.remove(s.name)}
-              onClick={async () =>
-                (await confirmAction({ title: t.removeConfirm(s.name), description: t.removeBody, action: t.removeAction })) && removeMcp.mutate(s.name)
-              }
-              className="hover:text-destructive"
-            >
-              <TrashIcon />
-            </Button>
-            <Switch
-              aria-label={s.name}
-              checked={s.enabled !== false}
-              onCheckedChange={(enabled) => toggleMcp.mutate({ name: s.name, enabled })}
-            />
-          </div>
-        ))}
-      </div>
+      <MarketSection title={t.mcpServers}>
+        {servers.isError && <p className="text-sm text-muted-foreground">{t.unavailable}</p>}
+        {servers.isPending && (
+          <Loading />
+        )}
+        {servers.data?.servers.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t.noServers}</p>
+        )}
+        {!!servers.data?.servers.length && (
+          <Tiles>
+            {servers.data.servers.map((s) => (
+              <Item variant="outline" className="items-start" key={s.name} role="listitem">
+                <IntegrationTile type={s.type} server={s.name} />
+                <ItemContent className="min-w-0">
+                  <ItemTitle title={s.url ?? s.command}>{s.name}</ItemTitle>
+                </ItemContent>
+                <ItemFooter className="justify-end">
+                  <IntegrationTypeMenu value={s.type} disabled={setType.isPending} onValueChange={(type) => setType.mutate({ name: s.name, type })} />
+                  {s.source !== "plugin" && (
+                    <Button variant="ghost" size="sm" disabled={reconfigure.isPending} onClick={() => reconfigure.mutate(s.name)}>
+                      {k.reconfigure}
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t.remove(s.name)}
+                    onClick={async () =>
+                      (await confirmAction({ title: t.removeConfirm(s.name), description: t.removeBody, action: t.removeAction })) && removeMcp.mutate(s.name)
+                    }
+                  >
+                    <TrashIcon />
+                  </Button>
+                  <Switch aria-label={s.name} checked={s.enabled !== false} onCheckedChange={(enabled) => toggleMcp.mutate({ name: s.name, enabled })} />
+                </ItemFooter>
+              </Item>
+            ))}
+          </Tiles>
+        )}
+      </MarketSection>
 
       <ReconfigureDialog request={reconfiguring} onClose={() => setReconfiguring(null)} />
 
-      <h2 className="mb-2 text-[15px] font-medium">{t.plugins}</h2>
-      {plugins.isPending && <Loading />}
-      {plugins.data && enabledPlugins.length === 0 && <p className="mb-8 text-sm text-muted-foreground">{t.noPlugins}</p>}
-      <div className="mb-8 flex flex-col">
-        {enabledPlugins.map((p) => (
-          <div key={p.name} className="flex items-center gap-3.5 py-2.5">
-            <InitialTile icon={<PuzzleIcon />} />
-            <div className="min-w-0 flex-1">
-              <div className="text-[15px]">{p.name}</div>
-              <div className="truncate text-sm text-muted-foreground">{p.description}</div>
-            </div>
-            <Switch aria-label={p.name} checked onCheckedChange={(enable) => togglePlugin.mutate({ name: p.name, enable })} />
-          </div>
-        ))}
-      </div>
+      <MarketSection title={t.plugins}>
+        {plugins.isError && <p className="text-sm text-muted-foreground">{t.unavailable}</p>}
+        {plugins.isPending && (
+          <Loading />
+        )}
+        {plugins.data && enabledPlugins.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t.noPlugins}</p>
+        )}
+        {enabledPlugins.length > 0 && (
+          <Tiles>
+            {enabledPlugins.map((p) => (
+              <Item variant="outline" className="items-start" key={p.name} role="listitem">
+                <InitialTile icon={<PuzzleIcon />} />
+                <ItemContent className="min-w-0">
+                  <ItemTitle>{p.name}</ItemTitle>
+                  <ItemDescription>{p.description}</ItemDescription>
+                </ItemContent>
+                <ItemFooter className="justify-end">
+                  <Switch aria-label={p.name} checked onCheckedChange={(enable) => togglePlugin.mutate({ name: p.name, enable })} />
+                </ItemFooter>
+              </Item>
+            ))}
+          </Tiles>
+        )}
+      </MarketSection>
 
-      <h2 className="mb-2 text-[15px] font-medium">{t.skills}</h2>
-      {skills.pending && <Loading />}
-      {!skills.pending && skills.installed.length === 0 && <p className="mb-2 text-sm text-muted-foreground">{t.noSkills}</p>}
-      <div className="mb-2 flex flex-col">
-        {skills.installed.map((s) => (
-          <div key={s.name} className="flex items-center gap-3.5 py-2.5">
-            <InitialTile icon={<PackageIcon />} />
-            <div className="min-w-0 flex-1">
-              <div className="text-[15px]">{s.name}</div>
-              <div className="truncate text-sm text-muted-foreground">{s.description}</div>
-            </div>
-            <span className="max-w-[40%] shrink-0 truncate text-sm text-muted-foreground">{s.agents.map((a) => a.name).join(", ")}</span>
-          </div>
-        ))}
-      </div>
-      <p className="text-sm text-muted-foreground">{t.skillsHint}</p>
-    </>
+      <MarketSection title={t.skills} description={t.skillsHint}>
+        {skills.pending && (
+          <Loading />
+        )}
+        {!skills.pending && skills.installed.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t.noSkills}</p>
+        )}
+        {skills.installed.length > 0 && (
+          <Tiles>
+            {skills.installed.map((s) => (
+              <Item variant="outline" className="items-start" key={s.name} role="listitem">
+                <InitialTile icon={<PackageIcon />} />
+                <ItemContent className="min-w-0">
+                  <ItemTitle>{s.name}</ItemTitle>
+                  <ItemDescription>{s.description}</ItemDescription>
+                </ItemContent>
+                <ItemFooter className="justify-end">
+                  <span className="truncate text-sm text-muted-foreground">{s.agents.map((a) => a.name).join(", ")}</span>
+                </ItemFooter>
+              </Item>
+            ))}
+          </Tiles>
+        )}
+      </MarketSection>
+    </div>
   );
 }

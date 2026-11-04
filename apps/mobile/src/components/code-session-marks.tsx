@@ -14,6 +14,7 @@ const STATE_TONE: Record<CodeSessionState, string> = {
   running: "text-state-running",
   waiting: "text-state-you",
   idle: "text-state-neutral",
+  parked: "text-state-neutral",
   finished: "text-state-finished",
   merged: "text-state-merged",
   stopped: "text-state-neutral",
@@ -42,17 +43,21 @@ export function CodeStateIcon({ state, size = 16 }: { state: CodeSessionState; s
           <Path d="M8 4.5a3.5 3.5 0 0 1 0 7z" fill={ink} />
         </>,
       );
-    // A ring with a dot: something for you to answer.
+    // A question mark: something for you to answer (a ring and a dot is a GitHub issue).
     case "waiting":
       return svg(
         <>
-          <Circle cx="8" cy="8" r="6.25" fill="none" stroke={ink} strokeWidth="1.5" />
-          <Circle cx="8" cy="8" r="3" fill={ink} />
+          <Circle cx="8" cy="8" r="7" fill={ink} />
+          <Path d="M6.2 6.3a1.85 1.85 0 1 1 2.6 1.7c-.5.25-.8.6-.8 1.1v.4" fill="none" stroke={bg} strokeWidth="1.5" strokeLinecap="round" />
+          <Circle cx="8" cy="11.6" r="0.9" fill={bg} />
         </>,
       );
     // An empty ring: waits for an instruction.
     case "idle":
       return svg(<Circle cx="8" cy="8" r="6.25" fill="none" stroke={ink} strokeWidth="1.5" />);
+    // A dashed ring: set aside, as Linear's backlog.
+    case "parked":
+      return svg(<Circle cx="8" cy="8" r="6.25" fill="none" stroke={ink} strokeWidth="1.5" strokeDasharray="2.2 2.2" />);
     case "finished":
       return svg(
         <>
@@ -71,7 +76,15 @@ export function CodeStateIcon({ state, size = 16 }: { state: CodeSessionState; s
           <Circle cx="10.4" cy="9.2" r="1.3" fill={bg} />
         </>,
       );
+    // A stop square: stopped by someone, nothing went wrong.
     case "stopped":
+      return svg(
+        <>
+          <Circle cx="8" cy="8" r="7" fill={ink} />
+          <Rect x="5.5" y="5.5" width="5" height="5" rx="1" fill={bg} />
+        </>,
+      );
+    // A cross: it failed.
     case "failed":
       return svg(
         <>

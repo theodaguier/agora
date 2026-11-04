@@ -1,3 +1,4 @@
+import type { CodePriority } from "@agora/core";
 import type { TaskPriority, TaskStatus } from "./api";
 import { defineMessages } from "@/i18n";
 
@@ -5,9 +6,9 @@ export const TASK_STATUSES: TaskStatus[] = ["todo", "in_progress", "done"];
 
 /** A status is said in words, in neutral grey: colour is kept for meaning (live work in blue). */
 export const statusTone: Record<TaskStatus, string> = {
-  todo: "bg-black/5 text-muted-foreground dark:bg-white/8",
+  todo: "bg-muted text-muted-foreground",
   in_progress: "bg-brand/10 text-brand",
-  done: "bg-black/5 text-muted-foreground dark:bg-white/8",
+  done: "bg-muted text-muted-foreground",
 };
 
 /** Text color alone (counters). */
@@ -20,13 +21,8 @@ export const statusText: Record<TaskStatus, string> = {
 /** Most pressing first. */
 export const TASK_PRIORITIES: TaskPriority[] = ["urgent", "high", "normal", "low"];
 
-/** Badge per priority; "normal" shows none. */
-export const priorityTone: Record<TaskPriority, string> = {
-  urgent: "bg-destructive/10 text-destructive",
-  high: "bg-black/5 text-foreground dark:bg-white/8",
-  normal: "",
-  low: "bg-muted text-muted-foreground",
-};
+/** A task's priority drawn with the session priority marks (Linear's bars); « normal » is the middle one. */
+export const taskPriorityMark: Record<TaskPriority, CodePriority> = { urgent: "urgent", high: "high", normal: "medium", low: "low" };
 
 export const priorityMessages = defineMessages({
   en: {

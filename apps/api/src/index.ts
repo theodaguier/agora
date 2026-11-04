@@ -11,6 +11,7 @@ import { agents } from "./routes/agents";
 import { attachments } from "./routes/attachments";
 import { conversations } from "./routes/conversations";
 import { codeSessions, internalCode, mySessions } from "./routes/code-sessions";
+import { github, internalGithub } from "./routes/github";
 import { internalMcp } from "./mcp-gateway";
 import { digest } from "./routes/digest";
 import { events } from "./routes/events";
@@ -30,10 +31,12 @@ import { tasks } from "./routes/tasks";
 import { updates } from "./routes/updates";
 import { users } from "./routes/users";
 import { wiki } from "./routes/wiki";
+import { internalVault, vaults } from "./routes/vaults";
 import { setupMemory } from "./memory";
 import { setupScreen } from "./screen";
 import { setupSandbox } from "./sandbox";
 import { setupCodePlugin } from "./code-plugin";
+import { setupVaultPlugin } from "./vault-plugin";
 import { recoverCodeSessions, startCodeSessionSweep } from "./code-sessions";
 import { setupSharedSkills } from "./skill-requests";
 import { ensureHermesInstance, shareMcpTokensWithAll } from "./hermes-admin";
@@ -101,6 +104,8 @@ const app = new Hono()
   .route("/mcp-oauth/callback", mcpOAuthCallback)
   .route("/usage", usage)
   .route("/users", users)
+  .route("/vaults", vaults)
+  .route("/github", github)
   .route("/admin/hermes", hermesAdmin)
   .route("/admin/host", host)
   .route("/admin/server", server)
@@ -109,7 +114,10 @@ const app = new Hono()
   .route("/admin/wiki", wiki)
   .route("/admin", admin)
   // The agora_code Hermes plugin only (127.0.0.1, its own token).
+  .route("/internal/code/github", internalGithub)
   .route("/internal/code", internalCode)
+  // The agora_vault Hermes plugin only (127.0.0.1, its own token).
+  .route("/internal/vault", internalVault)
   // The engines' MCP connectors (127.0.0.1, a token per run).
   .route("/internal/mcp", internalMcp);
 
@@ -127,6 +135,8 @@ ensureHermesInstance()
   .catch((err) => console.error("sandbox: setup", err))
   .then(() => setupCodePlugin())
   .catch((err) => console.error("code plugin: setup", err))
+  .then(() => setupVaultPlugin())
+  .catch((err) => console.error("vault plugin: setup", err))
   .then(() => setupSharedSkills())
   .catch((err) => console.error("shared skills: setup", err))
   .then(() => shareMcpTokensWithAll())

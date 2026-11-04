@@ -7,12 +7,12 @@ const messages = defineMessages({
   fr: { title: "Second cerveau" },
 });
 
-/** `/memory`: the second brain graph filling its own window. */
+/** `/memory`: the second brain alone in its browser tab, the graph filling the page under its search and filters. */
 export function MemoryWindow() {
   useOrgTitle(useT(messages).title);
   return (
-    <main className="flex h-dvh flex-col bg-background p-4 sm:p-6">
-      <WikiMemory standalone />
+    <main className="flex h-dvh flex-col bg-background p-4">
+      <WikiMemory inTab />
     </main>
   );
 }

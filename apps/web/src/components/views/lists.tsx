@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { FILE_ICONS } from "@/lib/file-icons";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { CardFooter } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useT } from "@/i18n";
@@ -13,66 +13,64 @@ import { fileKind } from "@/lib/files";
 import { formatSize } from "@/lib/format";
 import { cn, contentKeys } from "@/lib/utils";
 import { dayKey, dayLabel, displayName, initials, money, shortDate, time } from "./format";
-import { toneDot } from "./tone";
+import { StatusLine } from "./block";
 
 const SHOWN = 8;
 
-/** The first rows, then the rest on demand. */
 /** An item's own id, or its content when the bot gave none. */
 const itemKey = (item: { id?: string }) => item.id ?? JSON.stringify(item);
 
+/** The first rows, then the rest on demand. */
 function Rows<T extends { id?: string }>({ items, children }: { items: T[]; children: (item: T, key: string) => ReactNode }) {
   const t = useT(integrations);
   const [all, setAll] = useState(false);
-  if (!items.length) return <Empty>{t.empty}</Empty>;
+  if (!items.length) return <NoItems>{t.empty}</NoItems>;
   const shown = all ? items : items.slice(0, SHOWN);
   return (
-    <>
-      <ItemGroup className="gap-0 px-2">{contentKeys(shown, itemKey).map(([key, item]) => children(item, key))}</ItemGroup>
+    <div className="flex flex-col gap-2">
+      <ItemGroup role="list" className="gap-0">
+        {contentKeys(shown, itemKey).map(([key, item]) => children(item, key))}
+      </ItemGroup>
       {items.length > shown.length && (
-        <CardFooter className="mt-1 bg-transparent p-0">
-          <Button variant="ghost" className="h-11 w-full justify-between rounded-none rounded-b-[14px] px-5 font-normal" onClick={() => setAll(true)}>
-            {t.more(items.length - shown.length)}
-          </Button>
-        </CardFooter>
+        <Button variant="ghost" className="w-full" onClick={() => setAll(true)}>
+          {t.more(items.length - shown.length)}
+        </Button>
       )}
-    </>
+    </div>
   );
 }
 
 /** Nothing to list. */
-const Empty = ({ children }: { children: ReactNode }) => <p className="px-5 py-1 text-sm text-muted-foreground">{children}</p>;
+const NoItems = ({ children }: { children: ReactNode }) => (
+  <Empty>
+    <EmptyHeader>
+      <EmptyDescription>{children}</EmptyDescription>
+    </EmptyHeader>
+  </Empty>
+);
 
 /** One row: a link when the item has a web address, a button when the bot can open it. */
-function Row({ url, onOpen, className, children }: { url?: string; onOpen?: () => void; className?: string; children: ReactNode }) {
-  const base = cn("items-start gap-3 rounded-[10px] px-3 py-2.5 text-left", className);
-  const active = cn(base, "hover:bg-muted focus-visible:bg-muted");
-  if (url) return <Item size="sm" role="listitem" className={active} render={<a href={url} target="_blank" rel="noreferrer" />}>{children}</Item>;
-  if (onOpen) return <Item size="sm" role="listitem" className={cn(active, "cursor-pointer")} render={<button type="button" onClick={onOpen} />}>{children}</Item>;
+function Row({ url, onOpen, children }: { url?: string; onOpen?: () => void; children: ReactNode }) {
+  if (url) return <Item size="sm" role="listitem" render={<a href={url} target="_blank" rel="noreferrer" />}>{children}</Item>;
+  if (onOpen) return <Item size="sm" role="listitem" render={<button type="button" onClick={onOpen} />}>{children}</Item>;
   return (
-    <Item size="sm" role="listitem" className={base}>
+    <Item size="sm" role="listitem">
       {children}
     </Item>
   );
 }
 
-const Meta = ({ children }: { children: ReactNode }) => <span className="shrink-0 self-start pt-0.5 text-xs tabular-nums text-subtle">{children}</span>;
+const Meta = ({ children }: { children: ReactNode }) => <span className="shrink-0 self-start text-xs tabular-nums text-muted-foreground">{children}</span>;
 
-/** Initials of a person, on a gray disc. */
-const Initials = ({ name, className }: { name: string; className?: string }) => (
-  <Avatar className={cn("size-8", className)}>
-    <AvatarFallback className="bg-secondary text-[11px] font-medium text-muted-foreground">{initials(name)}</AvatarFallback>
+/** Initials of a person. */
+const Initials = ({ name, size }: { name: string; size?: "default" | "lg" }) => (
+  <Avatar size={size}>
+    <AvatarFallback>{initials(name)}</AvatarFallback>
   </Avatar>
 );
 
-/** A status written by the bot: a dot in its tone (late, pending, done, ongoing…), the words muted. */
-const Status = ({ children }: { children?: string }) =>
-  children ? (
-    <span className="flex items-center gap-1.5 text-[13px] whitespace-nowrap text-muted-foreground">
-      <span aria-hidden className={cn("size-[7px] shrink-0 rounded-full", toneDot[statusTone(children)])} />
-      {children}
-    </span>
-  ) : null;
+/** A status written by the bot, as a badge with a dot in its tone (late, pending, done, ongoing…). */
+const Status = ({ children }: { children?: string }) => (children ? <StatusLine tone={statusTone(children)}>{children}</StatusLine> : null);
 
 export function MailList({ items, onAsk }: { items: MailItem[]; onAsk?: (item: MailItem) => void }) {
   const t = useT(integrations);
@@ -83,14 +81,14 @@ export function MailList({ items, onAsk }: { items: MailItem[]; onAsk?: (item: M
           <ItemMedia>
             <Initials name={displayName(m.from)} />
           </ItemMedia>
-          <ItemContent className="min-w-0 gap-0">
+          <ItemContent className="min-w-0">
             <div className="flex items-center gap-2">
-              <ItemTitle className={cn("min-w-0 flex-1 truncate", m.unread ? "font-semibold" : "font-medium")}>{displayName(m.from)}</ItemTitle>
-              {m.unread && <span aria-hidden className="size-[7px] shrink-0 rounded-full bg-brand" />}
-              {m.date && <span className="shrink-0 text-xs tabular-nums text-subtle">{shortDate(m.date)}</span>}
+              <ItemTitle className="min-w-0 flex-1 truncate">{displayName(m.from)}</ItemTitle>
+              {m.unread && <span aria-hidden className="size-2 shrink-0 rounded-full bg-brand" />}
+              {m.date && <Meta>{shortDate(m.date)}</Meta>}
             </div>
-            <p className="truncate text-sm">{m.subject || t.noSubject}</p>
-            {m.snippet && <ItemDescription className="line-clamp-1 text-[13px]">{m.snippet}</ItemDescription>}
+            <p className="truncate">{m.subject || t.noSubject}</p>
+            {m.snippet && <ItemDescription className="line-clamp-1">{m.snippet}</ItemDescription>}
           </ItemContent>
         </Row>
       )}
@@ -104,10 +102,10 @@ export function MailMessage({ view }: { view: MailMessageView }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
-        <Initials name={displayName(m.from)} className="size-9" />
+        <Initials name={displayName(m.from)} size="lg" />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="truncate text-sm font-medium">{displayName(m.from)}</p>
+            <p className="truncate font-medium">{displayName(m.from)}</p>
             {m.date && <Meta>{shortDate(m.date)}</Meta>}
           </div>
           {!!m.to?.length && (
@@ -117,12 +115,12 @@ export function MailMessage({ view }: { view: MailMessageView }) {
           )}
         </div>
       </div>
-      <p className="text-sm font-medium">{m.subject || t.noSubject}</p>
-      <div className="max-h-80 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{m.body}</div>
+      <p className="font-medium">{m.subject || t.noSubject}</p>
+      <div className="max-h-80 overflow-y-auto whitespace-pre-wrap">{m.body}</div>
       {m.url && (
-        <a href={m.url} target="_blank" rel="noreferrer" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+        <Button variant="link" className="self-start" nativeButton={false} render={<a href={m.url} target="_blank" rel="noreferrer" />}>
           {t.open}
-        </a>
+        </Button>
       )}
     </div>
   );
@@ -131,7 +129,7 @@ export function MailMessage({ view }: { view: MailMessageView }) {
 export function EventList({ items }: { items: EventItem[] }) {
   const t = useT(integrations);
   const days = [...new Set(items.map((e) => dayKey(e.start)))];
-  if (!items.length) return <Empty>{t.empty}</Empty>;
+  if (!items.length) return <NoItems>{t.empty}</NoItems>;
   // The event under way, or else the next one: its bar in the brand color.
   const now = Date.now();
   const current = items.find((e) => {
@@ -139,32 +137,32 @@ export function EventList({ items }: { items: EventItem[] }) {
     return !Number.isNaN(end) && end >= now;
   });
   return (
-    <div className="flex flex-col gap-2 px-2">
+    <div className="flex flex-col gap-3">
       {days.map((day) => {
         const events = items.filter((e) => dayKey(e.start) === day);
         return (
-          <section key={day}>
-            <h4 className="px-3 pb-0.5 pt-1 text-xs font-medium text-muted-foreground first-letter:uppercase">{dayLabel(events[0]!.start)}</h4>
+          <section key={day} className="flex flex-col gap-1">
+            <h4 className="text-xs font-medium text-muted-foreground first-letter:uppercase">{dayLabel(events[0]!.start)}</h4>
             <ItemGroup className="gap-0">
               {contentKeys(events, itemKey).map(([key, e]) => (
-                <Row key={key} url={e.url} className="items-stretch rounded-none border-0 border-border not-last:border-b">
-                  <ItemMedia className="w-12 items-start text-[13px] tabular-nums">
-                    <span className="flex flex-col">
+                <Row key={key} url={e.url}>
+                  <ItemMedia className="w-12">
+                    <span className="flex flex-col text-xs tabular-nums">
                       {e.allDay || !time(e.start) ? (
                         <span className="text-muted-foreground">{t.allDay}</span>
                       ) : (
                         <>
                           <span className="font-medium text-foreground">{time(e.start)}</span>
-                          {time(e.end) && <span className="text-subtle">{time(e.end)}</span>}
+                          {time(e.end) && <span className="text-muted-foreground">{time(e.end)}</span>}
                         </>
                       )}
                     </span>
                   </ItemMedia>
-                  <span aria-hidden className={cn("w-[3px] shrink-0 rounded-full", e === current ? "bg-brand" : "bg-border")} />
-                  <ItemContent className="min-w-0 gap-0.5">
+                  <span aria-hidden className={cn("w-1 shrink-0 self-stretch rounded-full", e === current ? "bg-brand" : "bg-border")} />
+                  <ItemContent className="min-w-0">
                     <ItemTitle className="w-full truncate">{e.title}</ItemTitle>
                     {!!(e.location || e.attendees?.length) && (
-                      <ItemDescription className="line-clamp-1 text-[13px]">{[e.location, e.attendees?.map(displayName).join(", ")].filter(Boolean).join(" · ")}</ItemDescription>
+                      <ItemDescription className="line-clamp-1">{[e.location, e.attendees?.map(displayName).join(", ")].filter(Boolean).join(", ")}</ItemDescription>
                     )}
                   </ItemContent>
                 </Row>
@@ -185,12 +183,12 @@ export function ChatList({ items }: { items: ChatItem[] }) {
           <ItemMedia>
             <Initials name={m.author} />
           </ItemMedia>
-          <ItemContent className="min-w-0 gap-0.5">
+          <ItemContent className="min-w-0">
             <ItemTitle className="w-full truncate">
               {m.author}
-              {m.channel && <span className="font-normal text-muted-foreground"> · {m.channel}</span>}
+              {m.channel && <span className="font-normal text-muted-foreground"> {m.channel}</span>}
             </ItemTitle>
-            <p className="line-clamp-2 text-sm text-foreground/90">{m.text}</p>
+            <ItemDescription>{m.text}</ItemDescription>
           </ItemContent>
           {m.date && <Meta>{shortDate(m.date)}</Meta>}
         </Row>
@@ -204,12 +202,12 @@ export function TaskItems({ items }: { items: TaskItem[] }) {
     <Rows items={items}>
       {(task, key) => (
         <Row key={key} url={task.url}>
-          <ItemContent className="min-w-0 gap-0.5">
-            <ItemTitle className="w-full truncate font-normal">{task.title}</ItemTitle>
+          <ItemContent className="min-w-0">
+            <ItemTitle className="w-full truncate">{task.title}</ItemTitle>
             {(task.assignee || task.due) && (
               <ItemDescription className="line-clamp-1">
                 {task.assignee}
-                {task.assignee && task.due && " · "}
+                {task.assignee && task.due && ", "}
                 {task.due && (
                   <span className={cn(isPastDue(task.due) && statusTone(task.status) !== "success" && "font-medium text-destructive")}>{shortDate(task.due)}</span>
                 )}
@@ -232,13 +230,13 @@ export function FileList({ items }: { items: FileItem[] }) {
         const Icon = FILE_ICONS[fileKind(f.name)];
         return (
           <Row key={key} url={f.url}>
-            <ItemMedia variant="icon" className="text-muted-foreground">
+            <ItemMedia variant="icon">
               <Icon />
             </ItemMedia>
             <ItemContent className="min-w-0">
-              <ItemTitle className="w-full truncate font-normal">{f.name}</ItemTitle>
+              <ItemTitle className="w-full truncate">{f.name}</ItemTitle>
             </ItemContent>
-            <Meta>{[f.size != null && formatSize(f.size), f.modified && shortDate(f.modified)].filter(Boolean).join(" · ")}</Meta>
+            <Meta>{[f.size != null && formatSize(f.size), f.modified && shortDate(f.modified)].filter(Boolean).join(", ")}</Meta>
           </Row>
         );
       }}
@@ -254,12 +252,12 @@ export function ContactList({ items }: { items: ContactItem[] }) {
           <ItemMedia>
             <Initials name={p.name} />
           </ItemMedia>
-          <ItemContent className="min-w-0 gap-0.5">
+          <ItemContent className="min-w-0">
             <ItemTitle className="w-full truncate">
               {p.name}
-              {p.company && <span className="font-normal text-muted-foreground"> · {p.company}</span>}
+              {p.company && <span className="font-normal text-muted-foreground"> {p.company}</span>}
             </ItemTitle>
-            {(p.email || p.phone) && <ItemDescription className="line-clamp-1">{[p.email, p.phone].filter(Boolean).join(" · ")}</ItemDescription>}
+            {(p.email || p.phone) && <ItemDescription className="line-clamp-1">{[p.email, p.phone].filter(Boolean).join(", ")}</ItemDescription>}
           </ItemContent>
         </Row>
       )}
@@ -272,14 +270,14 @@ export function FinanceList({ items }: { items: FinanceItem[] }) {
     <Rows items={items}>
       {(f, key) => (
         <Row key={key} url={f.url}>
-          <ItemContent className="min-w-0 gap-0.5">
-            <ItemTitle className="w-full truncate font-normal">{f.label}</ItemTitle>
+          <ItemContent className="min-w-0">
+            <ItemTitle className="w-full truncate">{f.label}</ItemTitle>
             {(f.counterparty || f.date) && (
-              <ItemDescription className="line-clamp-1">{[f.counterparty, f.date && shortDate(f.date)].filter(Boolean).join(" · ")}</ItemDescription>
+              <ItemDescription className="line-clamp-1">{[f.counterparty, f.date && shortDate(f.date)].filter(Boolean).join(", ")}</ItemDescription>
             )}
           </ItemContent>
           <ItemActions className="flex-col items-end gap-1">
-            <span className={cn("text-sm font-medium tabular-nums", statusTone(f.status) === "danger" && "text-destructive")}>{money(f.amount, f.currency)}</span>
+            <span className={cn("font-medium tabular-nums", statusTone(f.status) === "danger" && "text-destructive")}>{money(f.amount, f.currency)}</span>
             <Status>{f.status}</Status>
           </ItemActions>
         </Row>
@@ -293,12 +291,12 @@ export function CodeList({ items }: { items: CodeItem[] }) {
     <Rows items={items}>
       {(c, key) => (
         <Row key={key} url={c.url}>
-          <ItemContent className="min-w-0 gap-0.5">
-            <ItemTitle className="w-full truncate font-normal">
+          <ItemContent className="min-w-0">
+            <ItemTitle className="w-full truncate">
               {c.number != null && <span className="tabular-nums text-muted-foreground">#{c.number} </span>}
               {c.title}
             </ItemTitle>
-            {(c.repo || c.author) && <ItemDescription className="line-clamp-1 font-mono text-xs">{[c.repo, c.author].filter(Boolean).join(" · ")}</ItemDescription>}
+            {(c.repo || c.author) && <ItemDescription className="line-clamp-1 font-mono text-xs">{[c.repo, c.author].filter(Boolean).join(", ")}</ItemDescription>}
           </ItemContent>
           <ItemActions>
             <Status>{c.state}</Status>
@@ -314,8 +312,8 @@ export function GenericList({ items }: { items: GenericItem[] }) {
     <Rows items={items}>
       {(g, key) => (
         <Row key={key} url={g.url}>
-          <ItemContent className="min-w-0 gap-0.5">
-            <ItemTitle className="w-full truncate font-normal">{g.title}</ItemTitle>
+          <ItemContent className="min-w-0">
+            <ItemTitle className="w-full truncate">{g.title}</ItemTitle>
             {g.subtitle && <ItemDescription className="line-clamp-1">{g.subtitle}</ItemDescription>}
           </ItemContent>
           {g.meta && <Meta>{g.meta}</Meta>}
@@ -327,16 +325,14 @@ export function GenericList({ items }: { items: GenericItem[] }) {
 
 export function DataTable({ view }: { view: TableView }) {
   const t = useT(integrations);
-  if (!view.rows.length) return <p className="text-sm text-muted-foreground">{t.empty}</p>;
+  if (!view.rows.length) return <NoItems>{t.empty}</NoItems>;
   return (
-    <div className="max-h-96 overflow-auto rounded-[10px] border">
+    <div className="max-h-96 overflow-auto rounded-lg border">
       <Table>
         <TableHeader>
           <TableRow>
             {view.columns.map((c) => (
-              <TableHead key={c} className="text-xs">
-                {c}
-              </TableHead>
+              <TableHead key={c}>{c}</TableHead>
             ))}
           </TableRow>
         </TableHeader>

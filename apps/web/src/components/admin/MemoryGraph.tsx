@@ -22,12 +22,11 @@ const messages = defineMessages({
 type SimNode = SimulationNodeDatum & WikiNode & { degree: number; r: number };
 type SimLink = SimulationLinkDatum<SimNode>;
 
-/** `halo` matches the page background (--background), so a label stays legible over the edges. */
 const INK = {
-  dark: { edge: "rgba(255,255,255,0.09)", edgeFocus: "rgba(255,255,255,0.42)", ring: "#ffffff", label: "#e6e6e6", halo: "#080808" },
-  light: { edge: "rgba(0,0,0,0.1)", edgeFocus: "rgba(0,0,0,0.45)", ring: "#171717", label: "#262626", halo: "#ffffff" },
+  dark: { edge: "rgba(255,255,255,0.09)", edgeFocus: "rgba(255,255,255,0.42)", ring: "#ffffff", label: "#e6e6e6" },
+  light: { edge: "rgba(0,0,0,0.1)", edgeFocus: "rgba(0,0,0,0.45)", ring: "#171717", label: "#262626" },
 };
-const LABEL_SIZE = 11;
+const LABEL_SIZE = 12;
 
 /**
  * Memory graph, in the style of Obsidian's graph view: force simulation
@@ -97,15 +96,17 @@ function paint(
   // one already drawn is skipped, as in Obsidian: zooming in spreads the nodes and reveals the rest.
   const rank = (n: SimNode) => (n.id === focusId ? 0 : n.id === selected ? 1 : highlight?.has(n.id) ? 2 : n.type === "agent" ? 3 : 4);
   const candidates = s.nodes
-    .filter((n) => (focus ? focus.has(n.id) : view.k > 1.6 || n.degree >= 8 || n.type === "agent" || !!highlight?.has(n.id)))
+    .filter((n) => (focus ? focus.has(n.id) : view.k > 1.6 || n.degree >= 2 || n.type === "agent" || !!highlight?.has(n.id)))
     .sort((a, b) => rank(a) - rank(b) || b.degree - a.degree);
-  ctx.font = `${LABEL_SIZE / view.k}px -apple-system, BlinkMacSystemFont, system-ui, sans-serif`;
+  ctx.font = `${LABEL_SIZE / view.k}px ${getComputedStyle(ctx.canvas).fontFamily}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 3 / view.k;
-  ctx.strokeStyle = ink.halo;
-  const placed: [number, number, number, number][] = [];
+  // Every node is taken first, so a label never covers a node.
+  const screen = (n: SimNode) => [width / 2 + view.x + n.x! * view.k, height / 2 + view.y + n.y! * view.k, n.r * view.k + 2] as const;
+  const placed: [number, number, number, number, string?][] = s.nodes.map((n) => {
+    const [x, y, r] = screen(n);
+    return [x - r, y - r, x + r, y + r, n.id];
+  });
   for (const n of candidates) {
     const label = n.label.length > 30 ? `${n.label.slice(0, 29)}…` : n.label;
     const w = ctx.measureText(label).width * view.k;
@@ -113,10 +114,9 @@ function paint(
     const y = height / 2 + view.y + (n.y! + n.r) * view.k + 3;
     const box: [number, number, number, number] = [x - w / 2 - 3, y - 1, x + w / 2 + 3, y + LABEL_SIZE + 3];
     if (box[2] < 0 || box[0] > width || box[3] < 0 || box[1] > height) continue;
-    if (n.id !== focusId && placed.some((p) => box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) continue;
+    if (n.id !== focusId && placed.some((p) => p[4] !== n.id && box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) continue;
     placed.push(box);
     ctx.globalAlpha = focus && n.id !== focusId ? 0.8 : lit(n.id) ? 0.95 : 0.3;
-    ctx.strokeText(label, n.x!, n.y! + n.r + 3 / view.k);
     ctx.fillStyle = ink.label;
     ctx.fillText(label, n.x!, n.y! + n.r + 3 / view.k);
   }
@@ -163,7 +163,7 @@ export function MemoryGraph(props: {
       x1 = Math.max(x1, n.x! + n.r);
       y1 = Math.max(y1, n.y! + n.r);
     }
-    const k = Math.min(1.5, Math.max(0.2, Math.min((width - 80) / (x1 - x0 || 1), (height - 120) / (y1 - y0 || 1))));
+    const k = Math.min(1.8, Math.max(0.2, Math.min((width - 120) / (x1 - x0 || 1), (height - 72) / (y1 - y0 || 1))));
     s.view = { k, x: (-(x0 + x1) / 2) * k, y: (-(y0 + y1) / 2) * k };
     s.draw();
   };
@@ -192,7 +192,7 @@ export function MemoryGraph(props: {
       return {
         ...n,
         degree: d,
-        r: (n.type === "agent" ? 5 : 2.6) + Math.sqrt(d) * (n.type === "agent" ? 1.6 : 1.25),
+        r: (n.type === "agent" ? 4 : 2.2) + Math.sqrt(d) * (n.type === "agent" ? 1.1 : 0.8),
         x: old?.x ?? (Math.random() - 0.5) * 400,
         y: old?.y ?? (Math.random() - 0.5) * 400,
         vx: old?.vx,
@@ -207,16 +207,18 @@ export function MemoryGraph(props: {
         "link",
         forceLink<SimNode, SimLink>(s.links)
           .id((d) => d.id)
-          .distance((l) => ((l.source as SimNode).type === "agent" || (l.target as SimNode).type === "agent" ? 80 : 48))
+          .distance((l) => ((l.source as SimNode).type === "agent" || (l.target as SimNode).type === "agent" ? 110 : 70))
           .strength(0.35),
       )
-      .force("charge", forceManyBody<SimNode>().strength((d) => (d.type === "agent" ? -300 : -90)).distanceMax(480))
-      .force("collide", forceCollide<SimNode>((d) => d.r + 4))
+      .force("charge", forceManyBody<SimNode>().strength((d) => (d.degree === 0 ? -30 : d.type === "agent" ? -260 : -140)).distanceMax(360))
+      .force("collide", forceCollide<SimNode>((d) => d.r + 10))
       // A pull toward the center keeps isolated pages in orbit, like in Obsidian.
-      .force("x", forceX<SimNode>(0).strength(0.035))
-      .force("y", forceY<SimNode>(0).strength(0.035))
+      // Pages linked to nothing are held close: pushed far, they'd make the fitted view shrink the rest.
+      .force("x", forceX<SimNode>(0).strength((d) => (d.degree === 0 ? 0.3 : 0.035)))
+      .force("y", forceY<SimNode>(0).strength((d) => (d.degree === 0 ? 0.3 : 0.035)))
       .alpha(previous.size ? 0.4 : 1)
-      .on("tick", () => s.draw())
+      // Until the user zooms or pans, the view follows the layout so nothing drifts out of the frame.
+      .on("tick", () => (s.touched ? s.draw() : fit()))
       .on("end", () => fit());
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       sim.stop();
@@ -249,9 +251,10 @@ export function MemoryGraph(props: {
     };
 
     const resize = () => {
-      const rect = canvas.getBoundingClientRect();
-      width = rect.width;
-      height = rect.height;
+      // Its layout size, not its painted one: measured while a dialog zooms in, the bitmap would stay
+      // smaller than the canvas on screen, and blurry.
+      width = canvas.clientWidth;
+      height = canvas.clientHeight;
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);

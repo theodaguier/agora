@@ -7,7 +7,8 @@ import { AvatarField, ProfileFields, type AvatarChange } from "@/components/Prof
 import { readProfile } from "@/lib/profile";
 import { Button } from "@/components/ui/button";
 import { FormLabel } from "@/components/FormLabel";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { api, ApiError, uploadAvatar } from "@/lib/api";
@@ -74,99 +75,120 @@ export function Invite() {
 
   if (invitation.isPending) {
     return (
-      <Centered>
-        <Spinner />
-      </Centered>
+      <AuthPage>
+        <Card className="w-full max-w-sm">
+          <CardContent className="flex justify-center">
+            <Spinner />
+          </CardContent>
+        </Card>
+      </AuthPage>
     );
   }
   if (invitation.isError && !isDefinitive(invitation.error)) {
     return (
-      <Centered>
-        <OrgLogo className="size-9" />
-        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.unreachable}</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">{t.unreachableHint}</p>
-        <Button variant="outline" className="mx-auto mt-6 flex" disabled={invitation.isFetching} onClick={() => invitation.refetch()}>
-          {invitation.isFetching ? t.retrying : c.retry}
-        </Button>
-      </Centered>
+      <AuthPage>
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <OrgLogo className="size-9" />
+            <CardTitle>{t.unreachable}</CardTitle>
+            <CardDescription>{t.unreachableHint}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" className="w-full" disabled={invitation.isFetching} onClick={() => invitation.refetch()}>
+              {invitation.isFetching ? t.retrying : c.retry}
+            </Button>
+          </CardContent>
+        </Card>
+      </AuthPage>
     );
   }
   if (invitation.isError) {
     return (
-      <Centered>
-        <OrgLogo className="size-9" />
-        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.unavailable}</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">{invitation.error.message}</p>
-        <Button variant="outline" className="mx-auto mt-6 flex" onClick={() => navigate({ to: "/login" })}>
-          {t.goToLogin}
-        </Button>
-      </Centered>
+      <AuthPage>
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <OrgLogo className="size-9" />
+            <CardTitle>{t.unavailable}</CardTitle>
+            <CardDescription>{invitation.error.message}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" className="w-full" onClick={() => navigate({ to: "/login" })}>
+              {t.goToLogin}
+            </Button>
+          </CardContent>
+        </Card>
+      </AuthPage>
     );
   }
 
   const data = invitation.data;
   return (
-    <div className="grid min-h-dvh place-items-center px-4 py-10">
-      <form
-        className="w-full max-w-lg"
-        onInput={(e) => {
-          const form = new FormData(e.currentTarget);
-          setName(`${form.get("firstName") ?? ""} ${form.get("lastName") ?? ""}`.trim());
-        }}
-        onSubmit={async (e) => {
-          e.preventDefault();
-          const form = new FormData(e.currentTarget);
-          const password = String(form.get("password"));
-          if (password !== String(form.get("confirm"))) return setError(t.mismatch);
-          setPending(true);
-          setError(null);
-          try {
-            await api(`/invitations/${encodeURIComponent(token)}/accept`, {
-              method: "POST",
-              body: JSON.stringify({ ...readProfile(form), password }),
-            });
-          } catch (err) {
-            setPending(false);
-            return setError(err instanceof Error ? err.message : t.createFailed);
-          }
-          // The account exists and the session is open: a rejected photo must not block onboarding.
-          if (photo) await uploadAvatar(photo).catch(() => {});
-          navigate({ to: "/" });
-        }}
-      >
-        <OrgLogo className="size-9" />
-        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.welcome(orgName)}</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">{t.hint}</p>
-
-        <div className="mt-4 flex flex-col gap-6">
-          <AvatarField id={data.email} name={name} current={null} value={photo} onChange={setPhoto} />
-          <Field>
-            <FieldLabel htmlFor="invite-email">{t.email}</FieldLabel>
-            <Input id="invite-email" type="email" value={data.email} readOnly disabled autoComplete="email" />
-          </Field>
-          <ProfileFields idPrefix="invite" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field>
-              <FormLabel htmlFor="invite-password" required>
-                {t.password}
-              </FormLabel>
-              <Input id="invite-password" name="password" type="password" required minLength={10} autoComplete="new-password" placeholder={t.passwordPlaceholder} />
-            </Field>
-            <Field>
-              <FormLabel htmlFor="invite-confirm" required>
-                {t.confirm}
-              </FormLabel>
-              <Input id="invite-confirm" name="confirm" type="password" required minLength={10} autoComplete="new-password" />
-            </Field>
-          </div>
-        </div>
-
-        {error && <FieldError className="mt-4">{error}</FieldError>}
-        <Button type="submit" size="lg" disabled={pending} className="mt-6 w-full">
-          {pending ? t.creating : t.create}
-        </Button>
-      </form>
-    </div>
+    <AuthPage>
+      <Card className="w-full max-w-lg">
+        <CardHeader>
+          <OrgLogo className="size-9" />
+          <CardTitle>{t.welcome(orgName)}</CardTitle>
+          <CardDescription>{t.hint}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            onInput={(e) => {
+              const form = new FormData(e.currentTarget);
+              setName(`${form.get("firstName") ?? ""} ${form.get("lastName") ?? ""}`.trim());
+            }}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const form = new FormData(e.currentTarget);
+              const password = String(form.get("password"));
+              if (password !== String(form.get("confirm"))) return setError(t.mismatch);
+              setPending(true);
+              setError(null);
+              try {
+                await api(`/invitations/${encodeURIComponent(token)}/accept`, {
+                  method: "POST",
+                  body: JSON.stringify({ ...readProfile(form), password }),
+                });
+              } catch (err) {
+                setPending(false);
+                return setError(err instanceof Error ? err.message : t.createFailed);
+              }
+              // The account exists and the session is open: a rejected photo must not block onboarding.
+              if (photo) await uploadAvatar(photo).catch(() => {});
+              navigate({ to: "/" });
+            }}
+          >
+            <FieldGroup>
+              <AvatarField id={data.email} name={name} current={null} value={photo} onChange={setPhoto} />
+              <Field>
+                <FieldLabel htmlFor="invite-email">{t.email}</FieldLabel>
+                <Input id="invite-email" type="email" value={data.email} readOnly disabled autoComplete="email" />
+              </Field>
+              <ProfileFields idPrefix="invite" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field>
+                  <FormLabel htmlFor="invite-password" required>
+                    {t.password}
+                  </FormLabel>
+                  <Input id="invite-password" name="password" type="password" required minLength={10} autoComplete="new-password" placeholder={t.passwordPlaceholder} />
+                </Field>
+                <Field>
+                  <FormLabel htmlFor="invite-confirm" required>
+                    {t.confirm}
+                  </FormLabel>
+                  <Input id="invite-confirm" name="confirm" type="password" required minLength={10} autoComplete="new-password" />
+                </Field>
+              </div>
+              {error && <FieldError>{error}</FieldError>}
+              <Field>
+                <Button type="submit" disabled={pending} className="w-full">
+                  {pending ? t.creating : t.create}
+                </Button>
+              </Field>
+            </FieldGroup>
+          </form>
+        </CardContent>
+      </Card>
+    </AuthPage>
   );
 }
 
@@ -175,10 +197,6 @@ function isDefinitive(err: unknown) {
   return err instanceof ApiError && err.status >= 400 && err.status < 500;
 }
 
-function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
-      <div className="w-full max-w-[400px] rounded-[18px] border border-border bg-background p-8">{children}</div>
-    </div>
-  );
+function AuthPage({ children }: { children: React.ReactNode }) {
+  return <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">{children}</div>;
 }

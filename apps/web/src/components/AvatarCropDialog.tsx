@@ -1,7 +1,8 @@
+import { ValueSlider } from "@/components/value-slider";
 import { useState, type KeyboardEvent, type PointerEvent, type WheelEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Slider } from "@/components/ui/slider";
+import { cn } from "@/lib/utils";
 import type { CropRect } from "@/lib/avatar";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -107,7 +108,7 @@ export function AvatarCropDialog({
 
   return (
     <Dialog open={!!image} onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent showCloseButton={false} className="gap-5 sm:max-w-[352px]">
+      <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{t.title}</DialogTitle>
           <DialogDescription>{t.hint}</DialogDescription>
@@ -125,8 +126,10 @@ export function AvatarCropDialog({
             onWheel={onWheel}
             onKeyDown={onKeyDown}
             style={{ width: FRAME, height: FRAME }}
-            className="relative mx-auto touch-none overflow-hidden rounded-xl bg-muted outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[drag=true]:cursor-grabbing cursor-grab"
-            data-drag={!!drag}
+            className={cn(
+              "relative mx-auto touch-none overflow-hidden rounded-xl bg-muted outline-none select-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              drag ? "cursor-grabbing" : "cursor-grab",
+            )}
           >
             <img
               src={image.url}
@@ -136,18 +139,22 @@ export function AvatarCropDialog({
               style={{ left, top, width: w * scale, height: h * scale }}
             />
             {/* Everything outside the circle is dimmed: that's what gets cut. */}
-            <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full shadow-[0_0_0_9999px_rgb(0_0_0/0.55)] ring-1 ring-white/70" />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-border"
+              style={{ boxShadow: "0 0 0 9999px color-mix(in oklch, var(--foreground) 55%, transparent)" }}
+            />
           </div>
         )}
 
-        <Slider
-          aria-label={t.zoom}
+        <ValueSlider
+          label={t.zoom}
           min={1}
           max={MAX_ZOOM}
           step={0.01}
-          value={[view.zoom]}
-          onValueChange={(v) => zoomTo(Array.isArray(v) ? v[0]! : v)}
-          className="mx-auto data-horizontal:w-72"
+          value={view.zoom}
+          format={(v) => `${v.toFixed(1)}×`}
+          onValueChange={zoomTo}
         />
 
         <DialogFooter>

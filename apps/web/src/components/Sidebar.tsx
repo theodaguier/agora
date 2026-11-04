@@ -3,8 +3,8 @@ import { auth, common, conversations } from "@agora/core/i18n";
 import { useEventText } from "@/i18n/events";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams, useRouteContext } from "@tanstack/react-router";
-import { FileTextIcon, KeyboardIcon, InboxIcon, LoaderIcon, TaskListIcon, LogOutIcon, MoonIcon, PlugIcon, PlusIcon, PuzzleIcon, SearchIcon, SlidersIcon, SparklesIcon, TerminalIcon, UserIcon } from "@/components/icons";
-import { useState, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
+import { CalendarClockIcon, ClockIcon, CloseIcon, SplitIcon, FileTextIcon, KeyboardIcon, InboxIcon, LoaderIcon, TaskListIcon, LogOutIcon, MoonIcon, PlugIcon, PlusIcon, PuzzleIcon, SearchIcon, SlidersIcon, SparklesIcon, TerminalIcon, UserIcon } from "@/components/icons";
+import { useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { OrgLogo } from "@/components/OrgLogo";
 import { mcpServersQuery } from "@/components/marketplace/data";
@@ -33,7 +33,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Sidebar, SidebarFooter, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, useSidebar } from "@/components/ui/sidebar";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { authClient } from "@/lib/auth";
 import { openProfile } from "@/lib/profile";
 import { allCodeSessionsQuery } from "@/lib/code-sessions";
@@ -52,6 +67,8 @@ const messages = defineMessages({
     ...conversations.en,
     signOut: auth.en.signOut,
     searchConversation: "Search conversations",
+    noMatch: "No conversation matches.",
+    listError: "Conversations can't be reached right now.",
     openTasks: (n: number) => `${n} open task${n > 1 ? "s" : ""}`,
     inbox: "Inbox",
     inboxShort: "Inbox",
@@ -83,6 +100,8 @@ const messages = defineMessages({
     ...conversations.fr,
     signOut: auth.fr.signOut,
     searchConversation: "Rechercher une conversation",
+    noMatch: "Aucune conversation ne correspond.",
+    listError: "Les conversations sont injoignables pour le moment.",
     openTasks: (n: number) => `${n} tâche${n > 1 ? "s" : ""} en cours`,
     inbox: "Boîte de réception",
     inboxShort: "Boîte",
@@ -129,13 +148,17 @@ export function AppSidebar({ width, onWidthChange }: { width: number; onWidthCha
   if (!isMobile) {
     if (!open) return null;
     return (
-      <aside style={{ width }} className="relative flex shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar text-sidebar-foreground">
+      <Sidebar collapsible="none" style={{ "--sidebar-width": `${width}px` } as CSSProperties} className="relative shrink-0 border-r">
         <DesktopSidebar />
         <SidebarResizer width={width} onWidthChange={onWidthChange} />
-      </aside>
+      </Sidebar>
     );
   }
-  return atRoot ? <Sidebar collapsible="none" className="h-dvh w-full"><SidebarBody /></Sidebar> : null;
+  return atRoot ? (
+    <Sidebar collapsible="none" className="h-dvh w-full">
+      <SidebarBody />
+    </Sidebar>
+  ) : null;
 }
 
 /**
@@ -232,10 +255,10 @@ function SidebarBody() {
   const pathname = useLocation({ select: (l) => l.pathname });
   const { isMobile } = useSidebar();
   const [q, setQ] = useState("");
-  const tc = useT(common);
   const t = useT(messages);
   const [market, setMarket] = useState(false);
-  const { data: conversations = [], isPending } = useQuery(conversationsQuery);
+  const conversationList = useQuery(conversationsQuery);
+  const { data: conversations = [], isPending } = conversationList;
   const list = conversations
     .map((c) => ({ ...c, name: conversationTitle(c, user.id) }))
     .filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
@@ -256,39 +279,38 @@ function SidebarBody() {
 
   return (
     <>
-      <div className="flex flex-col gap-0.5 px-2.5 pt-[18px]">
-        <div className="flex items-center pb-3 pl-2">
-          <h2 className="text-[17px] leading-[22px] font-semibold tracking-[-0.3px]">{t.conversations}</h2>
+      <SidebarHeader>
+        <div className="flex items-center gap-2 p-2">
+          <h2 className="text-lg font-semibold">{t.conversations}</h2>
           <ShortcutTooltip label={t.newConversation} shortcut={shortcuts.newConversation}>
-            <Button variant="outline" size="icon-xs" aria-label={t.newConversation} nativeButton={false} render={<Link to="/new" {...tabLink("/new", !isMobile)} />} className="ml-auto size-6 rounded-[6px] [&_svg:not([class*='size-'])]:size-4">
+            <Button variant="outline" size="icon-sm" aria-label={t.newConversation} nativeButton={false} render={<Link to="/new" {...tabLink("/new", !isMobile)} />} className="ml-auto">
               <PlusIcon />
             </Button>
           </ShortcutTooltip>
         </div>
-        <InputGroup>
-          <InputGroupInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={tc.search} aria-label={t.searchConversation} />
-          <InputGroupAddon className="text-subtle [&>svg:not([class*='size-'])]:size-[15px]">
-            <SearchIcon />
-          </InputGroupAddon>
-        </InputGroup>
-      </div>
+        <ConversationSearch value={q} onChange={setQ} />
+      </SidebarHeader>
 
-      <nav aria-label={t.conversations} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-2.5 pb-3">
-        {isPending && [0, 1, 2].map((i) => <SidebarMenuSkeleton key={i} showIcon className="mt-2 h-[53px]" />)}
-        {!isPending && conversations.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t.empty}</p>}
+      <SidebarContent role="navigation" aria-label={t.conversations}>
+        {isPending && <ListSkeleton />}
+        {!isPending && !list.length && <EmptyList query={conversations.length > 0} list={conversationList} />}
         {withAgent.length > 0 && (
-          <>
-            <ListLabel>{t.agents}</ListLabel>
-            {rows(withAgent)}
-          </>
+          <SidebarGroup>
+            <SidebarGroupLabel>{t.agents}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{rows(withAgent)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         )}
         {team.length > 0 && (
-          <>
-            <ListLabel>{t.team}</ListLabel>
-            {rows(team)}
-          </>
+          <SidebarGroup>
+            <SidebarGroupLabel>{t.team}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{rows(team)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         )}
-      </nav>
+      </SidebarContent>
 
       {/* On a phone there is no rail: its destinations stay at the bottom of the list. */}
       {isMobile && (
@@ -336,21 +358,21 @@ function SidebarBody() {
 }
 
 /**
- * Figma « Sidebar » (desktop): search and new conversation as round buttons, the organisation at the
- * top (its recap on click), the inbox and the tasks as pills, then every conversation in one flat list.
- * At the bottom, your account and the apps (Marketplace).
+ * Desktop: search and new conversation, the organisation at the top (its recap on click), the inbox,
+ * the tasks and the sessions, then every conversation in one flat list.
+ * At the bottom, the apps (Marketplace) and your account.
  */
 function DesktopSidebar() {
   const { conversationId } = useParams({ strict: false }) as { conversationId?: string };
   const { user } = useRouteContext({ from: "/app" });
   const pathname = useLocation({ select: (l) => l.pathname });
   const t = useT(messages);
-  const tc = useT(common);
   const org = useOrgName();
   const [searching, setSearching] = useState(false);
   const [q, setQ] = useState("");
   const [market, setMarket] = useState(false);
-  const { data: conversations = [], isPending } = useQuery(conversationsQuery);
+  const conversationList = useQuery(conversationsQuery);
+  const { data: conversations = [], isPending } = conversationList;
   const { data: digest } = useQuery(digestQuery);
   const unreadInbox = useQuery(inboxQuery()).data?.unread ?? 0;
   // Claude Code sessions: the pill once there are any; its count, those waiting on your answer.
@@ -370,153 +392,191 @@ function DesktopSidebar() {
 
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center justify-end gap-2 px-3">
-        <Tooltip>
-          <TooltipTrigger
-            render={<RoundButton aria-label={t.searchConversation} aria-pressed={searching} onClick={() => (searching ? closeSearch() : setSearching(true))} />}
-          >
-            <SearchIcon />
-          </TooltipTrigger>
-          <TooltipContent>{t.searchConversation}</TooltipContent>
-        </Tooltip>
-        <ShortcutTooltip label={t.newConversation} shortcut={shortcuts.newConversation}>
-          <RoundButton aria-label={t.newConversation} nativeButton={false} render={<Link to="/new" {...tabLink("/new", true)} />}>
-            <PlusIcon />
-          </RoundButton>
-        </ShortcutTooltip>
-      </div>
-
-      {searching ? (
-        <div className="px-3 pb-4">
-          <InputGroup className="h-9 rounded-full bg-background">
-            <InputGroupInput
-              autoFocus
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Escape" && closeSearch()}
-              placeholder={tc.search}
-              aria-label={t.searchConversation}
-            />
-            <InputGroupAddon className="text-subtle [&>svg:not([class*='size-'])]:size-[15px]">
+      <SidebarHeader>
+        {/* Who this space is (opens the morning recap when there is one), then search and new. */}
+        <div className="flex items-center gap-2">
+          <SidebarMenu className="min-w-0 flex-1">
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                aria-label={digest ? t.digest : undefined}
+                onClick={digest ? () => setDigestOpen(true) : undefined}
+                render={digest ? undefined : <div />}
+                className="font-medium"
+              >
+                <OrgLogo className="size-5" />
+                <span className="truncate">{org}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant={searching ? "secondary" : "outline"}
+                  size="icon-sm"
+                  aria-label={t.searchConversation}
+                  aria-pressed={searching}
+                  onClick={() => (searching ? closeSearch() : setSearching(true))}
+                />
+              }
+            >
               <SearchIcon />
-            </InputGroupAddon>
-          </InputGroup>
+            </TooltipTrigger>
+            <TooltipContent>{t.searchConversation}</TooltipContent>
+          </Tooltip>
+          <ShortcutTooltip label={t.newConversation} shortcut={shortcuts.newConversation}>
+            <Button variant="outline" size="icon-sm" aria-label={t.newConversation} nativeButton={false} render={<Link to="/new" {...tabLink("/new", true)} />}>
+              <PlusIcon />
+            </Button>
+          </ShortcutTooltip>
         </div>
-      ) : (
-        <>
-          {/* Figma « Accueil »: who this space is; opens the morning recap when there is one. */}
-          <button
-            type="button"
-            disabled={!digest}
-            onClick={() => setDigestOpen(true)}
-            aria-label={digest ? t.digest : undefined}
-            className="mx-auto mb-4 flex flex-col items-center gap-2 rounded-2xl px-3 pt-1 pb-0.5 outline-none enabled:hover:bg-black/4 focus-visible:ring-3 focus-visible:ring-ring/30 dark:enabled:hover:bg-white/5"
-          >
-            <OrgLogo className="size-[52px]" />
-            <span className="text-sm leading-5">{org}</span>
-          </button>
-          {/* Figma « Raccourcis ». */}
-          <div className="flex gap-1 px-3 pb-4">
-            <Shortcut to="/inbox" active={pathname.startsWith("/inbox")} icon={<InboxIcon />} label={t.inboxShort} count={unreadInbox} countLabel={t.unreadInbox(unreadInbox)} />
-            <Shortcut to="/tasks" active={pathname.startsWith("/tasks")} icon={<TaskListIcon />} label={t.tasksShort} />
-            {sessionsPill?.any && (
-              <Shortcut to="/sessions" active={pathname.startsWith("/sessions")} icon={<TerminalIcon />} label={t.sessionsShort} count={waitingSessions} countLabel={t.waitingSessions(waitingSessions)} />
-            )}
-          </div>
-        </>
+        {searching && <ConversationSearch value={q} onChange={setQ} onEscape={closeSearch} autoFocus />}
+      </SidebarHeader>
+
+      {/* Inbox, tasks and sessions on one line, as icons with what waits. */}
+      {!searching && (
+        <div className="flex items-center gap-1 px-2">
+          <ShortcutItem to="/inbox" active={pathname.startsWith("/inbox")} icon={<InboxIcon />} label={t.inboxShort} count={unreadInbox} countLabel={t.unreadInbox(unreadInbox)} />
+          <ShortcutItem to="/tasks" active={pathname.startsWith("/tasks")} icon={<TaskListIcon />} label={t.tasksShort} />
+          {sessionsPill?.any && (
+            <ShortcutItem to="/sessions" active={pathname.startsWith("/sessions")} icon={<TerminalIcon />} label={t.sessionsShort} count={waitingSessions} countLabel={t.waitingSessions(waitingSessions)} />
+          )}
+        </div>
       )}
 
-      <nav aria-label={t.conversations} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-3 pb-2 [scrollbar-width:none]">
-        {isPending && [0, 1, 2].map((i) => <SidebarMenuSkeleton key={i} showIcon className="h-[54px]" />)}
-        {!isPending && conversations.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t.empty}</p>}
-        {list.map((c) => (
-          <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />
-        ))}
-      </nav>
-
-      {/* Figma « Bas »: your account, and the apps installed in the organisation. */}
-      <div className="flex shrink-0 items-center gap-2 px-3 pt-2.5 pb-3.5">
-        <UserMenu user={user} pill />
-        {user.role === "admin" && (
-          <>
-            <AppsPill onClick={() => setMarket(true)} label={t.marketplace} />
-            {market && <Marketplace onClose={() => setMarket(false)} />}
-          </>
+      <SidebarContent role="navigation" aria-label={t.conversations}>
+        {isPending && <ListSkeleton />}
+        {!isPending && !list.length && <EmptyList query={conversations.length > 0} list={conversationList} />}
+        {list.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>{t.conversations}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              {/* A little air between rows: the open one and the hovered one stay two rows. */}
+              <SidebarMenu className="gap-1">
+                {list.map((c) => (
+                  <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         )}
-      </div>
+      </SidebarContent>
+
+      {/* Your account, and the apps installed in the organisation. */}
+      <SidebarFooter>
+        <SidebarMenu>
+          {user.role === "admin" && <AppsItem onClick={() => setMarket(true)} label={t.marketplace} />}
+          <SidebarMenuItem>
+            <UserMenu user={user} />
+          </SidebarMenuItem>
+        </SidebarMenu>
+        {user.role === "admin" && market && <Marketplace onClose={() => setMarket(false)} />}
+      </SidebarFooter>
     </>
   );
 }
 
-/** Figma « Bouton rond »: white, hairline, 32 px. */
-function RoundButton({ className, ...props }: React.ComponentProps<typeof Button>) {
+/** The search field over the conversation list. */
+function ConversationSearch({ value, onChange, onEscape, autoFocus }: { value: string; onChange: (q: string) => void; onEscape?: () => void; autoFocus?: boolean }) {
+  const t = useT(messages);
+  const tc = useT(common);
   return (
-    <Button
-      variant="outline"
-      size="icon"
-      className={cn("bg-background shadow-[0_1px_2px_0_oklch(0_0_0/0.05)] aria-pressed:bg-accent [&_svg:not([class*='size-'])]:size-[17px]", className)}
-      {...props}
-    />
+    <InputGroup>
+      <InputGroupInput
+        autoFocus={autoFocus}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && onEscape?.()}
+        placeholder={tc.search}
+        aria-label={t.searchConversation}
+      />
+      <InputGroupAddon>
+        <SearchIcon />
+      </InputGroupAddon>
+    </InputGroup>
   );
 }
 
-/** Figma « Raccourci »: a white pill, its icon and name, and in orange what waits for you. */
-function Shortcut({ to, active, icon, label, count = 0, countLabel }: { to: string; active: boolean; icon: ReactNode; label: string; count?: number; countLabel?: string }) {
+function ListSkeleton() {
   return (
-    <Link
-      to={to}
-      {...tabLink(to, true)}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "flex h-8 min-w-fit flex-auto items-center justify-center gap-1 rounded-full border border-border bg-background px-1.5 text-[13px] leading-[18px] outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30 [&_svg]:size-[15px] [&_svg]:shrink-0 [&_svg]:text-icon",
-        active && "border-transparent bg-accent hover:bg-accent",
-      )}
-    >
-      {icon}
-      <span className="truncate">{label}</span>
-      {count > 0 && (
-        <span aria-label={countLabel} className="rounded-lg bg-warning px-[5px] text-[11px] leading-[14px] text-white tabular-nums">
-          {count}
-        </span>
-      )}
-    </Link>
+    <SidebarGroup>
+      <SidebarMenu>
+        {[0, 1, 2].map((i) => (
+          <SidebarMenuItem key={i}>
+            <SidebarMenuSkeleton showIcon />
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    </SidebarGroup>
   );
 }
 
-/** Figma « Applications »: the logos of the first connectors installed; opens the Marketplace. */
-function AppsPill({ onClick, label }: { onClick: () => void; label: string }) {
-  const { data } = useQuery(mcpServersQuery);
-  const servers = (data?.servers ?? []).slice(0, 3);
+/** Nothing in the list: none yet, none matching the search (`query`), or the list couldn't be fetched. */
+function EmptyList({ query, list }: { query: boolean; list: { error: Error | null; refetch: () => unknown } }) {
+  const t = useT(messages);
+  const tc = useT(common);
+  if (list.error && !query)
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyDescription title={list.error.message}>{t.listError}</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button variant="secondary" size="sm" onClick={() => void list.refetch()}>
+            {tc.retry}
+          </Button>
+        </EmptyContent>
+      </Empty>
+    );
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyDescription>{query ? t.noMatch : t.empty}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
+  );
+}
+
+/** A destination above the list (inbox, tasks, sessions), with what waits for you. */
+function ShortcutItem({ to, active, icon, label, count = 0, countLabel }: { to: string; active: boolean; icon: ReactNode; label: string; count?: number; countLabel?: string }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
-            type="button"
-            onClick={onClick}
-            aria-label={label}
-            className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2.5 outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30"
+          <Button
+            variant={active ? "secondary" : "ghost"}
+            size={count > 0 ? "sm" : "icon-sm"}
+            aria-label={count > 0 ? `${label}, ${countLabel}` : label}
+            nativeButton={false}
+            render={<Link to={to} {...tabLink(to, true)} aria-current={active ? "page" : undefined} />}
           />
         }
       >
-        {servers.length ? (
-          servers.map((s) => <BrandLogo key={s.name} server={s.name} fallback={<PlugIcon className="size-4 text-icon" />} className="size-4 rounded-[3px]" />)
-        ) : (
-          <PuzzleIcon className="size-4 text-icon" />
-        )}
+        {icon}
+        {count > 0 && <span className="tabular-nums">{count}</span>}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
 }
 
-function ListLabel({ children }: { children: string }) {
-  return <p className="pt-4 pb-1.5 pl-2 text-[13px] leading-[18px] tracking-[-0.05px] text-subtle">{children}</p>;
+/** The logos of the first connectors installed; opens the Marketplace. */
+function AppsItem({ onClick, label }: { onClick: () => void; label: string }) {
+  const { data } = useQuery(mcpServersQuery);
+  const servers = (data?.servers ?? []).slice(0, 3);
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton onClick={onClick}>
+        {servers.length ? servers.map((s) => <BrandLogo key={s.name} server={s.name} fallback={<PlugIcon />} className="size-4 rounded-sm" />) : <PuzzleIcon />}
+        <span>{label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
 }
 
 /**
- * Figma « Ligne de conversation »: avatar, name and time, then the last message, or what the bot is
- * doing. Waiting for your answer: an orange dot (the only state asking you to act). Unread: a blue dot.
+ * A conversation: avatar, name and time, then the last message, or what the bot is doing.
+ * Waiting for your answer: an orange dot (the only state asking you to act). Unread: a blue dot.
  */
 function ConversationRow({ conversation: c, active, desktop }: { conversation: ConversationSummary & { name: string }; active: boolean; desktop: boolean }) {
   const { user } = useRouteContext({ from: "/app" });
@@ -529,63 +589,69 @@ function ConversationRow({ conversation: c, active, desktop }: { conversation: C
   const path = tabPath.conversation(c.id);
   const unread = c.unread && !active;
   return (
-    <ContextMenu disabled={!desktop}>
-      <ContextMenuTrigger
-        render={
-          <Link
-            to="/c/$conversationId"
-            params={{ conversationId: c.id }}
-            {...tabLink(path, desktop)}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "flex shrink-0 items-center gap-3 rounded-xl py-[9px] pr-2.5 pl-2 outline-none transition-colors hover:bg-black/4 focus-visible:ring-3 focus-visible:ring-ring/30 dark:hover:bg-white/5",
-              active && "bg-accent hover:bg-accent dark:hover:bg-accent",
-            )}
-          />
-        }
-      >
-        {/* Presence only for colleagues: what a bot is doing is said on the second line. */}
-        <ConversationAvatar conversation={c} me={user.id} className="size-9" status={c.agents.length ? undefined : active ? "ring-accent" : "ring-sidebar"} />
-        <span className="grid min-w-0 flex-1 gap-0.5">
-          <span className="flex items-center gap-[7px]">
-            <span className="truncate text-[15px] leading-[21px]">{c.name}</span>
-            <span className="ml-auto shrink-0 text-xs leading-4 text-subtle">{listTime(new Date(c.lastAt))}</span>
+    <SidebarMenuItem>
+      <ContextMenu disabled={!desktop}>
+        <ContextMenuTrigger
+          render={
+            <SidebarMenuButton
+              size="lg"
+              isActive={active}
+              render={<Link to="/c/$conversationId" params={{ conversationId: c.id }} {...tabLink(path, desktop)} aria-current={active ? "page" : undefined} />}
+            />
+          }
+        >
+          {/* Presence only for colleagues: what a bot is doing is said on the second line. */}
+          <ConversationAvatar conversation={c} me={user.id} className="size-7" status={c.agents.length ? undefined : active ? "ring-sidebar-accent" : "ring-sidebar"} />
+          <span className="grid min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              {/* min-w-0: a long name truncates instead of pushing the time out of the row. */}
+              <span className="min-w-0 truncate font-medium">{c.name}</span>
+              <span className="ml-auto shrink-0 text-xs text-muted-foreground">{listTime(new Date(c.lastAt))}</span>
+            </span>
+            <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+              {waiting ? (
+                <span className="truncate">{t.waiting}</span>
+              ) : working ? (
+                <>
+                  <LoaderIcon className="animate-spin" />
+                  <span className="truncate">{t.working}</span>
+                </>
+              ) : (
+                // « Pixel est prêt » under Pixel's name says nothing: a list preview is a message, not a setup event.
+                c.preview &&
+                c.preview.event?.type !== "agent.ready" && (
+                  <span className="truncate">
+                    {c.preview.fromMe ? t.prefix(tc.you) : c.preview.author && c.kind === "group" && t.prefix(c.preview.author)}
+                    {plainPreview(eventText(c.preview.text, c.preview.event))}
+                  </span>
+                )
+              )}
+              {waiting ? (
+                <span className="ml-auto size-2 shrink-0 rounded-full bg-warning" />
+              ) : (
+                unread && <span className="ml-auto size-2 shrink-0 rounded-full bg-brand" role="status" aria-label={t.unread} />
+              )}
+            </span>
           </span>
-          <span className="flex min-w-0 items-center gap-2 text-sm leading-5 text-muted-foreground">
-            {waiting ? (
-              <span className="truncate">{t.waiting}</span>
-            ) : working ? (
-              <>
-                <LoaderIcon className="size-3 shrink-0 animate-spin" />
-                <span className="truncate">{t.working}</span>
-              </>
-            ) : (
-              c.preview && (
-                <span className="truncate">
-                  {c.preview.fromMe ? t.prefix(tc.you) : c.preview.author && c.kind === "group" && t.prefix(c.preview.author)}
-                  {eventText(c.preview.text, c.preview.event).replace(/[*_`#>]/g, "")}
-                </span>
-              )
-            )}
-            {waiting ? (
-              <span className="ml-auto size-2 shrink-0 rounded-full bg-warning" />
-            ) : (
-              unread && <span className="ml-auto size-2 shrink-0 rounded-full bg-brand" role="status" aria-label={t.unread} />
-            )}
-          </span>
-        </span>
-      </ContextMenuTrigger>
-      <ContextMenuContent className="w-56">
-        <ContextMenuGroup>
-          <ContextMenuItem onClick={() => openHere(path, true)}>{t.openInTab}</ContextMenuItem>
-          <ContextMenuItem onClick={() => openBeside(path)}>{t.openBeside}</ContextMenuItem>
-        </ContextMenuGroup>
-      </ContextMenuContent>
-    </ContextMenu>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-56">
+          <ContextMenuGroup>
+            <ContextMenuItem onClick={() => openHere(path, true)}>
+              <PlusIcon />
+              {t.openInTab}
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => openBeside(path)}>
+              <SplitIcon />
+              {t.openBeside}
+            </ContextMenuItem>
+          </ContextMenuGroup>
+        </ContextMenuContent>
+      </ContextMenu>
+    </SidebarMenuItem>
   );
 }
 
-export function UserMenu({ user, pill }: { user: { id: string; name: string; image?: string | null }; pill?: boolean }) {
+export function UserMenu({ user }: { user: { id: string; name: string; image?: string | null } }) {
   const navigate = useNavigate();
   const t = useT(messages);
   const { data: digest } = useQuery(digestQuery);
@@ -593,45 +659,36 @@ export function UserMenu({ user, pill }: { user: { id: string; name: string; ima
   const away = isAway(me);
   return (
     <DropdownMenu>
-      {pill ? (
-        // Figma « Compte »: a white pill, your avatar and name.
-        <DropdownMenuTrigger className="relative flex h-[38px] min-w-0 flex-1 items-center gap-2 rounded-full border border-border bg-background py-1 pr-3.5 pl-1 text-left text-sm leading-5 outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30 aria-expanded:bg-secondary">
-          <PersonAvatar person={{ id: user.id, name: user.name, image: user.image ?? null }} className="size-7" />
-          <span className="min-w-0 flex-1 truncate">{user.name}</span>
-          {away && <MoonIcon role="img" aria-label={availabilityLabel(me) ?? t.dnd} className="size-3.5 shrink-0 text-destructive" />}
-        </DropdownMenuTrigger>
-      ) : (
-        <DropdownMenuTrigger render={<SidebarMenuButton tooltip={user.name} />}>
-          <PersonAvatar person={{ id: user.id, name: user.name, image: user.image ?? null }} className="size-5" />
-          <span>{user.name}</span>
-          {away && <MoonIcon role="img" aria-label={availabilityLabel(me) ?? t.dnd} className="ml-auto size-3.5 text-destructive" />}
-        </DropdownMenuTrigger>
-      )}
+      <DropdownMenuTrigger render={<SidebarMenuButton size="lg" tooltip={user.name} />}>
+        <PersonAvatar person={{ id: user.id, name: user.name, image: user.image ?? null }} className="size-8" />
+        <span className="min-w-0 flex-1 truncate">{user.name}</span>
+        {away && <MoonIcon role="img" aria-label={availabilityLabel(me) ?? t.dnd} className="text-destructive" />}
+      </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-56">
         <DropdownMenuGroup>
           <DropdownMenuItem onClick={() => openProfile(user.id)}>
-            <UserIcon className="text-muted-foreground" /> {t.profile}
+            <UserIcon /> {t.profile}
           </DropdownMenuItem>
           <DndMenu userId={user.id} />
           <DropdownMenuItem onClick={() => openSettings()}>
-            <SlidersIcon className="text-muted-foreground" /> {t.settings}
+            <SlidersIcon /> {t.settings}
             <DropdownMenuShortcut>
               <ShortcutKeys shortcut={shortcuts.settings} />
             </DropdownMenuShortcut>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setOverlay("help")}>
-            <KeyboardIcon className="text-muted-foreground" /> {t.shortcuts}
+            <KeyboardIcon /> {t.shortcuts}
             <DropdownMenuShortcut>
               <ShortcutKeys shortcut={shortcuts.help} />
             </DropdownMenuShortcut>
           </DropdownMenuItem>
           {digest && (
             <DropdownMenuItem onClick={() => setDigestOpen(true)}>
-              <FileTextIcon className="text-muted-foreground" /> {t.digest}
+              <FileTextIcon /> {t.digest}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={() => setWhatsNewOpen(true)}>
-            <SparklesIcon className="text-muted-foreground" /> {t.whatsNew}
+            <SparklesIcon /> {t.whatsNew}
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
@@ -664,25 +721,41 @@ function DndMenu({ userId }: { userId: string }) {
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
-        <MoonIcon className={on ? "text-destructive" : "text-muted-foreground"} /> {t.dnd}
+        <MoonIcon className={cn(on && "text-destructive")} /> {t.dnd}
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="w-56">
         {on ? (
           <DropdownMenuGroup>
             <DropdownMenuLabel>{availabilityLabel(status)}</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => change.mutate(null)}>{t.dndOff}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => change.mutate(null)}>
+              <CloseIcon />
+              {t.dndOff}
+            </DropdownMenuItem>
           </DropdownMenuGroup>
         ) : (
           schedule &&
           dndPresets(schedule).map((p) => (
             <DropdownMenuItem key={p.label} onClick={() => change.mutate(p.until)}>
+              <ClockIcon />
               {p.label}
             </DropdownMenuItem>
           ))
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => openSettings("availability")}>{t.schedule}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openSettings("availability")}>
+          <CalendarClockIcon />
+          {t.schedule}
+        </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   );
 }
+
+/** A message as one line of preview: markdown links kept as their words, bare addresses and markup left out. */
+const plainPreview = (text: string) =>
+  text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[*_`#>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();

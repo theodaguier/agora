@@ -19,20 +19,39 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { CodePriorityIcon, CodeStateIcon, IssueIcon } from "@/components/CodeSessionMarks";
 import { CodePriorityMenu, priorityOfKey, useSetCodePriority, useSetCodePriorityOf } from "@/components/CodePriorityMenu";
 import { EmptyFigure } from "@/components/EmptyFigure";
-import { BranchIcon, ChevronLeftIcon, TerminalIcon } from "@/components/icons";
+import { BranchIcon, ChevronLeftIcon, ClockIcon, FolderIcon, HistoryIcon, TerminalIcon, WarningIcon } from "@/components/icons";
 import { OptionSelect } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { CardAction, CardTitle } from "@/components/ui/card";
+import { Item, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import { useT } from "@/i18n";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { defineMessages, useT } from "@/i18n";
+import { ChecksMark } from "@/components/github/PullRequestCard";
 import { allCodeSessionsQuery } from "@/lib/code-sessions";
 import { listTime } from "@/lib/dates";
 import { useOrgTitle } from "@/lib/org";
 import { conversationsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+
+const messages = defineMessages({
+  en: {
+    emptyView: "Switch to another view, or show stopped sessions in Display.",
+    errorTitle: "Sessions unavailable",
+    error: "Code sessions can't be reached right now.",
+  },
+  fr: {
+    emptyView: "Passe à une autre vue, ou affiche les sessions arrêtées dans Affichage.",
+    errorTitle: "Sessions indisponibles",
+    error: "Les sessions de code sont injoignables pour le moment.",
+  },
+});
 
 type Display = { view: CodeSessionView; group: CodeSessionGrouping; order: CodeSessionOrdering; showStopped: boolean };
 
@@ -63,10 +82,10 @@ function useDisplay() {
   return [display, update] as const;
 }
 
-const VIEWS: CodeSessionView[] = ["active", "finished", "all"];
+const VIEWS: CodeSessionView[] = ["active", "parked", "finished", "all"];
 
 /**
- * Figma « Sessions : vues et regroupement » (13, 14): every code session of your conversations, as Linear
+ * Every code session of your conversations, as Linear
  * lists issues. Views (Active, Over, All), then groups by state, priority or project, each sorted by
  * priority then last activity. Priority: its mark (a menu), keys 1 to 4 and 0 on a row, or dragging a
  * row into another priority group. A row opens its conversation with the session beside the thread.
@@ -74,41 +93,58 @@ const VIEWS: CodeSessionView[] = ["active", "finished", "all"];
 export function Sessions() {
   const t = useT(codeSessions);
   const c = useT(common);
+  const m = useT(messages);
   const b = t.board;
   useOrgTitle(t.page.title);
   const [display, setDisplay] = useDisplay();
-  const { data: sessions = [], isPending } = useQuery(allCodeSessionsQuery);
+  const { data: sessions = [], isPending, isError, error, refetch } = useQuery(allCodeSessionsQuery);
   // What each view would show, stopped sessions counted only when they are shown.
   const count = (view: CodeSessionView) => groupCodeSessions(sessions, { ...display, view }).reduce((n, g) => n + g.sessions.length, 0);
   const groups = groupCodeSessions(sessions, display);
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 pt-6 pb-12 md:pt-10">
-          <Button variant="ghost" size="icon" nativeButton={false} render={<Link to="/" aria-label={c.back} />} className="-ml-2 mb-2 hover:bg-transparent md:hidden">
-            <ChevronLeftIcon className="size-5" />
+        <div className="mx-auto flex w-full max-w-2xl flex-col px-4 pt-6 pb-12 md:pt-10">
+          <Button variant="ghost" size="icon" nativeButton={false} render={<Link to="/" aria-label={c.back} />} className="-ml-2 mb-2 md:hidden">
+            <ChevronLeftIcon />
           </Button>
-          <h1 className="text-xl leading-7 font-medium">{t.page.title}</h1>
+          <h1 className="text-xl font-medium">{t.page.title}</h1>
           {sessions.length > 0 && (
             <div className="mt-3 flex items-center gap-0.5">
-              {/* Figma « Vue de liste »: text tabs, a light background on the one shown, the count in light grey. */}
-              {VIEWS.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  aria-pressed={display.view === v}
-                  onClick={() => setDisplay({ view: v })}
-                  className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:bg-accent aria-pressed:font-medium aria-pressed:text-foreground"
-                >
-                  {b.views[v]}
-                  <span className="font-normal text-subtle tabular-nums">{count(v)}</span>
-                </button>
-              ))}
+              <Tabs value={display.view} onValueChange={(v) => setDisplay({ view: v as CodeSessionView })} className="min-w-0 flex-1">
+                <TabsList>
+                  {VIEWS.map((v) => (
+                    <TabsTrigger key={v} value={v}>
+                      {b.views[v]}
+                      <Badge variant="secondary">{count(v)}</Badge>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
               <DisplayMenu display={display} onChange={setDisplay} />
             </div>
           )}
           {isPending ? (
-            <Spinner className="mx-auto mt-16 size-5 text-muted-foreground" />
+            <div className="mt-6 flex flex-col gap-2">
+              {[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : isError && !sessions.length ? (
+            <Empty className="mt-10">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <WarningIcon />
+                </EmptyMedia>
+                <EmptyTitle>{m.errorTitle}</EmptyTitle>
+                <EmptyDescription title={error.message}>{m.error}</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button variant="secondary" onClick={() => void refetch()}>
+                  {c.retry}
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : !groups.length ? (
             <Empty className="mt-10">
               {sessions.length ? (
@@ -117,6 +153,7 @@ export function Sessions() {
                     <TerminalIcon />
                   </EmptyMedia>
                   <EmptyTitle>{b.empty}</EmptyTitle>
+                  <EmptyDescription>{m.emptyView}</EmptyDescription>
                 </EmptyHeader>
               ) : (
                 <EmptyHeader>
@@ -135,33 +172,42 @@ export function Sessions() {
   );
 }
 
-/** Figma « Affichage »: group by, order by, and whether stopped sessions show. */
+/** Display options: group by, order by, and whether stopped sessions show. */
+/** Leading marks of the grouping and ordering options: the session marks themselves, a folder for the project. */
+const displayIcon = {
+  state: <CodeStateIcon state="idle" />,
+  priority: <CodePriorityIcon priority="high" />,
+  project: <FolderIcon />,
+  updated: <HistoryIcon />,
+  created: <ClockIcon />,
+};
+
 function DisplayMenu({ display, onChange }: { display: Display; onChange: (patch: Partial<Display>) => void }) {
   const b = useT(codeSessions).board;
   return (
     <Popover>
       <PopoverTrigger render={<Button variant="outline" size="sm" className="ml-auto" />}>{b.display}</PopoverTrigger>
-      <PopoverContent align="end" className="w-72 gap-3">
+      <PopoverContent align="end">
         <Field orientation="horizontal">
-          <FieldLabel className="flex-1 font-normal">{b.groupBy}</FieldLabel>
+          <FieldLabel className="flex-1">{b.groupBy}</FieldLabel>
           <OptionSelect
             className="w-36"
             value={display.group}
-            options={(["state", "priority", "project"] as const).map((v) => ({ value: v, label: b.groupings[v] }))}
+            options={(["state", "priority", "project"] as const).map((v) => ({ value: v, label: b.groupings[v], icon: displayIcon[v] }))}
             onValueChange={(v) => onChange({ group: v as CodeSessionGrouping })}
           />
         </Field>
         <Field orientation="horizontal">
-          <FieldLabel className="flex-1 font-normal">{b.orderBy}</FieldLabel>
+          <FieldLabel className="flex-1">{b.orderBy}</FieldLabel>
           <OptionSelect
             className="w-36"
             value={display.order}
-            options={(["priority", "updated", "created"] as const).map((v) => ({ value: v, label: b.orderings[v] }))}
+            options={(["priority", "updated", "created"] as const).map((v) => ({ value: v, label: b.orderings[v], icon: displayIcon[v] }))}
             onValueChange={(v) => onChange({ order: v as CodeSessionOrdering })}
           />
         </Field>
         <Field orientation="horizontal">
-          <FieldLabel htmlFor="sessions-stopped" className="flex-1 font-normal">
+          <FieldLabel htmlFor="sessions-stopped" className="flex-1">
             {b.showStopped}
           </FieldLabel>
           <Switch id="sessions-stopped" checked={display.showStopped} onCheckedChange={(v) => onChange({ showStopped: v })} />
@@ -172,8 +218,8 @@ function DisplayMenu({ display, onChange }: { display: Display; onChange: (patch
 }
 
 /**
- * Figma « Titre de groupe » and its card: the group's mark (state, priority or GitHub), its name, its
- * count in light grey. Grouped by priority, a row dropped here takes the group's priority.
+ * A group's card: its mark (state, priority or GitHub), its name, its count, then its rows.
+ * Grouped by priority, a row dropped here takes the group's priority.
  */
 function Group({ group, groupKey, sessions }: { group: CodeSessionGrouping; groupKey: string; sessions: CodeSession[] }) {
   const t = useT(codeSessions);
@@ -182,24 +228,19 @@ function Group({ group, groupKey, sessions }: { group: CodeSessionGrouping; grou
   const drop = useDropPriority(priority);
   const mark =
     group === "state" ? (
-      <CodeStateIcon state={groupKey as CodeSessionState} className="size-3.5" />
+      <CodeStateIcon state={groupKey as CodeSessionState} className="size-4" />
     ) : group === "priority" ? (
-      <CodePriorityIcon priority={groupKey as CodePriority} className="size-3.5" />
+      <CodePriorityIcon priority={groupKey as CodePriority} className="size-4" />
     ) : (
-      <BrandLogo domain="github.com" fallback={<BranchIcon className="size-3.5" />} className="size-3.5 dark:invert" />
+      <BrandLogo domain="github.com" fallback={<BranchIcon className="size-4" />} className="size-4 dark:invert" />
     );
   // A project by its repository's name (« e-do-bots »), its owner on hover.
   const label = group === "state" ? t.stateGroups[groupKey as CodeSessionState] : group === "priority" ? t.priorities[groupKey as CodePriority] : (groupKey.split("/")[1] ?? groupKey) || t.board.noProject;
   return (
-    <section className="mt-7 flex flex-col gap-2">
-      <h2 title={group === "project" ? groupKey : undefined} className="flex items-center gap-1.5 pl-0.5 text-[13px] leading-[18px] text-muted-foreground">
-        {mark}
-        {label}
-        <span className="text-subtle tabular-nums">{sessions.length}</span>
-      </h2>
-      <div
-        className={cn("flex flex-col rounded-[14px] border border-border p-1 transition-colors", over && "border-ring bg-accent/40")}
-        onDragOver={(e) => {
+    <ListCard
+      size="sm"
+      className={cn("mt-6", over && "ring-2 ring-ring")}
+      onDragOver={(e) => {
           if (!priority || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
           e.preventDefault();
           setOver(true);
@@ -209,12 +250,24 @@ function Group({ group, groupKey, sessions }: { group: CodeSessionGrouping; grou
           setOver(false);
           drop(e);
         }}
-      >
+    >
+      <ListCardHeader>
+        <CardTitle title={group === "project" ? groupKey : undefined} className="flex items-center gap-2">
+          {mark}
+          {label}
+        </CardTitle>
+        <CardAction>
+          <Badge variant="secondary" className="tabular-nums">
+            {sessions.length}
+          </Badge>
+        </CardAction>
+      </ListCardHeader>
+      <ListCardRows>
         {sessions.map((s) => (
           <SessionRow key={s.id} session={s} grouping={group} />
         ))}
-      </div>
-    </section>
+      </ListCardRows>
+    </ListCard>
   );
 }
 
@@ -233,7 +286,7 @@ function useDropPriority(priority: CodePriority | null) {
 }
 
 /**
- * Figma « Ligne de session »: its priority (a menu, for its owner), its state (unless the group says it),
+ * A session row: its priority (a menu, for its owner), its state (unless the group says it),
  * its title, then who started it, its issue, what it waits for or where its work is, and when. No « · ».
  */
 function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: CodeSessionGrouping }) {
@@ -260,7 +313,8 @@ function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: 
     void navigate({ to: "/c/$conversationId/code/$sessionId", params: { conversationId: s.conversationId, sessionId: s.id } });
   };
   return (
-    <div
+    <Item
+      size="sm"
       role="button"
       tabIndex={0}
       draggable={owner}
@@ -276,7 +330,7 @@ function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: 
         e.preventDefault();
         setPriority.mutate(p);
       }}
-      className="group/row flex cursor-pointer items-center gap-2.5 rounded-[10px] px-3 py-2.5 outline-none hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/30"
+      className="cursor-pointer flex-nowrap hover:bg-muted/50"
     >
       {owner ? (
         <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
@@ -284,9 +338,9 @@ function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: 
             session={s}
             align="start"
             trigger={
-              <button type="button" aria-label={`${t.priority} ${t.priorities[s.priority]}`} className="flex size-6 items-center justify-center rounded-md outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50">
+              <Button variant="ghost" size="icon-xs" aria-label={`${t.priority} ${t.priorities[s.priority]}`}>
                 <CodePriorityIcon priority={s.priority} />
-              </button>
+              </Button>
             }
           />
         </span>
@@ -296,9 +350,11 @@ function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: 
         </span>
       )}
       {grouping !== "state" && <CodeStateIcon state={state} />}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="truncate text-[15px] leading-[21px]">{s.title}</p>
-        <p className="flex min-w-0 items-center gap-2 text-[13px] leading-[18px] text-muted-foreground">
+      <ItemContent className="min-w-0">
+        <ItemTitle className="w-full min-w-0">
+          <span className="truncate">{s.title}</span>
+        </ItemTitle>
+        <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
           {who && (
             <span className="flex shrink-0 items-center gap-1.5">
               {agent && <AgentAvatar agent={agent} className="size-4" />}
@@ -312,9 +368,10 @@ function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: 
             </span>
           )}
           {detail && <span className={cn("min-w-0 truncate", state === "waiting" && "text-state-you", state === "failed" && "text-priority-urgent")}>{detail}</span>}
-        </p>
-      </div>
-      <span className="shrink-0 self-start pt-0.5 text-xs text-subtle tabular-nums">{listTime(new Date(s.updatedAt))}</span>
-    </div>
+          {s.git?.pr?.state === "open" && !(state === "waiting" || state === "running") && <ChecksMark checks={s.git.pr.checks} />}
+        </div>
+      </ItemContent>
+      <span className="shrink-0 self-start text-xs text-muted-foreground tabular-nums">{listTime(new Date(s.updatedAt))}</span>
+    </Item>
   );
 }

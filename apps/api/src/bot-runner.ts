@@ -31,6 +31,7 @@ import { viewPrompt, withViewAction } from "./views";
 import { PREVIEW_PROMPT, savePreviews } from "./previews";
 import { mediaPrompt, saveBotFiles } from "./bot-files";
 import type { CodeSessionRef, ViewAction } from "@agora/core";
+import { hasReadableVault, VAULT_PROMPT } from "./vaults";
 
 const { agent, attachment, conversation, conversationAgent, conversationMember, message, pendingTurn, user } = schema;
 
@@ -617,6 +618,9 @@ async function runTurn(turn: Turn) {
       return "";
     });
     if (connectors) system = [system, connectors].filter(Boolean).join("\n\n");
+    // Coffre-fort: the agora_vault plugin is Hermes's (Claude Code and Codex: not yet).
+    const vault = engine.kind === "hermes" && (await hasReadableVault(agentId, turn.requestedBy).catch((err) => (console.error("bot-runner: vaults", err), false)));
+    if (vault) system = [system, VAULT_PROMPT].join("\n\n");
   }
   const events = openChat(
     bot,

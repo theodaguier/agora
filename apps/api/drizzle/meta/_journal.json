@@ -267,6 +267,41 @@
       "when": 1793118276325,
       "tag": "0037_code_session_priority_issue",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793727645063,
+      "tag": "0038_code_session_parked",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793745139673,
+      "tag": "0039_mcp_server_headers",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793745905389,
+      "tag": "0040_vaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793780613019,
+      "tag": "0041_github_merge_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793787855727,
+      "tag": "0042_vault_ask_login",
+      "breakpoints": true
     }
   ]
 }

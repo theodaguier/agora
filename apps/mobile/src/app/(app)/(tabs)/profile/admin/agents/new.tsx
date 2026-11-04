@@ -1,4 +1,4 @@
-import { soulTemplate } from "@agora/core";
+import { leastUsedAgentColor, soulTemplate } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
@@ -13,7 +13,6 @@ import {
   adminAgentsQuery,
   agentHref,
   agentModelQuery,
-  avatarColors,
   isDefaultProfile,
   orgQuery,
   PROFILE_PATTERN,
@@ -97,7 +96,7 @@ function CreateAgent() {
   const [name, setName] = useState("");
   const [profile, setProfile] = useState<string | null>(null);
   const [shape, setShape] = useState<AvatarShape>("bean");
-  const [color, setColor] = useState(avatarColors[0]!);
+  const [color, setColor] = useState<string>(() => leastUsedAgentColor(agents.map((a) => a.avatarColor)));
   const [model, setModel] = useState<string | null>(null);
   const [soul, setSoul] = useState("");
   const [progress, setProgress] = useState<string | null>(null);

@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeMcpConfig, codexMcpArgs, cursorMcpConfig, engineConnectorsLines, engineMcp, toEngineServer } from "./engine-mcp";
+import { claudeMcpConfig, codexMcpArgs, cursorMcpConfig, engineConnectorsLines, engineMcp, teamMcp, toEngineServer } from "./engine-mcp";
 import { env } from "./env";
 
 // env is parsed once for the whole run: point it at a scratch instance, never the real one.
@@ -104,6 +104,17 @@ describe("engineMcp", () => {
     expect(mcp.servers.map((s) => s.name)).toEqual(["linear", "notion"]);
     expect(mcp.servers[0]!.headers).toEqual({ Authorization: "Bearer profile" });
     expect(mcp.servers[1]!.oauth).toEqual({});
+  });
+
+  test("teamMcp merges several bots' servers by name, the first bot's winning", async () => {
+    const team = await teamMcp(["dev-builder", "default"]);
+    expect(team.profile).toBe("dev-builder");
+    expect(team.servers.map((s) => [s.name, s.profile])).toEqual([
+      ["linear", "dev-builder"],
+      ["notion", "dev-builder"],
+      ["other", "default"],
+    ]);
+    expect(team.servers[0]!.headers).toEqual({ Authorization: "Bearer profile" });
   });
 });
 

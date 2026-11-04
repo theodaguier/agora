@@ -3,6 +3,8 @@ import { useState } from "react";
 import { OrgLogo } from "@/components/OrgLogo";
 import { TwoFactorDialog, type TwoFactorStep } from "@/components/TwoFactor";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 import { authClient } from "@/lib/auth";
 import { useOrgTitle } from "@/lib/org";
 import { defineMessages, useT } from "@/i18n";
@@ -30,25 +32,30 @@ export function TwoFactorRequired() {
   const [step, setStep] = useState<TwoFactorStep | null>(null);
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
-      <div className="w-full max-w-[400px] rounded-[18px] border border-border bg-background p-8">
-        <OrgLogo className="size-9" />
-        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.title}</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">{t.text(orgName)}</p>
-        <Button size="lg" className="mt-6 w-full" onClick={() => setStep({ kind: "password", intent: "enable" })}>
-          {t.turnOn}
-        </Button>
-        <Button
-          variant="link"
-          className="mx-auto mt-3 flex text-muted-foreground"
-          onClick={async () => {
-            await authClient.signOut();
-            navigate({ to: "/login" });
-          }}
-        >
-          {t.signOut}
-        </Button>
-      </div>
+    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <OrgLogo className="size-9" />
+          <CardTitle>{t.title}</CardTitle>
+          <CardDescription>{t.text(orgName)}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Field>
+            <Button className="w-full" onClick={() => setStep({ kind: "password", intent: "enable" })}>
+              {t.turnOn}
+            </Button>
+            <Button
+              variant="link"
+              onClick={async () => {
+                await authClient.signOut();
+                navigate({ to: "/login" });
+              }}
+            >
+              {t.signOut}
+            </Button>
+          </Field>
+        </CardContent>
+      </Card>
       <TwoFactorDialog
         step={step}
         onStep={setStep}

@@ -91,11 +91,11 @@ export function availabilityLabel(a: Availability) {
     case "available":
       return null;
     case "absent":
-      return [`${title} ${t.through(dayLabel(a.lastDay))}`, a.back && t.back(when(a.back))].filter(Boolean).join(" · ");
+      return [`${title} ${t.through(dayLabel(a.lastDay))}`, a.back && t.back(when(a.back))].filter(Boolean).join(", ");
     case "dnd":
       return `${title} ${t.until(when(a.until))}`;
     case "off_hours":
-      return [title, a.back && t.back(when(a.back))].filter(Boolean).join(" · ");
+      return [title, a.back && t.back(when(a.back))].filter(Boolean).join(", ");
   }
 }
 

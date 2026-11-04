@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import { mergeMessages } from "@agora/core";
+import { mergeMessages, type CodeMergeMethod, type GitHubMergeRequestDto, type GitHubPullRequest, type VaultItem, type VaultItemSecret, type VaultRequestDto, type VaultSummary } from "@agora/core";
 import {
   api,
   conversationPath,
@@ -226,4 +226,63 @@ export const commandsQuery = (conversationId: string) =>
     queryKey: ["commands", conversationId],
     queryFn: () => api<Commands>(conversationPath(conversationId, "/commands")),
     staleTime: 60_000,
+  });
+
+/** Your vaults (Coffre-fort): the personal one first, then the shared ones you're a member of. */
+export const vaultsQuery = queryOptions({
+  queryKey: ["vaults"],
+  queryFn: () => api<VaultSummary[]>("/vaults"),
+});
+
+/** A vault's items, without their secrets. */
+export const vaultItemsQuery = (vaultId: string) =>
+  queryOptions({
+    queryKey: ["vaults", vaultId, "items"],
+    queryFn: () => api<VaultItem[]>(`/vaults/${encodeURIComponent(vaultId)}/items`),
+  });
+
+/** An item's secrets, fetched for Afficher / Copier: never kept in the cache once nothing shows them. */
+export const vaultSecretQuery = (vaultId: string, itemId: string) =>
+  queryOptions({
+    queryKey: ["vaults", vaultId, "items", itemId, "secret"],
+    queryFn: () => api<VaultItemSecret>(`/vaults/${encodeURIComponent(vaultId)}/items/${encodeURIComponent(itemId)}/reveal`, { method: "POST" }),
+    gcTime: 0,
+    staleTime: 0,
+    retry: false,
+  });
+
+/** A bot asking to use a login, shown as a card in the thread; followed while it waits for an answer. */
+export const vaultRequestQuery = (id: string) =>
+  queryOptions({
+    queryKey: ["vault-request", id],
+    queryFn: () => api<VaultRequestDto>(`/vaults/requests/${encodeURIComponent(id)}`),
+    refetchInterval: (q) => (q.state.data?.status === "pending" ? 3_000 : false),
+  });
+
+/** `owner/name#41`'s path under /api/github/pulls. */
+const pullPath = (repo: string, number: number) => `/github/pulls/${repo.split("/").map(encodeURIComponent).join("/")}/${number}`;
+
+/**
+ * A pull request read on its own (a link pasted in a message, a bot's merge request): its state, CI
+ * and review. Followed while its checks run; a 404 (no GitHub token, unknown PR) isn't retried.
+ */
+export const githubPullQuery = (repo: string, number: number) =>
+  queryOptions({
+    queryKey: ["github-pull", repo, number],
+    queryFn: () => api<GitHubPullRequest>(pullPath(repo, number)),
+    staleTime: 30_000,
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.state === "open" && q.state.data.checks?.state === "pending" ? 30_000 : false),
+  });
+
+/** Merges a pull request read on its own (admins, and the people who can use code sessions). */
+export const mergeGithubPull = (repo: string, number: number, method: CodeMergeMethod) =>
+  api<GitHubPullRequest>(`${pullPath(repo, number)}/merge`, { method: "POST", body: JSON.stringify({ method }) });
+
+/** A bot asking to merge a pull request, shown as a card in the thread; followed while it waits for an answer. */
+export const githubMergeRequestQuery = (id: string) =>
+  queryOptions({
+    queryKey: ["github-merge-request", id],
+    queryFn: () => api<GitHubMergeRequestDto>(`/github/merge-requests/${encodeURIComponent(id)}`),
+    refetchInterval: (q) => (q.state.data?.status === "pending" ? 3_000 : false),
   });

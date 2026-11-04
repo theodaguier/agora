@@ -2,8 +2,8 @@ import { soulTemplate } from "@agora/core";
 import { languageLabel } from "@/lib/languages";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { CheckIcon, SearchIcon } from "@/components/icons";
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { CheckIcon, GlobeIcon, SearchIcon } from "@/components/icons";
+import { useMemo, useState, type ReactNode } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { type AvatarShape } from "@/lib/agent-avatar";
 import { Button } from "@/components/ui/button";
@@ -11,15 +11,21 @@ import { FormLabel } from "@/components/FormLabel";
 import { Field, FieldDescription, FieldError, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Item, ItemContent, ItemGroup, ItemSeparator, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { Alert, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { AvatarPicker } from "@/components/admin/AvatarPicker";
 import { avatarColors } from "@/lib/agent-avatar";
 import { SearchSelect } from "@/components/Pickers";
+import { ModelLogo } from "@/components/ProviderLogo";
 import { Textarea } from "@/components/ui/textarea";
 import { api, ApiError } from "@/lib/api";
 import { authClient } from "@/lib/auth";
-import { cn } from "@/lib/utils";
 import { setupQuery } from "@/lib/org";
 import { adminAgentsQuery, agentsQuery } from "@/lib/queries";
 import { defineMessages, getLocale, setLocale, tr, useT } from "@/i18n";
@@ -67,6 +73,8 @@ const messages = defineMessages({
     providerText: "The model your agents think with. You can change it later, and pick one per agent.",
     loadingProviders: "Loading Hermes's provider list…",
     hermesDown: "Is Hermes running?",
+    providersError: "The provider list can't be reached right now. Is Hermes running?",
+    noProviderMatch: "No provider matches.",
     searchProvider: "Search for a provider",
     searchProviderPlaceholder: "Search (OpenAI, Anthropic, Mistral…)",
     configured: "configured",
@@ -134,6 +142,8 @@ const messages = defineMessages({
     providerText: "Le modèle qui fait réfléchir tes agents. Tu pourras en changer, et en choisir un par agent.",
     loadingProviders: "Chargement de la liste des fournisseurs de Hermes…",
     hermesDown: "Hermes tourne-t-il ?",
+    providersError: "La liste des fournisseurs est injoignable pour le moment. Hermes tourne-t-il ?",
+    noProviderMatch: "Aucun fournisseur ne correspond.",
     searchProvider: "Rechercher un fournisseur",
     searchProviderPlaceholder: "Rechercher (OpenAI, Anthropic, Mistral…)",
     configured: "configuré",
@@ -182,9 +192,13 @@ export function Setup() {
   const [agentId, setAgentId] = useState<string | null>(null);
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
-      <div className="w-full max-w-[480px] rounded-[18px] border border-border bg-background p-8">
-        {step !== "done" && <Progress current={step} />}
+    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+      <Card className="w-full max-w-md">
+        {step !== "done" && (
+          <CardContent>
+            <StepProgress current={step} />
+          </CardContent>
+        )}
         {step === "welcome" && (
           <Welcome
             prefs={prefs}
@@ -209,29 +223,24 @@ export function Setup() {
           />
         )}
         {step === "done" && <Done agentId={agentId} />}
-      </div>
+      </Card>
     </div>
   );
 }
 
-function Progress({ current }: { current: Step }) {
+function StepProgress({ current }: { current: Step }) {
   const index = STEPS.indexOf(current);
   const t = useT(messages);
-  return (
-    <div className="mb-10 flex justify-center gap-1.5" aria-label={t.progress(index + 1, STEPS.length)}>
-      {STEPS.map((s, i) => (
-        <span key={s} className={cn("h-1 w-8 rounded-full transition-colors", i <= index ? "bg-foreground" : "bg-muted")} />
-      ))}
-    </div>
-  );
+  return <Progress value={((index + 1) / STEPS.length) * 100} aria-label={t.progress(index + 1, STEPS.length)} />;
 }
 
-function Header({ title, text }: { title: string; text: ReactNode }) {
+function Header({ title, text, media }: { title: string; text: ReactNode; media?: ReactNode }) {
   return (
-    <div className="mb-6">
-      <h1 className="text-[22px] leading-7 font-semibold">{title}</h1>
-      <p className="mt-1 text-[13px] text-muted-foreground">{text}</p>
-    </div>
+    <CardHeader>
+      {media}
+      <CardTitle>{title}</CardTitle>
+      <CardDescription>{text}</CardDescription>
+    </CardHeader>
   );
 }
 
@@ -250,10 +259,10 @@ function Welcome(props: {
   }, [props.prefs.timezone]);
   return (
     <>
-      <AgentAvatar agent={{ avatar: { shape: "bean", color: "#9a7cf0" } }} className="mx-auto mb-6 size-16" />
-      <Header title={t.welcomeTitle} text={t.welcomeText} />
-      <FieldGroup className="gap-4">
-        <Field className="gap-1.5">
+      <Header title={t.welcomeTitle} text={t.welcomeText} media={<AgentAvatar agent={{ avatar: { shape: "bean", color: "#9a7cf0" } }} className="size-9" />} />
+      <CardContent>
+      <FieldGroup>
+        <Field>
           <FormLabel required>{t.language}</FormLabel>
           <ToggleGroup
             aria-label={t.language}
@@ -261,17 +270,16 @@ function Welcome(props: {
             onValueChange={(v) => v[0] && props.onChange({ ...props.prefs, locale: v[0] as "fr" | "en" })}
             variant="outline"
             spacing={2}
-            className="grid w-full grid-cols-2"
           >
             {(["fr", "en"] as const).map((l) => (
-              <ToggleGroupItem key={l} value={l} className="h-11 w-full rounded-xl">
+              <ToggleGroupItem key={l} value={l}>
                 {languageLabel(l)}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
           <FieldDescription>{t.languageHint}</FieldDescription>
         </Field>
-        <Field className="gap-1.5">
+        <Field>
           <FormLabel htmlFor="tz" required>
             {t.timezone}
           </FormLabel>
@@ -281,14 +289,18 @@ function Welcome(props: {
             value={props.prefs.timezone}
             onValueChange={(timezone) => props.onChange({ ...props.prefs, timezone })}
             label={(z) => z.replaceAll("_", " ")}
+            icon={() => <GlobeIcon />}
             placeholder={t.searchTimezone}
           />
           <FieldDescription>{t.timezoneHint}</FieldDescription>
         </Field>
+        <Field>
+          <Button className="w-full" onClick={props.onNext}>
+            {t.start}
+          </Button>
+        </Field>
       </FieldGroup>
-      <Button size="lg" className="mt-8 w-full" onClick={props.onNext}>
-        {t.start}
-      </Button>
+      </CardContent>
     </>
   );
 }
@@ -309,6 +321,9 @@ function Account(props: { prefs: { locale: "fr" | "en"; timezone: string }; onBa
   });
 
   return (
+    <>
+    <Header title={t.accountTitle} text={t.accountText} />
+    <CardContent>
     <form
       onSubmit={(e) => {
         e.preventDefault();
@@ -329,14 +344,13 @@ function Account(props: { prefs: { locale: "fr" | "en"; timezone: string }; onBa
         });
       }}
     >
-      <Header title={t.accountTitle} text={t.accountText} />
-      <FieldGroup className="gap-3">
-        <div className="flex flex-col gap-1.5">
+      <FieldGroup>
+        <div className="flex flex-col gap-2">
           <SetupField label={t.setupCode} name="setupCode" autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={100} placeholder="XXXX-XXXX-XXXX" autoFocus />
           <FieldDescription>{t.setupCodeHint}</FieldDescription>
         </div>
         <SetupField label={t.orgName} name="orgName" placeholder={t.orgNamePlaceholder} />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           <SetupField label={t.firstName} name="firstName" autoComplete="given-name" />
           <SetupField label={t.lastName} name="lastName" autoComplete="family-name" />
           <SetupField label={t.title} name="title" maxLength={60} placeholder={t.titlePlaceholder} />
@@ -345,18 +359,20 @@ function Account(props: { prefs: { locale: "fr" | "en"; timezone: string }; onBa
         <SetupField label={t.email} name="email" type="email" autoComplete="email" placeholder={t.emailPlaceholder} />
         <SetupField label={t.password} name="password" type="password" autoComplete="new-password" minLength={10} placeholder={t.passwordPlaceholder} />
         <SetupField label={t.confirm} name="confirm" type="password" autoComplete="new-password" minLength={10} invalid={mismatch} />
+        {mismatch && <FieldError>{t.mismatch}</FieldError>}
+        {create.error && <FieldError>{errorText(create.error)}</FieldError>}
+        <Field orientation="horizontal">
+          <Button type="button" variant="ghost" onClick={props.onBack}>
+            {c.back}
+          </Button>
+          <Button type="submit" className="flex-1" disabled={create.isPending}>
+            {create.isPending ? t.creatingAccount : t.createAccount}
+          </Button>
+        </Field>
       </FieldGroup>
-      {mismatch && <FieldError className="mt-3">{t.mismatch}</FieldError>}
-      {create.error && <FieldError className="mt-3">{errorText(create.error)}</FieldError>}
-      <div className="mt-8 flex gap-2">
-        <Button type="button" variant="ghost" size="lg" onClick={props.onBack}>
-          {c.back}
-        </Button>
-        <Button type="submit" size="lg" className="flex-1" disabled={create.isPending}>
-          {create.isPending ? t.creatingAccount : t.createAccount}
-        </Button>
-      </div>
     </form>
+    </CardContent>
+    </>
   );
 }
 
@@ -405,45 +421,63 @@ function ProviderStep({ onNext }: { onNext: () => void }) {
   return (
     <>
       <Header title={t.providerTitle} text={t.providerText} />
+      <CardContent className="flex flex-col gap-4">
       {providers.isPending && (
-        <p className="text-center text-sm text-muted-foreground">
-          {t.loadingProviders}
-        </p>
+        <div className="flex flex-col gap-2" aria-label={t.loadingProviders}>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
       )}
-      {providers.error && <FieldError>{errorText(providers.error)} {t.hermesDown}</FieldError>}
+      {providers.error && (
+        <div className="flex items-center gap-3">
+          <p className="flex-1 text-sm text-muted-foreground" title={errorText(providers.error)}>
+            {t.providersError}
+          </p>
+          <Button variant="secondary" size="sm" disabled={providers.isFetching} onClick={() => void providers.refetch()}>
+            {c.retry}
+          </Button>
+        </div>
+      )}
 
       {providers.data && !selected && (
         <>
-          <InputGroup className="mb-3">
+          <InputGroup>
             <InputGroupAddon>
               <SearchIcon />
             </InputGroupAddon>
             <InputGroupInput value={q} onChange={(e) => setQ(e.target.value)} aria-label={t.searchProvider} placeholder={t.searchProviderPlaceholder} />
           </InputGroup>
-          <ItemGroup className="max-h-80 gap-0 overflow-y-auto rounded-2xl border border-border">
-            {list.map((p, i) => (
-              <Fragment key={p.slug}>
-                {i > 0 && <ItemSeparator className="my-0" />}
-                <Item size="sm" render={<button type="button" onClick={() => pick(p)} />} className="rounded-none px-4 text-left hover:bg-muted/60">
-                  <ItemContent>
-                    <ItemTitle>{p.name}</ItemTitle>
-                  </ItemContent>
-                  {p.configured && <span className="text-xs text-muted-foreground">{t.configured}</span>}
-                </Item>
-              </Fragment>
+          <ItemGroup className="max-h-80 overflow-y-auto">
+            {list.map((p) => (
+              <Item key={p.slug} variant="outline" size="sm" render={<button type="button" onClick={() => pick(p)} />}>
+                <ItemContent>
+                  <ItemTitle>{p.name}</ItemTitle>
+                </ItemContent>
+                {p.configured && (
+                  <ItemActions>
+                    <Badge variant="secondary">{t.configured}</Badge>
+                  </ItemActions>
+                )}
+              </Item>
             ))}
           </ItemGroup>
+          {!list.length && <p className="text-sm text-muted-foreground">{t.noProviderMatch}</p>}
         </>
       )}
 
       {selected && (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between rounded-xl bg-secondary px-3.5 py-2.5 text-sm">
-            <span className="font-medium">{selected.name}</span>
-            <Button variant="link" onClick={() => setSelected(null)} className="h-auto p-0 font-normal text-muted-foreground hover:text-foreground">
-              {t.change}
-            </Button>
-          </div>
+          <Item variant="muted" size="sm">
+            <ItemContent>
+              <ItemTitle>{selected.name}</ItemTitle>
+            </ItemContent>
+            <ItemActions>
+              <Button variant="link" size="sm" onClick={() => setSelected(null)}>
+                {t.change}
+              </Button>
+            </ItemActions>
+          </Item>
           {!selected.configured && !models.length && (
             <form
               onSubmit={(e) => {
@@ -451,34 +485,43 @@ function ProviderStep({ onNext }: { onNext: () => void }) {
                 saveKey.mutate(String(new FormData(e.currentTarget).get("apiKey")));
               }}
             >
-              <SetupField label={t.apiKey(selected.keyEnv)} name="apiKey" type="password" autoComplete="off" placeholder={t.apiKeyPlaceholder} />
-              <FieldDescription className="mt-1.5">{t.apiKeyHint}</FieldDescription>
-              {saveKey.error && <FieldError className="mt-2">{errorText(saveKey.error)}</FieldError>}
-              <Button type="submit" size="lg" className="mt-4 w-full" disabled={saveKey.isPending}>
-                {saveKey.isPending ? t.checkingKey : t.checkAndSave}
-              </Button>
+              <FieldGroup>
+                <div className="flex flex-col gap-2">
+                  <SetupField label={t.apiKey(selected.keyEnv)} name="apiKey" type="password" autoComplete="off" placeholder={t.apiKeyPlaceholder} />
+                  <FieldDescription>{t.apiKeyHint}</FieldDescription>
+                </div>
+                {saveKey.error && <FieldError>{errorText(saveKey.error)}</FieldError>}
+                <Field>
+                  <Button type="submit" className="w-full" disabled={saveKey.isPending}>
+                    {saveKey.isPending ? t.checkingKey : t.checkAndSave}
+                  </Button>
+                </Field>
+              </FieldGroup>
             </form>
           )}
           {models.length > 0 && (
             <>
               {saveKey.data?.unverified && <p className="text-xs text-muted-foreground">{t.unverified}</p>}
-              <Field className="gap-1.5">
+              <Field>
                 <FormLabel htmlFor="model" required>
                   {t.defaultModel}
                 </FormLabel>
-                <SearchSelect id="model" options={models} value={model} onValueChange={setModel} placeholder={t.searchModel} />
+                <SearchSelect id="model" options={models} value={model} onValueChange={setModel} icon={(m) => <ModelLogo model={m} provider={selected?.slug ?? ""} />} placeholder={t.searchModel} />
               </Field>
-              <details className="text-sm">
-                <summary className="cursor-pointer text-muted-foreground">{t.advancedBaseUrl}</summary>
-                <Input className="mt-2" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={t.baseUrlPlaceholder} />
-              </details>
+              <Collapsible className="flex flex-col gap-2">
+                <CollapsibleTrigger render={<Button variant="link" size="sm" className="self-start" />}>{t.advancedBaseUrl}</CollapsibleTrigger>
+                <CollapsibleContent>
+                  <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} aria-label={t.advancedBaseUrl} placeholder={t.baseUrlPlaceholder} />
+                </CollapsibleContent>
+              </Collapsible>
               {apply.error && <FieldError>{errorText(apply.error)}</FieldError>}
               {tested ? (
-                <p className="flex items-center gap-2 rounded-xl bg-secondary px-3 py-2.5 text-sm">
-                  <CheckIcon className="size-4 text-emerald-400" /> {t.modelReplies(tested)}
-                </p>
+                <Alert>
+                  <CheckIcon />
+                  <AlertTitle>{t.modelReplies(tested)}</AlertTitle>
+                </Alert>
               ) : (
-                <Button size="lg" onClick={() => apply.mutate()} disabled={!model || apply.isPending}>
+                <Button onClick={() => apply.mutate()} disabled={!model || apply.isPending}>
                   {apply.isPending ? t.testing : t.useAndTest}
                 </Button>
               )}
@@ -487,14 +530,15 @@ function ProviderStep({ onNext }: { onNext: () => void }) {
         </div>
       )}
 
-      <div className="mt-8 flex gap-2">
-        <Button variant="ghost" size="lg" onClick={onNext}>
+      <div className="flex gap-2">
+        <Button variant="ghost" onClick={onNext}>
           {t.later}
         </Button>
-        <Button size="lg" className="flex-1" disabled={!tested} onClick={onNext}>
+        <Button className="flex-1" disabled={!tested} onClick={onNext}>
           {c.continue}
         </Button>
       </div>
+      </CardContent>
     </>
   );
 }
@@ -520,18 +564,19 @@ function AgentStep(props: { orgName: string; locale: "fr" | "en"; onNext: (id: s
   return (
     <>
       <Header title={t.agentTitle} text={t.agentText} />
-      <div className="mb-5 flex flex-col items-center gap-3">
+      <CardContent>
+      <FieldGroup>
+      <div className="flex flex-col items-center gap-3">
         <AgentAvatar agent={{ avatar: { shape, color } }} className="size-20" />
         <AvatarPicker shape={shape} color={color} onShapeChange={setShape} onColorChange={setColor} centered />
       </div>
-      <FieldGroup className="gap-3">
-        <Field className="gap-1.5">
+        <Field>
           <FormLabel htmlFor="agent-name" required>
             {t.name}
           </FormLabel>
-          <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} className="h-11 rounded-xl" />
+          <Input id="agent-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
         </Field>
-        <Field className="gap-1.5">
+        <Field>
           <FormLabel htmlFor="agent-role">
             {t.role}
           </FormLabel>
@@ -544,22 +589,25 @@ function AgentStep(props: { orgName: string; locale: "fr" | "en"; onNext: (id: s
           />
           <FieldDescription>{t.roleHint}</FieldDescription>
         </Field>
-      </FieldGroup>
-      <details className="mt-3 text-xs text-muted-foreground">
-        <summary className="cursor-pointer">{t.showSoul}</summary>
-        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-xl bg-secondary p-3 font-mono">
-          {soulTemplate({ name: name || "Assistant", org: props.orgName, locale: props.locale, role })}
-        </pre>
-      </details>
-      {create.error && <FieldError className="mt-3">{errorText(create.error)}</FieldError>}
-      <div className="mt-8 flex gap-2">
-        <Button variant="ghost" size="lg" onClick={() => props.onNext(null)}>
+      <Collapsible className="flex flex-col gap-2">
+        <CollapsibleTrigger render={<Button variant="link" size="sm" className="self-start" />}>{t.showSoul}</CollapsibleTrigger>
+        <CollapsibleContent>
+          <pre className="max-h-48 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs whitespace-pre-wrap text-muted-foreground">
+            {soulTemplate({ name: name || "Assistant", org: props.orgName, locale: props.locale, role })}
+          </pre>
+        </CollapsibleContent>
+      </Collapsible>
+      {create.error && <FieldError>{errorText(create.error)}</FieldError>}
+      <Field orientation="horizontal">
+        <Button variant="ghost" onClick={() => props.onNext(null)}>
           {t.later}
         </Button>
-        <Button size="lg" className="flex-1" disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>
+        <Button className="flex-1" disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>
           {create.isPending ? t.creatingProfile : t.createAgent}
         </Button>
-      </div>
+      </Field>
+      </FieldGroup>
+      </CardContent>
     </>
   );
 }
@@ -577,27 +625,26 @@ function Done({ agentId }: { agentId: string | null }) {
     meta: { error: false },
   });
   return (
-    <div className="text-center">
-      <span className="mx-auto mb-6 grid size-14 place-items-center rounded-full bg-secondary">
-        <CheckIcon className="size-7" />
-      </span>
-      <Header title={t.doneTitle} text={t.doneText} />
-      {finish.error && <FieldError className="mb-3">{errorText(finish.error)}</FieldError>}
-      <Button size="lg" className="w-full" onClick={() => finish.mutate()} disabled={finish.isPending}>
-        {finish.isPending ? t.opening : agentId ? t.talkToAgent : t.openAgora}
-      </Button>
-    </div>
+    <>
+      <Header title={t.doneTitle} text={t.doneText} media={<CheckIcon className="size-6" />} />
+      <CardContent className="flex flex-col gap-4">
+        {finish.error && <FieldError>{errorText(finish.error)}</FieldError>}
+        <Button className="w-full" onClick={() => finish.mutate()} disabled={finish.isPending}>
+          {finish.isPending ? t.opening : agentId ? t.talkToAgent : t.openAgora}
+        </Button>
+      </CardContent>
+    </>
   );
 }
 
 function SetupField({ label, invalid, required = true, ...input }: { label: string; invalid?: boolean; required?: boolean } & React.ComponentProps<"input">) {
   const id = `setup-${input.name}`;
   return (
-    <Field className="gap-1.5">
-      <FormLabel htmlFor={id} required={required} className="font-normal text-foreground/85">
+    <Field>
+      <FormLabel htmlFor={id} required={required}>
         {label}
       </FormLabel>
-      <Input id={id} required={required} aria-invalid={invalid || undefined} className="h-11 rounded-xl px-3.5 text-[15px]" {...input} />
+      <Input id={id} required={required} aria-invalid={invalid || undefined} {...input} />
     </Field>
   );
 }

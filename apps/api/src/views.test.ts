@@ -1,6 +1,6 @@
 import { barRows, envValues, funnelSteps, guessIntegrationType, isPastDue, pieSlices, statusTone, withHttps, withUnit } from "@agora/core";
 import { describe, expect, test } from "bun:test";
-import { mcpRequestSchema } from "./mcp-requests";
+import { mcpCustomSchema, mcpRequestSchema } from "./mcp-requests";
 import { parseReply } from "./onboarding";
 import { parseDraft, viewPrompt, withViewAction } from "./views";
 
@@ -200,6 +200,13 @@ describe("connector addresses", () => {
     expect(parsed.data?.url).toBe("https://cms.e-do.studio/mcp");
     expect(parsed.data?.docs).toBe("https://docs.strapi.io");
     expect(mcpRequestSchema.safeParse({ name: "strapi", url: "http://cms.e-do.studio/mcp" }).success).toBe(false);
+  });
+  test("an admin's custom connector may reach the local network, run a full path and send its own headers", () => {
+    expect(mcpCustomSchema.safeParse({ name: "nas", url: "http://192.168.1.20:8080/mcp" }).data?.url).toBe("http://192.168.1.20:8080/mcp");
+    expect(mcpCustomSchema.safeParse({ name: "local", command: "/usr/local/bin/my-mcp" }).success).toBe(true);
+    expect(mcpRequestSchema.safeParse({ name: "local", command: "/usr/local/bin/my-mcp" }).success).toBe(false);
+    expect(mcpCustomSchema.safeParse({ name: "api", url: "api.example.com/mcp", headers: [{ name: "X-API-Key" }] }).data?.headers).toEqual([{ name: "X-API-Key" }]);
+    expect(mcpCustomSchema.safeParse({ name: "cli", command: "npx", headers: [{ name: "X-API-Key" }] }).success).toBe(false);
   });
 });
 

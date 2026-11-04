@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { RedoIcon, CloseIcon } from "@/components/icons";
+import { RedoIcon, WarningIcon } from "@/components/icons";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import { Alert, AlertAction, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
@@ -12,26 +12,33 @@ import { common } from "@agora/core/i18n";
 const messages = defineMessages({
   en: {
     restartFailed: "Restart failed. Is Hermes running?",
-    restartNeeded: "Restart Hermes so agents pick up the changed MCP servers, plugins and credentials.",
+    restartNeeded: "Hermes needs a restart",
+    restartWhy: "Bots only see the changed connectors, plugins and secrets after it.",
     restarting: "Restarting…",
     restart: "Restart",
+    unreachable: "Unavailable for now. Try again in a moment.",
+    unreachableTitle: "Can't load this for now",
+    unreachableText: "The server isn't answering. Try again in a moment.",
   },
   fr: {
     restartFailed: "Le redémarrage a échoué. Hermes tourne-t-il ?",
-    restartNeeded: "Redémarre Hermes pour que les agents voient les MCP, plugins et credentials modifiés.",
+    restartNeeded: "Hermes doit redémarrer",
+    restartWhy: "Les bots ne voient les connecteurs, plugins et secrets modifiés qu'après.",
     restarting: "Redémarrage…",
     restart: "Redémarrer",
+    unreachable: "Indisponible pour le moment. Réessaie dans un instant.",
+    unreachableTitle: "Chargement impossible pour le moment",
+    unreachableText: "Le serveur ne répond pas. Réessaie dans un instant.",
   },
 });
 
 /** Title of a settings tab, with its intro and main action: the same header on every tab. */
 export function SectionHeader(props: { title: string; text?: ReactNode; action?: string; onAction?: () => void }) {
   return (
-    // Figma « Titre » of a settings window: Titre/Panneau (20, medium).
-    <div className="mb-6 flex min-h-[34px] items-center justify-between gap-4">
-      <div>
-        <h2 className="text-xl leading-[26px] font-medium">{props.title}</h2>
-        {props.text && <p className="mt-1 text-[13px] leading-[18px] tracking-[-0.05px] text-muted-foreground">{props.text}</p>}
+    <div className="mb-2 flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-base font-medium">{props.title}</h2>
+        {props.text && <p className="text-sm text-muted-foreground">{props.text}</p>}
       </div>
       {props.action && (
         <Button size="sm" onClick={props.onAction}>
@@ -39,26 +46,6 @@ export function SectionHeader(props: { title: string; text?: ReactNode; action?:
         </Button>
       )}
     </div>
-  );
-}
-
-/** Creation form collapsed under a section header. */
-export function FormCard({ children, onClose, title }: { children: ReactNode; onClose?: () => void; title: string }) {
-  const c = useT(common);
-  return (
-    <Card className="mb-5 rounded-[14px] bg-background">
-      <CardHeader>
-        <CardTitle className="text-sm">{title}</CardTitle>
-        {onClose && (
-          <CardAction>
-            <Button variant="ghost" size="icon-sm" aria-label={c.close} onClick={onClose}>
-              <CloseIcon />
-            </Button>
-          </CardAction>
-        )}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
   );
 }
 
@@ -78,6 +65,38 @@ export function Loading({ label }: { label?: string }) {
     <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
       <Spinner /> {label ?? c.loading}
     </p>
+  );
+}
+
+/** A section whose data couldn't be fetched (often Hermes down): one muted line, the technical cause in a tooltip. */
+export function LoadError({ error, text }: { error?: unknown; text?: string }) {
+  const t = useT(messages);
+  return (
+    <p className="text-sm text-muted-foreground" title={error instanceof Error ? error.message : undefined}>
+      {text ?? t.unreachable}
+    </p>
+  );
+}
+
+/** A whole settings tab whose data couldn't be fetched: what happened and a way to try again. */
+export function LoadFailed({ error, onRetry }: { error?: unknown; onRetry: () => void }) {
+  const t = useT(messages);
+  const c = useT(common);
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <WarningIcon />
+        </EmptyMedia>
+        <EmptyTitle>{t.unreachableTitle}</EmptyTitle>
+        <EmptyDescription title={error instanceof Error ? error.message : undefined}>{t.unreachableText}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button variant="outline" onClick={onRetry}>
+          {c.retry}
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }
 
@@ -112,8 +131,9 @@ export function RestartProvider({ children }: { children: ReactNode }) {
         <Alert className="mb-5">
           <RedoIcon />
           <AlertTitle>{state === "error" ? t.restartFailed : t.restartNeeded}</AlertTitle>
+          {state !== "error" && <AlertDescription>{t.restartWhy}</AlertDescription>}
           <AlertAction>
-            <Button onClick={restart} disabled={state === "restarting"}>
+            <Button size="sm" onClick={restart} disabled={state === "restarting"}>
               {state === "restarting" ? t.restarting : t.restart}
             </Button>
           </AlertAction>

@@ -1,6 +1,6 @@
-import { appendFile, mkdir, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type { CodeGit, CodeGitFile, CodeIssue, CodePullRequest, CodeRepo } from "@agora/core";
+import type { CodeCheck, CodeChecks, CodeGit, CodeGitFile, CodeIssue, CodeMergeMethod, CodePullRequest, CodeRepo } from "@agora/core";
 import { childEnv } from "./harden";
 import { defineMessages, tr } from "./i18n";
 import { instanceSecret } from "./vault";
@@ -49,6 +49,12 @@ const messages = defineMessages({
     merged: (n: number, base: string, method: string) => `Pull request #${n} merged into ${base} (${method}).`,
     pulled: (branch: string) => `Branch ${branch} updated from GitHub.`,
     failed: (what: string) => `Git failed: ${what}`,
+    prNotFound: "Pull request not found.",
+    prNotOpen: (n: number, state: string) => `Pull request #${n} is ${state}: it can't be merged.`,
+    notMergeable: (n: number, why: string) => `Pull request #${n} can't be merged${why ? `: ${why}` : ""}.`,
+    headChanged: (n: number) => `Pull request #${n} received new commits since: look at them, then merge again.`,
+    noRights: "The GitHub token isn't allowed to merge in this repository.",
+    methodRefused: (method: string) => `This repository doesn't allow ${method} merges.`,
   },
   fr: {
     noToken: "Pas d'accès GitHub : ajoute GH_TOKEN (un jeton avec Contents et Pull requests) au coffre, ou installe le connecteur GitHub.",
@@ -77,10 +83,26 @@ const messages = defineMessages({
     merged: (n: number, base: string, method: string) => `PR #${n} mergée dans ${base} (${method}).`,
     pulled: (branch: string) => `Branche ${branch} mise à jour depuis GitHub.`,
     failed: (what: string) => `Échec de git : ${what}`,
+    prNotFound: "PR introuvable.",
+    prNotOpen: (n: number, state: string) => `La PR #${n} est ${state} : elle ne peut pas être mergée.`,
+    notMergeable: (n: number, why: string) => `La PR #${n} ne peut pas être mergée${why ? ` : ${why}` : ""}.`,
+    headChanged: (n: number) => `La PR #${n} a reçu de nouveaux commits entre-temps : regarde-les, puis merge à nouveau.`,
+    noRights: "Le jeton GitHub n'a pas le droit de merger dans ce dépôt.",
+    methodRefused: (method: string) => `Ce dépôt n'autorise pas les merges ${method}.`,
   },
 });
 
 export class GitError extends Error {}
+
+/** GitHub's API refused a call: its HTTP status and its own words. */
+export class GitHubError extends GitError {
+  constructor(
+    readonly status: number,
+    readonly detail: string,
+  ) {
+    super(`GitHub ${status}${detail ? ` : ${detail}` : ""}`);
+  }
+}
 
 /** GitHub access of the sessions, from the vault. */
 export const githubToken = () => instanceSecret("GH_TOKEN", "GITHUB_TOKEN", "MCP_GITHUB_API_KEY");
@@ -275,14 +297,43 @@ export async function writeCredentials(cwd: string, text: string) {
 }
 
 /** Excludes a path of the worktree in the clone's info/exclude: no commit can take it. */
-async function excludeFromGit(cwd: string, file: string) {
-  const common = (await git(cwd, ["rev-parse", "--git-common-dir"])).out;
-  if (!common) return;
-  const exclude = join(isAbsolute(common) ? common : join(cwd, common), "info", "exclude");
-  const current = await readFile(exclude, "utf8").catch(() => "");
-  if (current.split("\n").includes(`/${file}`)) return;
-  await mkdir(join(exclude, ".."), { recursive: true });
-  await appendFile(exclude, `${current && !current.endsWith("\n") ? "\n" : ""}/${file}\n`);
+const excludeFromGit = (cwd: string, file: string) => excludePaths(cwd, [file]);
+
+/** An exclude file's content with the patterns it lacks added at its end; null when it has them all. */
+export function withExcludes(current: string, patterns: string[]) {
+  const have = new Set(current.split("\n").map((l) => l.trim()));
+  const missing = [...new Set(patterns)].filter((p) => !have.has(p));
+  if (!missing.length) return null;
+  return `${current}${current && !current.endsWith("\n") ? "\n" : ""}${missing.join("\n")}\n`;
+}
+
+/** One writer per exclude file at a time: worktrees of a clone share it. */
+const excluding = new Map<string, Promise<unknown>>();
+
+/**
+ * Excludes paths of the directory (relative to it) in its repository's info/exclude (the clone's,
+ * for a worktree), never in a tracked file: nothing a commit could take. No-op outside a repository.
+ */
+export async function excludePaths(cwd: string, files: string[]) {
+  if (!files.length) return;
+  const r = await git(cwd, ["rev-parse", "--show-prefix", "--git-path", "info/exclude"]);
+  if (!r.ok) return;
+  const [prefix = "", path = ""] = r.raw.split("\n");
+  if (!path) return;
+  const exclude = isAbsolute(path) ? path : join(cwd, path);
+  const patterns = files.map((f) => `/${prefix}${f.replace(/^\/+/, "")}`);
+  const run = (excluding.get(exclude) ?? Promise.resolve()).catch(() => {}).then(async () => {
+    const next = withExcludes(await readFile(exclude, "utf8").catch(() => ""), patterns);
+    if (next === null) return;
+    await mkdir(join(exclude, ".."), { recursive: true });
+    await writeFile(exclude, next);
+  });
+  excluding.set(exclude, run);
+  try {
+    await run;
+  } finally {
+    if (excluding.get(exclude) === run) excluding.delete(exclude);
+  }
 }
 
 /**
@@ -329,7 +380,7 @@ async function github<T>(token: string, method: string, path: string, body?: unk
   const data = (await res.json().catch(() => ({}))) as any;
   if (!res.ok) {
     const detail = [data?.message, ...(Array.isArray(data?.errors) ? data.errors.map((e: any) => e?.message).filter(Boolean) : [])].filter(Boolean).join(" · ");
-    throw new GitError(`GitHub ${res.status}${detail ? ` : ${detail}` : ""}`);
+    throw new GitHubError(res.status, detail);
   }
   return data as T;
 }
@@ -377,7 +428,24 @@ export async function getIssue(repo: string, number: number): Promise<CodeIssue 
   return issue && !issue.pull_request ? toIssue(issue) : null;
 }
 
-type ApiPull = { number: number; html_url: string; title: string; state: "open" | "closed"; merged_at: string | null; draft?: boolean; base: { ref: string } };
+type ApiPull = {
+  number: number;
+  html_url: string;
+  title: string;
+  state: "open" | "closed";
+  merged_at: string | null;
+  draft?: boolean;
+  base: { ref: string };
+  head?: { sha: string; ref: string };
+  /** Only on a single pull request (GET /pulls/{n}). */
+  additions?: number;
+  deletions?: number;
+  changed_files?: number;
+  mergeable?: boolean | null;
+  mergeable_state?: string;
+  requested_reviewers?: unknown[];
+  requested_teams?: unknown[];
+};
 
 const toPull = (p: ApiPull): CodePullRequest => ({
   number: p.number,
@@ -388,12 +456,185 @@ const toPull = (p: ApiPull): CodePullRequest => ({
   base: p.base.ref,
 });
 
+/* ---------- checks, reviews, merge methods ---------- */
+
+export type ApiCheckRun = { name: string; status: string; conclusion: string | null; html_url?: string | null; details_url?: string | null };
+export type ApiStatus = { context: string; state: string; target_url?: string | null };
+export type ApiReview = { user: { login: string } | null; state: string };
+
+/** A check run (GitHub Actions and apps) as one of ours. */
+function runState(r: ApiCheckRun): CodeCheck["state"] {
+  if (r.status !== "completed") return "pending";
+  switch (r.conclusion) {
+    case "success":
+      return "success";
+    case "skipped":
+    case "neutral":
+    case "stale":
+      return "skipped";
+    default:
+      // failure, timed_out, cancelled, action_required, startup_failure
+      return "failure";
+  }
+}
+
+const statusState = (s: ApiStatus): CodeCheck["state"] => (s.state === "success" ? "success" : s.state === "pending" ? "pending" : "failure");
+
+/**
+ * The CI of a commit: its check runs, and the legacy commit statuses (the latest per context, as
+ * GitHub's combined status gives them). A check rerun shows up once, its latest run.
+ */
+export function summarizeChecks(runs: ApiCheckRun[], statuses: ApiStatus[]): CodeChecks {
+  const checks: CodeCheck[] = [];
+  const seen = new Set<string>();
+  for (const r of runs) {
+    if (seen.has(`run:${r.name}`)) continue;
+    seen.add(`run:${r.name}`);
+    checks.push({ name: r.name, state: runState(r), url: r.html_url ?? r.details_url ?? null });
+  }
+  for (const st of statuses) {
+    if (seen.has(`status:${st.context}`)) continue;
+    seen.add(`status:${st.context}`);
+    checks.push({ name: st.context, state: statusState(st), url: st.target_url ?? null });
+  }
+  const count = (state: CodeCheck["state"]) => checks.filter((c) => c.state === state).length;
+  const passed = count("success");
+  const failed = count("failure");
+  const pending = count("pending");
+  const order = { failure: 0, pending: 1, success: 2, skipped: 3 };
+  checks.sort((a, b) => order[a.state] - order[b.state] || a.name.localeCompare(b.name));
+  return {
+    state: !checks.length ? "none" : failed ? "failure" : pending ? "pending" : "success",
+    passed,
+    failed,
+    pending,
+    checks,
+  };
+}
+
+/**
+ * The review state of a pull request: each reviewer's latest verdict (comments don't count),
+ * changes requested by any of them first, then an approval; else a review asked of someone.
+ */
+export function reduceReviews(reviews: ApiReview[], requested: number): NonNullable<CodePullRequest["review"]> {
+  const latest = new Map<string, string>();
+  for (const r of reviews) {
+    const who = r.user?.login;
+    if (!who) continue;
+    if (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED") latest.set(who, r.state);
+    // A dismissed review no longer counts.
+    else if (r.state === "DISMISSED") latest.delete(who);
+  }
+  const verdicts = [...latest.values()];
+  if (verdicts.includes("CHANGES_REQUESTED")) return "changes_requested";
+  if (verdicts.includes("APPROVED")) return "approved";
+  return requested > 0 ? "review_required" : "none";
+}
+
+const METHODS_TTL_MS = 5 * 60_000;
+const methodsCache = new Map<string, { at: number; methods: CodeMergeMethod[] }>();
+
+/** Merge methods the repository allows, cached a few minutes. */
+async function repoMethods(token: string, repo: string): Promise<CodeMergeMethod[]> {
+  const key = repo.toLowerCase();
+  const hit = methodsCache.get(key);
+  if (hit && Date.now() - hit.at < METHODS_TTL_MS) return hit.methods;
+  const r = await github<{ allow_squash_merge?: boolean; allow_merge_commit?: boolean; allow_rebase_merge?: boolean }>(token, "GET", `/repos/${repo}`);
+  // Without admin rights GitHub may leave the flags out: all three then.
+  const methods = (
+    [
+      ["squash", r.allow_squash_merge],
+      ["merge", r.allow_merge_commit],
+      ["rebase", r.allow_rebase_merge],
+    ] as [CodeMergeMethod, boolean | undefined][]
+  )
+    .filter(([, allowed]) => allowed !== false)
+    .map(([m]) => m);
+  methodsCache.set(key, { at: Date.now(), methods });
+  return methods;
+}
+
+/**
+ * A pull request with what merging it depends on, when it is open: size, mergeability, CI of its
+ * head commit, reviews and the repository's merge methods. Each detail that fails to load is left out.
+ */
+async function pullDetails(token: string, repo: string, number: number): Promise<CodePullRequest> {
+  const p = await github<ApiPull>(token, "GET", `/repos/${repo}/pulls/${number}`);
+  const pr = toPull(p);
+  if (pr.state !== "open" || !p.head) return { ...pr, ...(p.head && { head: p.head.sha }) };
+  const sha = p.head.sha;
+  const quiet = <T>(promise: Promise<T>) => promise.catch((err) => (console.error("github: pull details", err instanceof Error ? err.message : err), null));
+  const [runs, combined, reviews, methods] = await Promise.all([
+    quiet(github<{ check_runs: ApiCheckRun[] }>(token, "GET", `/repos/${repo}/commits/${sha}/check-runs?per_page=100&filter=latest`)),
+    quiet(github<{ statuses: ApiStatus[] }>(token, "GET", `/repos/${repo}/commits/${sha}/status?per_page=100`)),
+    quiet(github<ApiReview[]>(token, "GET", `/repos/${repo}/pulls/${number}/reviews?per_page=100`)),
+    quiet(repoMethods(token, repo)),
+  ]);
+  return {
+    ...pr,
+    head: sha,
+    additions: p.additions,
+    deletions: p.deletions,
+    changedFiles: p.changed_files,
+    mergeable: p.mergeable ?? null,
+    ...(p.mergeable_state && { mergeableState: p.mergeable_state }),
+    ...((runs || combined) && { checks: summarizeChecks(runs?.check_runs ?? [], combined?.statuses ?? []) }),
+    ...(reviews && { review: reduceReviews(reviews, (p.requested_reviewers?.length ?? 0) + (p.requested_teams?.length ?? 0)) }),
+    ...(methods && { methods }),
+  };
+}
+
 /** The branch's latest pull request (open first). */
 async function pullOf(token: string, repo: string, branch: string): Promise<CodePullRequest | null> {
   const owner = repo.split("/")[0]!;
   const pulls = await github<ApiPull[]>(token, "GET", `/repos/${repo}/pulls?head=${encodeURIComponent(`${owner}:${branch}`)}&state=all&per_page=10`);
   const pick = pulls.find((p) => p.state === "open") ?? pulls[0];
   return pick ? toPull(pick) : null;
+}
+
+/** One pull request, enriched (pullDetails); null without a token or when GitHub doesn't know it. */
+export async function getPullRequest(repo: string, number: number): Promise<CodePullRequest | null> {
+  const token = await githubToken();
+  if (!token) return null;
+  return pullDetails(token, repo, number).catch((err) => {
+    if (err instanceof GitHubError && err.status === 404) return null;
+    throw err;
+  });
+}
+
+/** owner/name and number of a pull request's link (github.com/{owner}/{repo}/pull/{n}). */
+export function parsePullUrl(url: string): { repo: string; number: number } | null {
+  const m = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9-]+\/[A-Za-z0-9._-]+)\/pull\/(\d+)/.exec(url.trim());
+  return m ? { repo: m[1]!, number: Number(m[2]) } : null;
+}
+
+/** GitHub's refusal of a merge, in the person's words. */
+function mergeRefusal(err: unknown, number: number, method: CodeMergeMethod): never {
+  const t = tr(messages);
+  if (!(err instanceof GitHubError)) throw err;
+  if (err.status === 404) throw new GitError(t.prNotFound);
+  if (err.status === 403) throw new GitError(t.noRights);
+  if (err.status === 409) throw new GitError(t.headChanged(number));
+  if (err.status === 405 || err.status === 422) {
+    if (/merge method|not allowed/i.test(err.detail) && /squash|rebase|merge commit/i.test(err.detail)) throw new GitError(t.methodRefused(method));
+    throw new GitError(t.notMergeable(number, err.detail));
+  }
+  throw err;
+}
+
+/**
+ * Merges a pull request by its number with the instance's token. `sha`: the head commit the person
+ * saw; GitHub refuses (409) when the branch moved since. Returns the pull request, merged.
+ */
+export async function mergePull(repo: string, number: number, method: CodeMergeMethod, sha?: string | null): Promise<CodePullRequest> {
+  const t = tr(messages);
+  const token = await githubToken();
+  if (!token) throw new GitError(t.noToken);
+  const pr = await getPullRequest(repo, number);
+  if (!pr) throw new GitError(t.prNotFound);
+  if (pr.state !== "open") throw new GitError(t.prNotOpen(number, t.states[pr.state]));
+  await github(token, "PUT", `/repos/${repo}/pulls/${number}/merge`, { merge_method: method, ...(sha && { sha }) }).catch((err) => mergeRefusal(err, number, method));
+  return { ...pr, state: "merged" };
 }
 
 const PR_URL = /https:\/\/github\.com\/([A-Za-z0-9-]+\/[A-Za-z0-9._-]+)\/pull\/(\d+)/g;
@@ -419,6 +660,9 @@ export const prFoundText = (pr: CodePullRequest) => {
   const t = tr(messages);
   return t.found(pr.number, pr.title, t.states[pr.state]);
 };
+
+/** The step of a pull request merged outside the session's panel. */
+export const mergedText = (pr: CodePullRequest, method: string) => tr(messages).merged(pr.number, pr.base, method);
 
 /* ---------- state ---------- */
 
@@ -537,10 +781,11 @@ export async function readGit(cwd: string, hints: { repo?: string | null; pulls?
 async function findPull(token: string, repo: string, branches: (string | null)[], links: { repo: string; number: number }[]) {
   for (const b of new Set(branches.filter((b): b is string => !!b))) {
     const pr = await pullOf(token, repo, b);
-    if (pr) return pr;
+    // Open: read with its checks, reviews and mergeability.
+    if (pr) return pr.state === "open" ? pullDetails(token, repo, pr.number).catch(() => pr) : pr;
   }
   const link = links.at(-1);
-  return link ? toPull(await github<ApiPull>(token, "GET", `/repos/${link.repo}/pulls/${link.number}`)) : null;
+  return link ? pullDetails(token, link.repo, link.number) : null;
 }
 
 /* ---------- commit message ---------- */
@@ -621,7 +866,7 @@ export async function mergePullRequest(cwd: string, method: "squash" | "merge" |
   const { t, branch, token, repo } = await context(cwd, true);
   const pr = await pullOf(token, repo, branch);
   if (!pr || pr.state !== "open") throw new GitError(t.noPr);
-  await github(token, "PUT", `/repos/${repo}/pulls/${pr.number}/merge`, { merge_method: method });
+  await github(token, "PUT", `/repos/${repo}/pulls/${pr.number}/merge`, { merge_method: method }).catch((err) => mergeRefusal(err, pr.number, method));
   await git(cwd, ["fetch", "origin", "--prune"], token, 5 * 60_000);
   return { text: t.merged(pr.number, pr.base, method), pr: { ...pr, state: "merged" } };
 }
