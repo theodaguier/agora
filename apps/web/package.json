@@ -27,9 +27,10 @@
     "date-fns": "^4.4.0",
     "input-otp": "^1.5.0",
     "lucide-react": "^1.47.0",
+    "next-themes": "^0.4.6",
     "qrcode.react": "^4.2.0",
     "react": "^19.3.0",
-    "react-day-picker": "^10.0.1",
+    "react-day-picker": "^10.0.2",
     "react-dom": "^19.3.0",
     "react-resizable-panels": "^4.14.1",
     "recharts": "3.8.0",
@@ -45,11 +46,11 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "shadcn": "^4.22.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
-    "vite-plugin-svgr": "^5.2.0",
-    "shadcn": "^4.22.1"
+    "vite-plugin-svgr": "^5.2.0"
   },
   "license": "AGPL-3.0-only"
 }

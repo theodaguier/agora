@@ -12,13 +12,18 @@ import { findPreview, PreviewPage } from "@/components/Preview";
 import { CodePriorityIcon, CodeStateIcon } from "@/components/CodeSessionMarks";
 import { codeSessionState, type CodeSession } from "@agora/core";
 import { useCodeSessionUnread } from "@/lib/code-seen";
-import { BrowserIcon, ChatIntegrationIcon, CloseIcon, FileCodeIcon, InboxIcon, PlusIcon, SplitIcon, TaskListIcon, TerminalIcon } from "@/components/icons";
+import { BrowserIcon, ChatIntegrationIcon, CloseIcon, FileCodeIcon, InboxIcon, PlusIcon, SearchIcon, SplitIcon, TaskListIcon, TerminalIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Item, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { defineMessages, useT } from "@/i18n";
+import { common } from "@agora/core/i18n";
 import { codeSessionsQuery } from "@/lib/code-sessions";
+import { listTime } from "@/lib/dates";
 import { conversationTitle } from "@/lib/participants";
 import { conversationsQuery, messagesQuery } from "@/lib/queries";
 import { useOrgTitle } from "@/lib/org";
@@ -75,7 +80,10 @@ const messages = defineMessages({
     openHere: "Open a conversation here",
     search: "Search conversations",
     none: "No conversation found.",
-    conversations: "Conversations",
+    noneHint: "Check the spelling, or search for another name.",
+    noConversations: "No conversation yet",
+    noConversationsHint: "Start one, it will show up here.",
+    conversationsError: "Conversations can't be reached right now.",
     dropHint: "Or drag a conversation or a tab here.",
     homeHint: "Pick a conversation in the list, or start one.",
   },
@@ -98,7 +106,10 @@ const messages = defineMessages({
     openHere: "Ouvre une conversation ici",
     search: "Rechercher une conversation",
     none: "Aucune conversation trouvée.",
-    conversations: "Conversations",
+    noneHint: "Vérifie l'orthographe, ou cherche un autre nom.",
+    noConversations: "Aucune conversation",
+    noConversationsHint: "Démarres-en une, elle apparaîtra ici.",
+    conversationsError: "Les conversations sont injoignables pour le moment.",
     dropHint: "Ou glisse ici une conversation ou un onglet.",
     homeHint: "Choisis une conversation dans la liste, ou démarres-en une.",
   },
@@ -153,7 +164,7 @@ export function Workspace() {
     <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1" defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
       {w.panes.map((pane, i) => (
         <Fragment key={pane.id}>
-          {i > 0 && <ResizableHandle className="w-px bg-border after:w-1.5 focus-visible:ring-0 hover:bg-ring/50 data-[separator=active]:bg-ring/60" />}
+          {i > 0 && <ResizableHandle />}
           {/* A pane never scrolls itself (the panel's box is overflow: auto): each tab has its own scroller. */}
           <ResizablePanel id={pane.id} minSize={360} style={{ overflow: "clip" }}>
             <PaneView pane={pane} focused={pane.id === w.focused} multiple={w.panes.length > 1} canSplit={w.panes.length < MAX_PANES} />
@@ -173,11 +184,15 @@ function useLocationSync() {
   const router = useRouter();
   const path = useLocation({ select: (l) => l.pathname });
   const current = currentTab(useWorkspace());
-  const loaded = useRef(false);
+  // The path last handled: a second run for the same path (React's dev double effect) changes nothing,
+  // else on home it would clear the tab it just brought back, and the two would bounce forever.
+  const handled = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!loaded.current) {
-      loaded.current = true;
+    const first = handled.current === null;
+    if (handled.current === path) return;
+    handled.current = path;
+    if (first) {
       if (path === "/") {
         if (current) router.history.replace(current);
         return;
@@ -213,7 +228,7 @@ function PaneView({ pane, focused, multiple, canSplit }: { pane: Pane; focused: 
       onPointerDownCapture={() => focusPane(pane.id)}
       onFocusCapture={() => focusPane(pane.id)}
     >
-      {/* One conversation at a time, as in the Figma: the bar shows once a second tab or pane is opened (⌘-click, drag). */}
+      {/* One conversation at a time: the bar shows once a second tab or pane is opened (⌘-click, drag). */}
       {(multiple || pane.tabs.length > 1) && <TabBar pane={pane} focused={focused} multiple={multiple} canSplit={canSplit} />}
       <div className="relative flex min-h-0 flex-1">
         {pane.tabs
@@ -310,7 +325,7 @@ function TabBar({ pane, focused, multiple, canSplit }: { pane: Pane; focused: bo
       onDragOver={onDragOver}
       onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setOver(false)}
       onDrop={onDrop}
-      className={cn("flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-background px-1.5 py-[5px]", over && "bg-muted")}
+      className={cn("flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b px-1.5", over && "bg-muted")}
     >
       {pane.tabs.map((path) => (
         <TabItem key={path} path={path} paneId={pane.id} active={path === pane.active} focused={focused} />
@@ -342,7 +357,7 @@ function TabBar({ pane, focused, multiple, canSplit }: { pane: Pane; focused: bo
 function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} onClick={onClick} className="size-6 shrink-0 rounded-[6px] [&_svg:not([class*='size-'])]:size-4" />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} onClick={onClick} className="shrink-0" />}>{children}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
@@ -387,7 +402,7 @@ function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: bo
       const bot = conv && conv.kind === "direct" && conv.agents.length ? conv.agents[0] : null;
       return { title: name, icon: bot ? <AgentAvatar agent={bot} className="size-4" /> : <ChatIntegrationIcon className="text-muted-foreground" />, unread: conv?.unread };
     case "screen":
-      return { title: `${t.screen} · ${name}`, icon: <BrowserIcon /> };
+      return { title: `${t.screen} — ${name}`, icon: <BrowserIcon /> };
     case "code": {
       const session = sessions?.find((s) => s.id === target.sessionId);
       return {
@@ -426,9 +441,9 @@ function Home() {
   const t = useT(messages);
   const org = useOrgTitle();
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background px-4 pb-[8vh]">
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-background px-4 pb-16">
       <OrgLogo className="size-16" />
-      <p className="text-[15px] leading-[21px]">{org}</p>
+      <p className="text-base font-medium">{org}</p>
       <p className="text-sm text-muted-foreground">{t.homeHint}</p>
       <Button nativeButton={false} render={<Link to="/new" />} className="mt-1">
         {t.newChat}
@@ -437,38 +452,85 @@ function Home() {
   );
 }
 
-/** A pane beside others with nothing in front: the conversations, to open one here. */
+/**
+ * A pane beside others with nothing in front: the latest conversations to open one here, a search for
+ * the others. Plain rows on the page, no card around them, as the sidebar's list.
+ */
 function EmptyPane({ paneId }: { paneId: string }) {
   const t = useT(messages);
   const { user } = useRouteContext({ from: "/app" });
-  const { data: conversations = [] } = useQuery(conversationsQuery);
+  const c = useT(common);
+  const { data: conversations = [], isPending, isError, error, refetch } = useQuery(conversationsQuery);
+  const [q, setQ] = useState("");
   useOrgTitle();
+  const named = conversations.map((c) => ({ c, name: conversationTitle(c, user.id) }));
+  const query = q.trim().toLowerCase();
+  const shown = query ? named.filter((x) => x.name.toLowerCase().includes(query)) : named.slice(0, RECENT);
   return (
-    <div className="flex flex-1 flex-col items-center overflow-y-auto bg-background px-4 pt-[12vh]">
-      <div className="w-full max-w-md">
-        <p className="mb-1 text-[15px] font-medium">{t.openHere}</p>
-        <p className="mb-4 text-sm text-muted-foreground">{t.dropHint}</p>
-        <Command className="rounded-xl border border-border">
-          <CommandInput placeholder={t.search} />
-          <CommandList className="max-h-[50vh]">
-            <CommandEmpty>{t.none}</CommandEmpty>
-            <CommandGroup heading={t.conversations}>
-              {conversations.map((c) => {
-                const name = conversationTitle(c, user.id);
-                return (
-                  <CommandItem key={c.id} value={`${name} ${c.id}`} onSelect={() => moveTab(tabPath.conversation(c.id), paneId)}>
-                    <ConversationAvatar conversation={c} me={user.id} className="size-6" />
-                    <span className="truncate">{name}</span>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
+    <div className="flex flex-1 flex-col items-center overflow-y-auto bg-background px-4 pt-24">
+      <div className="flex w-full max-w-sm flex-col">
+        <p className="text-base font-medium">{t.openHere}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{t.dropHint}</p>
+        <InputGroup className="mt-4">
+          <InputGroupInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} aria-label={t.search} />
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+        </InputGroup>
+        <div className="mt-3 flex flex-col gap-1">
+          {isPending ? (
+            [0, 1, 2].map((i) => <Skeleton key={i} className="h-9 w-full" />)
+          ) : isError && !conversations.length ? (
+            <div className="flex items-center gap-3 px-3 py-2">
+              <p className="flex-1 text-sm text-muted-foreground" title={error.message}>
+                {t.conversationsError}
+              </p>
+              <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+                {c.retry}
+              </Button>
+            </div>
+          ) : !shown.length ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">{query ? <SearchIcon /> : <ChatIntegrationIcon />}</EmptyMedia>
+                <EmptyTitle>{query ? t.none : t.noConversations}</EmptyTitle>
+                <EmptyDescription>{query ? t.noneHint : t.noConversationsHint}</EmptyDescription>
+              </EmptyHeader>
+              {!query && (
+                <EmptyContent>
+                  <Button nativeButton={false} render={<Link to="/new" />}>
+                    {t.newChat}
+                  </Button>
+                </EmptyContent>
+              )}
+            </Empty>
+          ) : null}
+          {shown.map(({ c, name }) => (
+            <Item
+              key={c.id}
+              size="sm"
+              render={<button type="button" onClick={() => moveTab(tabPath.conversation(c.id), paneId)} />}
+              className="flex-nowrap hover:bg-muted"
+            >
+              <ItemMedia>
+                <ConversationAvatar conversation={c} me={user.id} className="size-6" />
+              </ItemMedia>
+              <ItemContent className="min-w-0">
+                <ItemTitle className="w-full min-w-0">
+                  <span className="truncate">{name}</span>
+                </ItemTitle>
+              </ItemContent>
+              <span className="shrink-0 text-xs text-muted-foreground">{listTime(new Date(c.lastAt))}</span>
+            </Item>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
+
+/** Conversations offered in an empty pane before searching. */
+const RECENT = 6;
 
 type Zone = "left" | "center" | "right";
 
@@ -509,7 +571,7 @@ function DropZones({ paneId }: { paneId: string }) {
       {zone && (
         <div
           className={cn(
-            "pointer-events-none absolute inset-y-2 rounded-xl border-2 border-dashed border-brand bg-brand/10 transition-[left,right] duration-100",
+            "pointer-events-none absolute inset-y-2 rounded-xl border-2 border-dashed border-brand bg-brand/10 transition-all duration-100",
             zone === "left" && "left-2 right-1/2",
             zone === "right" && "left-1/2 right-2",
             zone === "center" && "inset-x-2",

@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { api, type AdminAgent } from "@/lib/api";
 import { adminAgentsQuery, agentsQuery, conversationsQuery } from "@/lib/queries";
@@ -10,8 +11,8 @@ import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 
 const messages = defineMessages({
-  en: { name: "Name", avatar: "Avatar", profile: (p: string) => `Hermes profile: ${p}. Set when the agent was created.` },
-  fr: { name: "Nom", avatar: "Avatar", profile: (p: string) => `Profil Hermes : ${p}. Fixé à la création de l'agent.` },
+  en: { title: "Name and avatar", name: "Name", avatar: "Avatar", profile: (p: string) => `Hermes profile: ${p}. Set when the agent was created.` },
+  fr: { title: "Nom et avatar", name: "Nom", avatar: "Avatar", profile: (p: string) => `Profil Hermes : ${p}. Fixé à la création de l'agent.` },
 });
 
 /** The agent's name and avatar. The Hermes profile itself does not change after creation. */
@@ -47,22 +48,32 @@ export function AgentProfile({ agent }: { agent: AdminAgent }) {
         if (dirty && name.trim()) save.mutate();
       }}
     >
-      <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor={`agent-name-${agent.id}`}>{t.name}</FieldLabel>
-          <Input id={`agent-name-${agent.id}`} value={name} maxLength={60} required onChange={(e) => setName(e.target.value)} />
-          <FieldDescription>{t.profile(agent.hermesProfile)}</FieldDescription>
-        </Field>
-        <FieldSet>
-          <FieldLegend variant="label">{t.avatar}</FieldLegend>
-          <AvatarPicker shape={shape} color={color} onShapeChange={setShape} onColorChange={setColor} />
-        </FieldSet>
-        <Field orientation="horizontal">
-          <Button type="submit" disabled={!dirty || !name.trim() || save.isPending}>
-            {save.isPending ? c.saving : c.save}
-          </Button>
-        </Field>
-      </FieldGroup>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t.title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor={`agent-name-${agent.id}`}>{t.name}</FieldLabel>
+              <Input id={`agent-name-${agent.id}`} value={name} maxLength={60} required onChange={(e) => setName(e.target.value)} />
+              <FieldDescription>{t.profile(agent.hermesProfile)}</FieldDescription>
+            </Field>
+            <Field>
+              <FieldTitle>{t.avatar}</FieldTitle>
+              <AvatarPicker shape={shape} color={color} onShapeChange={setShape} onColorChange={setColor} />
+            </Field>
+          </FieldGroup>
+        </CardContent>
+        {/* Saved on demand: the button only shows once something changed. */}
+        {dirty && (
+          <CardFooter className="justify-end">
+            <Button type="submit" disabled={!name.trim() || save.isPending}>
+              {save.isPending ? c.saving : c.save}
+            </Button>
+          </CardFooter>
+        )}
+      </Card>
     </form>
   );
 }

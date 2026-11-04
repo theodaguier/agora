@@ -46,12 +46,12 @@ export function WorkingOn({ userId, className }: { userId: string; className?: s
   const self = userId === user.id;
   const current = data?.currentTask;
   if (!data || (!current && !self)) return null;
-  if (!current) return <p className={cn("text-[13px] text-muted-foreground", className)}>{t.nothingYou}</p>;
+  if (!current) return <p className={cn("text-sm text-muted-foreground", className)}>{t.nothingYou}</p>;
   return (
-    <div className={cn("flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px]", statusTone.in_progress, className)}>
+    <div className={cn("flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-sm", statusTone.in_progress, className)}>
       <span className="min-w-0 flex-1 truncate font-medium">{self ? t.you(current.title) : t.them(current.title)}</span>
       {self && (
-        <Button variant="ghost" size="xs" className="-my-1 text-current hover:bg-transparent hover:underline" disabled={set.isPending} onClick={() => set.mutate(null)}>
+        <Button variant="ghost" size="xs" className="-my-1" disabled={set.isPending} onClick={() => set.mutate(null)}>
           {t.stop}
         </Button>
       )}

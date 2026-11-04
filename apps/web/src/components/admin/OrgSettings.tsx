@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { languageOptions } from "@/lib/languages";
+import { LANGUAGES, type Locale } from "@/lib/languages";
 import { useEffect, useMemo, useState } from "react";
+import { GlobeIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { FormLabel } from "@/components/FormLabel";
-import { Field, FieldDescription } from "@/components/ui/field";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { LoadFailed, Loading } from "./ui";
+import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { OptionSelect, SearchSelect } from "@/components/Pickers";
 import { AvatarField, type AvatarChange } from "@/components/ProfileFields";
@@ -36,6 +39,9 @@ const messages = defineMessages({
   },
 });
 
+/** Language names only: a flag stands for a country, not a language. */
+const languageOptions = (Object.keys(LANGUAGES) as Locale[]).map((l) => ({ value: l, label: LANGUAGES[l].label, icon: <GlobeIcon /> }));
+
 type Org = { name: string; locale: "fr" | "en"; timezone: string; image: string | null };
 
 /** Organization settings (admin): name, agents' language, time zone. */
@@ -43,7 +49,7 @@ export function OrgSettings() {
   const t = useT(messages);
   const c = useT(common);
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["admin", "org"], queryFn: () => api<Org>("/admin/org") });
+  const { data, isPending, error, refetch } = useQuery({ queryKey: ["admin", "org"], queryFn: () => api<Org>("/admin/org") });
   const [form, setForm] = useState<Org | null>(null);
   const [logo, setLogo] = useState<AvatarChange>(undefined);
   useEffect(() => {
@@ -70,58 +76,76 @@ export function OrgSettings() {
     },
     meta: { success: c.saved, error: t.saveFailed },
   });
-  if (!form) return null;
+  if (!form)
+    return isPending || data ? (
+      <Card>
+        <CardContent>
+          <Loading />
+        </CardContent>
+      </Card>
+    ) : (
+      <LoadFailed error={error} onRetry={() => void refetch()} />
+    );
   const dirty = JSON.stringify(form) !== JSON.stringify(data) || logo !== undefined;
 
   return (
     <form
-      className="flex flex-col gap-6"
       onSubmit={(e) => {
         e.preventDefault();
         save.mutate(form);
       }}
     >
-      <AvatarField id="org" name={form.name} current={data?.image ?? null} value={logo} onChange={setLogo} label={t.logo} />
-      <Field>
-        <FormLabel htmlFor="org-name" required>
-          {t.name}
-        </FormLabel>
-        <Input id="org-name" value={form.name} maxLength={80} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <FieldDescription>{t.nameHelp}</FieldDescription>
-      </Field>
-      <div className="grid items-start gap-5 sm:grid-cols-2 sm:gap-4">
-        <Field>
-          <FormLabel htmlFor="org-locale" required>
-            {t.locale}
-          </FormLabel>
-          <OptionSelect
-            id="org-locale"
-            options={languageOptions}
-            value={form.locale}
-            onValueChange={(locale) => setForm({ ...form, locale: locale as Org["locale"] })}
-          />
-          <FieldDescription>{t.localeHelp}</FieldDescription>
-        </Field>
-        <Field>
-          <FormLabel htmlFor="org-tz" required>
-            {t.timezone}
-          </FormLabel>
-          <SearchSelect
-            id="org-tz"
-            options={zones}
-            value={form.timezone}
-            onValueChange={(timezone) => setForm({ ...form, timezone })}
-            label={(z) => z.replaceAll("_", " ")}
-            placeholder={t.searchTimezone}
-          />
-          <FieldDescription>{t.timezoneHelp}</FieldDescription>
-        </Field>
-      </div>
-      <Field orientation="horizontal">
-        <Button type="submit" disabled={!dirty || !form.name.trim() || save.isPending}>
-          {save.isPending ? c.saving : c.save}
-        </Button>
-      </Field>
+      <Card>
+        <CardContent>
+          <FieldGroup>
+            <AvatarField id="org" name={form.name} current={data?.image ?? null} value={logo} onChange={setLogo} label={t.logo} />
+            <Field>
+              <FormLabel htmlFor="org-name" required>
+                {t.name}
+              </FormLabel>
+              <Input id="org-name" value={form.name} maxLength={80} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <FieldDescription>{t.nameHelp}</FieldDescription>
+            </Field>
+            <div className="grid items-start gap-5 sm:grid-cols-2 sm:gap-4">
+              <Field>
+                <FormLabel htmlFor="org-locale" required>
+                  {t.locale}
+                </FormLabel>
+                <OptionSelect
+                  id="org-locale"
+                  options={languageOptions}
+                  value={form.locale}
+                  onValueChange={(locale) => setForm({ ...form, locale: locale as Org["locale"] })}
+                />
+                <FieldDescription>{t.localeHelp}</FieldDescription>
+              </Field>
+              <Field>
+                <FormLabel htmlFor="org-tz" required>
+                  {t.timezone}
+                </FormLabel>
+                <SearchSelect
+                  id="org-tz"
+                  options={zones}
+                  value={form.timezone}
+                  onValueChange={(timezone) => setForm({ ...form, timezone })}
+                  label={(z) => z.replaceAll("_", " ")}
+                  icon={() => <GlobeIcon />}
+                  placeholder={t.searchTimezone}
+                />
+                <FieldDescription>{t.timezoneHelp}</FieldDescription>
+              </Field>
+            </div>
+          </FieldGroup>
+        </CardContent>
+        {/* Saved on demand: the button only shows once something changed. */}
+        {dirty && (
+          <CardFooter className="justify-end">
+            <Button type="submit" disabled={!form.name.trim() || save.isPending}>
+              {save.isPending ? c.saving : c.save}
+            </Button>
+          </CardFooter>
+        )}
+      </Card>
     </form>
   );
 }

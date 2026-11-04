@@ -69,24 +69,24 @@ export function WhatsNew() {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       {/* Same frame as the morning recap: title and buttons stay put, everything between them scrolls on a short screen. */}
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl" initialFocus={false}>
-        <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
-          <DialogTitle className="pr-8 text-xl leading-[26px] font-medium">{t.title(date)}</DialogTitle>
-          <p className="text-[13px] text-muted-foreground tabular-nums">v{release.version}</p>
+      <DialogContent className="flex max-h-11/12 flex-col sm:max-w-xl" initialFocus={false}>
+        <DialogHeader>
+          <DialogTitle>{t.title(date)}</DialogTitle>
+          <p className="text-sm text-muted-foreground tabular-nums">v{release.version}</p>
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-6 pb-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain">
           {/* A real cover only: no decorative placeholder when the release has none. */}
           {release.cover && (
             <div
               className={cn(
-                "relative w-full shrink-0 overflow-hidden rounded-lg bg-muted transition-[aspect-ratio] duration-200 ease-out",
-                expanded ? "aspect-[4/1]" : "aspect-video max-h-[32dvh]",
+                "relative w-full shrink-0 overflow-hidden rounded-lg bg-muted",
+                expanded ? "aspect-[4/1]" : "aspect-video",
               )}
             >
               <img src={release.cover} alt="" className="absolute inset-0 size-full object-cover" />
             </div>
           )}
-          <DialogDescription className="text-base text-pretty text-foreground">{release.summary[locale]}</DialogDescription>
+          <DialogDescription>{release.summary[locale]}</DialogDescription>
           <div className="flex flex-wrap gap-1.5">
             {release.tags.map((tag) => (
               <Badge key={tag} variant="secondary">
@@ -108,7 +108,7 @@ export function WhatsNew() {
           )}
           <p className="text-sm text-muted-foreground">{t.by(release.author)}</p>
         </div>
-        <DialogFooter className="mx-0 mb-0 shrink-0 rounded-b-2xl px-6">
+        <DialogFooter>
           {expanded ? (
             <Button onClick={close}>{t.close}</Button>
           ) : (

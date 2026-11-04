@@ -1,5 +1,5 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
-import type { CodeAccount, CodeApprovalAnswer, CodeEngine, CodeEngineInfo, CodePermissionMode, CodePriority, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
+import type { CodeAccount, CodeApprovalAnswer, CodeCommand, CodeEngine, CodeEngineInfo, CodePermissionMode, CodePriority, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
 import { api, conversationPath } from "./api";
 
 /** Claude Code sessions of a conversation (apps/api/src/code-sessions.ts): list for the cards, detail with steps for the panel. */
@@ -83,6 +83,10 @@ export const setCodeSessionMode = (conversationId: string, id: string, mode: Cod
 export const setCodeSessionPriority = (conversationId: string, id: string, priority: CodePriority) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/priority`), { method: "PUT", body: JSON.stringify({ priority }) });
 
+/** Set aside (« Mettre de côté ») or brought back. */
+export const setCodeSessionParked = (conversationId: string, id: string, parked: boolean) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/parked`), { method: "PUT", body: JSON.stringify({ parked }) });
+
 /** Its issue detached: the session linked one that is not its task. */
 export const detachCodeSessionIssue = (conversationId: string, id: string) => api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/issue`), { method: "DELETE" });
 
@@ -114,6 +118,14 @@ export const codeModelsQuery = (conversationId: string, engine: CodeEngine = "cl
     queryKey: ["code-models", conversationId, engine],
     queryFn: () => api<{ id: string; label?: string; description?: string; reasoning?: boolean }[]>(path(conversationId, `/models?engine=${engine}`)),
     staleTime: 10 * 60_000,
+  });
+
+/** What "/" offers before a session runs: Claude Code's own commands, and the skills it inherits from the team's bots. */
+export const codeCommandsQuery = (conversationId: string, engine: CodeEngine) =>
+  queryOptions({
+    queryKey: ["code-commands", conversationId, engine],
+    queryFn: () => api<CodeCommand[]>(path(conversationId, `/commands?engine=${engine}`)),
+    staleTime: 60_000,
   });
 
 /** The agent CLIs a new session can run on (installed on the server, the person's own): none, they cannot start one. */

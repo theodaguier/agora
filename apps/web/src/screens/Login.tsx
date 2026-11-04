@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { OrgLogo } from "@/components/OrgLogo";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormLabel } from "@/components/FormLabel";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -29,7 +30,14 @@ export function Login() {
   if (twoFactor) return <TwoFactorStep onBack={() => setTwoFactor(false)} onDone={() => navigate({ to: "/" })} />;
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
+    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <OrgLogo className="size-9" />
+          <CardTitle>{t.title(orgName)}</CardTitle>
+          <CardDescription>{t.hint}</CardDescription>
+        </CardHeader>
+        <CardContent>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -47,12 +55,8 @@ export function Login() {
           else if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) setTwoFactor(true);
           else navigate({ to: "/" });
         }}
-        className="w-full max-w-[400px] rounded-[18px] border border-border bg-background p-8"
       >
-        <OrgLogo className="size-9" />
-        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.title(orgName)}</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">{t.hint}</p>
-        <FieldGroup className="mt-3 gap-3">
+        <FieldGroup>
           <LoginField label={t.email} name="email" type="email" autoComplete="email" placeholder={t.emailPlaceholder} invalid={!!error} />
           <LoginField
             label={t.password}
@@ -62,15 +66,19 @@ export function Login() {
             placeholder="••••••••"
             invalid={!!error}
           />
+          {error && <FieldError>{error === "unknown" ? c.unknownError : t[error]}</FieldError>}
+          <Field>
+            <Button type="submit" disabled={pending} className="w-full">
+              {pending ? t.signingIn : t.signIn}
+            </Button>
+            <Button variant="link" nativeButton={false} render={<Link to="/forgot-password" />}>
+              {t.forgot}
+            </Button>
+          </Field>
         </FieldGroup>
-        {error && <FieldError className="mt-3">{error === "unknown" ? c.unknownError : t[error]}</FieldError>}
-        <Button type="submit" size="lg" disabled={pending} className="mt-6 w-full">
-          {pending ? t.signingIn : t.signIn}
-        </Button>
-        <Button variant="link" nativeButton={false} render={<Link to="/forgot-password" />} className="mx-auto mt-3 flex text-muted-foreground">
-          {t.forgot}
-        </Button>
       </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -95,7 +103,14 @@ function TwoFactorStep({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const [pending, setPending] = useState(false);
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-sidebar px-4 py-10">
+    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <OrgLogo className="size-9" />
+          <CardTitle>{t.twoFactorTitle}</CardTitle>
+          <CardDescription>{backup ? t.backupHint : t.twoFactorHint}</CardDescription>
+        </CardHeader>
+        <CardContent>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -109,48 +124,47 @@ function TwoFactorStep({ onBack, onDone }: { onBack: () => void; onDone: () => v
           if (error) setError(codeError(error));
           else onDone();
         }}
-        className="w-full max-w-[400px] rounded-[18px] border border-border bg-background p-8"
       >
-        <OrgLogo className="size-9" />
-        <h1 className="mt-5 text-[22px] leading-7 font-semibold">{t.twoFactorTitle}</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">{backup ? t.backupHint : t.twoFactorHint}</p>
-        <FieldGroup className="mt-3 gap-3">
+        <FieldGroup>
           {backup ? (
             <LoginField key="backup" label={t.backupCode} name="code" autoFocus autoComplete="one-time-code" maxLength={32} placeholder="xxxxx-xxxxx" invalid={!!error} />
           ) : (
-            <Field className="gap-1.5">
-              <FormLabel htmlFor="login-code" required className="font-normal text-foreground/85">
+            <Field>
+              <FormLabel htmlFor="login-code" required>
                 {t.code}
               </FormLabel>
               <TotpInput key="totp" id="login-code" invalid={!!error} />
             </Field>
           )}
-          <Field orientation="horizontal" className="gap-3">
+          <Field orientation="horizontal">
             <Checkbox id="trust-device" checked={trust} onCheckedChange={(v) => setTrust(v === true)} />
-            <FieldLabel htmlFor="trust-device" className="cursor-pointer font-normal">
+            <FieldLabel htmlFor="trust-device">
               {t.trustDevice}
             </FieldLabel>
           </Field>
+          {error && <FieldError>{error === "unknown" ? c.unknownError : t[error]}</FieldError>}
+          <Field>
+            <Button type="submit" disabled={pending} className="w-full">
+              {pending ? t.verifying : t.verify}
+            </Button>
+            <Button
+              type="button"
+              variant="link"
+              onClick={() => {
+                setBackup(!backup);
+                setError(null);
+              }}
+            >
+              {backup ? t.useApp : t.useBackup}
+            </Button>
+            <Button type="button" variant="link" onClick={onBack}>
+              {t.back}
+            </Button>
+          </Field>
         </FieldGroup>
-        {error && <FieldError className="mt-3">{error === "unknown" ? c.unknownError : t[error]}</FieldError>}
-        <Button type="submit" size="lg" disabled={pending} className="mt-6 w-full">
-          {pending ? t.verifying : t.verify}
-        </Button>
-        <Button
-          type="button"
-          variant="link"
-          className="mx-auto mt-3 flex text-muted-foreground"
-          onClick={() => {
-            setBackup(!backup);
-            setError(null);
-          }}
-        >
-          {backup ? t.useApp : t.useBackup}
-        </Button>
-        <Button type="button" variant="link" className="mx-auto flex text-muted-foreground" onClick={onBack}>
-          {t.back}
-        </Button>
       </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -158,11 +172,11 @@ function TwoFactorStep({ onBack, onDone }: { onBack: () => void; onDone: () => v
 function LoginField({ label, invalid, ...input }: { label: string; invalid: boolean } & React.ComponentProps<"input">) {
   const id = `login-${input.name}`;
   return (
-    <Field className="gap-1.5">
-      <FormLabel htmlFor={id} required className="font-normal text-foreground/85">
+    <Field>
+      <FormLabel htmlFor={id} required>
         {label}
       </FormLabel>
-      <Input id={id} required aria-invalid={invalid || undefined} className="h-11 rounded-xl px-3.5 text-[15px]" {...input} />
+      <Input id={id} required aria-invalid={invalid || undefined} {...input} />
     </Field>
   );
 }

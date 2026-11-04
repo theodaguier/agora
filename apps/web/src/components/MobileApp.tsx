@@ -4,6 +4,9 @@ import { useState } from "react";
 import { confirmAction } from "@/lib/confirm";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { CardAction, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -24,6 +27,8 @@ const messages = defineMessages({
     disconnectTitle: (name: string) => `Sign out ${name}?`,
     disconnectHelp: "The app on this phone will have to be connected again with a new QR code.",
     disconnected: "Phone signed out.",
+    noDevices: "No phone connected yet.",
+    devicesUnavailable: "Connected phones unreachable for now.",
   },
   fr: {
     connect: "Connecter l'app mobile",
@@ -38,6 +43,8 @@ const messages = defineMessages({
     disconnectTitle: (name: string) => `Déconnecter ${name} ?`,
     disconnectHelp: "L'app de ce téléphone devra être reconnectée avec un nouveau QR code.",
     disconnected: "Téléphone déconnecté.",
+    noDevices: "Aucun téléphone connecté pour l'instant.",
+    devicesUnavailable: "Téléphones connectés injoignables pour l'instant.",
   },
 });
 
@@ -74,43 +81,55 @@ export function MobileApp() {
   });
 
   return (
-    <div className="flex flex-col gap-3">
-      <Item variant="outline">
-        <ItemContent>
-          <ItemTitle>{t.connect}</ItemTitle>
-          <ItemDescription>{t.connectHelp}</ItemDescription>
-        </ItemContent>
-        <ItemActions>
-          <Button variant="outline" size="sm" onClick={() => setCountAtOpen(count)}>
+    <ListCard>
+      <ListCardHeader>
+        <CardTitle>{t.connect}</CardTitle>
+        <CardDescription>{t.connectHelp}</CardDescription>
+        <CardAction>
+          <Button size="sm" onClick={() => setCountAtOpen(count)}>
             {t.showQr}
           </Button>
-        </ItemActions>
-      </Item>
-      {devices.data?.map((d) => {
-        const name = d.name || t.unnamed;
-        return (
-          <Item key={d.id} variant="outline">
-            <ItemContent>
-              <ItemTitle>{name}</ItemTitle>
-              <ItemDescription>{t.paired(dividerLabel(new Date(d.pairedAt)))}</ItemDescription>
-            </ItemContent>
-            <ItemActions>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={disconnect.isPending && disconnect.variables === d.id}
-                onClick={async () => {
-                  if (await confirmAction({ title: t.disconnectTitle(name), description: t.disconnectHelp, action: t.disconnect })) disconnect.mutate(d.id);
-                }}
-              >
-                {t.disconnect}
-              </Button>
-            </ItemActions>
-          </Item>
-        );
-      })}
+        </CardAction>
+      </ListCardHeader>
+      {/* The phones signed in to the account. */}
+      {devices.isPending ? (
+        <CardContent className="flex flex-col gap-2 py-(--card-spacing)">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-3 w-1/4" />
+        </CardContent>
+      ) : !devices.data?.length ? (
+        <CardContent className="py-(--card-spacing)">
+          <p className="text-sm text-muted-foreground">{devices.isError ? t.devicesUnavailable : t.noDevices}</p>
+        </CardContent>
+      ) : (
+        <ListCardRows>
+          {devices.data.map((d) => {
+            const name = d.name || t.unnamed;
+            return (
+              <Item key={d.id}>
+                <ItemContent>
+                  <ItemTitle>{name}</ItemTitle>
+                  <ItemDescription>{t.paired(dividerLabel(new Date(d.pairedAt)))}</ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={disconnect.isPending && disconnect.variables === d.id}
+                    onClick={async () => {
+                      if (await confirmAction({ title: t.disconnectTitle(name), description: t.disconnectHelp, action: t.disconnect })) disconnect.mutate(d.id);
+                    }}
+                  >
+                    {t.disconnect}
+                  </Button>
+                </ItemActions>
+              </Item>
+            );
+          })}
+        </ListCardRows>
+      )}
       <QrDialog open={countAtOpen !== null} onClose={() => setCountAtOpen(null)} />
-    </div>
+    </ListCard>
   );
 }
 

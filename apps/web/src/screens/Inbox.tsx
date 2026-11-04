@@ -4,15 +4,20 @@ import { useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { PersonAvatar } from "@/components/ConversationAvatar";
 import { conversationTitle } from "@/lib/participants";
-import { ChevronLeftIcon, MoreIcon } from "@/components/icons";
+import { CheckIcon, ChevronLeftIcon, MailIcon, MoreIcon, WarningIcon } from "@/components/icons";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { EmptyFigure } from "@/components/EmptyFigure";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { defineMessages, useT } from "@/i18n";
+import { common } from "@agora/core/i18n";
 import { useOrgTitle } from "@/lib/org";
 import { dateFormat } from "@/lib/intl";
 import { api, type InboxItem, type InboxKind } from "@/lib/api";
@@ -21,7 +26,6 @@ import { MentionText } from "@/lib/mentions";
 import { useMentionables } from "@/lib/people";
 import { conversationsQuery, inboxQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import { filterList, filterTrigger } from "@/components/TaskList";
 
 const messages = defineMessages({
   en: {
@@ -48,6 +52,8 @@ const messages = defineMessages({
     emptyTitle: "Nothing yet",
     empty: "Mentions, replies and tasks that concern you land here.",
     emptyUnread: "You're all caught up",
+    errorTitle: "Inbox unavailable",
+    error: "Your inbox can't be reached right now.",
   },
   fr: {
     title: "Boîte de réception",
@@ -73,6 +79,8 @@ const messages = defineMessages({
     emptyTitle: "Rien pour l'instant",
     empty: "Les mentions, réponses et tâches qui te concernent arrivent ici.",
     emptyUnread: "Tout est lu",
+    errorTitle: "Boîte indisponible",
+    error: "Ta boîte de réception est injoignable pour le moment.",
   },
 });
 
@@ -84,7 +92,8 @@ export function Inbox() {
   useOrgTitle(t.title);
   const qc = useQueryClient();
   const [filter, setFilter] = useState<Filter>("all");
-  const { data, isPending } = useQuery(inboxQuery(filter === "unread"));
+  const c = useT(common);
+  const { data, isPending, isError, error, refetch } = useQuery(inboxQuery(filter === "unread"));
   const unread = data?.unread ?? 0;
 
   const markAll = useMutation({
@@ -96,41 +105,56 @@ export function Inbox() {
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[712px] flex-col px-4 pt-6 pb-12 md:pt-10">
+        <div className="mx-auto flex w-full max-w-2xl flex-col px-4 pt-6 pb-12 md:pt-10">
           <Button
             variant="ghost"
             size="icon"
             nativeButton={false}
             render={<Link to="/" aria-label={t.back} />}
-            className="-ml-2 mb-2 hover:bg-transparent md:hidden"
+            className="-ml-2 mb-2 md:hidden"
           >
-            <ChevronLeftIcon className="size-5" />
+            <ChevronLeftIcon />
           </Button>
           <header className="flex items-start gap-3">
-            <h1 className="min-w-0 flex-1 text-xl leading-[26px] font-medium">{t.title}</h1>
+            <h1 className="min-w-0 flex-1 text-xl font-medium">{t.title}</h1>
             <Button variant="secondary" disabled={!unread || markAll.isPending} onClick={() => markAll.mutate()}>
               {t.markAllRead}
             </Button>
           </header>
           <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="mt-4">
-            <TabsList className={filterList}>
-              <TabsTrigger value="all" className={filterTrigger}>
+            <TabsList>
+              <TabsTrigger value="all">
                 {t.all}
               </TabsTrigger>
-              <TabsTrigger value="unread" className={cn(filterTrigger, "gap-1.5")}>
+              <TabsTrigger value="unread">
                 {t.unread}
-                {unread > 0 && <span className="tabular-nums opacity-60">{unread}</span>}
+                {unread > 0 && <Badge variant="secondary">{unread}</Badge>}
               </TabsTrigger>
             </TabsList>
           </Tabs>
           {isPending ? (
-            <div className="mt-6 flex flex-col gap-1 rounded-[14px] border border-border p-1">
+            <div className="mt-6 flex flex-col gap-2">
               {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-16 rounded-[10px]" />
+                <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
+          ) : isError ? (
+            <Empty className="mt-8">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <WarningIcon />
+                </EmptyMedia>
+                <EmptyTitle>{t.errorTitle}</EmptyTitle>
+                <EmptyDescription title={error.message}>{t.error}</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button variant="secondary" onClick={() => void refetch()}>
+                  {c.retry}
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : !data?.items.length ? (
-            <Empty className="mt-8 py-10">
+            <Empty className="mt-8">
               <EmptyHeader>
                 <EmptyFigure mascot="teal" />
                 <EmptyTitle>{filter === "unread" ? t.emptyUnread : t.emptyTitle}</EmptyTitle>
@@ -139,15 +163,16 @@ export function Inbox() {
             </Empty>
           ) : (
             byDay(data.items).map(([day, items]) => (
-              <section key={day} className="mt-6">
-                <h2 className="mb-2 pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{day}</h2>
-                {/* Figma « Carte »: white, a hairline; its rows lit on hover. */}
-                <ItemGroup className="gap-0 rounded-[14px] border border-border bg-background p-1">
+              <ListCard key={day} size="sm" className="mt-6">
+                <ListCardHeader>
+                  <CardTitle>{day}</CardTitle>
+                </ListCardHeader>
+                <ListCardRows>
                   {items.map((n) => (
                     <InboxRow key={n.id} item={n} />
                   ))}
-                </ItemGroup>
-              </section>
+                </ListCardRows>
+              </ListCard>
             ))
           )}
         </div>
@@ -193,39 +218,44 @@ function InboxRow({ item }: { item: InboxItem }) {
   };
 
   return (
-    <Item size="sm" className="flex-nowrap items-start gap-3 rounded-[10px] border-0 px-2.5 py-2.5 hover:bg-secondary">
-      <ItemMedia className="pt-0.5">
+    <Item size="sm" role="listitem" className="flex-nowrap items-start">
+      <ItemMedia>
         {item.actor?.kind === "agent" ? (
           <AgentAvatar agent={item.actor} className="size-9" />
         ) : item.actor ? (
           <PersonAvatar person={item.actor} className="size-9" />
         ) : (
-          <span className="size-9 rounded-full bg-muted" />
+          <Avatar size="lg">
+            <AvatarFallback />
+          </Avatar>
         )}
       </ItemMedia>
       <ItemContent className="min-w-0 cursor-pointer" onClick={open}>
-        <ItemTitle className="w-full min-w-0 text-sm leading-5 font-normal">
+        <ItemTitle className="w-full min-w-0">
           <span className="min-w-0 truncate">
             <span className="font-medium">{item.actor?.name ?? t.someone}</span> {t.kind[item.kind]}
           </span>
-          <span className="ml-auto shrink-0 pl-2 text-xs text-subtle tabular-nums">{dateFormat({ hour: "2-digit", minute: "2-digit" }).format(new Date(item.createdAt))}</span>
+          <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground tabular-nums">{dateFormat({ hour: "2-digit", minute: "2-digit" }).format(new Date(item.createdAt))}</span>
         </ItemTitle>
         {body && (
-          <ItemDescription className="line-clamp-2 text-[13px] leading-[18px] text-foreground">
+          <ItemDescription>
             <MentionText text={body} mentionables={mentionables} />
           </ItemDescription>
         )}
         {where && <p className="truncate text-xs text-muted-foreground">{where}</p>}
       </ItemContent>
-      <ItemActions className="gap-1 self-start pt-1">
+      <ItemActions className="gap-1 self-start">
         {/* Always there, so times line up whether a row is read or not. */}
         <span className={cn("size-2 rounded-full bg-brand", item.read && "invisible")} aria-label={item.read ? undefined : t.unread} />
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t.actions} className="size-6 text-subtle" />}>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t.actions} />}>
             <MoreIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setRead.mutate({ read: !item.read, menu: true })}>{item.read ? t.markUnread : t.markRead}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setRead.mutate({ read: !item.read, menu: true })}>
+              {item.read ? <MailIcon /> : <CheckIcon />}
+              {item.read ? t.markUnread : t.markRead}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </ItemActions>

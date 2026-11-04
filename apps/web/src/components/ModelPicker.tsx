@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { InputGroupButton } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, conversationPath } from "@/lib/api";
 import { modelsQuery } from "@/lib/queries";
@@ -50,7 +51,7 @@ export function ModelPicker({
     setLocal(next);
     onOpenChange?.(next);
   };
-  const { data, isError } = useQuery(modelsQuery(conversationId));
+  const { data, isError, isPending } = useQuery(modelsQuery(conversationId));
   const select = useMutation({
     mutationFn: ({ model, provider }: { model: string | null; provider?: string }) =>
       api(conversationPath(conversationId, "/model"), {
@@ -72,6 +73,8 @@ export function ModelPicker({
     onSettled: () => qc.invalidateQueries({ queryKey: modelsQuery(conversationId).queryKey }),
   });
 
+  // Loading: a placeholder the size of the chip, so the composer's toolbar doesn't jump.
+  if (isPending) return <Skeleton className="h-7 w-24" />;
   if (isError || !data) return null;
   // Subscription engines (Claude Code, Codex): the chosen one, if the thread is on it.
   const engines = [data.claudeCode, data.codex].filter((e) => !!e);
@@ -79,7 +82,7 @@ export function ModelPicker({
   const engineModel = engine?.models.find((m) => m.id === data.selected);
   // Default model forbidden for this employee: their messages go to the first allowed model.
   const fallback = data.defaultAllowed ? data.defaultModel : (data.models[0]?.id ?? data.defaultModel);
-  const current = engine ? `${providerName(engine.provider)} · ${engineModel?.label ?? modelName(data.selected ?? "")}` : modelName(data.selected ?? fallback);
+  const current = engine ? `${providerName(engine.provider)}, ${engineModel?.label ?? modelName(data.selected ?? "")}` : modelName(data.selected ?? fallback);
   // cmdk values (also used for search); the current model is preselected on open.
   const defaultValue = `default ${data.defaultModel}`;
   const hermesValue = (id: string) => `${data.provider} ${providerName(data.provider)} ${id}`;
@@ -99,7 +102,7 @@ export function ModelPicker({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" className="h-7 rounded-[7px] px-2 text-muted-foreground hover:text-foreground" />}>{current}</PopoverTrigger>
+      <PopoverTrigger render={<InputGroupButton size="sm" />}>{current}</PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
         <Command defaultValue={activeValue}>
           <CommandInput placeholder={t.search} />
@@ -196,14 +199,13 @@ export function ModelOption(props: {
       data-checked={props.active}
       onSelect={props.onSelect}
       title={props.description}
-      size="sm"
     >
       {props.logo}
       <span className="min-w-0 flex-1 truncate">{props.label}</span>
       {props.reasoning && (
         <Tooltip>
-          <TooltipTrigger render={<span />} className="text-subtle">
-            <BrainIcon className="size-3.5" aria-label={t.reasoning} />
+          <TooltipTrigger render={<span />}>
+            <BrainIcon aria-label={t.reasoning} />
           </TooltipTrigger>
           <TooltipContent>{t.reasoning}</TooltipContent>
         </Tooltip>

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { OTPInput, OTPInputContext } from "input-otp"
+import { MinusIcon } from "@/components/icons"
 
 function InputOTP({
   className,
@@ -70,11 +71,12 @@ function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="input-otp-separator"
-      className="flex items-center"
+      className="flex items-center [&_svg:not([class*='size-'])]:size-4"
       role="separator"
       {...props}
     >
-      <div className="h-px w-3 bg-muted-foreground" />
+      <MinusIcon
+      />
     </div>
   )
 }

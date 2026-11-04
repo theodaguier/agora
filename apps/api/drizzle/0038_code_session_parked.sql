@@ -1,0 +1,1 @@
+ALTER TABLE "code_session" ADD COLUMN "parked_at" timestamp;

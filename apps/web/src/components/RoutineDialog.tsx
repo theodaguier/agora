@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { FormLabel } from "@/components/FormLabel";
-import { MoreIcon } from "@/components/icons";
+import { AtIcon, CalendarDayIcon, CalendarWeekIcon, CodeIcon, MoreIcon, PauseIcon, PencilIcon, PlayIcon, RepeatIcon, TrashIcon } from "@/components/icons";
 import { OptionSelect, timeOptions } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,6 +65,14 @@ const messages = defineMessages({
   },
 });
 
+/** Every day repeats, weekdays fill the week, some days are picked out, a custom one is a cron expression. */
+const FREQUENCY_ICONS: Record<Frequency["mode"], ReactNode> = {
+  daily: <RepeatIcon />,
+  weekdays: <CalendarWeekIcon />,
+  weekly: <CalendarDayIcon />,
+  custom: <CodeIcon />,
+};
+
 const routinePath = (conversationId: string, id: string) => conversationPath(conversationId, `/routines/${encodeURIComponent(id)}`);
 
 /** The conversation's routine list, and the bot activity (profile sheet) that lists them too. */
@@ -121,7 +129,7 @@ function RoutineForm({ conversationId, routine, onDone }: { conversationId: stri
 
   return (
     <form
-      className="flex flex-col gap-5"
+      className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
         const name = String(new FormData(e.currentTarget).get("name")).trim();
@@ -134,7 +142,7 @@ function RoutineForm({ conversationId, routine, onDone }: { conversationId: stri
       <DialogHeader>
         <DialogTitle>{t.editRoutine}</DialogTitle>
       </DialogHeader>
-      <FieldGroup className="gap-4">
+      <FieldGroup>
         <Field>
           <FormLabel htmlFor={`${id}-name`} required>
             {t.name}
@@ -149,7 +157,7 @@ function RoutineForm({ conversationId, routine, onDone }: { conversationId: stri
             id={`${id}-mode`}
             value={mode}
             onValueChange={(v) => setMode(v as Frequency["mode"])}
-            options={(["daily", "weekdays", "weekly", "custom"] as const).map((m) => ({ value: m, label: t.modes[m] }))}
+            options={(["daily", "weekdays", "weekly", "custom"] as const).map((m) => ({ value: m, label: t.modes[m], icon: FREQUENCY_ICONS[m] }))}
           />
         </Field>
         {mode === "weekly" && (
@@ -165,8 +173,8 @@ function RoutineForm({ conversationId, routine, onDone }: { conversationId: stri
               onValueChange={(v) => v.length && setDays(v.map(Number))}
             >
               {weekdays("short").map((d) => (
-                <ToggleGroupItem key={d.value} value={String(d.value)} className="capitalize">
-                  {d.label}
+                <ToggleGroupItem key={d.value} value={String(d.value)}>
+                  {capitalize(d.label)}
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
@@ -177,7 +185,7 @@ function RoutineForm({ conversationId, routine, onDone }: { conversationId: stri
             <FormLabel htmlFor={`${id}-expr`} required>
               {t.expr}
             </FormLabel>
-            <Input id={`${id}-expr`} required maxLength={120} value={expr} onChange={(e) => setExpr(e.target.value)} className="font-mono" />
+            <Input id={`${id}-expr`} required maxLength={120} value={expr} onChange={(e) => setExpr(e.target.value)} />
             <FieldDescription>{t.exprHint}</FieldDescription>
           </Field>
         ) : (
@@ -190,7 +198,7 @@ function RoutineForm({ conversationId, routine, onDone }: { conversationId: stri
         )}
       </FieldGroup>
       {save.error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {save.error.message || t.failed}
         </p>
       )}
@@ -234,7 +242,7 @@ export function DeleteRoutineDialog({
           <DialogDescription>{t.deleteBody(routine.name)}</DialogDescription>
         </DialogHeader>
         {remove.error && (
-          <p role="alert" className="text-[13px] text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {remove.error.message || t.failed}
           </p>
         )}
@@ -280,24 +288,32 @@ export function RoutineActions({
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.actions} className="text-muted-foreground" />}>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.actions} />}>
           <MoreIcon />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
           {onMention && (
             <>
               <DropdownMenuGroup>
-                <DropdownMenuItem onClick={onMention}>{t.mention}</DropdownMenuItem>
+                <DropdownMenuItem onClick={onMention}>
+                  <AtIcon />
+                  {t.mention}
+                </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
             </>
           )}
           <DropdownMenuGroup>
-            <DropdownMenuItem onClick={() => setEditing(true)}>{c.edit}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setEditing(true)}>
+              <PencilIcon />
+              {c.edit}
+            </DropdownMenuItem>
             <DropdownMenuItem disabled={toggle.isPending} onClick={() => toggle.mutate()}>
+              {routine.enabled ? <PauseIcon /> : <PlayIcon />}
               {routine.enabled ? t.pause : t.resume}
             </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+              <TrashIcon />
               {c.delete}
             </DropdownMenuItem>
           </DropdownMenuGroup>
@@ -308,3 +324,6 @@ export function RoutineActions({
     </>
   );
 }
+
+/** Weekday names come lowercase from Intl in French. */
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

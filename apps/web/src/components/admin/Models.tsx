@@ -3,20 +3,22 @@ import { PersonAvatar } from "@/components/ConversationAvatar";
 import { ModelLogo } from "@/components/ProviderLogo";
 import { providerName } from "@/lib/providers";
 import { Button } from "@/components/ui/button";
-import { FieldGroup, FieldSeparator } from "@/components/ui/field";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api, type AdminModels, type AdminUser } from "@/lib/api";
 import { adminModelsQuery, adminUsersQuery } from "@/lib/queries";
 import { defineMessages, useT } from "@/i18n";
 import { HostClis, LocalModels } from "./HostModels";
 import { Providers } from "./Providers";
-import { Loading, SectionHeader } from "./ui";
+import { LoadError, Loading, SectionHeader } from "./ui";
 
 const messages = defineMessages({
   en: {
     title: "Models",
+    accessTitle: "Models allowed per person",
     text: "Your agents' AI providers, and which models each employee can pick. New models are allowed by default.",
     listFailed: "Hermes couldn't list the models.",
     unreachable: (n: number) =>
@@ -32,10 +34,11 @@ const messages = defineMessages({
   },
   fr: {
     title: "Modèles",
+    accessTitle: "Modèles autorisés par personne",
     text: "Les fournisseurs d'IA de tes agents, et les modèles que chaque salarié peut choisir. Les nouveaux modèles sont autorisés d'office.",
     listFailed: "Hermes n'a pas pu donner la liste des modèles.",
     unreachable: (n: number) =>
-      `${n === 1 ? "Un agent n'a pas répondu" : `${n} agents n'ont pas répondu`} : ses modèles manquent.`,
+      n === 1 ? "Un agent n'a pas répondu : ses modèles manquent." : `${n} agents n'ont pas répondu : leurs modèles manquent.`,
     all: "Tous les modèles",
     none: "Aucun modèle",
     some: (n: number, total: number) => `${n} modèle${n > 1 ? "s" : ""} sur ${total}`,
@@ -52,8 +55,8 @@ const key = (provider: string, id: string) => `${provider}::${id}`;
 export function Models() {
   const t = useT(messages);
   const qc = useQueryClient();
-  const { data: users = [] } = useQuery(adminUsersQuery);
-  const { data, isPending, isError } = useQuery(adminModelsQuery);
+  const { data: users = [], isPending: usersPending } = useQuery(adminUsersQuery);
+  const { data, isPending, error } = useQuery(adminModelsQuery);
   const save = useMutation({
     mutationFn: ({ userId, blocked }: { userId: string; blocked: string[] }) =>
       api(`/admin/users/${userId}/models`, { method: "PUT", body: JSON.stringify({ blocked }) }),
@@ -75,28 +78,30 @@ export function Models() {
   return (
     <>
       <SectionHeader title={t.title} text={t.text} />
-      <FieldGroup className="mb-8">
-        <Providers />
-      </FieldGroup>
-      {isPending ? (
-        <Loading />
-      ) : isError ? (
-        <p className="text-sm text-destructive">{t.listFailed}</p>
-      ) : (
-        <>
-          {data.unreachable > 0 && <p className="mb-3 text-sm text-muted-foreground">{t.unreachable(data.unreachable)}</p>}
-          <ItemGroup className="gap-2">
+      <Providers />
+      <ListCard>
+        <ListCardHeader>
+          <CardTitle>{t.accessTitle}</CardTitle>
+          {data && data.unreachable > 0 && <CardDescription>{t.unreachable(data.unreachable)}</CardDescription>}
+        </ListCardHeader>
+        {isPending || usersPending ? (
+          <CardContent className="py-(--card-spacing)">
+            <Loading />
+          </CardContent>
+        ) : !data ? (
+          <CardContent className="py-(--card-spacing)">
+            <LoadError error={error} text={t.listFailed} />
+          </CardContent>
+        ) : (
+          <ListCardRows>
             {users.map((u) => (
               <UserModels key={u.id} user={u} providers={data.providers.filter((p) => !p.onlyFor || p.onlyFor === u.id)} blocked={blockedOf(u.id)} onChange={(models, allowed) => set(u.id, models, allowed)} />
             ))}
-          </ItemGroup>
-        </>
-      )}
-      <FieldGroup className="mt-8">
-        <LocalModels />
-        <FieldSeparator />
-        <HostClis />
-      </FieldGroup>
+          </ListCardRows>
+        )}
+      </ListCard>
+      <LocalModels />
+      <HostClis />
     </>
   );
 }
@@ -118,21 +123,21 @@ function UserModels({
   const summary = allowed === 0 ? t.none : allowed === ids.length ? t.all : t.some(allowed, ids.length);
 
   return (
-    <Item variant="outline" role="listitem">
+    <Item size="xs">
       <ItemMedia>
-        <PersonAvatar person={u} className="size-9" />
+        <PersonAvatar person={u} className="size-6" />
       </ItemMedia>
-      <ItemContent className="min-w-0">
-        <ItemTitle className="w-full truncate">{u.name}</ItemTitle>
-        <ItemDescription className="truncate">{summary}</ItemDescription>
+      <ItemContent>
+        <ItemTitle>{u.name}</ItemTitle>
+        <ItemDescription>{summary}</ItemDescription>
       </ItemContent>
       <ItemActions>
         <Popover>
           <PopoverTrigger render={<Button variant="outline" size="sm" aria-label={t.editOf(u.name)} />}>{t.edit}</PopoverTrigger>
           <PopoverContent align="end" sideOffset={6} className="w-80 p-0">
-            <Command className="p-1.5">
+            <Command>
               <CommandInput placeholder={t.search} />
-              <CommandList className="max-h-96 pt-1.5">
+              <CommandList className="max-h-96">
                 <CommandEmpty>{t.noMatch}</CommandEmpty>
                 {providers.map((p) => {
                   const all = p.models.map((m) => key(p.provider, m.id));
@@ -145,7 +150,6 @@ function UserModels({
                         keywords={[name, p.provider]}
                         data-checked={on}
                         onSelect={() => onChange(all, !on)}
-                        className="h-9 gap-2.5 rounded-lg px-2.5 text-sm"
                       >
                         <ModelLogo provider={p.provider} className="size-4" />
                         <span className="truncate">{t.allOf(name)}</span>
@@ -159,8 +163,8 @@ function UserModels({
                             keywords={[m.id, m.label ?? "", name, p.provider]}
                             data-checked={!blocked.has(id)}
                             onSelect={() => onChange([id], blocked.has(id))}
-                            className="h-9 gap-2.5 rounded-lg pl-9 pr-2.5 text-sm"
                           >
+                            <ModelLogo model={m.id} provider={p.provider} />
                             <span className="truncate">{m.label ?? m.id}</span>
                           </CommandItem>
                         );

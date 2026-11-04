@@ -2,7 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, join, sep } from "node:path";
 import type { Subprocess } from "bun";
-import { CODE_ENGINE_NAMES, CODE_PRIORITIES, codeEngineModes, codeInstructionText, type CodeApproval, type CodeIssue, type CodePriority, type CodeEngine, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
+import { CODE_ENGINE_NAMES, CODE_PRIORITIES, codeEngineModes, codeInstructionText, type CodeApproval, type CodeIssue, type CodePriority, type CodePullRequest, type CodeEngine, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
 import { activateClaudeAccount, activeClaudeAccountId, claudeCodeEnv, claudeProfiles } from "./claude-accounts";
 import { resultUsage, sessionExists, workspace, type ClaudeResult } from "./claude-code";
 import { engineBin, headlessEngine, type HeadlessEngine } from "./code-engines";
@@ -11,7 +11,8 @@ import { GitError, githubEnv, githubToken, parseRepo, prepareWorktree, readGit, 
 import { clip, isMode, planTitle, Transcript } from "./code-steps";
 import { db, schema } from "./db";
 import { env } from "./env";
-import { claudeMcpConfig, engineMcpOrNone, noMcp, type EngineMcp } from "./engine-mcp";
+import { BUILTIN_COMMANDS as BUILTINS, linkSkills, skillsDirOf, teamProfiles, teamSkills } from "./code-skills";
+import { claudeMcpConfig, teamMcp, type EngineMcp } from "./engine-mcp";
 import { publishToConversation } from "./events";
 import { cliEnv } from "./host";
 import { readLines } from "./lines";
@@ -20,6 +21,7 @@ import { INLINE_IMAGE, MAX_INLINE_IMAGES, type AttachmentRow } from "./prompt";
 import { repoEnv } from "./repo-env";
 import { screenEnv } from "./screen";
 import { recordEngineUsage, type EngineUsage } from "./usage";
+import { askLogin, botRequestStatus, botSearch, hasReadableVault, requestLogin, REQUEST_TTL_MS, VaultError, type VaultTurn } from "./vaults";
 
 /**
  * Claude Code sessions: a `claude` agent working in a directory of the
@@ -93,6 +95,10 @@ type Live = {
   bot: string | null;
   /** Its question to that bot (ask_bot), waiting for an answer. */
   question: PendingQuestion | null;
+  /** That bot may read a vault of its requester (Coffre-fort): the vault tools are offered. */
+  vault: boolean;
+  /** Its login requests (vault_use_login) waiting for the requester's answer on their card. */
+  vaultWaits: Set<string>;
   /** Moments its bot must hear of (a run ended, it failed, it asks a question), counted; see onCodeMilestone. */
   milestone: number;
   /** The last of them a report already gave the bot (it was waiting on the session): no need to wake it. */
@@ -178,6 +184,7 @@ function summary(s: Live): CodeSession {
     // Its question to its bot holds the run as an approval does.
     status: s.question && r.status === "running" ? "waiting" : statusOf(r),
     priority: r.priority,
+    parked: r.parkedAt != null,
     issue: r.issue ?? null,
     cwd: r.cwd,
     repo: r.repo,
@@ -239,6 +246,8 @@ function fromRow(row: Row): Live {
     approval: null,
     bot: null,
     question: null,
+    vault: false,
+    vaultWaits: new Set(),
     milestone: 0,
     delivered: 0,
     activity: null,
@@ -399,6 +408,7 @@ async function save(s: Live) {
       .set({
         status: r.status,
         priority: r.priority,
+        parkedAt: r.parkedAt,
         issue: r.issue,
         result: r.result,
         model: r.model,
@@ -468,6 +478,23 @@ async function rereadGit(s: Live, throttle: boolean) {
 export async function refreshCodeSessionGit(id: string, conversationId?: string) {
   const s = await load(id, conversationId);
   if (!s.gitBusy && !s.prepare) await rereadGit(s, true);
+  return summary(s);
+}
+
+/**
+ * The session's pull request was merged outside its panel (a bot's merge request a person approved,
+ * github-merge.ts): recorded in its steps and the conversation like a merge from the panel, and its
+ * branch read again.
+ */
+export async function noteCodeSessionMerge(id: string, conversationId: string, by: string, pr: CodePullRequest, method: string) {
+  const s = await load(id, conversationId);
+  gitStep(s, "merge", true, gitOps.mergedText(pr, method), by);
+  await postEvent(s.row.conversationId, { type: "code.pr", actor: by, title: s.row.title, sessionId: s.row.id, number: pr.number, url: pr.url, merged: true }).catch((err) =>
+    console.error("code session: pr event", err),
+  );
+  if (!s.gitBusy && !s.prepare) await rereadGit(s, false);
+  touch(s, [], true);
+  if (!s.running) await save(s);
   return summary(s);
 }
 
@@ -651,6 +678,8 @@ async function withFiles(root: string, sessionId: string, m: Instruction, files:
 }
 
 function instruct(s: Live, m: Instruction) {
+  // Set aside until now: an instruction brings it back with the active ones.
+  s.row.parkedAt = null;
   touch(s, [s.transcript.add({ id: crypto.randomUUID(), kind: "user", text: m.text, by: m.by, ...(m.files?.length && { files: m.files }) })]);
   // Its worktree was deleted: the next run starts in a new one, on the same branch.
   const wt = s.row.worktree;
@@ -753,6 +782,16 @@ export async function setCodeSessionPriority(id: string, priority: CodePriority,
   const s = await load(id, conversationId);
   if (!CODE_PRIORITIES.includes(priority)) throw new CodeSessionError("invalid");
   s.row.priority = priority;
+  touch(s, [], true);
+  await save(s);
+  return summary(s);
+}
+
+/** Set aside by its owner, or brought back: out of the active ones until its next instruction. A running session can't be set aside. */
+export async function setCodeSessionParked(id: string, parked: boolean, conversationId?: string) {
+  const s = await load(id, conversationId);
+  if (parked && s.running) throw new CodeSessionError("busy");
+  s.row.parkedAt = parked ? new Date() : null;
   touch(s, [], true);
   await save(s);
   return summary(s);
@@ -1100,12 +1139,13 @@ const CREDENTIALS_NOTE = [
  */
 export const CODE_DELEGATION_PROMPT = [
   "# Travail de code : sessions Claude Code",
-  "Tu as les outils claude_code_start, claude_code_wait, claude_code_send et claude_code_stop (tool_describe si tu ne vois pas leurs paramètres).",
+  "Tu as les outils claude_code_start, claude_code_wait, claude_code_send, claude_code_stop, github_pull_request et github_merge (tool_describe si tu ne vois pas leurs paramètres).",
   "Tout travail sur du code (corriger une issue, écrire une fonctionnalité, un correctif, un test, ouvrir une PR) passe par une session : claude_code_start avec repo (owner/nom), un titre qui nomme la tâche et un brief complet (but, contraintes, comment vérifier). La session clone le dépôt, a git et gh, et les membres de la conversation la suivent en direct.",
   "Ne code jamais toi-même : ni fichier créé, modifié ou poussé avec le connecteur GitHub (branches, commits, PR comprises), ni dans ton terminal. Lire une issue ou quelques fichiers pour écrire le brief reste permis, sans t'y attarder.",
   "Une session par tâche : chaque nouvelle issue ou fonctionnalité a sa propre session (claude_code_start), pour que la conversation la voie sous son propre titre. Chaque session sur un dépôt travaille dans son propre worktree, avec les credentials du projet déjà en place : plusieurs sessions sur le même dépôt ne se gênent pas. claude_code_send ne sert qu'à poursuivre ou corriger la tâche de la session, et il est refusé une fois sa PR mergée ou fermée.",
   "Annonce la session en une phrase à la conversation, puis termine ta réponse : claude_code_start et claude_code_send rendent la main tout de suite. Tu seras réveillé automatiquement, avec son rapport, quand elle aura fini, échoué ou qu'elle te posera une question. N'attends avec claude_code_wait que pour une tâche courte dont tu as besoin du résultat dans cette réponse.",
   "Une session que tu as lancée peut te poser une question pendant qu'elle travaille : tu es réveillé avec elle (champ question) et elle attend. Réponds avec claude_code_send (ta réponse lui arrive comme résultat de sa question), après avoir demandé au propriétaire si la décision lui revient.",
+  "PR GitHub : github_pull_request (session_id ou lien de la PR) donne son état, sa CI, sa review et si elle est mergeable. Pour merger, utilise uniquement github_merge avec la raison : la personne reçoit une carte dans la conversation et doit l'autoriser, l'outil attend sa réponse. Ne merge jamais autrement (gh, git, connecteur GitHub). Vérifie la CI et les conflits avant de demander.",
 ].join("\n");
 
 /**
@@ -1433,15 +1473,39 @@ function cool(s: Live) {
   setTimeout(() => proc.kill(), COOL_GRACE_MS).unref();
 }
 
-/** The Hermes profile of a direct conversation's bot; null in a group, where no single bot is meant. */
-async function directBotProfile(conversationId: string) {
+/** A direct conversation's bot; null in a group, where no single bot is meant. */
+async function directBot(conversationId: string) {
   const bots = await db
-    .select({ profile: schema.agent.hermesProfile })
+    .select({ id: schema.agent.id, profile: schema.agent.hermesProfile })
     .from(schema.conversation)
     .innerJoin(schema.conversationAgent, eq(schema.conversationAgent.conversationId, schema.conversation.id))
     .innerJoin(schema.agent, eq(schema.agent.id, schema.conversationAgent.agentId))
     .where(and(eq(schema.conversation.id, conversationId), eq(schema.conversation.kind, "direct")));
-  return bots.length === 1 ? bots[0]!.profile : null;
+  return bots.length === 1 ? bots[0]! : null;
+}
+
+/**
+ * The bots a session inherits from: the ones its requester may use (every bot for an admin), its own
+ * bot first (the conversation's, started from the panel of a direct conversation), whose connector or
+ * skill wins on a shared name.
+ */
+async function inheritedProfiles(r: Row, bot: { profile: string } | undefined) {
+  const own = bot ? { id: r.agentId, profile: bot.profile } : await directBot(r.conversationId);
+  if (!r.requestedBy) return own ? [own.profile] : [];
+  return teamProfiles(r.requestedBy, own?.id ?? null).catch((err) => {
+    console.error("code session: team", err);
+    return own ? [own.profile] : [];
+  });
+}
+
+/** The team's skills, linked where the session's engine reads its project skills (code-skills.ts). */
+async function inheritSkills(r: Row, profiles: string[]) {
+  try {
+    return await linkSkills(r.cwd, skillsDirOf(r.engine), await teamSkills(profiles));
+  } catch (err) {
+    console.error("code session: skills", err);
+    return [];
+  }
 }
 
 async function execute(s: Live, id: number): Promise<void> {
@@ -1469,11 +1533,12 @@ async function execute(s: Live, id: number): Promise<void> {
     ? await db.select({ name: schema.agent.name, profile: schema.agent.hermesProfile }).from(schema.agent).where(eq(schema.agent.id, r.agentId))
     : [];
   s.bot = bot?.name ?? null;
-  // And it gets that bot's connectors, the ones enabled for it in Hermes; started from the panel of a
-  // direct conversation, the ones of the conversation's bot.
-  const connectorsOf = bot?.profile ?? (await directBotProfile(r.conversationId));
-  const connectors = connectorsOf ? await engineMcpOrNone(connectorsOf) : noMcp();
+  // It inherits the team's connectors (enabled for the bots in Hermes) and skills.
+  const profiles = await inheritedProfiles(r, bot);
+  const [connectors, skills] = await Promise.all([teamMcp(profiles), inheritSkills(r, profiles)]);
   const headless = r.engine !== "claude";
+  // Its bot may read a vault of its requester: the vault tools, through the same cards as the bot's.
+  s.vault = !headless && !!s.bot && !!r.agentId && (await hasReadableVault(r.agentId, r.requestedBy).catch(() => false));
   const ports = await portsOf(r.id);
   const appended = [
     portsNote(ports),
@@ -1481,6 +1546,8 @@ async function execute(s: Live, id: number): Promise<void> {
     r.worktree && r.repo && (await repoEnv(r.repo)) && CREDENTIALS_NOTE,
     // ask_bot is an MCP tool of Claude Code's control protocol.
     s.bot && !headless && askNote(s.bot),
+    skills.length > 0 && skillsNote(r.engine, skills.length),
+    s.vault && s.bot && vaultNote(s.bot),
     issueRepo(r) && !headless && issueNote(r.issue),
   ]
     .filter(Boolean)
@@ -1923,11 +1990,134 @@ const issueNote = (issue: CodeIssue | null | undefined) =>
     ? `Cette session est rattachée à l'issue GitHub #${issue.number} (« ${issue.title} »). Si tu ouvres une pull request, écris « Closes #${issue.number} » dans sa description.`
     : `Au début de ta tâche, regarde les issues ouvertes du dépôt avec ${`mcp__${MCP_SERVER}__${FIND_ISSUES}`}. Si l'une décrit clairement ce qu'on te demande, rattache-la avec ${`mcp__${MCP_SERVER}__${LINK_ISSUE}`}, une seule fois, puis écris « Closes #n » dans la description de ta pull request. Si aucune ne correspond clairement, n'en rattache aucune.`;
 
-/** Its own MCP tools: its question to its bot, and its issue on a GitHub repository. */
+/* ---------- what it inherits from the team ---------- */
+
+const skillsNote = (engine: CodeEngine, n: number) =>
+  `Les skills des bots de l'équipe sont installées dans ce projet (${n}, dans ${skillsDirOf(engine)}) : sers-toi de celle qui correspond à la tâche. Une instruction qui commence par /nom appelle la skill de ce nom. Ne les modifie pas et ne les commite pas : elles ne font pas partie du dépôt.`;
+
+/**
+ * The Coffre-fort of its requester, read for its bot (vaults.ts), as the bot reads it on Hermes: a
+ * login's password only once the requester agreed on the card posted in the conversation, a payment
+ * card's number never. Offered when its bot may read one of the requester's vaults.
+ */
+const VAULT_SEARCH = "vault_search";
+const VAULT_LOGIN = "vault_use_login";
+const VAULT_ASK = "vault_ask_login";
+/** How often a login request is read again while its card waits for an answer. */
+const VAULT_POLL_MS = 1_500;
+
+const vaultNote = (bot: string) =>
+  [
+    `Tu peux lire le coffre-fort de la personne qui t'a confié cette session, pour le compte de ${bot} : cherche un identifiant ou des coordonnées avec mcp__${MCP_SERVER}__${VAULT_SEARCH}.`,
+    `Le mot de passe d'un identifiant passe toujours par mcp__${MCP_SERVER}__${VAULT_LOGIN}, avec la raison : la personne reçoit une carte dans la conversation et doit l'autoriser, l'outil attend sa réponse.`,
+    `Un site demande de se connecter et aucun identifiant n'existe pour lui : mcp__${MCP_SERVER}__${VAULT_ASK}, avec l'adresse du site et la raison. La personne le saisit sur une carte dans la conversation, il est enregistré dans son coffre-fort et l'outil te le rend. Ne lui demande jamais un mot de passe dans la conversation.`,
+    "Ne recopie jamais un mot de passe dans un fichier, un commit, un log ou ta réponse : saisis-le là où il sert, puis oublie-le. Le numéro et le code d'une carte de paiement ne te sont jamais donnés.",
+  ].join(" ");
+
+const vaultTools = [
+  {
+    name: VAULT_SEARCH,
+    description:
+      "Cherche dans le coffre-fort de la personne (identifiants, cartes de paiement, coordonnées) par titre, site ou champ. Rend les champs visibles de chaque élément (identifiant, nom, e-mail, adresse…), jamais un mot de passe ni un numéro de carte.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Le texte cherché : un nom de site, un titre, un e-mail. Vide : tout." },
+        kind: { type: "string", enum: ["login", "card", "contact"], description: "Seulement ce type d'élément." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: VAULT_LOGIN,
+    description:
+      "Demande le mot de passe d'un identifiant du coffre-fort. La personne reçoit une carte dans la conversation avec ta raison et doit l'autoriser : l'outil attend sa réponse (5 minutes au plus) et rend l'identifiant et le mot de passe si elle accepte.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item_id: { type: "string", description: "L'id de l'identifiant, rendu par vault_search." },
+        reason: { type: "string", description: "Pourquoi tu en as besoin, en une phrase que la personne lit sur la carte." },
+      },
+      required: ["item_id", "reason"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: VAULT_ASK,
+    description:
+      "Un site demande de se connecter et vault_search ne trouve aucun identifiant pour lui : la personne reçoit une carte dans la conversation avec ta raison, y saisit son identifiant et son mot de passe, qui sont enregistrés dans son coffre-fort. L'outil attend sa réponse (5 minutes au plus) et les rend.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        website: { type: "string", description: "L'adresse du site, par exemple https://www.exemple.fr (sa page de connexion convient)." },
+        reason: { type: "string", description: "Ce que tu vas y faire, en une phrase que la personne lit sur la carte." },
+      },
+      required: ["website", "reason"],
+      additionalProperties: false,
+    },
+  },
+];
+
+/** A login request of the session, waiting on its card: approving it reaches a session still there. */
+export const codeSessionAwaitsVault = (requestId: string) => [...live.values()].some((s) => s.vaultWaits.has(requestId));
+
+async function vaultCall(s: Live, name: string, args: Json): Promise<string> {
+  const r = s.row;
+  if (!s.vault || !r.agentId || !r.requestedBy) throw new Error("Le coffre-fort n'est pas disponible dans cette session.");
+  const turn: VaultTurn = { conversationId: r.conversationId, agentId: r.agentId, requestedBy: r.requestedBy };
+  try {
+    if (name === VAULT_SEARCH) {
+      const kind = ["login", "card", "contact"].includes(args.kind) ? args.kind : undefined;
+      const items = await botSearch(turn, typeof args.query === "string" ? args.query.slice(0, 200) : undefined, kind);
+      return items.length ? JSON.stringify(items, null, 2) : "Aucun élément ne correspond.";
+    }
+    const reason = typeof args.reason === "string" ? args.reason.trim().slice(0, 500) : "";
+    let request: { id: string };
+    if (name === VAULT_ASK) {
+      const website = typeof args.website === "string" ? args.website.trim().slice(0, 500) : "";
+      if (!website || !reason) throw new Error("website et reason sont requis.");
+      request = await askLogin(turn, website, reason);
+    } else {
+      const itemId = typeof args.item_id === "string" ? args.item_id.trim().slice(0, 100) : "";
+      if (!itemId || !reason) throw new Error("item_id et reason sont requis.");
+      request = await requestLogin(turn, itemId, reason);
+    }
+    const proc = s.proc;
+    s.vaultWaits.add(request.id);
+    try {
+      const until = Date.now() + REQUEST_TTL_MS;
+      while (Date.now() < until && s.proc === proc && !s.deleted) {
+        const answer = await botRequestStatus(turn, request.id);
+        if (answer.status === "approved" && "password" in answer) {
+          return [
+            "La personne a autorisé l'accès. Saisis-le là où il sert, sans jamais le recopier ailleurs.",
+            answer.website && `Site : ${answer.website}`,
+            `Identifiant : ${answer.username}`,
+            `Mot de passe : ${answer.password}`,
+          ]
+            .filter(Boolean)
+            .join("\n");
+        }
+        if (answer.status === "denied") return name === VAULT_ASK ? "La personne n'a pas donné d'identifiant pour ce site. Continue sans, ou demande-lui comment faire." : "La personne a refusé l'accès à cet identifiant. Continue sans, ou demande-lui comment faire.";
+        if (answer.status !== "pending") break;
+        await Bun.sleep(VAULT_POLL_MS);
+      }
+      return "La demande a expiré sans réponse. Continue sans cet identifiant, ou redemande-le si c'est indispensable.";
+    } finally {
+      s.vaultWaits.delete(request.id);
+    }
+  } catch (err) {
+    if (err instanceof VaultError) throw new Error(err.message);
+    throw err;
+  }
+}
+
+/** Its own MCP tools: its question to its bot, its issue on a GitHub repository, its requester's vault. */
 function agoraTools(s: Live): Json[] {
   const r = s.row;
   return [
     ...(s.bot && r.engine === "claude" ? [askTool(s.bot)] : []),
+    ...(s.vault && r.engine === "claude" ? vaultTools : []),
     ...(issueRepo(r)
       ? [
           {
@@ -1977,6 +2167,13 @@ function onMcpMessage(s: Live, requestId: string, msg: Json) {
     case "tools/list":
       return reply({ result: { tools: agoraTools(s) } });
     case "tools/call": {
+      if (msg.params?.name === VAULT_SEARCH || msg.params?.name === VAULT_LOGIN || msg.params?.name === VAULT_ASK) {
+        void vaultCall(s, msg.params.name, msg.params?.arguments ?? {}).then(
+          (text) => reply({ result: { content: [{ type: "text", text }] } }),
+          (err) => toolError(err instanceof Error ? err.message : String(err)),
+        );
+        return;
+      }
       if (msg.params?.name === FIND_ISSUES || msg.params?.name === LINK_ISSUE) {
         void issueCall(s, msg.params.name, msg.params?.arguments ?? {}).then(
           (text) => reply({ result: { content: [{ type: "text", text }] } }),
@@ -2040,7 +2237,7 @@ function dropQuestion(s: Live) {
 const INITIALIZE = "agora-initialize-";
 
 /** Commands of Claude Code's own offered besides the project's skills and commands: the ones that work without its terminal. */
-const BUILTIN_COMMANDS = new Set(["compact", "init", "code-review", "security-review", "review", "simplify", "verify", "run", "goal"]);
+const BUILTIN_COMMANDS = new Set<string>(BUILTINS);
 
 /** Claude Code's answer to a control request: its commands and skills, after initialize. */
 function onControlResponse(s: Live, ev: Json) {

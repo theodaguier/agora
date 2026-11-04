@@ -5,10 +5,12 @@ import { common } from "@agora/core/i18n";
 import { useWide } from "@/components/CodeSession";
 import { BesideButton } from "@/components/BesideButton";
 import { PaneHeader } from "@/components/PaneHeader";
-import { CloseIcon, FileCodeIcon } from "@/components/icons";
+import { CloseIcon, FileCodeIcon, WarningIcon } from "@/components/icons";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -33,6 +35,9 @@ const messages = defineMessages({
     tablet: "Tablet",
     desktop: "Computer",
     missing: "This mockup is no longer available.",
+    missingTitle: "Mockup not found",
+    unreachableTitle: "Mockup unreachable",
+    unreachable: "It couldn't be loaded for now. Try again in a moment.",
     sandboxed: "Rendered without scripts; links don't leave the preview.",
   },
   fr: {
@@ -49,6 +54,9 @@ const messages = defineMessages({
     tablet: "Tablette",
     desktop: "Ordinateur",
     missing: "Cette maquette n'est plus disponible.",
+    missingTitle: "Maquette introuvable",
+    unreachableTitle: "Maquette injoignable",
+    unreachable: "Elle n'a pas pu être chargée pour le moment. Réessaie dans un instant.",
     sandboxed: "Affichée sans scripts ; les liens ne quittent pas l'aperçu.",
   },
 });
@@ -72,22 +80,24 @@ export function findPreview(key: string, turns: ActiveTurn[], thread: Message[])
 /** A mockup in the thread, where the bot wrote it: its state, and the way into the preview. */
 export function PreviewCard({ title, writing, onOpen, className }: { title: string; writing: boolean; onOpen: () => void; className?: string }) {
   const t = useT(messages);
-  // Figma « Carte de PR »: a white hairline card, its icon in a bordered tile, the title, a grey line, one grey pill.
   return (
-    <div className={cn("flex w-full max-w-[520px] items-center gap-3 rounded-[14px] border border-border bg-background p-3", className)}>
-      <span className="grid size-10 shrink-0 place-items-center rounded-[10px] border border-border text-icon [&_svg]:size-5">
-        {writing ? <Spinner className="size-4" /> : <FileCodeIcon />}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-[15px] leading-[21px]">{title || t.untitled}</span>
-        <span className="truncate text-[13px] leading-[18px] text-muted-foreground">
-          {t.mockup} · {writing ? t.writing : t.ready}
-        </span>
-      </span>
-      <Button variant="secondary" onClick={onOpen}>
-        {writing ? t.follow : t.open}
-      </Button>
-    </div>
+    <Card className={cn("w-full max-w-lg", className)}>
+      <CardHeader>
+        <CardTitle className="truncate">{title || t.untitled}</CardTitle>
+        <CardDescription>{t.mockup}</CardDescription>
+        <CardAction>
+          <Badge variant="outline">
+            {writing ? <Spinner data-icon="inline-start" /> : <FileCodeIcon data-icon="inline-start" />}
+            {writing ? t.writing : t.ready}
+          </Badge>
+        </CardAction>
+      </CardHeader>
+      <CardFooter className="justify-end">
+        <Button variant="secondary" onClick={onOpen}>
+          {writing ? t.follow : t.open}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -104,7 +114,7 @@ export function PreviewPanel({ source, onClose, onDetach }: { source: PreviewSou
   if (!wide) {
     return (
       <Sheet open onOpenChange={(open) => !open && onClose()}>
-        <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 data-[side=right]:sm:max-w-xl">
+        <SheetContent side="right" showCloseButton={false} className="w-full gap-0 data-[side=right]:sm:max-w-xl">
           <SheetTitle className="sr-only">{source?.title || t.untitled}</SheetTitle>
           {view}
         </SheetContent>
@@ -117,14 +127,31 @@ export function PreviewPanel({ source, onClose, onDetach }: { source: PreviewSou
 /** A mockup as a workspace tab: the whole pane for the page. */
 export function PreviewPage({ conversationId, previewKey, onClose }: { conversationId: string; previewKey: string; onClose?: () => void }) {
   const turns = useTurns(conversationId);
-  const { data: thread = [], isPending } = useQuery(messagesQuery(conversationId));
+  const c = useT(common);
+  const t = useT(messages);
+  const { data: thread = [], isPending, isError, error, refetch } = useQuery(messagesQuery(conversationId));
   const source = findPreview(previewKey, turns, thread);
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       {isPending ? (
         <div className="grid flex-1 place-items-center">
-          <Spinner className="size-5 text-muted-foreground" />
+          <Spinner />
         </div>
+      ) : isError && !source ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <WarningIcon />
+            </EmptyMedia>
+            <EmptyTitle>{t.unreachableTitle}</EmptyTitle>
+            <EmptyDescription title={error.message}>{t.unreachable}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button variant="secondary" onClick={() => void refetch()}>
+              {c.retry}
+            </Button>
+          </EmptyContent>
+        </Empty>
       ) : (
         <PreviewView source={source} onClose={onClose} page />
       )}
@@ -185,7 +212,7 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
       <PaneHeader
         media={writing && <Spinner />}
         title={title}
-        description={`${t.mockup} · ${writing ? t.writing : t.ready}`}
+        description={`${t.mockup}, ${writing ? t.writing.toLowerCase() : t.ready.toLowerCase()}`}
         actions={
           <>
             {onDetach && <BesideButton onClick={onDetach} />}
@@ -212,23 +239,42 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
       <div className="min-h-0 flex-1 px-4 pb-4">
         {kept ? (
           <ScaledFrame html={kept.html} done={!writing} device={device} />
-        ) : saved.isError || (!source && !id) ? (
+        ) : saved.isError ? (
           <Empty className="h-full">
             <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <WarningIcon />
+              </EmptyMedia>
+              <EmptyTitle>{t.unreachableTitle}</EmptyTitle>
+              <EmptyDescription title={saved.error.message}>{t.unreachable}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="secondary" onClick={() => void saved.refetch()}>
+                {c.retry}
+              </Button>
+            </EmptyContent>
+          </Empty>
+        ) : !source && !id ? (
+          <Empty className="h-full">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <FileCodeIcon />
+              </EmptyMedia>
+              <EmptyTitle>{t.missingTitle}</EmptyTitle>
               <EmptyDescription>{t.missing}</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
           <div className="grid h-full place-items-center">
-            <Spinner className="size-5 text-muted-foreground" />
+            <Spinner />
           </div>
         )}
       </div>
 
       {/* The whole window, at the size chosen. */}
       <Dialog open={enlarged && !!kept} onOpenChange={setEnlarged}>
-        <DialogContent className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none flex-col gap-3 sm:max-w-none">
-          <DialogHeader className="pr-8">
+        <DialogContent className="flex h-full max-h-dvh w-full max-w-none flex-col sm:max-w-none">
+          <DialogHeader>
             <DialogTitle className="truncate">{title}</DialogTitle>
             <DialogDescription>{t.sandboxed}</DialogDescription>
           </DialogHeader>
@@ -262,10 +308,10 @@ function ScaledFrame({ html, done, device }: { html: string; done: boolean; devi
   const scale = !size.width ? 1 : mobile ? Math.min(1, size.width / base, size.height / baseHeight) : Math.min(1, size.width / base);
   // One box for every device: the observer keeps measuring it.
   return (
-    <div ref={box} className={cn("flex h-full justify-center overflow-hidden", mobile ? "items-center" : "rounded-lg border border-border bg-background")}>
+    <div ref={box} className={cn("flex h-full justify-center overflow-hidden", mobile ? "items-center" : "rounded-lg border bg-background")}>
       {size.width > 0 &&
         (mobile ? (
-          <div style={{ width: base * scale, height: baseHeight * scale }} className="shrink-0 overflow-hidden rounded-xl border border-border bg-background">
+          <div style={{ width: base * scale, height: baseHeight * scale }} className="shrink-0 overflow-hidden rounded-xl border bg-background">
             <HtmlFrame html={html} done={done} style={{ width: base, height: baseHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} />
           </div>
         ) : (

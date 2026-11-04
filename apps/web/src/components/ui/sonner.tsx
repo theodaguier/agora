@@ -1,29 +1,31 @@
+"use client"
+
+import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
-import { CheckCircleIcon, CloseCircleIcon, InfoIcon, LoaderIcon, WarningIcon } from "@/components/icons"
-import { useIsDark } from "@/lib/theme"
+import { CheckCircleIcon as CircleCheckIcon, InfoIcon, WarningIcon as TriangleAlertIcon, CloseCircleIcon as OctagonXIcon, LoaderIcon as Loader2Icon } from "@/components/icons"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const dark = useIsDark()
+  const { theme = "system" } = useTheme()
 
   return (
     <Sonner
-      theme={dark ? "dark" : "light"}
+      theme={theme as ToasterProps["theme"]}
       className="toaster group"
       icons={{
         success: (
-          <CheckCircleIcon className="size-4" />
+          <CircleCheckIcon className="size-4" />
         ),
         info: (
           <InfoIcon className="size-4" />
         ),
         warning: (
-          <WarningIcon className="size-4" />
+          <TriangleAlertIcon className="size-4" />
         ),
         error: (
-          <CloseCircleIcon className="size-4" />
+          <OctagonXIcon className="size-4" />
         ),
         loading: (
-          <LoaderIcon className="size-4 animate-spin" />
+          <Loader2Icon className="size-4 animate-spin" />
         ),
       }}
       style={

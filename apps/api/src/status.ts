@@ -26,6 +26,7 @@ const messages = defineMessages({
     noBots: "No bot yet.",
     curatorPending: (n: number) => (n === 1 ? "1 source waiting to be compiled." : `${n} sources waiting to be compiled.`),
     curatorIdle: "Up to date.",
+    curatorProblems: (n: number, reason: string) => (n === 1 ? `1 source not compiled: ${reason}.` : `${n} sources not compiled, the first ${reason}.`),
     curatorLastFailed: (m: string) => `Last run failed: ${m}`,
     mailOn: (from: string) => `Invitations sent from ${from}.`,
     mailOff: "No email service: invitation links are only shown to the admin.",
@@ -50,6 +51,7 @@ const messages = defineMessages({
     noBots: "Aucun bot pour l'instant.",
     curatorPending: (n: number) => (n === 1 ? "1 source en attente de compilation." : `${n} sources en attente de compilation.`),
     curatorIdle: "À jour.",
+    curatorProblems: (n: number, reason: string) => (n === 1 ? `1 source non compilée : ${reason}.` : `${n} sources non compilées, la première ${reason}.`),
     curatorLastFailed: (m: string) => `Dernier passage en échec : ${m}`,
     mailOn: (from: string) => `Invitations envoyées depuis ${from}.`,
     mailOff: "Pas de service d'email : les liens d'invitation sont seulement affichés à l'admin.",
@@ -176,7 +178,7 @@ export async function systemStatus(viewer: { email: string }) {
         ? async () => {
             const s = await curatorStatus();
             if (s.lastRun && !s.lastRun.ok) return { state: "warn", detail: t.curatorLastFailed(s.lastRun.message) };
-            if (s.problems.length) return { state: "warn", detail: `${s.problems[0].source} — ${s.problems[0].reason}` };
+            if (s.problems.length) return { state: "warn", detail: t.curatorProblems(s.problems.length, s.problems[0].reason ?? "") };
             return { state: "ok", detail: s.pendingSources ? t.curatorPending(s.pendingSources) : t.curatorIdle };
           }
         : off(t.notConfigured("HERMES_HOME")),

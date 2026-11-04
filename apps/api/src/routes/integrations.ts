@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { integrationConfig } from "../app-integrations";
-import { brandKey, getBrandLogo } from "../brand-logos";
+import { brandKey, getBrandLogo, getFavicon } from "../brand-logos";
 import { db, schema } from "../db";
 import { requireUser, type AppEnv } from "../middleware";
 
@@ -41,4 +41,12 @@ export const integrations = new Hono<AppEnv>()
     const cache = { "Cache-Control": `private, max-age=${logo ? 7 * 86_400 : 86_400}` };
     if (!logo) return c.body(null, 404, cache);
     return new Response(new Uint8Array(logo.data), { headers: { "Content-Type": logo.mime, "X-Content-Type-Options": "nosniff", ...cache } });
+  })
+
+  /** A public site's favicon (Coffre-fort logins), fetched by the server and cached: `?domain=`. */
+  .get("/favicon", async (c) => {
+    const icon = await getFavicon(c.req.query("domain") ?? "");
+    const cache = { "Cache-Control": `private, max-age=${icon ? 7 * 86_400 : 86_400}` };
+    if (!icon) return c.body(null, 404, cache);
+    return new Response(new Uint8Array(icon.data), { headers: { "Content-Type": icon.mime, "X-Content-Type-Options": "nosniff", ...cache } });
   });

@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { StatusTone } from "@agora/core";
 import { Button } from "@/components/ui/button";
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BlockCard, BlockFooter, MetaList, MetaRow, StatusLine } from "@/components/views/block";
 import { SkillCreateDialog } from "@/components/SkillCreateDialog";
 import { api, type SkillRequest } from "@/lib/api";
@@ -23,6 +24,7 @@ const messages = defineMessages({
     review: "Review",
     source: "Source",
     for: "For",
+    unreachable: "This skill request is unreachable for now.",
   },
   fr: {
     status: { pending: "En attente de validation", installing: "Installation…", installed: "Installé", rejected: "Refusé" },
@@ -34,6 +36,7 @@ const messages = defineMessages({
     review: "Relire",
     source: "Source",
     for: "Pour",
+    unreachable: "Cette demande de skill est injoignable pour le moment.",
   },
 });
 
@@ -55,7 +58,23 @@ export function SkillRequestCard({ id }: { id: string }) {
     meta: { error: false },
   });
 
-  if (error || !req) return null;
+  if (error)
+    return (
+      <BlockCard>
+        <CardHeader>
+          <CardDescription title={error.message}>{t.unreachable}</CardDescription>
+        </CardHeader>
+      </BlockCard>
+    );
+  if (!req)
+    return (
+      <BlockCard>
+        <CardHeader>
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-56" />
+        </CardHeader>
+      </BlockCard>
+    );
   const sourceUrl = req.identifier.startsWith("skills-sh/") ? `https://skills.sh/${req.identifier.slice("skills-sh/".length)}` : null;
 
   const bot = req.agentId ? agents?.find((a) => a.id === req.agentId) : undefined;
@@ -64,12 +83,12 @@ export function SkillRequestCard({ id }: { id: string }) {
   return (
     <BlockCard>
       <CardHeader>
-        <CardTitle className="text-[15px] leading-[21px] font-medium">{t.skill(req.name)}</CardTitle>
+        <CardTitle>{t.skill(req.name)}</CardTitle>
         {req.kind === "create" && req.description && <CardDescription>{req.description}</CardDescription>}
         {req.reason && <CardDescription>{req.reason}</CardDescription>}
-        <StatusLine tone={STATUS_TONE[req.status]} className="mt-1">
-          {t.status[req.status]}
-        </StatusLine>
+        <CardAction>
+          <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <MetaList>

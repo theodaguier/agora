@@ -1,22 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
 import { ModelLogo } from "@/components/ProviderLogo";
 import { providerName } from "@/lib/providers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { CardAction, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLegend } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemSeparator, ItemTitle } from "@/components/ui/item";
 import { defineMessages, intlLocale, useLocale, useT } from "@/i18n";
 import { dateFormat, numberFormat } from "@/lib/intl";
 import { adminModelsQuery } from "@/lib/queries";
 import { common } from "@agora/core/i18n";
 import { api } from "@/lib/api";
-import { ErrorText, Loading } from "./ui";
+import { ErrorText, LoadError, Loading } from "./ui";
 
 type LocalModel = { id: string; parameters?: string; quantization?: string; family?: string; size?: number; loaded: boolean };
 type LocalRuntime = { id: "ollama" | "lmstudio"; url: string; running: boolean; models: LocalModel[] };
@@ -53,9 +55,9 @@ const messages = defineMessages({
   en: {
     localTitle: "Local models",
     localText: "Models installed on the machine that hosts Agora.",
-    notDetected: (url: string) => `Not detected on ${url}`,
+    notDetected: "Not detected on this machine",
     noModels: "Running, no model installed",
-    count: (n: number) => (n === 1 ? "Running · 1 model" : `Running · ${n} models`),
+    count: (n: number) => (n === 1 ? "Running, 1 model" : `Running, ${n} models`),
     loaded: "Loaded",
     clisTitle: "CLIs",
     clisText: "Agent command-line tools installed on the host machine.",
@@ -104,9 +106,9 @@ const messages = defineMessages({
   fr: {
     localTitle: "Modèles locaux",
     localText: "Modèles installés sur la machine qui héberge Agora.",
-    notDetected: (url: string) => `Non détecté sur ${url}`,
+    notDetected: "Non détecté sur cette machine",
     noModels: "Actif, aucun modèle installé",
-    count: (n: number) => `Actif · ${n} modèle${n > 1 ? "s" : ""}`,
+    count: (n: number) => `Actif, ${n} modèle${n > 1 ? "s" : ""}`,
     loaded: "Chargé",
     clisTitle: "CLI",
     clisText: "Outils en ligne de commande des agents, installés sur la machine hôte.",
@@ -169,51 +171,51 @@ export function LocalModels() {
   const bytes = numberFormat({ style: "unit", unit: "gigabyte", maximumFractionDigits: 1 }, intlLocale(locale));
 
   return (
-    <FieldSet>
-      <FieldLegend>{t.localTitle}</FieldLegend>
-      <FieldDescription>{t.localText}</FieldDescription>
+    <ListCard>
+      <ListCardHeader>
+        <CardTitle>{t.localTitle}</CardTitle>
+        <CardDescription>{t.localText}</CardDescription>
+      </ListCardHeader>
       {isPending ? (
-        <Loading />
+        <CardContent className="py-(--card-spacing)">
+          <Loading />
+        </CardContent>
       ) : !data ? (
-        <ErrorText error={error} />
+        <CardContent className="py-(--card-spacing)">
+          <LoadError error={error} />
+        </CardContent>
       ) : (
-        <ItemGroup className="gap-2">
-          {data.runtimes.map((r) => (
-            <div key={r.id} className="flex flex-col gap-2">
-              <Item variant="outline">
-                <ItemMedia>
-                  <ModelLogo provider={r.id} className="size-5" />
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <ItemTitle>{providerName(r.id)}</ItemTitle>
-                  <ItemDescription className="truncate">
-                    {!r.running ? t.notDetected(r.url) : r.models.length ? t.count(r.models.length) : t.noModels}
-                  </ItemDescription>
+        // A runtime's models are rows of their own, under it.
+        <ListCardRows>
+          {data.runtimes.flatMap((r) => [
+            <Item key={r.id} size="xs">
+              <ItemMedia>
+                <ModelLogo provider={r.id} className="size-6" />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>{providerName(r.id)}</ItemTitle>
+                <ItemDescription title={r.running ? undefined : r.url}>
+                  {!r.running ? t.notDetected : r.models.length ? t.count(r.models.length) : t.noModels}
+                </ItemDescription>
+              </ItemContent>
+            </Item>,
+            ...r.models.map((m) => (
+              <Item key={`${r.id}:${m.id}`} variant="muted" size="sm">
+                <ItemContent>
+                  <ItemTitle>{m.id}</ItemTitle>
+                  <ItemDescription>{[m.parameters, m.quantization, m.size ? bytes.format(m.size / 1e9) : undefined].filter(Boolean).join(", ")}</ItemDescription>
                 </ItemContent>
+                {m.loaded && (
+                  <ItemActions>
+                    <Badge variant="secondary">{t.loaded}</Badge>
+                  </ItemActions>
+                )}
               </Item>
-              {r.models.map((m) => (
-                <Item key={m.id} variant="muted" size="xs" className="ml-6 w-auto">
-                  <ItemMedia>
-                    <ModelLogo model={m.family ? `${m.family} ${m.id}` : m.id} provider={r.id} />
-                  </ItemMedia>
-                  <ItemContent className="min-w-0">
-                    <ItemTitle className="w-full truncate">{m.id}</ItemTitle>
-                    <ItemDescription className="truncate">
-                      {[m.parameters, m.quantization, m.size ? bytes.format(m.size / 1e9) : undefined].filter(Boolean).join(" · ")}
-                    </ItemDescription>
-                  </ItemContent>
-                  {m.loaded && (
-                    <ItemActions>
-                      <Badge variant="secondary">{t.loaded}</Badge>
-                    </ItemActions>
-                  )}
-                </Item>
-              ))}
-            </div>
-          ))}
-        </ItemGroup>
+            )),
+          ])}
+        </ListCardRows>
       )}
-    </FieldSet>
+    </ListCard>
   );
 }
 
@@ -237,51 +239,52 @@ export function HostClis() {
     onSettled: () => qc.invalidateQueries({ queryKey: clisKey }),
     meta: { success: (_: unknown, id: string) => t.updateStarted(data?.clis.find((cli) => cli.id === id)?.name ?? id) },
   });
+  const missing = data?.clis.filter((cli) => !cli.installed) ?? [];
 
   return (
-    <FieldSet>
-      <div className="flex items-end justify-between gap-4">
-        <div className="flex flex-col gap-1.5">
-          <FieldLegend>{t.clisTitle}</FieldLegend>
-          <FieldDescription>{t.clisText}</FieldDescription>
-        </div>
-        <Button variant="outline" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
-          {check.isPending ? c.inProgress : t.checkNow}
-        </Button>
-      </div>
+    <ListCard>
+      <ListCardHeader>
+        <CardTitle>{t.clisTitle}</CardTitle>
+        <CardDescription>{t.clisText}</CardDescription>
+        <CardAction>
+          <Button variant="outline" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
+            {check.isPending ? c.inProgress : t.checkNow}
+          </Button>
+        </CardAction>
+      </ListCardHeader>
       {isPending ? (
-        <Loading />
+        <CardContent className="py-(--card-spacing)">
+          <Loading />
+        </CardContent>
       ) : !data ? (
-        <ErrorText error={error} />
+        <CardContent className="py-(--card-spacing)">
+          <LoadError error={error} />
+        </CardContent>
       ) : (
         <>
-          <ItemGroup className="gap-2">
+          {/* One row per CLI; an engine's subscription rows follow it, each after its own separator. */}
+          <ListCardRows>
             {data.clis.filter((cli) => cli.installed).map((cli) => (
-              <div key={cli.id} className="flex flex-col gap-2">
+              <Fragment key={cli.id}>
                 <CliRow
                   cli={cli}
                   onUpdate={async () =>
                     (await confirmAction({ title: t.confirm(cli.name, cli.latest!), action: t.update, destructive: false })) && update.mutate(cli.id)
                   }
                 />
-                {isEngine(cli.id) && cli.installed && <SubscriptionAccountRows engine={cli.id} />}
-              </div>
+                {isEngine(cli.id) && <SubscriptionAccountRows engine={cli.id} />}
+              </Fragment>
             ))}
-          </ItemGroup>
+          </ListCardRows>
           {/* Every agent CLI Agora knows of is looked for: the missing ones in one line, not a row each. */}
-          {data.clis.some((cli) => !cli.installed) && (
-            <FieldDescription>
-              {t.missingClis(
-                data.clis
-                  .filter((cli) => !cli.installed)
-                  .map((cli) => cli.name)
-                  .join(", "),
-              )}
-            </FieldDescription>
+          {missing.length > 0 && (
+            <CardContent className="py-(--card-spacing)">
+              <p className="text-sm text-muted-foreground">{t.missingClis(missing.map((cli) => cli.name).join(", "))}</p>
+            </CardContent>
           )}
         </>
       )}
-    </FieldSet>
+    </ListCard>
   );
 }
 
@@ -298,21 +301,21 @@ function CliRow({ cli, onUpdate }: { cli: HostCli; onUpdate: () => void }) {
         : !cli.latest
           ? t.unknownLatest
           : cli.outdated
-            ? [t.available(cli.latest), cli.update === "managed" ? t.managed : cli.update === "manual" ? t.manual : null].filter(Boolean).join(" · ")
+            ? [t.available(cli.latest), cli.update === "managed" ? t.managed : cli.update === "manual" ? t.manual : null].filter(Boolean).join(", ")
             : t.upToDate;
 
   return (
-    <Item variant="outline">
+    <Item size="xs">
       <ItemMedia>
         {/* "ollama" would match the Llama (Meta) vendor. */}
-        <ModelLogo model={cli.id === "ollama" ? undefined : cli.id} provider={cli.id} className="size-5" />
+        <ModelLogo model={cli.id === "ollama" ? undefined : cli.id} provider={cli.id} className="size-6" />
       </ItemMedia>
-      <ItemContent className="min-w-0">
+      <ItemContent>
         <ItemTitle>
           {cli.name}
           {cli.version && <span className="font-normal text-muted-foreground">{cli.version}</span>}
         </ItemTitle>
-        <ItemDescription className={failed ? "truncate text-destructive" : "truncate"} title={failed ? cli.job?.output : (cli.path ?? undefined)}>
+        <ItemDescription className={failed ? "text-destructive" : undefined} title={failed ? cli.job?.output : (cli.path ?? undefined)}>
           {status}
         </ItemDescription>
       </ItemContent>
@@ -327,7 +330,7 @@ function CliRow({ cli, onUpdate }: { cli: HostCli; onUpdate: () => void }) {
   );
 }
 
-/** The subscriptions a CLI engine can run on, under its row. Only its owner gets them (403 otherwise). */
+/** The subscriptions a CLI engine can run on, rows under its row in the CLI ListCard, each after a separator. Only its owner gets them (403 otherwise). */
 function SubscriptionAccountRows({ engine }: { engine: EngineId }) {
   const t = useT(messages);
   const qc = useQueryClient();
@@ -361,52 +364,56 @@ function SubscriptionAccountRows({ engine }: { engine: EngineId }) {
     {
       id: null,
       title: t.machine,
-      description: machine.loggedIn ? [machine.email, machine.plan && capitalize(machine.plan)].filter(Boolean).join(" · ") || t.signedIn : t.notSignedIn,
+      description: machine.loggedIn ? [machine.email, machine.plan && capitalize(machine.plan)].filter(Boolean).join(", ") || t.signedIn : t.notSignedIn,
     },
     ...data.accounts.map((a) => ({
       id: a.id,
       title: a.email,
-      description: a.loggedIn ? [a.plan && capitalize(a.plan), t.added(day.format(new Date(a.addedAt)))].filter(Boolean).join(" · ") : t.signedOut,
+      description: a.loggedIn ? [a.plan && capitalize(a.plan), t.added(day.format(new Date(a.addedAt)))].filter(Boolean).join(", ") : t.signedOut,
     })),
   ];
 
   return (
     <>
       {rows.map((r) => (
-        <Item key={r.id ?? "machine"} variant="muted" size="xs" className="ml-6 w-auto">
-          <ItemContent className="min-w-0">
-            <ItemTitle className="w-full truncate">{r.title}</ItemTitle>
-            <ItemDescription className="truncate">{r.description}</ItemDescription>
-          </ItemContent>
-          <ItemActions>
-            {data.active === r.id ? (
-              <Badge variant="secondary">{t.inUse}</Badge>
-            ) : (
-              <Button variant="outline" size="sm" disabled={activate.isPending} onClick={() => activate.mutate(r.id)}>
-                {t.use}
-              </Button>
-            )}
-            {r.id && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={remove.isPending}
-                onClick={async () =>
-                  (await confirmAction({ title: t.removeTitle(r.title), description: data.active === r.id ? t.removeActiveText(name) : t.removeText, action: t.remove })) &&
-                  remove.mutate(r.id!)
-                }
-              >
-                {t.remove}
-              </Button>
-            )}
-          </ItemActions>
-        </Item>
+        <Fragment key={r.id ?? "machine"}>
+          <ItemSeparator className="my-0" />
+          <Item variant="muted" size="sm">
+            <ItemContent>
+              <ItemTitle>{r.title}</ItemTitle>
+              <ItemDescription>{r.description}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              {data.active === r.id ? (
+                <Badge variant="secondary">{t.inUse}</Badge>
+              ) : (
+                <Button variant="outline" size="sm" disabled={activate.isPending} onClick={() => activate.mutate(r.id)}>
+                  {t.use}
+                </Button>
+              )}
+              {r.id && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={remove.isPending}
+                  onClick={async () =>
+                    (await confirmAction({ title: t.removeTitle(r.title), description: data.active === r.id ? t.removeActiveText(name) : t.removeText, action: t.remove })) &&
+                    remove.mutate(r.id!)
+                  }
+                >
+                  {t.remove}
+                </Button>
+              )}
+            </ItemActions>
+          </Item>
+        </Fragment>
       ))}
-      <div className="ml-6">
+      <ItemSeparator className="my-0" />
+      <Item size="sm">
         <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
           {t.addAccount(account)}
         </Button>
-      </div>
+      </Item>
       <Dialog open={adding} onOpenChange={setAdding}>
         {adding &&
           (engine === "codex" ? (
@@ -471,7 +478,7 @@ function AddClaudeAccount({ onSaved }: { onSaved: (d: SubscriptionAccounts) => v
             if (ready) finish.mutate();
           }}
         >
-          <FieldGroup className="gap-5">
+          <FieldGroup>
             <Button variant="outline" className="self-start" nativeButton={false} render={<a href={start.data.url} target="_blank" rel="noreferrer" />}>
               {t.openPage}
             </Button>
@@ -479,7 +486,7 @@ function AddClaudeAccount({ onSaved }: { onSaved: (d: SubscriptionAccounts) => v
               <FormLabel htmlFor="claude-account-code" required>
                 {t.code}
               </FormLabel>
-              <Input id="claude-account-code" className="font-mono" autoComplete="off" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} />
+              <Input id="claude-account-code" autoComplete="off" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} />
             </Field>
             <ErrorText error={finish.error} />
           </FieldGroup>
@@ -547,7 +554,7 @@ function AddCodexAccount({ onSaved }: { onSaved: (d: SubscriptionAccounts) => vo
       ) : result?.state === "failed" ? (
         <ErrorText error={new Error(result.error)} />
       ) : (
-        <FieldGroup className="gap-5">
+        <FieldGroup>
           <Field>
             <FieldLegend variant="label">{t.oneTimeCode}</FieldLegend>
             <p className="font-mono text-2xl font-semibold tracking-widest select-all">{start.data.code}</p>

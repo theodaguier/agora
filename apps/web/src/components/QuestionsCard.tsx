@@ -5,7 +5,7 @@ import { CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/
 import { BlockCard, BlockFooter } from "@/components/views/block";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
@@ -61,7 +61,7 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
 
   return (
     <form
-      className="w-full max-w-[min(680px,88%)]"
+      className="w-full max-w-xl"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -69,16 +69,16 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
     >
       <BlockCard className="max-w-full">
         <CardHeader>
-          <CardTitle className="text-[15px] leading-[21px] font-medium">{questions.title ?? t.title}</CardTitle>
+          <CardTitle>{questions.title ?? t.title}</CardTitle>
           <CardAction>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss} className="-mr-2 -mt-1">
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss}>
               <CloseIcon />
             </Button>
           </CardAction>
         </CardHeader>
 
         <CardContent>
-          <FieldGroup className="gap-5">
+          <FieldGroup>
             {contentKeys(questions.questions, (q) => q.label).map(([key, q], i) => {
               const a = answers[i]!;
               const picked = new Set(a.picked);
@@ -90,36 +90,34 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
                   onChange={(e) => set(i, (x) => ({ ...x, other: e.target.value }))}
                   placeholder={t.other}
                   aria-label={t.otherLabel(q.label)}
-                  className="rounded-none border-0 bg-transparent px-3.5 focus-visible:ring-0"
                 />
               );
               return (
-                <FieldSet key={key} data-invalid={invalid || undefined} className="gap-2.5">
-                  <FieldLegend variant="label" className="mb-2.5">
+                <FieldSet key={key} data-invalid={invalid || undefined}>
+                  <FieldLegend variant="label">
                     {q.label}
-                    {q.required && <RequiredMark className="ml-1 text-muted-foreground" />}
+                    {q.required && <RequiredMark className="ml-1" />}
                   </FieldLegend>
-                  {q.hint && <FieldDescription className="text-[13px]">{q.hint}</FieldDescription>}
+                  {q.hint && <FieldDescription>{q.hint}</FieldDescription>}
 
                   {q.type === "single" && (
                     <RadioGroup
                       value={a.picked[0] ?? ""}
                       onValueChange={(v) => set(i, (x) => ({ ...x, picked: v ? [String(v)] : [] }))}
-                      className={group}
                     >
                       {q.options.map((o, k) => (
-                        <Option key={o.label} id={`${id}-${k}`} label={o.label} description={o.description}>
+                        <ChoiceOption key={o.label} id={`${id}-${k}`} label={o.label} description={o.description}>
                           <RadioGroupItem value={o.label} id={`${id}-${k}`} />
-                        </Option>
+                        </ChoiceOption>
                       ))}
                       {other}
                     </RadioGroup>
                   )}
 
                   {q.type === "multi" && (
-                    <div className={group}>
+                    <div className="flex flex-col gap-3">
                       {q.options.map((o, k) => (
-                        <Option key={o.label} id={`${id}-${k}`} label={o.label} description={o.description}>
+                        <ChoiceOption key={o.label} id={`${id}-${k}`} label={o.label} description={o.description}>
                           <Checkbox
                             id={`${id}-${k}`}
                             checked={picked.has(o.label)}
@@ -127,7 +125,7 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
                               set(i, (x) => ({ ...x, picked: on ? [...x.picked, o.label] : x.picked.filter((p) => p !== o.label) }))
                             }
                           />
-                        </Option>
+                        </ChoiceOption>
                       ))}
                       {other}
                     </div>
@@ -141,7 +139,6 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
                       aria-invalid={invalid || undefined}
                       placeholder={t.placeholder}
                       rows={2}
-                      className="rounded-[10px] border-border bg-transparent px-3.5 py-2.5"
                     />
                   )}
                   {invalid && <FieldError>{t.required}</FieldError>}
@@ -164,20 +161,17 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
   );
 }
 
-/** The bordered group of a question's answers, a line between each. */
-const group = "gap-0 divide-y divide-border overflow-hidden rounded-[10px] border";
-
-/** One answer, a row of the group: the control on the left, the whole row is its label. */
-function Option({ id, label, description, children }: { id: string; label: string; description?: string; children: ReactNode }) {
+/** One answer, a shadcn choice card: the whole bordered row is the label of its control. */
+export function ChoiceOption({ id, label, description, children }: { id: string; label: string; description?: string; children: ReactNode }) {
   return (
-    <Field orientation="horizontal" className="relative gap-3 px-3.5 py-2.5 transition-colors hover:bg-muted/50 has-data-checked:bg-muted">
-      {children}
-      <FieldContent className="gap-0">
-        <FieldLabel htmlFor={id} className="after:absolute after:inset-0">
-          {label}
-        </FieldLabel>
-        {description && <FieldDescription className="text-[13px] leading-snug">{description}</FieldDescription>}
-      </FieldContent>
-    </Field>
+    <FieldLabel htmlFor={id}>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldTitle>{label}</FieldTitle>
+          {description && <FieldDescription>{description}</FieldDescription>}
+        </FieldContent>
+        {children}
+      </Field>
+    </FieldLabel>
   );
 }

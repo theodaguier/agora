@@ -30,5 +30,15 @@ export function agentColorIndex(color: string) {
 /** The bot's accent: its colour, snapped to the palette. */
 export const agentAccentColor = (color: string) => AGENT_COLORS[agentColorIndex(color)]!;
 
+/**
+ * The colour a new bot starts with: the palette colour the fewest bots already have (in palette order on
+ * a tie), so two bots don't share a mascot while another one is free.
+ */
+export function leastUsedAgentColor(used: string[]) {
+  const counts = AGENT_COLORS.map(() => 0);
+  for (const c of used) counts[agentColorIndex(c)]!++;
+  return AGENT_COLORS[counts.indexOf(Math.min(...counts))]!;
+}
+
 /** The mascot of a bot's colour. */
 export const agentMascot = (color: string): AgentMascot => AGENT_MASCOTS[agentColorIndex(color)]!;

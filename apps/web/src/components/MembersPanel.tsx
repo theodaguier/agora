@@ -11,9 +11,10 @@ import { conversationTitle, type Participant } from "@/lib/participants";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
-import { api, conversationPath, type ConversationDetail } from "@/lib/api";
+import { api, conversationPath, type AgentSummary, type ConversationDetail, type Person } from "@/lib/api";
 import { openAgentProfile, openProfile } from "@/lib/profile";
 import { closeOrGoHome, tabPath } from "@/lib/workspace";
 import { agentsQuery, conversationQuery, conversationsQuery, usersQuery } from "@/lib/queries";
@@ -26,7 +27,7 @@ const messages = defineMessages({
     hidePanel: "Hide panel",
     groupName: "Group name",
     untitled: "Untitled group",
-    members: (n: number) => `Members · ${n}`,
+    members: (n: number) => `Members (${n})`,
     bot: "Bot",
     me: (name: string) => `${name} (you)`,
     creator: "Created the group",
@@ -38,6 +39,7 @@ const messages = defineMessages({
     addToGroup: "Add to group…",
     noMatch: "No one matches.",
     everyoneHere: "Everyone is already here.",
+    listsUnavailable: "Colleagues and bots are unreachable for now.",
     bots: "Bots",
     colleagues: "Colleagues",
     addFailed: "Couldn't add them.",
@@ -55,7 +57,7 @@ const messages = defineMessages({
     hidePanel: "Masquer le panneau",
     groupName: "Nom du groupe",
     untitled: "Groupe sans nom",
-    members: (n: number) => `Membres · ${n}`,
+    members: (n: number) => `Membres (${n})`,
     bot: "Bot",
     me: (name: string) => `${name} (toi)`,
     creator: "A créé le groupe",
@@ -67,6 +69,7 @@ const messages = defineMessages({
     addToGroup: "Ajouter au groupe…",
     noMatch: "Personne ne correspond.",
     everyoneHere: "Tout le monde est déjà là.",
+    listsUnavailable: "Collègues et bots injoignables pour le moment.",
     bots: "Bots",
     colleagues: "Collègues",
     addFailed: "Ajout impossible.",
@@ -141,7 +144,7 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
     <aside className="flex h-full w-full flex-col bg-background">
       <PanelBar title={t.group} closeLabel={t.hidePanel} onClose={onClose} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
         {editing ? (
           // Inline editing in the title's exact spot: Enter or clicking away saves, Escape cancels.
           <Input
@@ -158,7 +161,6 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
             }}
             placeholder={t.groupName}
             aria-label={t.groupName}
-            className="h-auto rounded-lg border-transparent bg-muted/60 px-1 py-1 text-[15px] font-medium leading-normal focus-visible:border-transparent md:text-[15px]"
           />
         ) : (
           <Button
@@ -168,18 +170,19 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
               setTitle(conv.title ?? "");
               setEditing(true);
             }}
-            className="h-auto w-full justify-start gap-2 rounded-lg px-1 py-1 text-left text-foreground hover:bg-muted/60 hover:text-foreground"
+            className="w-full justify-start"
           >
-            <span className="min-w-0 flex-1 truncate text-[15px] font-medium leading-normal">{conv.title || t.untitled}</span>
+            <span className="truncate">{conv.title || t.untitled}</span>
           </Button>
         )}
 
-        <div className="mb-2 mt-5 flex items-center justify-between">
-          <h2 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.members(conv.members.length + conv.agents.length)}</h2>
+        <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm text-muted-foreground">{t.members(conv.members.length + conv.agents.length)}</h2>
           <AddMembers conversation={conv} />
         </div>
 
-        <ul className="flex flex-col">
+        <ItemGroup className="gap-1">
           {conv.agents.map((a) => (
             <Row
               key={a.id}
@@ -212,10 +215,11 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
               }
             />
           ))}
-        </ul>
+        </ItemGroup>
+        </div>
 
         <Button
-          variant="ghost"
+          variant="destructive"
           onClick={async () =>
             (await confirmAction({
               title: t.leaveTitle(conversationTitle(conv, user.id)),
@@ -223,7 +227,7 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
               action: t.leaveAction,
             })) && remove.mutate({ kind: "user", id: user.id })
           }
-          className="mt-5 w-full justify-start gap-2 rounded-lg px-2 font-normal text-destructive hover:bg-muted/60 hover:text-destructive"
+          className="w-full"
         >
           {t.leave}
         </Button>
@@ -239,22 +243,17 @@ function Row(props: { p: Participant; name: string; hint?: string; onOpen?: () =
   const { data: people = [] } = useQuery(usersQuery);
   /** Their role (developer, spouse…), as set on their profile. */
   const role = personId ? people.find((u) => u.id === personId)?.title : undefined;
-  const hint = [props.hint, role, useStatusLabel(props.p), working].filter(Boolean).join(" · ");
+  const hint = [props.hint, role, useStatusLabel(props.p), working].filter(Boolean).join(", ");
   return (
-    <li className="group flex items-center gap-1 rounded-lg">
+    <div role="listitem" className="group flex items-center gap-1">
       {props.onOpen ? (
-        <Button
-          variant="ghost"
-          onClick={props.onOpen}
-          aria-label={t.openProfile(props.name)}
-          className="h-auto min-w-0 flex-1 justify-start gap-2.5 rounded-lg px-1 py-1.5 text-left font-normal text-foreground hover:bg-muted/60 hover:text-foreground"
-        >
+        <Item size="sm" className="min-w-0 flex-1" render={<button type="button" onClick={props.onOpen} aria-label={t.openProfile(props.name)} />}>
           <RowBody {...props} hint={hint} />
-        </Button>
+        </Item>
       ) : (
-        <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1 py-1.5">
+        <Item size="sm" className="min-w-0 flex-1">
           <RowBody {...props} hint={hint} />
-        </div>
+        </Item>
       )}
       {props.onRemove && (
         <Button
@@ -262,27 +261,25 @@ function Row(props: { p: Participant; name: string; hint?: string; onOpen?: () =
           size="icon-sm"
           aria-label={t.remove(props.name)}
           onClick={props.onRemove}
-          className="rounded-md opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
         >
-          <CloseIcon className="size-3.5" />
+          <CloseIcon />
         </Button>
       )}
-    </li>
+    </div>
   );
 }
 
 function RowBody(props: { p: Participant; name: string; hint?: string }) {
   return (
     <>
-      <StatusAvatar p={props.p} className="size-8" ring="ring-sidebar" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm">{props.name}</span>
-        {props.hint && (
-          <span className="block truncate text-xs text-subtle" title={props.hint}>
-            {props.hint}
-          </span>
-        )}
-      </span>
+      <ItemMedia>
+        <StatusAvatar p={props.p} className="size-8" />
+      </ItemMedia>
+      <ItemContent className="min-w-0">
+        <ItemTitle>{props.name}</ItemTitle>
+        {props.hint && <ItemDescription title={props.hint}>{props.hint}</ItemDescription>}
+      </ItemContent>
     </>
   );
 }
@@ -293,8 +290,12 @@ function AddMembers({ conversation: conv }: { conversation: ConversationDetail }
   const t = useT(messages);
   const c = useT(common);
   const [open, setOpen] = useState(false);
-  const { data: people = [] } = useQuery(usersQuery);
-  const { data: bots = [] } = useQuery(agentsQuery);
+  const peopleQ = useQuery(usersQuery);
+  const botsQ = useQuery(agentsQuery);
+  const people = peopleQ.data ?? noPeople;
+  const bots = botsQ.data ?? noBots;
+  const loading = peopleQ.isPending || botsQ.isPending;
+  const failed = peopleQ.isError && botsQ.isError;
   const botsLeft = bots.filter((b) => !b.onboarding && !conv.agents.some((a) => a.id === b.id));
   const peopleLeft = people.filter((p) => !conv.members.some((m) => m.id === p.id));
 
@@ -316,10 +317,12 @@ function AddMembers({ conversation: conv }: { conversation: ConversationDetail }
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={6} className="w-64 p-0">
         {/* Filter on the name only: the value holds the id, which must not match. */}
-        <Command className="p-1.5" filter={(_, search, keywords) => (keywords?.some((k) => k.toLowerCase().includes(search.trim().toLowerCase())) ? 1 : 0)}>
+        <Command filter={(_, search, keywords) => (keywords?.some((k) => k.toLowerCase().includes(search.trim().toLowerCase())) ? 1 : 0)}>
           <CommandInput placeholder={t.addToGroup} />
-          <CommandList className="max-h-72 pt-1.5">
-            <CommandEmpty>{botsLeft.length + peopleLeft.length ? t.noMatch : t.everyoneHere}</CommandEmpty>
+          <CommandList>
+            <CommandEmpty>
+              {loading ? <Spinner className="mx-auto" /> : failed ? t.listsUnavailable : botsLeft.length + peopleLeft.length ? t.noMatch : t.everyoneHere}
+            </CommandEmpty>
             {botsLeft.length > 0 && (
               <CommandGroup heading={t.bots}>
                 {botsLeft.map((b) => (
@@ -328,28 +331,26 @@ function AddMembers({ conversation: conv }: { conversation: ConversationDetail }
                     value={`bot:${b.id}`}
                     keywords={[b.name]}
                     onSelect={() => !add.isPending && add.mutate({ userIds: [], agentIds: [b.id] })}
-                    className="h-9 gap-2.5 rounded-lg px-2.5 text-sm"
                   >
                     <AgentAvatar agent={b} className="size-5" />
                     <span className="truncate">{b.name}</span>
-                    {pending === b.id && <Spinner className="ml-auto size-3.5" />}
+                    {pending === b.id && <Spinner className="ml-auto" />}
                   </CommandItem>
                 ))}
               </CommandGroup>
             )}
             {peopleLeft.length > 0 && (
-              <CommandGroup heading={t.colleagues} className="mt-1">
+              <CommandGroup heading={t.colleagues}>
                 {peopleLeft.map((p) => (
                   <CommandItem
                     key={p.id}
                     value={`user:${p.id}`}
                     keywords={[p.name]}
                     onSelect={() => !add.isPending && add.mutate({ userIds: [p.id], agentIds: [] })}
-                    className="h-9 gap-2.5 rounded-lg px-2.5 text-sm"
                   >
                     <PersonAvatar person={p} className="size-5" />
                     <span className="truncate">{p.name}</span>
-                    {pending === p.id && <Spinner className="ml-auto size-3.5" />}
+                    {pending === p.id && <Spinner className="ml-auto" />}
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -360,3 +361,6 @@ function AddMembers({ conversation: conv }: { conversation: ConversationDetail }
     </Popover>
   );
 }
+
+const noPeople: Person[] = [];
+const noBots: AgentSummary[] = [];

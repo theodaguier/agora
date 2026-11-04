@@ -14,10 +14,11 @@ const git = (pr: "open" | "closed" | "merged" | null): CodeGit => ({
   github: true,
 });
 
-const session = (id: string, status: CodeSessionStatus, priority: CodePriority, o: { pr?: "open" | "closed" | "merged" | null; repo?: string | null; at?: string } = {}) => ({
+const session = (id: string, status: CodeSessionStatus, priority: CodePriority, o: { pr?: "open" | "closed" | "merged" | null; repo?: string | null; at?: string; parked?: boolean } = {}) => ({
   id,
   status,
   priority,
+  parked: o.parked ?? false,
   question: null,
   git: o.pr === undefined ? null : git(o.pr),
   repo: o.repo === undefined ? "acme/app" : o.repo,
@@ -30,6 +31,13 @@ describe("codeSessionState", () => {
     expect(codeSessionState(session("a", "idle", "none"))).toBe("idle");
     expect(codeSessionState(session("a", "idle", "none", { pr: "open" }))).toBe("finished");
     expect(codeSessionState(session("a", "done", "none", { pr: "merged" }))).toBe("merged");
+  });
+
+  test("set aside until it runs again; a question still comes first", () => {
+    expect(codeSessionState(session("a", "idle", "none", { parked: true }))).toBe("parked");
+    expect(codeSessionState(session("a", "idle", "none", { pr: "open", parked: true }))).toBe("parked");
+    expect(codeSessionState(session("a", "running", "none", { parked: true }))).toBe("running");
+    expect(codeSessionState(session("a", "waiting", "none", { parked: true }))).toBe("waiting");
   });
 
   test("a question to its bot is waiting for you, even while it runs", () => {
@@ -51,6 +59,14 @@ describe("groupCodeSessions", () => {
     expect(active.map((g) => g.key)).toEqual(["waiting", "running", "idle"]);
     const all = groupCodeSessions(list, { group: "state", order: "priority", view: "all", showStopped: true });
     expect(all.map((g) => g.key)).toEqual(["waiting", "running", "idle", "merged", "stopped"]);
+  });
+
+  test("set aside: out of the active and over ones, in its own view", () => {
+    const withParked = [...list, session("aside", "idle", "medium", { parked: true })];
+    const view = (v: "active" | "parked" | "finished") => groupCodeSessions(withParked, { group: "state", order: "priority", view: v, showStopped: true }).flatMap((g) => g.sessions.map((x) => x.id));
+    expect(view("active")).not.toContain("aside");
+    expect(view("finished")).not.toContain("aside");
+    expect(view("parked")).toEqual(["aside"]);
   });
 
   test("by priority: Urgent to None, empty groups left out", () => {

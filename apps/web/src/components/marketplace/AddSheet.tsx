@@ -9,16 +9,17 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Item as ItemRow, ItemContent, ItemDescription } from "@/components/ui/item";
 import { api, ApiError } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
 import { adminAgentsQuery } from "@/lib/queries";
-import { cn } from "@/lib/utils";
 import { useSkillOwners, type Item } from "./data";
 import { defineMessages, tr, useT } from "@/i18n";
 import { common, integrations } from "@agora/core/i18n";
 import { envValue, envValues, guessIntegrationType, isUrlEnvName, type IntegrationType } from "@agora/core";
 import { AgentTargets } from "./AgentTargets";
-import { IntegrationTile, IntegrationTypeSelect } from "./IntegrationType";
+import { InitialTile, IntegrationTile, IntegrationTypeSelect } from "./IntegrationType";
+import { SheetHeader } from "./layout";
 
 const messages = defineMessages({
   en: {
@@ -31,10 +32,10 @@ const messages = defineMessages({
     installingFor: (name?: string) => `Installing for ${name}…`,
     enablingPlugin: "Enabling the plugin…",
     installingPlugin: "Installing the plugin…",
-    mcpSubtitle: "MCP connector · installed for the whole instance",
-    registrySubtitle: (remote: boolean) => `MCP registry · ${remote ? "remote server" : "runs on the Hermes machine"}`,
-    skillSubtitle: (source: string) => `Skill · ${source}`,
-    pluginSubtitle: "Hermes plugin · loaded by the whole instance",
+    mcpSubtitle: "MCP connector, installed for the whole instance",
+    registrySubtitle: (remote: boolean) => `MCP registry, ${remote ? "remote server" : "runs on the Hermes machine"}`,
+    skillSubtitle: (source: string) => `Skill from ${source}`,
+    pluginSubtitle: "Hermes plugin, loaded by the whole instance",
     skillInstalled: "Skill installed.",
     added: "Added. Restart Hermes (banner above) so agents load it.",
     verdict: (verdict: string) =>
@@ -68,10 +69,10 @@ const messages = defineMessages({
     installingFor: (name?: string) => `Installation pour ${name}…`,
     enablingPlugin: "Activation du plugin…",
     installingPlugin: "Installation du plugin…",
-    mcpSubtitle: "Connecteur MCP · installé pour toute l'instance",
-    registrySubtitle: (remote: boolean) => `Registre MCP · ${remote ? "serveur distant" : "exécuté sur la machine Hermes"}`,
-    skillSubtitle: (source: string) => `Skill · ${source}`,
-    pluginSubtitle: "Plugin Hermes · chargé par toute l'instance",
+    mcpSubtitle: "Connecteur MCP, installé pour toute l'instance",
+    registrySubtitle: (remote: boolean) => `Registre MCP, ${remote ? "serveur distant" : "exécuté sur la machine Hermes"}`,
+    skillSubtitle: (source: string) => `Skill de ${source}`,
+    pluginSubtitle: "Plugin Hermes, chargé par toute l'instance",
     skillInstalled: "Skill installé.",
     added: "Ajouté. Redémarre Hermes (bandeau ci-dessus) pour que les agents le chargent.",
     verdict: (verdict: string) =>
@@ -212,33 +213,25 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
   const done = add.isSuccess;
 
   return (
-    <div className="mx-auto max-w-xl">
-      <div className="mb-6 flex items-center gap-4">
-        {isMcp ? (
-          <IntegrationTile type={type} server={item.name} className="size-14 rounded-2xl [&_svg]:size-6" />
-        ) : (
-          <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-accent">
-            <Icon className="size-6 text-foreground/80" />
-          </span>
-        )}
-        <div className="min-w-0">
-          <h1 className="truncate text-xl leading-[26px] font-medium">{item.name}</h1>
-          <p className="text-sm text-muted-foreground">
+    <div className="mx-auto flex max-w-xl flex-col gap-6">
+      <SheetHeader
+        media={isMcp ? <IntegrationTile type={type} server={item.name} /> : <InitialTile icon={<Icon />} />}
+        title={item.name}
+        description={
+          <>
             {item.kind === "mcp" && t.mcpSubtitle}
             {reg && t.registrySubtitle(reg.transport === "remote")}
             {item.kind === "skill" && t.skillSubtitle(item.source)}
             {item.kind === "plugin" && t.pluginSubtitle}
-          </p>
-        </div>
-      </div>
-      <p className="mb-6 text-[15px] leading-relaxed text-foreground/90">{item.description}</p>
+          </>
+        }
+      />
+      <p className="text-sm text-muted-foreground">{item.description}</p>
 
       {done ? (
-        <Card className="gap-4 rounded-[14px] bg-background py-5">
-          <CardContent className="flex flex-col gap-2 px-5">
-            <p className="text-[15px]">
-              {item.kind === "skill" ? t.skillInstalled : t.added}
-            </p>
+        <Card>
+          <CardContent className="flex flex-col gap-2">
+            <p>{item.kind === "skill" ? t.skillInstalled : t.added}</p>
             {verdict && (
               <p className="text-sm text-warning">
                 {forced ? t.forcedVerdict(verdict) : t.verdict(verdict)}
@@ -246,14 +239,14 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
             )}
             {(oauth || (item.kind === "mcp" && item.entry.auth_type === "oauth")) && (
               <p className="text-sm text-muted-foreground">
-                {t.authorizeBefore} <code className="text-foreground">hermes mcp login {serverName}</code> {t.authorizeAfter}
+                {t.authorizeBefore} <code>hermes mcp login {serverName}</code> {t.authorizeAfter}
               </p>
             )}
             {item.kind === "mcp" && item.entry.post_install && (
               <p className="whitespace-pre-line text-sm text-muted-foreground">{item.entry.post_install}</p>
             )}
           </CardContent>
-          <CardFooter className="border-t-0 bg-transparent px-5 pt-0 pb-5">
+          <CardFooter>
             <Button onClick={onDone}>{t.done}</Button>
           </CardFooter>
         </Card>
@@ -268,7 +261,7 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
         >
           <FieldGroup>
             {env.length > 0 && (
-              <FieldSet className="gap-2">
+              <FieldSet>
                 <FieldLegend variant="label">{t.configuration}</FieldLegend>
                 {env.map((k) => (
                   <Input
@@ -280,7 +273,6 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
                     inputMode={isUrlEnvName(k) ? "url" : undefined}
                     autoComplete="off"
                     onBlur={(e) => (e.currentTarget.value = envValue(k, e.currentTarget.value))}
-                    className="font-mono"
                   />
                 ))}
               </FieldSet>
@@ -289,17 +281,17 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
               <Alert>
                 <AlertDescription>
                   {t.stdioBefore}{" "}
-                  <code className="break-all text-foreground">{reg.command}</code>
+                  <code className="break-all">{reg.command}</code>
                   {t.stdioAfter}
                 </AlertDescription>
               </Alert>
             )}
             {reg && reg.env.length > 0 && (
-              <FieldSet className="gap-3">
+              <FieldSet>
                 <FieldLegend variant="label">{t.configuration}</FieldLegend>
                 {reg.env.map((e) => (
-                  <Field key={e.name} className="gap-1.5">
-                    <FieldLabel htmlFor={`env-${e.name}`} className="font-mono text-xs">
+                  <Field key={e.name}>
+                    <FieldLabel htmlFor={`env-${e.name}`}>
                       {e.name}
                       {e.required && <RequiredMark />}
                     </FieldLabel>
@@ -311,24 +303,24 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
                       inputMode={isUrlEnvName(e.name) ? "url" : undefined}
                       autoComplete="off"
                       onBlur={(ev) => (ev.currentTarget.value = envValue(e.name, ev.currentTarget.value))}
-                      className="font-mono"
+                     
                     />
-                    {e.description && <FieldDescription className="text-xs">{e.description}</FieldDescription>}
+                    {e.description && <FieldDescription>{e.description}</FieldDescription>}
                   </Field>
                 ))}
               </FieldSet>
             )}
             {reg?.bearer && (
-              <Field className="gap-1.5">
+              <Field>
                 <FieldLabel htmlFor="bearer_token">{t.token}</FieldLabel>
-                <Input id="bearer_token" name="bearer_token" type="password" required autoComplete="off" className="font-mono" />
-                <FieldDescription className="text-xs">{t.tokenHelp}</FieldDescription>
+                <Input id="bearer_token" name="bearer_token" type="password" required autoComplete="off" />
+                <FieldDescription>{t.tokenHelp}</FieldDescription>
               </Field>
             )}
             {reg?.transport === "remote" && !reg.bearer && (
-              <Field orientation="horizontal" className="gap-3">
+              <Field orientation="horizontal">
                 <Checkbox id="oauth" checked={oauth} onCheckedChange={(v) => setOauth(v === true)} />
-                <FieldLabel htmlFor="oauth" className="cursor-pointer font-normal">
+                <FieldLabel htmlFor="oauth" className="font-normal">
                   {t.oauth}
                 </FieldLabel>
               </Field>
@@ -336,13 +328,13 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
             {item.kind === "mcp" && item.entry.auth_type === "oauth" && (
               <Alert>
                 <AlertDescription>
-                  {t.oauthBefore} <code className="text-foreground">hermes mcp login {item.name}</code> {t.oauthAfter}
+                  {t.oauthBefore} <code>hermes mcp login {item.name}</code> {t.oauthAfter}
                 </AlertDescription>
               </Alert>
             )}
 
             {isMcp && (
-              <Field className="gap-1.5">
+              <Field>
                 <FieldLabel htmlFor="integration-type">
                   {i.type}
                   <RequiredMark />
@@ -358,11 +350,11 @@ export function AddSheet({ item, onDone }: { item: Item; onDone: () => void }) {
                 value={targets}
                 onChange={setTargets}
                 withoutDefault={isMcp}
-                installed={item.kind === "skill" ? owners.get(item.name) : undefined}
+                locked={item.kind === "skill" ? owners.get(item.name) : undefined}
               />
             )}
 
-            <Field orientation="horizontal" className="gap-3">
+            <Field orientation="horizontal">
               <Button type="submit" disabled={add.isPending || (item.kind === "skill" && targets.length === 0)}>
                 {add.isPending ? progress ?? "…" : c.add}
               </Button>

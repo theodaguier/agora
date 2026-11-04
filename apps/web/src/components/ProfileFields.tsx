@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { PersonAvatar } from "@/components/ConversationAvatar";
 import { Button } from "@/components/ui/button";
 import { FormLabel } from "@/components/FormLabel";
-import { Field, FieldDescription } from "@/components/ui/field";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Field, FieldDescription, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { ProfileInput } from "@/lib/api";
@@ -175,7 +176,7 @@ export function AvatarField({
           pick(e.dataTransfer.files[0]);
         }}
         className={cn(
-          "group/avatar relative size-16 shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "group/photo relative size-16 shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
           over && "ring-3 ring-ring/60 ring-offset-2 ring-offset-background",
         )}
       >
@@ -183,30 +184,27 @@ export function AvatarField({
         {shown || name ? (
           <PersonAvatar person={{ id, name, image: shown }} className="size-16" />
         ) : (
-          <span className="grid size-16 place-items-center rounded-full bg-black/6 text-muted-foreground dark:bg-white/10">
-            <CameraIcon className="size-5" />
-          </span>
+          <Avatar className="size-16">
+            <AvatarFallback>
+              <CameraIcon />
+            </AvatarFallback>
+          </Avatar>
         )}
         <span
           aria-hidden
           className={cn(
-            "absolute inset-0 grid place-items-center rounded-full bg-black/45 text-white opacity-0 transition-opacity group-hover/avatar:opacity-100 group-focus-visible/avatar:opacity-100",
+            "absolute inset-0 grid place-items-center rounded-full bg-foreground/50 text-background opacity-0 transition-opacity group-hover/photo:opacity-100 group-focus-visible/photo:opacity-100",
             over && "opacity-100",
           )}
         >
-          <CameraIcon className="size-5" />
+          <CameraIcon />
         </span>
       </button>
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-sm font-medium">{label ?? t.photo}</span>
-        {error ? <FieldDescription className="text-destructive">{error}</FieldDescription> : <FieldDescription>{t.pickHint}</FieldDescription>}
+        {error ? <FieldError>{error}</FieldError> : <FieldDescription>{t.pickHint}</FieldDescription>}
         {shown && (
-          <Button
-            type="button"
-            variant="link"
-            onClick={() => onChange(current ? null : undefined)}
-            className="h-auto self-start p-0 text-sm font-normal text-muted-foreground hover:text-foreground"
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(current ? null : undefined)} className="self-start">
             {c.remove}
           </Button>
         )}

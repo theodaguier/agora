@@ -1,14 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { PersonAvatar } from "@/components/ConversationAvatar";
+import { CheckCircleIcon, CloseCircleIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { ListCard, ListCardRows } from "@/components/list-card";
+import { CardContent } from "@/components/ui/card";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api, type AdminAgent, type AdminUser } from "@/lib/api";
 import { adminAgentsQuery, adminUsersQuery, agentsQuery } from "@/lib/queries";
 import { defineMessages, useT } from "@/i18n";
-import { SectionHeader } from "./ui";
+import { LoadError, Loading, SectionHeader } from "./ui";
 
 const messages = defineMessages({
   en: {
@@ -24,6 +27,7 @@ const messages = defineMessages({
     allOn: "Open all agents",
     allOff: "Remove all agents",
     editOf: (name: string) => `Agents available to ${name}`,
+    noUsers: "No employees yet. Invite some from the Users tab.",
   },
   fr: {
     title: "Accès",
@@ -38,6 +42,7 @@ const messages = defineMessages({
     allOn: "Ouvrir tous les agents",
     allOff: "Retirer tous les agents",
     editOf: (name: string) => `Agents accessibles à ${name}`,
+    noUsers: "Aucun salarié pour l'instant. Invites-en depuis l'onglet Utilisateurs.",
   },
 });
 
@@ -47,7 +52,7 @@ const STACK = 4;
 export function Access() {
   const t = useT(messages);
   const qc = useQueryClient();
-  const { data: users = [] } = useQuery(adminUsersQuery);
+  const { data: users, isPending, error } = useQuery(adminUsersQuery);
   const { data: agents = [] } = useQuery(adminAgentsQuery);
   const save = useMutation({
     mutationFn: ({ userId, agentIds }: { userId: string; agentIds: string[] }) =>
@@ -65,11 +70,19 @@ export function Access() {
   return (
     <>
       <SectionHeader title={t.title} text={t.text} />
-      <ItemGroup className="gap-2">
-        {users.map((u) => (
-          <UserAccess key={u.id} user={u} agents={agents} onChange={(agentIds) => save.mutate({ userId: u.id, agentIds })} />
-        ))}
-      </ItemGroup>
+      <ListCard>
+        {!users?.length ? (
+          <CardContent className="py-(--card-spacing)">
+            {isPending ? <Loading /> : !users ? <LoadError error={error} /> : <p className="text-sm text-muted-foreground">{t.noUsers}</p>}
+          </CardContent>
+        ) : (
+          <ListCardRows>
+            {users.map((u) => (
+              <UserAccess key={u.id} user={u} agents={agents} onChange={(agentIds) => save.mutate({ userId: u.id, agentIds })} />
+            ))}
+          </ListCardRows>
+        )}
+      </ListCard>
     </>
   );
 }
@@ -84,9 +97,9 @@ function UserAccess({ user: u, agents, onChange }: { user: AdminUser; agents: Ad
   const everything = mine.length === agents.length;
 
   return (
-    <Item variant="outline">
+    <Item size="xs" role="listitem">
       <ItemMedia>
-        <PersonAvatar person={u} className="size-9" />
+        <PersonAvatar person={u} className="size-6" />
       </ItemMedia>
       <ItemContent className="min-w-0">
         <ItemTitle>{u.name}</ItemTitle>
@@ -99,11 +112,11 @@ function UserAccess({ user: u, agents, onChange }: { user: AdminUser; agents: Ad
               <AgentAvatar
                 key={a.id}
                 agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }}
-                className="-ml-1.5 size-7 rounded-full bg-background ring-2 ring-background first:ml-0"
+                className="-ml-1.5 size-6 rounded-full bg-background ring-2 ring-background first:ml-0"
               />
             ))}
             {mine.length > STACK && (
-              <span className="-ml-1.5 grid size-7 place-items-center rounded-full bg-muted text-xs font-medium tabular-nums text-muted-foreground ring-2 ring-background">
+              <span className="-ml-1.5 grid size-6 place-items-center rounded-full bg-muted text-xs font-medium tabular-nums text-muted-foreground ring-2 ring-background">
                 +{mine.length - STACK}
               </span>
             )}
@@ -136,6 +149,7 @@ function UserAccess({ user: u, agents, onChange }: { user: AdminUser; agents: Ad
                   keywords={[t.allOn, t.allOff]}
                   onSelect={() => onChange(everything ? [] : agents.map((a) => a.id))}
                 >
+                  {everything ? <CloseCircleIcon /> : <CheckCircleIcon />}
                   {everything ? t.allOff : t.allOn}
                 </CommandItem>
               </CommandList>

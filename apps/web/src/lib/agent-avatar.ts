@@ -18,8 +18,8 @@ export const avatarColors: readonly string[] = AGENT_COLORS;
 /** The bot's accent in a conversation: its own colour, snapped to the palette. */
 export const agentAccent = agentAccentColor;
 
-/** The clay mascot of a colour: its head for avatars, the whole figure for the profile portrait. */
+/** The clay mascot of a colour: its head for avatars (cut out), the whole figure cut out (`solo`) for the profile portrait. */
 export function mascot(color: string) {
   const name = agentMascot(color);
-  return { head: `/mascots/${name}.webp`, figure: `/mascots/${name}-figure.webp` };
+  return { head: `/mascots/${name}.webp`, solo: `/mascots/${name}-solo.webp` };
 }

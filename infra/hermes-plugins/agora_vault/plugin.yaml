@@ -1,0 +1,7 @@
+name: agora_vault
+version: 0.1.0
+description: "Coffre-fort (Agora) — lets an agent read the logins and contact details its person keeps for it; a login's password only once they approve it in the conversation."
+provides_tools:
+  - vault_search
+  - vault_contact
+  - vault_use_login

@@ -1,9 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
-import { CheckIcon, ChevronDownIcon, CloseIcon } from "@/components/icons";
+import { ChatIntegrationIcon, CheckIcon, ChevronDownIcon, CloseIcon, ShieldCheckIcon } from "@/components/icons";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { BlockCard, BlockFooter } from "@/components/views/block";
 import { api, conversationPath, type AgentSummary, type PendingApproval } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -36,10 +38,9 @@ const messages = defineMessages({
 });
 
 /**
- * The agent is waiting for approval before running a sensitive action. Figma « Carte d'autorisation »:
- * one white card, the request as its first line, the command, then the answers on one row: Refuser on
- * the left, « Autoriser » (once) in the bot's colour on the right, the broader permissions behind its
- * arrow. Keys 1–4 answer.
+ * The agent is waiting for approval before running a sensitive action: the request as the card's
+ * title, the command, then the answers in the footer: Refuser on the left, « Autoriser » (once) on
+ * the right, the broader permissions behind its arrow. Keys 1–4 answer.
  */
 export function ApprovalCard(props: { conversationId: string; turnId: string; botName: string; bot?: AgentSummary; approval: PendingApproval; canAnswer: boolean }) {
   const { conversationId, turnId, botName, approval, canAnswer } = props;
@@ -79,60 +80,66 @@ export function ApprovalCard(props: { conversationId: string; turnId: string; bo
   );
 
   return (
-    <section
-      aria-label={t.requestedBy(botName)}
-      className="flex w-full max-w-[520px] flex-col gap-3 rounded-[14px] border border-border bg-background px-4 py-3.5"
-    >
-      <p className="text-[15px] leading-[21px]">{approval.command ? t.wantsToRun(botName) : t.asks(botName)}</p>
-      {approval.command && (
-        <code title={approval.description || undefined} className="block w-full overflow-x-auto rounded-[10px] bg-muted px-3 py-2.5 font-mono text-[13.5px] leading-[18px] whitespace-pre">{approval.command}</code>
+    <BlockCard aria-label={t.requestedBy(botName)} role="region">
+      <CardHeader>
+        <CardTitle>{approval.command ? t.wantsToRun(botName) : t.asks(botName)}</CardTitle>
+        {!canAnswer && <CardDescription>{t.waiting}</CardDescription>}
+      </CardHeader>
+      {(approval.command || answer.error) && (
+        <CardContent className="flex flex-col gap-2">
+          {approval.command && (
+            <pre title={approval.description || undefined} className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">
+              <code>{approval.command}</code>
+            </pre>
+          )}
+          {answer.error && <p className="text-destructive">{answer.error.message}</p>}
+        </CardContent>
       )}
-      {canAnswer ? (
-        <div role="group" aria-label={t.requestedBy(botName)} className="flex flex-wrap items-center gap-2">
-          {choices.includes("deny") && button("deny", "secondary")}
-          <span className="flex-1" />
+      {canAnswer && (
+        <BlockFooter role="group" aria-label={t.requestedBy(botName)} className="justify-between">
+          {choices.includes("deny") ? button("deny", "secondary") : <span />}
           {choices.includes("once") && broader.length > 0 ? (
             <ButtonGroup>
               {button("once", "default")}
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button size="icon" aria-label={t.more} disabled={answer.isPending} className="border-l border-primary-foreground/20" />}>
+                <DropdownMenuTrigger render={<Button size="icon" aria-label={t.more} disabled={answer.isPending} />}>
                   <ChevronDownIcon />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-56">
-                  {broader.map((c) => (
-                    <DropdownMenuItem key={c} onClick={() => answer.mutate(c)}>
-                      {t.choices[c]}
-                      <span className="ml-auto text-xs text-muted-foreground tabular-nums">{choices.indexOf(c) + 1}</span>
-                    </DropdownMenuItem>
-                  ))}
+                  <DropdownMenuGroup>
+                    {broader.map((c) => (
+                      <DropdownMenuItem key={c} onClick={() => answer.mutate(c)}>
+                        {c === "always" ? <ShieldCheckIcon /> : c === "session" ? <ChatIntegrationIcon /> : <CheckIcon />}
+                        {t.choices[c]}
+                        <DropdownMenuShortcut>{choices.indexOf(c) + 1}</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
             </ButtonGroup>
           ) : (
-            <>
+            <div className="flex flex-wrap gap-2">
               {broader.map((c) => button(c, "secondary"))}
               {choices.includes("once") && button("once", "default")}
-            </>
+            </div>
           )}
-        </div>
-      ) : (
-        <p className="text-[13px] text-muted-foreground">{t.waiting}</p>
+        </BlockFooter>
       )}
-      {answer.error && <p className="text-[13px] text-destructive">{answer.error.message}</p>}
-    </section>
+    </BlockCard>
   );
 }
 
-/** Figma « Trace »: a decided command, one grey line in the history (check, the command, the answer). */
+/** A decided command, one muted line in the history (check, the command, the answer). */
 export function ApprovalLog({ approvals }: { approvals: { command: string; choice: string }[] }) {
   const t = useT(messages);
   return (
     <div className="flex flex-col gap-0.5">
       {contentKeys(approvals, (a) => `${a.choice}:${a.command}`).map(([key, a]) => (
-        <p key={key} className="flex min-w-0 items-center gap-1.5 py-0.5 pl-3">
-          {a.choice === "deny" ? <CloseIcon className="size-3.5 shrink-0 text-subtle" /> : <CheckIcon className="size-3.5 shrink-0 text-subtle" />}
-          <code className="truncate font-mono text-[12.5px] leading-[18px] text-muted-foreground">{a.command}</code>
-          <span className="shrink-0 text-xs text-subtle">· {a.choice === "deny" ? t.denied : t.allowed}</span>
+        <p key={key} className="flex min-w-0 items-center gap-1.5 pl-3 text-xs text-muted-foreground">
+          {a.choice === "deny" ? <CloseIcon className="size-3.5 shrink-0" /> : <CheckIcon className="size-3.5 shrink-0" />}
+          <code className="truncate font-mono">{a.command}</code>
+          <span className="shrink-0">({a.choice === "deny" ? t.denied : t.allowed})</span>
         </p>
       ))}
     </div>

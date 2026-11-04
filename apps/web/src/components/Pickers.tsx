@@ -1,4 +1,7 @@
+import { useRef, type ReactNode } from "react";
+import { ClockIcon } from "@/components/icons";
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
+import { InputGroupAddon } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { defineMessages, useT } from "@/i18n";
@@ -8,9 +11,10 @@ const messages = defineMessages({
   fr: { noResults: "Aucun résultat." },
 });
 
-export type Option = { value: string; label: string };
+/** `icon`: leading mark of the option, repeated in the trigger when it is the selected one. */
+export type Option = { value: string; label: string; icon?: ReactNode };
 
-/** A select that sits with the inputs of a form (Figma « Select »: Relief, 28 px). */
+/** A select that sits with the inputs of a form: the full width of its field. */
 export const fieldLook = "w-full";
 
 /** Every half hour, plus `current` if it falls between; `end` adds midnight at the end of the day. */
@@ -19,7 +23,7 @@ export function timeOptions(current: string, end = false) {
   const times = Array.from({ length: 48 }, (_, i) => at(i * 30));
   if (end) times.push("24:00");
   if (!times.includes(current)) times.push(current);
-  return times.sort().map((v) => ({ value: v, label: v }));
+  return times.sort().map((v) => ({ value: v, label: v, icon: <ClockIcon /> }));
 }
 
 /** Short list (language, access, time…): shadcn Select, controlled or uncontrolled value. */
@@ -56,11 +60,24 @@ export function OptionSelect({
       onValueChange={(v) => v != null && onValueChange?.(v as string)}
     >
       <SelectTrigger id={id} aria-label={ariaLabel} title={title} className={cn(fieldLook, className)}>
-        <SelectValue />
+        <SelectValue>
+          {options.some((o) => o.icon)
+            ? (v: string | null) => {
+                const o = options.find((x) => x.value === v);
+                return o ? (
+                  <>
+                    {o.icon}
+                    {o.label}
+                  </>
+                ) : null;
+              }
+            : undefined}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false} align="end">
         {options.map((o) => (
           <SelectItem key={o.value} value={o.value}>
+            {o.icon}
             {o.label}
           </SelectItem>
         ))}
@@ -69,7 +86,7 @@ export function OptionSelect({
   );
 }
 
-/** Long list (time zones, models): shadcn Combobox with search. */
+/** Long list (time zones, models): shadcn Combobox with search. `icon`: leading mark of an option, also shown in the field for the current value. */
 export function SearchSelect({
   options,
   value,
@@ -77,6 +94,7 @@ export function SearchSelect({
   id,
   placeholder,
   label = (v) => v,
+  icon,
   className,
 }: {
   options: string[];
@@ -85,18 +103,26 @@ export function SearchSelect({
   id?: string;
   placeholder?: string;
   label?: (value: string) => string;
+  icon?: (value: string) => ReactNode;
   className?: string;
 }) {
   const t = useT(messages);
+  // With an icon, the list hangs from the whole field rather than from the text input beside the icon.
+  const field = useRef<HTMLDivElement>(null);
   return (
     <Combobox items={options} value={value} onValueChange={(v) => v != null && onValueChange(v as string)} itemToStringLabel={(v) => label(v as string)}>
       {/* Selecting the text on focus lets typing replace the current value instead of appending to it. */}
-      <ComboboxInput id={id} placeholder={placeholder} onFocus={(e) => e.currentTarget.select()} className={cn("w-full", className)} />
-      <ComboboxContent>
+      <div ref={field} className="w-full">
+        <ComboboxInput id={id} placeholder={placeholder} onFocus={(e) => e.currentTarget.select()} className={cn("w-full", className)}>
+          {icon && value && <InputGroupAddon>{icon(value)}</InputGroupAddon>}
+        </ComboboxInput>
+      </div>
+      <ComboboxContent anchor={icon ? field : undefined}>
         <ComboboxEmpty>{t.noResults}</ComboboxEmpty>
         <ComboboxList>
           {(item: string) => (
             <ComboboxItem key={item} value={item}>
+              {icon?.(item)}
               {label(item)}
             </ComboboxItem>
           )}

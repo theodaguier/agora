@@ -55,7 +55,11 @@ export type ConversationEvent =
   /** `until` null: turned off; shown in the person's time zone. */
   | { type: "availability.dnd"; actor: string; person: string; until: string | null; timezone: string }
   | { type: "availability.hours"; actor: string; person: string }
-  | { type: "availability.absence"; actor: string; person: string; kind: "vacation" | "sick" | "other"; startOn: string; endOn: string; removed: boolean };
+  | { type: "availability.absence"; actor: string; person: string; kind: "vacation" | "sick" | "other"; startOn: string; endOn: string; removed: boolean }
+  /** A bot asks to use a login of the Coffre-fort: the app shows the request (`requestId`, GET /api/vaults/requests/:id) as a card. */
+  | { type: "vault.request"; bot: string; item: string; requestId: string; ask?: boolean }
+  /** A bot asks to merge a GitHub pull request: the app shows the request (`requestId`, GET /api/github/merge-requests/:id) as a card. */
+  | { type: "github.merge"; bot: string; repo: string; number: number; title: string; requestId: string };
 
 export type EventLocale = "en" | "fr";
 
@@ -100,24 +104,24 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
     case "code.started":
       return e.bot
         ? fr
-          ? `${e.bot} a lancé une session Claude Code : ${e.title}`
-          : `${e.bot} started a Claude Code session: ${e.title}`
+          ? `${e.bot} a lancé une session de code : ${e.title}`
+          : `${e.bot} started a code session: ${e.title}`
         : fr
-          ? `Session Claude Code lancée : ${e.title}`
-          : `Claude Code session started: ${e.title}`;
+          ? `Session de code lancée : ${e.title}`
+          : `Code session started: ${e.title}`;
     case "code.pr":
       return e.merged
         ? fr
           ? `${e.actor} a mergé la PR #${e.number} de la session « ${e.title} »`
           : `${e.actor} merged PR #${e.number} of the “${e.title}” session`
         : fr
-          ? `${e.actor} a ouvert la PR #${e.number} de la session « ${e.title} » : ${e.url}`
-          : `${e.actor} opened PR #${e.number} of the “${e.title}” session: ${e.url}`;
+          ? `${e.actor} a ouvert la PR #${e.number} de la session « ${e.title} »`
+          : `${e.actor} opened PR #${e.number} of the “${e.title}” session`;
     case "code.wake":
       return {
         idle: fr ? `« ${e.title} » est terminée, ${e.bot} reprend la main` : `“${e.title}” is done, ${e.bot} takes over`,
         failed: fr ? `« ${e.title} » a échoué, ${e.bot} reprend la main` : `“${e.title}” failed, ${e.bot} takes over`,
-        question: fr ? `Claude Code pose une question à ${e.bot} dans « ${e.title} »` : `Claude Code asks ${e.bot} a question in “${e.title}”`,
+        question: fr ? `La session « ${e.title} » pose une question à ${e.bot}` : `The “${e.title}” session asks ${e.bot} a question`,
       }[e.reason];
     case "session.reset":
       return fr ? `${e.actor} a démarré un nouveau contexte` : `${e.actor} started a fresh context`;
@@ -173,6 +177,11 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
     }
     case "availability.hours":
       return fr ? `${e.actor} a modifié les horaires de travail de ${e.person}` : `${e.actor} changed ${e.person}'s working hours`;
+    case "vault.request":
+      if (e.ask) return fr ? `${e.bot} demande un identifiant pour ${e.item}` : `${e.bot} asks for a login to ${e.item}`;
+      return fr ? `${e.bot} demande à utiliser l'identifiant ${e.item}` : `${e.bot} asks to use the login ${e.item}`;
+    case "github.merge":
+      return fr ? `${e.bot} demande à merger la PR #${e.number}` : `${e.bot} asks to merge PR #${e.number}`;
     case "availability.absence": {
       const d = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString(fr ? "fr-FR" : "en-US", { day: "numeric", month: "short", timeZone: "UTC" });
       const days = e.startOn === e.endOn ? (fr ? `le ${d(e.startOn)}` : `on ${d(e.startOn)}`) : fr ? `du ${d(e.startOn)} au ${d(e.endOn)}` : `from ${d(e.startOn)} to ${d(e.endOn)}`;

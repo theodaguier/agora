@@ -1,14 +1,15 @@
 import { confirmAction } from "@/lib/confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { WarningIcon, CheckCircleIcon, ChevronDownIcon, LoaderIcon, UndoIcon, CloseCircleIcon } from "@/components/icons";
+import { WarningIcon, CheckCircleIcon, ChevronDownIcon, ClockIcon, LoaderIcon, UndoIcon, CloseCircleIcon } from "@/components/icons";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet } from "@/components/ui/field";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { OptionSelect } from "@/components/Pickers";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { intlLocale, useLocale, useT } from "@/i18n";
 import { dateFormat } from "@/lib/intl";
@@ -16,7 +17,7 @@ import { common } from "@agora/core/i18n";
 import { api } from "@/lib/api";
 import { cn, contentKeys } from "@/lib/utils";
 import { messages, type ErrorParams, type StepParams } from "./Updates.messages";
-import { ErrorText, Loading, SectionHeader } from "./ui";
+import { LoadFailed, Loading, SectionHeader } from "./ui";
 
 /** Error surfaced by the update service (see apps/updater/src/coded.ts). */
 type ErrorInfo = { message: string; code?: string; params?: Record<string, unknown> };
@@ -75,7 +76,7 @@ export function Updates() {
   const c = useT(common);
   const time = useDateTime();
   const qc = useQueryClient();
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: key,
     queryFn: () => api<Status>("/admin/updates"),
     // Refreshes during an update.
@@ -99,51 +100,60 @@ export function Updates() {
     meta: { success: t.retryAllowed },
   });
 
-  if (isPending) return <Loading />;
-  if (!data) return <ErrorText error={error} />;
+  if (!data)
+    return (
+      <>
+        <SectionHeader title={t.title} text={t.intro} />
+        {isPending ? <Loading /> : <LoadFailed error={error} onRetry={() => void refetch()} />}
+      </>
+    );
   const busy = !!data.running || data.history?.[0]?.status === "running";
 
   return (
     <>
       <SectionHeader title={t.title} text={t.intro} />
 
-      <FieldGroup>
-        <FieldSet>
-          <FieldLegend>{t.versions}</FieldLegend>
-          <ItemGroup className="gap-0 rounded-xl border p-1">
-            <VersionCard
-              title="Agora"
-              current={data.server.app}
-              available={data.available?.app ?? []}
-              rejected={data.rejected?.app ?? []}
-              disabled={busy || !!data.unavailable}
-              onApply={async (v) =>
-                (await confirmAction({ title: t.confirmApp(v), action: t.updateAction, destructive: false })) && apply.mutate({ target: "app", version: v })
-              }
-              onRetry={(v) => unreject.mutate({ target: "app", version: v })}
-              note={(v) => (isMajor(data.server.app, v) ? t.majorNote : undefined)}
-            />
-            <VersionCard
-              title={t.hermesCore}
-              current={data.current?.hermes ?? data.server.hermes}
-              available={data.available?.hermes ?? []}
-              rejected={data.rejected?.hermes ?? []}
-              disabled={busy || !!data.unavailable}
-              onApply={async (v) =>
-                (await confirmAction({ title: t.confirmHermes(v), action: t.updateAction, destructive: false })) &&
-                apply.mutate({ target: "hermes", version: v })
-              }
-              onRetry={(v) => unreject.mutate({ target: "hermes", version: v })}
-            />
-          </ItemGroup>
-          {data.unavailable && <FieldDescription>{data.unavailable}</FieldDescription>}
-        </FieldSet>
+      <ListCard>
+        <ListCardHeader>
+          <CardTitle>{t.versions}</CardTitle>
+          {/* Written by the update service: the full text stays in the tooltip. */}
+          {data.unavailable && <CardDescription title={data.unavailable}>{data.unavailable}</CardDescription>}
+        </ListCardHeader>
+        <ListCardRows>
+          <VersionCard
+            title="Agora"
+            current={data.server.app}
+            available={data.available?.app ?? []}
+            rejected={data.rejected?.app ?? []}
+            disabled={busy || !!data.unavailable}
+            onApply={async (v) =>
+              (await confirmAction({ title: t.confirmApp(v), action: t.updateAction, destructive: false })) && apply.mutate({ target: "app", version: v })
+            }
+            onRetry={(v) => unreject.mutate({ target: "app", version: v })}
+            note={(v) => (isMajor(data.server.app, v) ? t.majorNote : undefined)}
+          />
+          <VersionCard
+            title={t.hermesCore}
+            current={data.current?.hermes ?? data.server.hermes}
+            available={data.available?.hermes ?? []}
+            rejected={data.rejected?.hermes ?? []}
+            disabled={busy || !!data.unavailable}
+            onApply={async (v) =>
+              (await confirmAction({ title: t.confirmHermes(v), action: t.updateAction, destructive: false })) &&
+              apply.mutate({ target: "hermes", version: v })
+            }
+            onRetry={(v) => unreject.mutate({ target: "hermes", version: v })}
+          />
+        </ListCardRows>
+      </ListCard>
 
-        {!data.unavailable && (
-          <>
-            <FieldSeparator />
-            <FieldSet>
-              <FieldLegend>{t.autoUpdates}</FieldLegend>
+      {!data.unavailable && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.autoUpdates}</CardTitle>
+            </CardHeader>
+            <CardContent>
               <FieldGroup>
                 <Field orientation="horizontal">
                   <FieldContent>
@@ -176,29 +186,32 @@ export function Updates() {
                     <FieldLabel>{t.lastCheck}</FieldLabel>
                     <FieldDescription>{data.lastCheck ? time.format(new Date(data.lastCheck)) : t.never}</FieldDescription>
                   </FieldContent>
-                  <Button variant="secondary" size="sm" disabled={check.isPending || busy} onClick={() => check.mutate()}>
+                  <Button variant="outline" size="sm" disabled={check.isPending || busy} onClick={() => check.mutate()}>
                     {check.isPending ? c.inProgress : t.checkNow}
                   </Button>
                 </Field>
               </FieldGroup>
-            </FieldSet>
+            </CardContent>
+          </Card>
 
-            <FieldSeparator />
-            <FieldSet>
-              <FieldLegend>{t.history}</FieldLegend>
-              {data.history?.length ? (
-                <div className="flex flex-col gap-2">
-                  {data.history.map((run) => (
-                    <RunRow key={run.id} run={run} />
-                  ))}
-                </div>
-              ) : (
-                <FieldDescription>{t.noHistory}</FieldDescription>
-              )}
-            </FieldSet>
-          </>
-        )}
-      </FieldGroup>
+          <ListCard>
+            <ListCardHeader>
+              <CardTitle>{t.history}</CardTitle>
+            </ListCardHeader>
+            {data.history?.length ? (
+              <ListCardRows>
+                {data.history.map((run) => (
+                  <RunRow key={run.id} run={run} />
+                ))}
+              </ListCardRows>
+            ) : (
+              <CardContent className="py-(--card-spacing)">
+                <p className="text-sm text-muted-foreground">{t.noHistory}</p>
+              </CardContent>
+            )}
+          </ListCard>
+        </>
+      )}
     </>
   );
 }
@@ -217,7 +230,7 @@ function VersionCard(props: {
   const latest = props.available.at(-1);
   const rejected = !!latest && props.rejected.includes(latest);
   return (
-    <Item>
+    <Item size="xs" role="listitem">
       <ItemContent>
         <ItemTitle>
           {props.title} {props.current}
@@ -226,8 +239,8 @@ function VersionCard(props: {
           {latest ? (
             <>
               {t.available(latest)}
-              {props.note?.(latest) && ` · ${props.note(latest)}`}
-              {rejected && ` · ${t.rejected}`}
+              {props.note?.(latest) && `, ${props.note(latest)}`}
+              {rejected && `, ${t.rejected}`}
             </>
           ) : (
             t.upToDate
@@ -253,15 +266,16 @@ function VersionCard(props: {
 
 function HourSelect({ label, value, onChange }: { label: string; value: number; onChange: (h: number) => void }) {
   const t = useT(messages);
-  const hours = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: t.hour(h) }));
+  const hours = Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: t.hour(h), icon: <ClockIcon /> }));
   return (
     <OptionSelect aria-label={label} options={hours} value={String(value)} onValueChange={(h) => onChange(Number(h))} className="w-24" />
   );
 }
 
+/** Colour only where it means something: a rollback is orange, a failure red. */
 const statusMeta = {
-  running: { icon: LoaderIcon, cls: "text-brand animate-spin" },
-  succeeded: { icon: CheckCircleIcon, cls: "text-success" },
+  running: { icon: LoaderIcon, cls: "text-muted-foreground animate-spin" },
+  succeeded: { icon: CheckCircleIcon, cls: "text-muted-foreground" },
   rolled_back: { icon: UndoIcon, cls: "text-warning" },
   failed: { icon: CloseCircleIcon, cls: "text-destructive" },
 };
@@ -274,38 +288,50 @@ function RunRow({ run }: { run: Run }) {
   const M = statusMeta[run.status];
   const failed = run.contract?.checks.filter((c) => !c.ok) ?? [];
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="rounded-lg border">
-      <CollapsibleTrigger className="group/run flex w-full items-center gap-3 px-4 py-3 text-left">
-        <M.icon className={cn("size-4 shrink-0", M.cls)} />
-        <span className="min-w-0 flex-1 text-sm">
-          {run.target === "hermes" ? "Hermes" : "Agora"} {run.from} → {run.to}
-          <span className="text-muted-foreground"> · {t.status[run.status]} · {t.trigger[run.trigger]} · {time.format(new Date(run.startedAt))}</span>
-        </span>
-        <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-panel-open/run:rotate-180" />
-      </CollapsibleTrigger>
+    <Collapsible open={open} onOpenChange={setOpen} role="listitem">
+      <Item size="xs" render={<CollapsibleTrigger />} className="group/run rounded-none px-(--card-spacing) hover:bg-muted/50">
+        <ItemMedia variant="icon">
+          <M.icon className={M.cls} />
+        </ItemMedia>
+        <ItemContent>
+          <ItemTitle>
+            {run.target === "hermes" ? "Hermes" : "Agora"} {run.from} → {run.to}
+          </ItemTitle>
+          <ItemDescription>
+            {t.status[run.status]}, {t.trigger[run.trigger]}, {time.format(new Date(run.startedAt))}
+          </ItemDescription>
+        </ItemContent>
+        <ItemActions>
+          <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-panel-open/run:rotate-180" />
+        </ItemActions>
+      </Item>
+      {/* The steps sit under the row's title, past its icon. */}
       <CollapsibleContent>
-        <Separator />
-        <div className="px-4 py-3">
-          <ol className="flex flex-col gap-1 text-[13px]">
-            {contentKeys(run.steps, (s) => `${s.at}:${stepText(t, s)}`).map(([key, s]) => (
-              <li key={key} className="flex gap-2">
-                <span className="shrink-0 font-mono text-subtle">{new Date(s.at).toLocaleTimeString(locale)}</span>
-                <span className={cn(s.ok === false && "text-destructive", s.ok === true && "text-foreground")}>{stepText(t, s)}</span>
-              </li>
-            ))}
-          </ol>
-          {failed.length > 0 && (
-            <Alert className="mt-3">
-              <WarningIcon />
-              <AlertTitle>{t.failedChecks}</AlertTitle>
-              <AlertDescription>
-                {failed.map((c) => (
-                  <div key={c.name}>{t.checkLine(c.name, c.detail ?? t.checkFailed)}</div>
-                ))}
-              </AlertDescription>
-            </Alert>
-          )}
-          {run.backup && <p className="mt-2 text-xs text-subtle">{t.backup(run.backup)}</p>}
+        <div className="flex flex-col gap-3 pr-3 pb-3 pl-12">
+        <ol className="flex flex-col gap-1 text-sm">
+          {contentKeys(run.steps, (s) => `${s.at}:${stepText(t, s)}`).map(([key, s]) => (
+            <li key={key} className="flex gap-2">
+              <span className="shrink-0 tabular-nums text-muted-foreground">{new Date(s.at).toLocaleTimeString(locale)}</span>
+              <span className={cn(s.ok === false && "text-destructive")}>{stepText(t, s)}</span>
+            </li>
+          ))}
+        </ol>
+        {failed.length > 0 && (
+          <Alert>
+            <WarningIcon />
+            <AlertTitle>{t.failedChecks}</AlertTitle>
+            <AlertDescription>
+              {failed.map((c) => (
+                <div key={c.name}>{t.checkLine(c.name, c.detail ?? t.checkFailed)}</div>
+              ))}
+            </AlertDescription>
+          </Alert>
+        )}
+        {run.backup && (
+          <p className="text-sm text-muted-foreground" title={run.backup}>
+            {t.backup(run.backup)}
+          </p>
+        )}
         </div>
       </CollapsibleContent>
     </Collapsible>

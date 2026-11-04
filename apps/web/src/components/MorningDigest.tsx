@@ -18,7 +18,6 @@ import { setDigestOpen, useDigestOpen } from "@/lib/digest";
 import { MentionText } from "@/lib/mentions";
 import { useMentionables } from "@/lib/people";
 import { digestQuery } from "@/lib/queries";
-import { cn } from "@/lib/utils";
 import { isWhatsNewOpen, useWhatsNewOpen } from "@/lib/whats-new";
 
 /** Opens by itself only on the day it was written: an older recap waits in the user menu. */
@@ -101,22 +100,21 @@ export function MorningDigest() {
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
-      {/* Title and buttons stay put; everything between them, cover included, scrolls on a short screen. */}
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl" initialFocus={false}>
-        <DialogHeader className="shrink-0 px-6 pt-6 pb-4">
-          <DialogTitle className="pr-8 text-xl leading-[26px] font-medium">{title}</DialogTitle>
+      {/* Title, tabs and buttons stay put; everything between them scrolls on a short screen. */}
+      <DialogContent className="flex max-h-11/12 flex-col sm:max-w-xl" initialFocus={false}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-6 pb-6">
-          {personal && (
-            // Stays in view while the details scroll under it.
-            <Tabs value={current} onValueChange={(v) => setTab(v as Tab)} className="sticky -top-px z-10 -my-2 bg-background py-2">
-              <TabsList>
-                <TabsTrigger value="team">{t.team}</TabsTrigger>
-                <TabsTrigger value="you">{t.you}</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
-          <DialogDescription className="text-base text-pretty text-foreground">
+        {personal && (
+          <Tabs value={current} onValueChange={(v) => setTab(v as Tab)}>
+            <TabsList>
+              <TabsTrigger value="team">{t.team}</TabsTrigger>
+              <TabsTrigger value="you">{t.you}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain">
+          <DialogDescription>
             <MentionText text={headline} mentionables={mentionables} />
           </DialogDescription>
           {stats && <StatBadges stats={stats} you={current === "you"} />}
@@ -125,7 +123,7 @@ export function MorningDigest() {
               .filter((s) => s.items.length)
               .map((s) => (
                 <section key={s.label} className="flex flex-col gap-2">
-                  <h3 className="text-[15px] leading-5 font-medium">{s.label}</h3>
+                  <h3 className="text-base font-medium">{s.label}</h3>
                   <ul className="flex list-disc flex-col gap-2 pl-5 text-muted-foreground marker:text-muted-foreground/50">
                     {s.items.map((line) => (
                       <li key={line} className="text-pretty">
@@ -144,7 +142,7 @@ export function MorningDigest() {
           {expanded && current === "team" && !!stats?.people?.length && <People people={stats.people} />}
           <p className="text-sm text-muted-foreground">{t.writtenAt(writtenAt)}</p>
         </div>
-        <DialogFooter className="mx-0 mb-0 shrink-0 rounded-b-2xl px-6">
+        <DialogFooter>
           {expanded ? (
             <Button onClick={close}>{t.close}</Button>
           ) : (
@@ -174,9 +172,14 @@ function StatBadges({ stats, you }: { stats: DigestStats; you: boolean }) {
       {you && stats.conversations > 0 && <Badge variant="outline">{t.conversations(stats.conversations)}</Badge>}
       {stats.agents > 0 && <Badge variant="outline">{t.agents(stats.agents)}</Badge>}
       {!!stats.usage?.tokens && (
-        <Badge variant="outline" className="tabular-nums">
-          {t.tokens(f.compact(stats.usage.tokens))} · {f.cost(stats.usage.cost)}
-        </Badge>
+        <>
+          <Badge variant="outline" className="tabular-nums">
+            {t.tokens(f.compact(stats.usage.tokens))}
+          </Badge>
+          <Badge variant="outline" className="tabular-nums">
+            {f.cost(stats.usage.cost)}
+          </Badge>
+        </>
       )}
     </div>
   );
@@ -190,24 +193,25 @@ function UsageBlock({ usage, you }: { usage: NonNullable<DigestStats["usage"]>; 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-[15px] leading-5 font-medium">{t.usage}</h3>
+        <h3 className="text-base font-medium">{t.usage}</h3>
         <p className="text-xs text-muted-foreground">{you ? t.usageYou : t.usageTeam}</p>
       </div>
       <div className="flex items-baseline gap-4">
-        <span className="text-[22px] leading-7 font-medium tabular-nums">{f.compact(usage.tokens)}</span>
+        <span className="text-2xl font-medium tabular-nums">{f.compact(usage.tokens)}</span>
         <span className="text-muted-foreground tabular-nums">{f.cost(usage.cost)}</span>
       </div>
       {usage.byAgent.length > 0 && (
         <ul className="flex flex-col gap-2" aria-label={t.byAgent}>
           {usage.byAgent.map((a) => (
-            <li key={a.id} className="grid grid-cols-[1.25rem_minmax(0,7rem)_1fr_8.5rem] items-center gap-2 text-sm">
-              <AgentAvatar agent={a} className="size-5" />
-              <span className="truncate">{a.name}</span>
-              <span className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <li key={a.id} className="flex items-center gap-2 text-sm">
+              <AgentAvatar agent={a} className="size-5 shrink-0" />
+              <span className="w-28 shrink-0 truncate">{a.name}</span>
+              <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                 <span className="block h-full rounded-full" style={{ width: `${(a.tokens / top) * 100}%`, background: a.avatar.color }} />
               </span>
-              <span className="text-right font-mono text-xs text-muted-foreground tabular-nums">
-                {f.compact(a.tokens)} · {f.cost(a.cost)}
+              <span className="flex w-36 shrink-0 justify-end gap-2 text-xs text-muted-foreground tabular-nums">
+                <span>{f.compact(a.tokens)}</span>
+                <span>{f.cost(a.cost)}</span>
               </span>
             </li>
           ))}
@@ -217,8 +221,8 @@ function UsageBlock({ usage, you }: { usage: NonNullable<DigestStats["usage"]>; 
         <div className="flex flex-wrap gap-1.5" aria-label={t.byModel}>
           {usage.byModel.map((m) => (
             <Badge key={`${m.provider}:${m.model}`} variant="outline" className="tabular-nums">
-              <ModelLogo model={m.model} provider={m.provider} className="size-3" />
-              {modelName(m.model)} · {f.compact(m.tokens)}
+              <ModelLogo model={m.model} provider={m.provider} />
+              {modelName(m.model)} ({f.compact(m.tokens)})
             </Badge>
           ))}
         </div>
@@ -232,7 +236,7 @@ function People({ people }: { people: NonNullable<DigestStats["people"]> }) {
   const t = useT(messages);
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-[15px] leading-5 font-medium">{t.people}</h3>
+      <h3 className="text-base font-medium">{t.people}</h3>
       <ul className="flex flex-col gap-2">
         {people.map((p) => (
           <li key={p.id} className="flex items-center gap-2 text-sm">

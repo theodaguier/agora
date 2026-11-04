@@ -5,10 +5,11 @@ import { useState, type ReactNode } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet, FieldTitle } from "@/components/ui/field";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { guessIntegrationType, type IntegrationType } from "@agora/core";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
@@ -20,7 +21,7 @@ import { toast } from "sonner";
 import { common } from "@agora/core/i18n";
 import { defineMessages, useT } from "@/i18n";
 import { agentSkillsQuery } from "@/lib/queries";
-import { ErrorText, Loading, useAction } from "./ui";
+import { LoadError, Loading, useAction } from "./ui";
 
 // Tab ids (not displayed: labels come from `messages.tabs`).
 const tabs = ["Profil", "Personnalité", "Modèle", "Outils", "Skills", "Mémoire"] as const;
@@ -44,6 +45,10 @@ const messages = defineMessages<{
   mcpIntro: string;
   mcpEmpty: string;
   mcpInstanceOff: string;
+  modelsEmpty: string;
+  toolsEmpty: string;
+  skillsEmpty: string;
+  skillsNoMatch: string;
   uninstalling: string;
   skillsTitle: string;
   skillsHint: string;
@@ -64,8 +69,8 @@ const messages = defineMessages<{
     defaultModel: "Default model",
     reasoning: "reasoning",
     toolsIntro: "Tools the agent can use in the app. Applied from the next message.",
-    needsConfig: " · needs configuring in Hermes",
-    riskyNote: " · gives access to the server",
+    needsConfig: "Needs configuring in Hermes.",
+    riskyNote: "Gives access to the server.",
     riskyTitle: (tool) => `Turn on "${tool}" for this agent?`,
     riskyBody:
       "This tool gives the agent, and anyone who writes to it, direct access to the server: commands, files, the other agents' keys. Text planted in a web page or an attached file is enough to hijack it. Only turn it on for an agent reserved for people you trust.",
@@ -74,7 +79,11 @@ const messages = defineMessages<{
     mcpDefault: "The default profile uses all of the instance's active MCP servers (MCP tab).",
     mcpIntro: "The instance's MCP servers this agent can use. Applied from the next message.",
     mcpEmpty: "No MCP servers installed (MCP tab).",
-    mcpInstanceOff: " · turned off for the whole instance",
+    mcpInstanceOff: "Turned off for the whole instance.",
+    modelsEmpty: "Hermes lists no models for this provider yet.",
+    toolsEmpty: "No tools available for this agent.",
+    skillsEmpty: "No skills yet. Add some from the Marketplace.",
+    skillsNoMatch: "No skills match this filter.",
     uninstalling: "Uninstalling in Hermes…",
     skillsTitle: "Agent skills",
     skillsHint: "Add more from the Marketplace.",
@@ -95,8 +104,8 @@ const messages = defineMessages<{
     defaultModel: "Modèle par défaut",
     reasoning: "raisonnement",
     toolsIntro: "Outils que l'agent peut utiliser dans l'app. Pris en compte dès le message suivant.",
-    needsConfig: " · configuration requise côté Hermes",
-    riskyNote: " · donne accès au serveur",
+    needsConfig: "Configuration requise côté Hermes.",
+    riskyNote: "Donne accès au serveur.",
     riskyTitle: (tool) => `Activer « ${tool} » pour cet agent ?`,
     riskyBody:
       "Cet outil donne à l'agent, et à toute personne qui lui écrit, un accès direct au serveur : commandes, fichiers, clés des autres agents. Un texte piégé dans une page web ou un fichier joint suffit à le détourner. À n'activer que pour un agent réservé à des personnes de confiance.",
@@ -105,7 +114,11 @@ const messages = defineMessages<{
     mcpDefault: "Le profil par défaut utilise tous les serveurs MCP actifs de l'instance (onglet MCP).",
     mcpIntro: "Serveurs MCP de l'instance que cet agent peut utiliser. Pris en compte dès le message suivant.",
     mcpEmpty: "Aucun serveur MCP installé (onglet MCP).",
-    mcpInstanceOff: " · coupé pour toute l'instance",
+    mcpInstanceOff: "Coupé pour toute l'instance.",
+    modelsEmpty: "Hermes ne liste encore aucun modèle pour ce fournisseur.",
+    toolsEmpty: "Aucun outil disponible pour cet agent.",
+    skillsEmpty: "Aucune skill pour l'instant. Ajoute-en depuis le Marketplace.",
+    skillsNoMatch: "Aucune skill ne correspond à ce filtre.",
     uninstalling: "Désinstallation en cours dans Hermes…",
     skillsTitle: "Skills de l'agent",
     skillsHint: "Ajoute-en depuis le Marketplace.",
@@ -124,7 +137,7 @@ export function AgentDetail({ agent, onBack }: { agent: AdminAgent; onBack: () =
   const t = useT(messages);
   return (
     <>
-      <Breadcrumb className="mb-5">
+      <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink render={<button type="button" onClick={onBack} />}>{t.agents}</BreadcrumbLink>
@@ -135,9 +148,9 @@ export function AgentDetail({ agent, onBack }: { agent: AdminAgent; onBack: () =
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
-      <div className="mb-5 flex items-center gap-3">
-        <AgentAvatar agent={{ avatar: { shape: agent.avatarShape, color: agent.avatarColor } }} className="size-11" />
-        <h2 className="text-xl leading-[26px] font-medium">{agent.name}</h2>
+      <div className="flex items-center gap-3">
+        <AgentAvatar agent={{ avatar: { shape: agent.avatarShape, color: agent.avatarColor } }} className="size-10" />
+        <h2 className="text-base font-medium">{agent.name}</h2>
       </div>
       <AgentEditor agent={agent} />
     </>
@@ -150,8 +163,8 @@ export function AgentEditor({ agent, initialTab = "Personnalité" }: { agent: Ad
   const t = useT(messages);
   return (
     <>
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="gap-5">
-        <TabsList variant="line" className="w-full justify-start border-b">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="gap-4">
+        <TabsList>
           {tabs.map((id) => (
             <TabsTrigger key={id} value={id}>
               {t.tabs[id]}
@@ -167,12 +180,9 @@ export function AgentEditor({ agent, initialTab = "Personnalité" }: { agent: Ad
         <TabsContent value="Modèle">
           <ModelSection agentId={agent.id} />
         </TabsContent>
-        <TabsContent value="Outils">
-          <FieldGroup>
-            <McpSection agentId={agent.id} isDefault={agent.hermesProfile === "default"} />
-            <FieldSeparator />
-            <ToolsSection agentId={agent.id} />
-          </FieldGroup>
+        <TabsContent value="Outils" className="flex flex-col gap-4">
+          <McpSection agentId={agent.id} isDefault={agent.hermesProfile === "default"} />
+          <ToolsSection agentId={agent.id} />
         </TabsContent>
         <TabsContent value="Skills">
           <SkillsSection agentId={agent.id} />
@@ -199,29 +209,37 @@ function ModelSection({ agentId }: { agentId: string }) {
     },
     meta: { success: c.saved },
   });
-  if (isPending) return <Loading />;
-  if (!data) return <ErrorText error={error} />;
-
   return (
-    <FieldSet>
-      <FieldLegend variant="label">{t.defaultModel}</FieldLegend>
-      <FieldDescription>
-        {t.modelIntro} {t.modelList} {data.provider}.
-      </FieldDescription>
-      <RadioGroup aria-label={t.defaultModel} value={data.defaultModel} onValueChange={(v) => save.mutate(v as string)} disabled={save.isPending}>
-        {data.models.map((m) => (
-          <FieldLabel key={m.id} htmlFor={`model-${agentId}-${m.id}`}>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldTitle>{m.id}</FieldTitle>
-                {m.reasoning && <FieldDescription>{t.reasoning}</FieldDescription>}
-              </FieldContent>
-              <RadioGroupItem value={m.id} id={`model-${agentId}-${m.id}`} />
-            </Field>
-          </FieldLabel>
-        ))}
-      </RadioGroup>
-    </FieldSet>
+    <Card>
+      <CardHeader>
+        <CardTitle>{t.defaultModel}</CardTitle>
+        <CardDescription>
+          {t.modelIntro}
+          {data && ` ${t.modelList} ${data.provider}.`}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isPending ? (
+          <Loading />
+        ) : !data ? (
+          <LoadError error={error} />
+        ) : data.models.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.modelsEmpty}</p>
+        ) : (
+          <RadioGroup aria-label={t.defaultModel} value={data.defaultModel} onValueChange={(v) => save.mutate(v as string)} disabled={save.isPending}>
+            {data.models.map((m) => (
+              <Field key={m.id} orientation="horizontal">
+                <RadioGroupItem value={m.id} id={`model-${agentId}-${m.id}`} />
+                <FieldContent>
+                  <FieldLabel htmlFor={`model-${agentId}-${m.id}`}>{m.id}</FieldLabel>
+                  {m.reasoning && <FieldDescription>{t.reasoning}</FieldDescription>}
+                </FieldContent>
+              </Field>
+            ))}
+          </RadioGroup>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -236,38 +254,37 @@ function ToolsSection({ agentId }: { agentId: string }) {
     onMutate: ({ name, enabled }) => qc.setQueryData<Toolset[]>(key, (xs) => xs?.map((t) => (t.name === name ? { ...t, enabled } : t))),
     onSettled: () => qc.invalidateQueries({ queryKey: key }),
   });
-  if (isPending) return <Loading />;
-  if (!data) return <ErrorText error={error} />;
-
   return (
-    <FieldSet>
-      <FieldLegend>{m.tabs.Outils}</FieldLegend>
-      <FieldDescription>{m.toolsIntro}</FieldDescription>
-      <SettingList>
-        {data.map((t) => (
-          <SettingRow
-            key={t.name}
-            title={withoutEmoji(t.label)}
-            description={
-              <>
-                {t.description}
-                {!t.configured && m.needsConfig}
-                {t.risky && m.riskyNote}
-              </>
-            }
-          >
-            <Switch
-              aria-label={withoutEmoji(t.label)}
-              checked={t.enabled}
-              onCheckedChange={async (enabled) => {
-                if (enabled && t.risky && !(await confirmAction({ title: m.riskyTitle(withoutEmoji(t.label)), description: m.riskyBody, action: m.riskyAction }))) return;
-                toggle.mutate({ name: t.name, enabled });
-              }}
-            />
-          </SettingRow>
-        ))}
-      </SettingList>
-    </FieldSet>
+    <ListCard>
+      <ListCardHeader>
+        <CardTitle>{m.tabs.Outils}</CardTitle>
+        <CardDescription>{m.toolsIntro}</CardDescription>
+      </ListCardHeader>
+      {isPending || !data?.length ? (
+        <CardContent className="py-(--card-spacing)">
+          {isPending ? <Loading /> : !data ? <LoadError error={error} /> : <p className="text-sm text-muted-foreground">{m.toolsEmpty}</p>}
+        </CardContent>
+      ) : (
+        <ListCardRows>
+          {data.map((t) => (
+            <SettingRow
+              key={t.name}
+              title={withoutEmoji(t.label)}
+              description={[t.description, !t.configured && m.needsConfig, t.risky && m.riskyNote].filter(Boolean).join(" ")}
+            >
+              <Switch
+                aria-label={withoutEmoji(t.label)}
+                checked={t.enabled}
+                onCheckedChange={async (enabled) => {
+                  if (enabled && t.risky && !(await confirmAction({ title: m.riskyTitle(withoutEmoji(t.label)), description: m.riskyBody, action: m.riskyAction }))) return;
+                  toggle.mutate({ name: t.name, enabled });
+                }}
+              />
+            </SettingRow>
+          ))}
+        </ListCardRows>
+      )}
+    </ListCard>
   );
 }
 
@@ -285,32 +302,26 @@ function McpSection({ agentId, isDefault }: { agentId: string; isDefault: boolea
     onMutate: ({ name, enabled }) => qc.setQueryData<AgentMcp[]>(key, (xs) => xs?.map((m) => (m.name === name ? { ...m, enabled } : m))),
     onSettled: () => qc.invalidateQueries({ queryKey: key }),
   });
-  if (isPending) return <Loading />;
-  if (!data) return <ErrorText error={error} />;
-
   return (
-    <FieldSet>
-      <FieldLegend>{t.mcpTitle}</FieldLegend>
-      <FieldDescription>{isDefault ? t.mcpDefault : t.mcpIntro}</FieldDescription>
-      {data.length === 0 ? (
-        <Empty className="p-4">
-          <EmptyHeader>
-            <EmptyDescription>{t.mcpEmpty}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+    <ListCard>
+      <ListCardHeader>
+        <CardTitle>{t.mcpTitle}</CardTitle>
+        <CardDescription>{isDefault ? t.mcpDefault : t.mcpIntro}</CardDescription>
+      </ListCardHeader>
+      {isPending || !data?.length ? (
+        <CardContent className="py-(--card-spacing)">
+          {isPending ? <Loading /> : !data ? <LoadError error={error} /> : <p className="text-sm text-muted-foreground">{t.mcpEmpty}</p>}
+        </CardContent>
       ) : (
-        <SettingList>
+        <ListCardRows>
           {data.map((m) => (
+            // The server's address stays out of the text: it shows on hover.
             <SettingRow
               key={m.name}
               title={m.name}
-              media={<IntegrationIcon type={types?.[m.name] ?? guessIntegrationType(m.name)} />}
-              description={
-                <>
-                  {m.url ?? m.command}
-                  {!m.instanceEnabled && t.mcpInstanceOff}
-                </>
-              }
+              hint={m.url ?? m.command}
+              media={<IntegrationIcon type={types?.[m.name] ?? guessIntegrationType(m.name)} className="size-5" />}
+              description={m.instanceEnabled ? undefined : t.mcpInstanceOff}
             >
               <Switch
                 aria-label={m.name}
@@ -320,9 +331,9 @@ function McpSection({ agentId, isDefault }: { agentId: string; isDefault: boolea
               />
             </SettingRow>
           ))}
-        </SettingList>
+        </ListCardRows>
       )}
-    </FieldSet>
+    </ListCard>
   );
 }
 
@@ -363,24 +374,33 @@ function SkillsSection({ agentId }: { agentId: string }) {
   const list = (skills ?? []).filter((s) => `${s.name} ${s.description} ${s.category ?? ""}`.toLowerCase().includes(filter.toLowerCase()));
 
   return (
-    <div className="flex flex-col gap-6">
-      <FieldSet>
-        <FieldLegend>
+    <ListCard>
+      <ListCardHeader>
+        <CardTitle>
           {t.skillsTitle}
           {skills && ` (${skills.length})`}
-        </FieldLegend>
-        <FieldDescription>{t.skillsHint}</FieldDescription>
+        </CardTitle>
+        <CardDescription>{t.skillsHint}</CardDescription>
+      </ListCardHeader>
+      <CardContent className="flex flex-col gap-3 py-(--card-spacing)">
         <Input aria-label={t.filterSkills} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t.filter} />
-        {isPending && <Loading />}
-        <ErrorText error={error} />
-        <SettingList>
+        {isPending ? (
+          <Loading />
+        ) : !skills ? (
+          <LoadError error={error} />
+        ) : (
+          list.length === 0 && <p className="text-sm text-muted-foreground">{skills.length ? t.skillsNoMatch : t.skillsEmpty}</p>
+        )}
+      </CardContent>
+      {list.length > 0 && (
+        <ListCardRows>
           {list.map((s) => (
             <SettingRow
               key={s.name}
               title={
                 <>
                   {s.name}
-                  {s.category && ` · ${s.category}`}
+                  {s.category && <span className="text-muted-foreground">{s.category}</span>}
                 </>
               }
               description={s.description}
@@ -402,27 +422,23 @@ function SkillsSection({ agentId }: { agentId: string }) {
               <Switch aria-label={s.name} checked={s.enabled} onCheckedChange={(enabled) => toggle.mutate({ name: s.name, enabled })} />
             </SettingRow>
           ))}
-        </SettingList>
-      </FieldSet>
-    </div>
+        </ListCardRows>
+      )}
+    </ListCard>
   );
 }
 
 /** Hermes prefixes toolset labels with an emoji ("🔍 Web Search"): the list stays text-only. */
 const withoutEmoji = (label: string) => label.replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u, "");
 
-/** List of settings: one row per tool, server or skill. */
-function SettingList({ children }: { children: ReactNode }) {
-  return <ItemGroup className="gap-0 rounded-lg border">{children}</ItemGroup>;
-}
-
-function SettingRow(props: { title: ReactNode; description: ReactNode; media?: ReactNode; children: ReactNode }) {
+/** A row of a settings list: a tool, a server or a skill, with its controls on the right. */
+function SettingRow(props: { title: ReactNode; description?: ReactNode; hint?: string; media?: ReactNode; children: ReactNode }) {
   return (
-    <Item role="listitem" className="flex-nowrap rounded-none border-0 border-b border-border last:border-b-0">
-      {props.media && <ItemMedia variant="icon">{props.media}</ItemMedia>}
+    <Item size="xs" role="listitem" title={props.hint} className="flex-nowrap">
+      {props.media && <ItemMedia>{props.media}</ItemMedia>}
       <ItemContent className="min-w-0">
         <ItemTitle>{props.title}</ItemTitle>
-        <ItemDescription className="truncate">{props.description}</ItemDescription>
+        {props.description && <ItemDescription className="truncate">{props.description}</ItemDescription>}
       </ItemContent>
       <ItemActions>{props.children}</ItemActions>
     </Item>

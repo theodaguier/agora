@@ -1,5 +1,12 @@
 import { Children, Fragment, isValidElement, useId, type ReactElement, type ReactNode, type SVGProps } from "react";
+import { LUCIDE } from "./lucide";
 import { Hole } from "./shapes";
+
+/**
+ * Which drawings the app uses: the house ones (below), or Lucide's under the same names (lucide.tsx).
+ * Being tried out: switch back to "house" to return to the house style.
+ */
+const ICON_SET: "house" | "lucide" = "lucide";
 
 export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & {
   /** Width and height, in px or any CSS length. A `size-*` class overrides it. */
@@ -38,6 +45,13 @@ const isGap = (part: ReactElement<{ strokeWidth?: number | string }>) => Number(
  * default), its details (`cut`), what sits on top (`solid`) and the lines in the full one.
  */
 export function createIcon(name: string, { fill, cut, solid, line }: IconLayers): IconComponent {
+  const Alt = ICON_SET === "lucide" ? LUCIDE[name] : undefined;
+  if (Alt) {
+    const Lucide = ({ size = 24, strokeWidth = 2, ...props }: IconProps) => <Alt size={size} strokeWidth={strokeWidth} aria-hidden="true" data-glyph={name} {...props} />;
+    Lucide.displayName = `${name.replace(/(^|-)(\w)/g, (_, _d, c: string) => c.toUpperCase())}Icon`;
+    (Lucide as IconComponent).layers = { fill, cut, solid, line };
+    return Lucide as IconComponent;
+  }
   function Icon({ size = 24, strokeWidth = 1.75, ...props }: IconProps) {
     const mask = `icon-${useId().replace(/[^\w-]/g, "")}`;
     return (

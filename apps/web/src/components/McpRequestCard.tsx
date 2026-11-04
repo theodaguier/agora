@@ -1,8 +1,9 @@
 import { RequiredMark } from "@/components/FormLabel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { WarningIcon } from "@/components/icons";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ConnectorField } from "@/components/ConnectorField";
@@ -38,6 +39,7 @@ const messages = defineMessages({
       rejected: "Rejected",
     } as Record<McpRequest["status"], string>,
     loading: "Connector request…",
+    unreachable: "This connector request is unreachable for now.",
     connector: (title: string) => `Connector ${title}`,
     docs: "Documentation",
     category: "Category",
@@ -67,6 +69,7 @@ const messages = defineMessages({
       rejected: "Refusé",
     },
     loading: "Demande de connecteur…",
+    unreachable: "Cette demande de connecteur est injoignable pour le moment.",
     connector: (title: string) => `Connecteur ${title}`,
     docs: "Documentation",
     category: "Catégorie",
@@ -138,11 +141,22 @@ export function McpRequestCard({ id }: { id: string }) {
     meta: { error: false },
   });
 
-  if (error) return null;
+  if (error)
+    return (
+      <BlockCard>
+        <CardHeader>
+          <CardDescription title={error.message}>{t.unreachable}</CardDescription>
+        </CardHeader>
+      </BlockCard>
+    );
   if (!req) {
     return (
-      <BlockCard className="flex-row items-center gap-2 py-4 px-5 text-muted-foreground">
-        <Spinner /> {t.loading}
+      <BlockCard>
+        <CardHeader>
+          <CardDescription className="flex items-center gap-2">
+            <Spinner /> {t.loading}
+          </CardDescription>
+        </CardHeader>
       </BlockCard>
     );
   }
@@ -158,11 +172,11 @@ export function McpRequestCard({ id }: { id: string }) {
   return (
     <BlockCard>
       <CardHeader>
-        <CardTitle className="text-[15px] leading-[21px] font-medium">{t.connector(req.title)}</CardTitle>
+        <CardTitle>{t.connector(req.title)}</CardTitle>
         {req.description && <CardDescription>{req.description}</CardDescription>}
-        <StatusLine tone={STATUS_TONE[req.status]} className="mt-1">
-          {t.status[req.status]}
-        </StatusLine>
+        <CardAction>
+          <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>
+        </CardAction>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-3">
@@ -177,10 +191,10 @@ export function McpRequestCard({ id }: { id: string }) {
         </MetaList>
 
         {decides && req.transport === "stdio" && (
-          <p className="flex items-start gap-2 text-[13px] text-muted-foreground">
-            <WarningIcon aria-hidden className="mt-px size-4 shrink-0 text-warning" />
-            {t.stdioWarning}
-          </p>
+          <Alert>
+            <WarningIcon aria-hidden />
+            <AlertDescription>{t.stdioWarning}</AlertDescription>
+          </Alert>
         )}
         {req.status === "pending" && !req.canDecide && <p className="text-sm text-muted-foreground">{t.adminMust}</p>}
 
@@ -224,9 +238,9 @@ export function McpRequestCard({ id }: { id: string }) {
                 install.mutate({ env, ...(bearer && { bearer_token: bearer }) });
               }}
             >
-              <FieldGroup className="gap-3">
+              <FieldGroup>
                 {req.auth === "header" && (
-                  <Field className="gap-1.5" data-invalid={invalid.has("bearer_token") || undefined}>
+                  <Field data-invalid={invalid.has("bearer_token") || undefined}>
                     <FieldLabel htmlFor={`${id}-bearer`}>
                       {t.accessToken}
                       <RequiredMark />
@@ -263,7 +277,7 @@ export function McpRequestCard({ id }: { id: string }) {
                     }}
                   />
                 ))}
-                <FieldDescription className="text-xs">{t.secretsNote}</FieldDescription>
+                <FieldDescription>{t.secretsNote}</FieldDescription>
                 <div>
                   <Button type="submit" disabled={busy}>
                     {install.isPending ? t.connecting : t.connect}

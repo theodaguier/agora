@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, IntegrationType, McpEnvField, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodeMergeMethod, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, GitHubMergeRequestStatus, IntegrationType, McpEnvField, VaultItemKind, VaultKind, VaultRequestKind, VaultRequestStatus, WeeklyHours } from "@agora/core";
 import type { ImplicitCall } from "../group";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
@@ -361,6 +361,8 @@ export const codeSession = pgTable(
     status: text("status").$type<CodeSessionStatus>().notNull(),
     /** Its owner's priority for it, as in Linear (set from the panel, its tab or the Sessions list). */
     priority: text("priority").$type<CodePriority>().notNull().default("none"),
+    /** When its owner set it aside (« Mettre de côté »); cleared by its next instruction. */
+    parkedAt: timestamp("parked_at"),
     /** The GitHub issue it works on, linked by the session itself (link_issue) or detached by its owner. */
     issue: jsonb("issue").$type<CodeIssue>(),
     cwd: text("cwd").notNull(),
@@ -460,6 +462,7 @@ export const setting = pgTable("setting", {
 /** pending → approved → (authorizing →) installed; or rejected. `error` keeps the last failure. */
 export type McpRequestStatus = "pending" | "approved" | "authorizing" | "installed" | "rejected";
 export type McpEnvVar = McpEnvField;
+export type McpHeader = { name: string };
 
 /**
  * MCP servers added from the app (requested by a bot, approved by an admin).
@@ -479,6 +482,8 @@ export const mcpServer = pgTable(
     args: jsonb("args").$type<string[]>().default([]).notNull(),
     env: jsonb("env").$type<McpEnvVar[]>().default([]).notNull(),
     auth: text("auth").$type<"none" | "header" | "oauth">().default("none").notNull(),
+    /** HTTP headers a remote server expects (X-API-Key…): their names here, their values in Hermes's .env. */
+    headers: jsonb("headers").$type<McpHeader[]>().default([]).notNull(),
     /** Documentation or repository the bot got the configuration from. */
     docsUrl: text("docs_url"),
     status: text("status").$type<McpRequestStatus>().default("pending").notNull(),
@@ -816,4 +821,134 @@ export const digestPersonal = pgTable(
     stats: jsonb("stats").$type<DigestStats>(),
   },
   (t) => [primaryKey({ columns: [t.digestId, t.userId] })],
+);
+
+/* ---------- Coffre-fort (@agora/core vaults.ts) ---------- */
+
+/**
+ * A person's personal vault (one each, `ownerId`) or a vault shared by its members. The bots
+ * listed in `vault_agent` read it, on behalf of a member who started the turn.
+ */
+export const vault = pgTable(
+  "vault",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    kind: text("kind").$type<VaultKind>().notNull(),
+    /** Personal vault only: its person. */
+    ownerId: text("owner_id")
+      .unique()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+);
+
+/** Members of a shared vault (its creator included). */
+export const vaultMember = pgTable(
+  "vault_member",
+  {
+    vaultId: text("vault_id")
+      .notNull()
+      .references(() => vault.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.vaultId, t.userId] }), index("vault_member_user_idx").on(t.userId)],
+);
+
+/** Bots allowed to read a vault. */
+export const vaultAgent = pgTable(
+  "vault_agent",
+  {
+    vaultId: text("vault_id")
+      .notNull()
+      .references(() => vault.id, { onDelete: "cascade" }),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.vaultId, t.agentId] }), index("vault_agent_agent_idx").on(t.agentId)],
+);
+
+/**
+ * A login, payment card or contact. `fields` holds what may be shown (a card's last 4 digits, never
+ * its number); `secret` is the sealed JSON of the rest (sealed.ts): password, number, cvc, notes.
+ */
+export const vaultItem = pgTable(
+  "vault_item",
+  {
+    id: text("id").primaryKey(),
+    vaultId: text("vault_id")
+      .notNull()
+      .references(() => vault.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<VaultItemKind>().notNull(),
+    title: text("title").notNull(),
+    website: text("website"),
+    fields: jsonb("fields").$type<Record<string, string>>().notNull(),
+    secret: text("secret").notNull(),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [index("vault_item_vault_idx").on(t.vaultId)],
+);
+
+/**
+ * A bot asking for a login, answered by the person who started its turn. `use`: the password of a login
+ * already in the vault (`vaultItemId`). `ask`: a login it doesn't have, for `website`: the person types it
+ * on the card, it is saved in one of their vaults and the request then points to that new item.
+ */
+export const vaultRequest = pgTable(
+  "vault_request",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").$type<VaultRequestKind>().default("use").notNull(),
+    vaultItemId: text("vault_item_id").references(() => vaultItem.id, { onDelete: "cascade" }),
+    website: text("website"),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+    reason: text("reason").default("").notNull(),
+    status: text("status").$type<VaultRequestStatus>().default("pending").notNull(),
+    decidedAt: timestamp("decided_at"),
+    ...timestamps,
+  },
+  (t) => [index("vault_request_item_idx").on(t.vaultItemId)],
+);
+
+/**
+ * A bot asking to merge a GitHub pull request (github-merge.ts): the person who started its turn
+ * answers on a card in the conversation, and Agora merges with the instance's token on approval.
+ * `headSha`: the head commit when the bot asked, so commits pushed afterwards are never merged unseen.
+ */
+export const githubMergeRequest = pgTable(
+  "github_merge_request",
+  {
+    id: text("id").primaryKey(),
+    repo: text("repo").notNull(),
+    number: integer("number").notNull(),
+    title: text("title").default("").notNull(),
+    url: text("url").default("").notNull(),
+    headSha: text("head_sha"),
+    method: text("method").$type<CodeMergeMethod>().default("squash").notNull(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    sessionId: text("session_id").references(() => codeSession.id, { onDelete: "set null" }),
+    requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+    reason: text("reason").default("").notNull(),
+    status: text("status").$type<GitHubMergeRequestStatus>().default("pending").notNull(),
+    error: text("error"),
+    decidedAt: timestamp("decided_at"),
+    ...timestamps,
+  },
+  (t) => [index("github_merge_request_conversation_idx").on(t.conversationId)],
 );

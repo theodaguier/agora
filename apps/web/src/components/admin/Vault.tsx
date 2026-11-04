@@ -3,24 +3,24 @@ import { useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
-import { LockIcon, MoreIcon } from "@/components/icons";
+import { LockIcon, MoreIcon, TrashIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Command, CommandGroup, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { AgentTargets } from "@/components/marketplace/AgentTargets";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Field, FieldDescription, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Input } from "@/components/ui/input";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api, type AdminAgent } from "@/lib/api";
 import { adminAgentsQuery } from "@/lib/queries";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
-import { ErrorText, Loading, SectionHeader, useRestartNeeded } from "./ui";
+import { ErrorText, LoadError, Loading, SectionHeader, useRestartNeeded } from "./ui";
 
 type Secret = { key: string; preview: string | null; description: string; instance: boolean; agents: string[] };
 
@@ -31,9 +31,10 @@ const KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const messages = defineMessages({
   en: {
-    title: "Vault",
-    text: "The credentials in the agents' .env: API keys, tokens, passwords. The list masks values; the developer view shows them.",
+    title: "Technical secrets",
+    text: "The bots' secrets: API keys, tokens, passwords. The list masks values; the developer view shows them.",
     add: "Add",
+    listTitle: "Secrets",
     emptyTitle: "No credentials",
     emptyText: "Add an API key or a token so agents can use it.",
     all: "All agents",
@@ -62,7 +63,7 @@ const messages = defineMessages({
     allOff: "Remove from all agents",
     list: "List",
     developer: "Developer",
-    devHelp: "The instance's credentials as a .env file, values in clear. New names go to every agent, a line you delete is removed everywhere.",
+    devHelp: "The instance's secrets as plain text, values in clear. New names go to every agent, a line you delete is removed everywhere.",
     devLabel: "Instance .env",
     reset: "Reset",
     unchanged: "No changes.",
@@ -72,9 +73,10 @@ const messages = defineMessages({
     removeManyText: (keys: string) => `${keys} will be removed from the .env of the instance and of every agent.`,
   },
   fr: {
-    title: "Coffre",
-    text: "Les credentials des .env des agents : clés d'API, jetons, mots de passe. La liste masque les valeurs, la vue développeur les affiche.",
+    title: "Secrets techniques",
+    text: "Les secrets des bots : clés d'API, jetons, mots de passe. La liste masque les valeurs, la vue développeur les affiche.",
     add: "Ajouter",
+    listTitle: "Secrets",
     emptyTitle: "Aucun credential",
     emptyText: "Ajoute une clé d'API ou un jeton pour que les agents puissent s'en servir.",
     all: "Tous les agents",
@@ -103,7 +105,7 @@ const messages = defineMessages({
     allOff: "Retirer à tous les agents",
     list: "Liste",
     developer: "Développeur",
-    devHelp: "Les credentials de l'instance au format .env, valeurs en clair. Un nouveau nom va à tous les agents, une ligne supprimée est retirée partout.",
+    devHelp: "Les secrets de l'instance en texte brut, valeurs en clair. Un nouveau nom va à tous les agents, une ligne supprimée est retirée partout.",
     devLabel: ".env de l'instance",
     reset: "Réinitialiser",
     unchanged: "Aucun changement.",
@@ -140,60 +142,71 @@ export function Vault() {
 
   return (
     <>
-      <SectionHeader title={t.title} text={t.text} action={t.add} onAction={() => setEditing("")} />
-      <Tabs defaultValue="list" className="gap-5">
-        <TabsList variant="line" className="w-full justify-start border-b">
+      <SectionHeader title={t.title} text={t.text} />
+      <Tabs defaultValue="list" className="gap-4">
+        <TabsList>
           <TabsTrigger value="list">{t.list}</TabsTrigger>
           <TabsTrigger value="developer">{t.developer}</TabsTrigger>
         </TabsList>
         <TabsContent value="developer">
           <DeveloperView />
         </TabsContent>
-        <TabsContent value="list" className="flex flex-col gap-2">
-          <ErrorText error={error} />
-          {isPending ? (
-            <Loading />
-          ) : secrets?.length ? (
-            <ItemGroup className="gap-2">
-              {secrets.map((s) => (
-                <Item key={s.key} variant="outline">
-                  <ItemContent className="min-w-0">
-                    <ItemTitle className="font-mono">{s.key}</ItemTitle>
-                    <ItemDescription className="truncate">{[s.preview, summary(s)].filter(Boolean).join(" · ")}</ItemDescription>
-                  </ItemContent>
-                  <ItemActions>
-                    <Button variant="outline" size="sm" onClick={() => setEditing(s.key)}>
-                      {t.edit}
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.more(s.key)} />}>
-                        <MoreIcon />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={async () =>
-                            (await confirmAction({ title: t.removeTitle(s.key), description: t.removeText, action: c.delete })) && remove.mutate(s.key)
-                          }
-                        >
-                          {c.delete}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </ItemActions>
-                </Item>
-              ))}
-            </ItemGroup>
-          ) : (
-            !error && (
-              <Empty className="p-4">
-                <EmptyHeader>
-                  <EmptyTitle>{t.emptyTitle}</EmptyTitle>
-                  <EmptyDescription>{t.emptyText}</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )
-          )}
+        <TabsContent value="list">
+          <ListCard>
+            <ListCardHeader>
+              <CardTitle>{t.listTitle}</CardTitle>
+              <CardAction>
+                <Button variant="outline" size="sm" onClick={() => setEditing("")}>
+                  {t.add}
+                </Button>
+              </CardAction>
+            </ListCardHeader>
+            {isPending ? (
+              <CardContent className="py-(--card-spacing)">
+                <Loading />
+              </CardContent>
+            ) : error ? (
+              <CardContent className="py-(--card-spacing)">
+                <LoadError error={error} />
+              </CardContent>
+            ) : secrets?.length ? (
+              <ListCardRows>
+                {secrets.map((s) => (
+                  <Item size="xs" key={s.key}>
+                    <ItemContent className="min-w-0">
+                      <ItemTitle>{s.key}</ItemTitle>
+                      <ItemDescription className="truncate">{[s.preview, summary(s)].filter(Boolean).join(", ")}</ItemDescription>
+                    </ItemContent>
+                    <ItemActions>
+                      <Button variant="outline" size="sm" onClick={() => setEditing(s.key)}>
+                        {t.edit}
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.more(s.key)} />}>
+                          <MoreIcon />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={async () =>
+                              (await confirmAction({ title: t.removeTitle(s.key), description: t.removeText, action: c.delete })) && remove.mutate(s.key)
+                            }
+                          >
+                            <TrashIcon />
+                            {c.delete}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </ItemActions>
+                  </Item>
+                ))}
+              </ListCardRows>
+            ) : (
+              <CardContent className="py-(--card-spacing)">
+                <p className="text-sm text-muted-foreground">{t.emptyText}</p>
+              </CardContent>
+            )}
+          </ListCard>
         </TabsContent>
       </Tabs>
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
@@ -248,10 +261,6 @@ function SecretDialog({
     meta: { success: c.saved, error: false },
   });
 
-  const others = agents.filter((a) => !isMain(a));
-  const pickedIds = new Set(picked);
-  const everything = others.every((a) => pickedIds.has(a.id));
-  const toggle = (id: string) => setPicked((xs) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]));
   const nameError = key && !KEY.test(key) ? t.nameInvalid : !secret && taken(key) ? t.nameTaken : null;
   const valid = !!key && !nameError && (secret ? true : !!value);
 
@@ -268,7 +277,7 @@ function SecretDialog({
           if (valid) save.mutate();
         }}
       >
-        <FieldGroup className="gap-5">
+        <FieldGroup>
           {!secret && (
             <Field data-invalid={!!nameError}>
               <FormLabel htmlFor="vault-key" required>
@@ -276,7 +285,6 @@ function SecretDialog({
               </FormLabel>
               <Input
                 id="vault-key"
-                className="font-mono"
                 autoComplete="off"
                 spellCheck={false}
                 autoFocus
@@ -303,7 +311,6 @@ function SecretDialog({
             <InputGroup>
               <InputGroupInput
                 id="vault-value"
-                className="font-mono"
                 type={shown ? "text" : "password"}
                 autoComplete="new-password"
                 spellCheck={false}
@@ -320,42 +327,14 @@ function SecretDialog({
             {secret?.preview && <FieldDescription>{t.keepValue(secret.preview)}</FieldDescription>}
           </Field>
           {agents.length > 0 && (
-            <FieldSet>
-              <FieldLegend variant="label">{t.agents}</FieldLegend>
-              <FieldDescription>{t.agentsHelp}</FieldDescription>
-              <Command className="rounded-xl border border-border p-1">
-                <CommandList className="max-h-60">
-                  <CommandGroup>
-                    {agents.map((a) => {
-                      const main = isMain(a);
-                      const checked = main || pickedIds.has(a.id);
-                      return (
-                        <CommandItem
-                          key={a.id}
-                          value={a.id}
-                          disabled={main}
-                          onSelect={() => toggle(a.id)}
-                          className="h-10 gap-2.5 rounded-lg px-2 text-sm"
-                        >
-                          <AgentAvatar agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }} className="size-6" />
-                          <span className="flex-1 truncate">{a.name}</span>
-                          {main && <span className="text-xs text-muted-foreground">{t.main}</span>}
-                          <Checkbox checked={checked} tabIndex={-1} aria-hidden className="pointer-events-none" />
-                        </CommandItem>
-                      );
-                    })}
-                  </CommandGroup>
-                  {others.length > 1 && (
-                    <>
-                      <CommandSeparator />
-                      <CommandItem value="__all" onSelect={() => setPicked(everything ? [] : others.map((a) => a.id))}>
-                        {everything ? t.allOff : t.allOn}
-                      </CommandItem>
-                    </>
-                  )}
-                </CommandList>
-              </Command>
-            </FieldSet>
+            <AgentTargets
+              legend={t.agents}
+              hint={t.agentsHelp}
+              value={picked}
+              onChange={setPicked}
+              locked={agents.filter(isMain).map((a) => a.id)}
+              lockedLabel={t.main}
+            />
           )}
           <ErrorText error={save.error} />
         </FieldGroup>
@@ -410,15 +389,13 @@ function DeveloperView() {
     },
   });
 
-  if (raw.isPending) return <Loading />;
-  if (raw.error) return <ErrorText error={raw.error} />;
-
   const submit = async () => {
     const kept = names(text);
     const gone = [...names(original)].filter((k) => !kept.has(k));
     if (gone.length && !(await confirmAction({ title: t.removeManyTitle(gone.length), description: t.removeManyText(gone.join(", ")), action: c.delete }))) return;
     save.mutate();
   };
+  const dirty = draft !== null && draft !== original;
 
   return (
     <form
@@ -427,31 +404,44 @@ function DeveloperView() {
         void submit();
       }}
     >
-      <FieldGroup className="gap-4">
-        <Field>
-          <FormLabel htmlFor="vault-raw">{t.devLabel}</FormLabel>
-          <FieldDescription>{t.devHelp}</FieldDescription>
-          <Textarea
-            id="vault-raw"
-            className="min-h-64 resize-y font-mono text-[13px] leading-relaxed field-sizing-fixed"
-            spellCheck={false}
-            autoComplete="off"
-            autoCapitalize="off"
-            wrap="off"
-            placeholder="OPENAI_API_KEY=sk-…"
-            value={text}
-            onChange={(e) => setDraft(e.target.value)}
-          />
-        </Field>
-        <Field orientation="horizontal">
-          <Button type="submit" disabled={draft === null || draft === original || save.isPending}>
-            {save.isPending ? c.saving : c.save}
-          </Button>
-          <Button type="button" variant="outline" disabled={draft === null || save.isPending} onClick={() => setDraft(null)}>
-            {t.reset}
-          </Button>
-        </Field>
-      </FieldGroup>
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <label htmlFor="vault-raw">{t.devLabel}</label>
+          </CardTitle>
+          <CardDescription>{t.devHelp}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {raw.isPending ? (
+            <Loading />
+          ) : raw.error ? (
+            <LoadError error={raw.error} />
+          ) : (
+            <Textarea
+              id="vault-raw"
+              rows={12}
+              spellCheck={false}
+              autoComplete="off"
+              autoCapitalize="off"
+              wrap="off"
+              placeholder="OPENAI_API_KEY=sk-…"
+              value={text}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+          )}
+        </CardContent>
+        {/* Saved on demand: the buttons only show once the text changed. */}
+        {dirty && (
+          <CardFooter className="justify-end">
+            <Button type="button" variant="outline" disabled={save.isPending} onClick={() => setDraft(null)}>
+              {t.reset}
+            </Button>
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? c.saving : c.save}
+            </Button>
+          </CardFooter>
+        )}
+      </Card>
     </form>
   );
 }

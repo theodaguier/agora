@@ -30,7 +30,7 @@ const toSkill = (r: Raw): Skill => {
 const describe = ({ owner, ...s }: Skill): SkillsShSkill => {
   const locale = currentLocale();
   const count = new Intl.NumberFormat(locale === "fr" ? "fr-FR" : "en-US", { notation: "compact" }).format(s.installs);
-  return { ...s, description: `${owner} · ${tr(messages, locale).installs(count)}` };
+  return { ...s, description: `${owner}, ${tr(messages, locale).installs(count)}` };
 };
 
 /** Ranking by installs, as embedded in the skills.sh home page. */

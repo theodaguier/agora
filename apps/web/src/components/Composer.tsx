@@ -1,11 +1,10 @@
 import { rankByQuery } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { ArrowUpIcon, PackageIcon, ClockIcon, PlugIcon, PlusIcon, CloseIcon, StopIcon } from "@/components/icons";
+import { ArrowUpIcon, ChartIcon, ClockIcon, CloseIcon, FilesIcon, LayersIcon, ModelsIcon, PackageIcon, PlugIcon, PlusIcon, RedoIcon, SettingsIcon, StopIcon, TrashIcon } from "@/components/icons";
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref, type RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { defineMessages, useT } from "@/i18n";
 import { invocationKey, retryLast, sessionCommand, uploadAttachment, type AgentSummary, type Attachment, type Invocation, type ReplyTo } from "@/lib/api";
 import { ALL_HANDLE, MAX_ATTACHMENT } from "@agora/core";
@@ -130,7 +129,7 @@ const noMentionables: AgentSummary[] = [];
 const fieldSizing = typeof CSS !== "undefined" && CSS.supports("field-sizing", "content");
 
 /**
- * The field grows with its text, up to 200 px: by CSS (`field-sizing`) where the browser can, without
+ * The field grows with its text, up to 12 rem (max-h-48): by CSS (`field-sizing`) where the browser can, without
  * relaying the thread out on each keystroke; measured here otherwise.
  */
 function useAutosize(area: RefObject<HTMLTextAreaElement | null>, text: string) {
@@ -138,7 +137,7 @@ function useAutosize(area: RefObject<HTMLTextAreaElement | null>, text: string) 
     const el = area.current;
     if (!el || fieldSizing) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 192)}px`;
   }, [area, text]);
 }
 
@@ -152,7 +151,7 @@ function mentionItems(q: string, mentionables: AgentSummary[], people: ReturnTyp
       kind: "agent" as const,
       name: a.name,
       description: t.mentionHint,
-      media: <AgentAvatar agent={a} className="size-[18px]" />,
+      media: <AgentAvatar agent={a} className="size-5" />,
     }));
   const colleagues = people
     .filter((p) => p.handle.startsWith(q) || p.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)))
@@ -162,7 +161,7 @@ function mentionItems(q: string, mentionables: AgentSummary[], people: ReturnTyp
       kind: "person" as const,
       name: p.handle,
       description: p.name,
-      media: <PersonAvatar person={p} className="size-[18px]" />,
+      media: <PersonAvatar person={p} className="size-5" />,
     }));
   return [...all, ...bots, ...colleagues];
 }
@@ -228,11 +227,10 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
   const { files, clearFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
   // In a group, "/" lists the skills of the group's bots.
   const slash = botTools || mentionables.length > 0;
-  const { data: commands } = useQuery({ ...commandsQuery(conversationId), enabled: slash });
+  const { data: commands, isPending: commandsPending, isError: commandsFailed } = useQuery({ ...commandsQuery(conversationId), enabled: slash });
   const { data: routines } = useQuery({ ...routinesQuery(conversationId), enabled: botTools });
 
   useAutosize(area, text);
-
 
   const addInvocation = (inv: Invocation) =>
     setInvocations((xs) => (xs.length >= MAX_INVOCATIONS || xs.some((x) => invocationKey(x) === invocationKey(inv)) ? xs : [...xs, inv]));
@@ -262,7 +260,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
     [people, user.id, recipientId, mentioned],
   );
   const token = dismissed ? null : currentToken(text, caret, slash, true);
-  // The colored copy follows the field when it scrolls (past 200 px), or the two texts drift apart.
+  // The colored copy follows the field when it scrolls (past its max height), or the two texts drift apart.
   useLayoutEffect(() => {
     if (overlay.current && area.current) overlay.current.scrollTop = area.current.scrollTop;
   }, [text, highlighted]);
@@ -277,18 +275,18 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
     // Hermes session commands, direct conversation only (in a group, each bot has its own session).
     const sessionCommands: SlashItem[] = botTools
       ? [
-          { key: "command:new", kind: "command", name: "new", description: t.cmdNew, run: reset },
-          { key: "command:clear", kind: "command", name: "clear", description: t.cmdClear, run: reset },
-          { key: "command:compact", kind: "command", name: "compact", description: t.cmdCompact, run: () => sessionCommand(conversationId, "compact").catch(fail) },
-          { key: "command:retry", kind: "command", name: "retry", description: t.cmdRetry, run: () => retryLast(conversationId).catch(fail) },
-          { key: "command:context", kind: "command", name: "context", description: t.cmdContext, run: () => setContextOpen(true) },
+          { key: "command:new", kind: "command", name: "new", description: t.cmdNew, icon: PlusIcon, run: reset },
+          { key: "command:clear", kind: "command", name: "clear", description: t.cmdClear, icon: TrashIcon, run: reset },
+          { key: "command:compact", kind: "command", name: "compact", description: t.cmdCompact, icon: LayersIcon, run: () => sessionCommand(conversationId, "compact").catch(fail) },
+          { key: "command:retry", kind: "command", name: "retry", description: t.cmdRetry, icon: RedoIcon, run: () => retryLast(conversationId).catch(fail) },
+          { key: "command:context", kind: "command", name: "context", description: t.cmdContext, icon: ChartIcon, run: () => setContextOpen(true) },
         ]
       : [];
     const actions: SlashItem[] = [
-      { key: "action:files", kind: "action", name: t.attachFiles, description: t.attachHint, run: () => picker.current?.click() },
-      ...(botTools ? [{ key: "action:model", kind: "action" as const, name: t.chooseModel, description: t.chooseModelHint, run: () => setModelOpen(true) }] : []),
+      { key: "action:files", kind: "action", name: t.attachFiles, description: t.attachHint, icon: FilesIcon, run: () => picker.current?.click() },
+      ...(botTools ? [{ key: "action:model", kind: "action" as const, name: t.chooseModel, description: t.chooseModelHint, icon: ModelsIcon, run: () => setModelOpen(true) }] : []),
       ...(botTools && user.role === "admin"
-        ? [{ key: "action:admin", kind: "action" as const, name: t.agentSettings, description: t.administration, run: () => openSettings("agents") }]
+        ? [{ key: "action:admin", kind: "action" as const, name: t.agentSettings, description: t.administration, icon: SettingsIcon, run: () => openSettings("agents") }]
         : []),
     ];
     const all: SlashItem[] = [
@@ -303,8 +301,8 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             kind: "skill",
             agentId: bot.id,
             name: s.name,
-            description: `${bot.name} · ${s.description}`,
-            media: <AgentAvatar agent={bot} className="size-[18px]" />,
+            description: `${bot.name} – ${s.description}`,
+            media: <AgentAvatar agent={bot} className="size-5" />,
           },
         ];
       }),
@@ -365,53 +363,15 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           e.preventDefault();
           send();
         }}
-        // Figma « Composer »: a pill (46 px on one line), hairline and a soft shadow; quotes, files and invocations stack above the line.
-        className="relative rounded-[23px] border border-border bg-background py-[5px] pr-[5px] pl-1.5 shadow-card transition-[border-color] focus-within:border-black/15 dark:focus-within:border-white/20"
+        className="relative"
       >
-        {token && (token.trigger === "/" || items.length > 0) && <SlashMenu items={items} active={Math.min(active, Math.max(items.length - 1, 0))} onHover={setActive} onPick={pick} />}
-
-        {invocations.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-2 pb-1.5 pt-1.5">
-            {invocations.map((v) => (
-              <Badge
-                key={invocationKey(v)}
-                variant="secondary"
-                size="lg"
-                className="bg-accent pr-1"
-              >
-                {v.kind === "skill" ? <PackageIcon /> : v.kind === "routine" ? <ClockIcon /> : <PlugIcon />}
-                {v.name}
-                {v.kind !== "routine" && v.agentId && (
-                  <span className="text-muted-foreground">{mentionables.find((a) => a.id === v.agentId)?.name}</span>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={t.remove(v.name)}
-                  onClick={() => setInvocations((xs) => xs.filter((x) => x !== v))}
-                  className="hover:bg-border"
-                >
-                  <CloseIcon />
-                </Button>
-              </Badge>
-            ))}
-          </div>
-        )}
-        {replyTo && (
-          // The height is set at once (the thread follows in the same frame); only the quote fades in, so nothing bounces.
-          <div className="chat-arrive px-1.5 pb-1.5 pt-1">
-            <QuoteBlock
-              quote={replyTo}
-              className="bg-accent"
-              actions={
-                <Button variant="ghost" size="icon-xs" aria-label={tr.cancelReply} onClick={onCancelReply} className="hover:bg-border">
-                  <CloseIcon />
-                </Button>
-              }
-            />
-          </div>
-        )}
-        <PendingFiles items={files} onRemove={removeFile} />
+        {token && (token.trigger === "/" || items.length > 0) && <SlashMenu
+            items={items}
+            active={Math.min(active, Math.max(items.length - 1, 0))}
+            onHover={setActive}
+            onPick={pick}
+            status={token.trigger !== "/" ? undefined : commandsFailed ? "error" : slash && commandsPending ? "loading" : undefined}
+          />}
         <input
           ref={picker}
           type="file"
@@ -422,18 +382,48 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             e.target.value = "";
           }}
         />
-        <InputGroup className="h-auto flex-row items-end gap-1 rounded-none border-0 bg-transparent shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0">
-          <InputGroupAddon align="inline-start" className="cursor-default p-0 has-[>button]:ml-0">
-            <Button variant="ghost" size="icon-lg" aria-label={t.attachFiles} onClick={() => picker.current?.click()} className="text-icon">
-              <PlusIcon />
-            </Button>
-          </InputGroupAddon>
-          <div className="relative flex min-w-0 flex-1 py-[7.5px]">
+        <InputGroup>
+          {invocations.length > 0 && (
+            <InputGroupAddon align="block-start" className="flex-wrap">
+              {invocations.map((v) => (
+                <Badge key={invocationKey(v)} variant="secondary">
+                  {v.kind === "skill" ? <PackageIcon /> : v.kind === "routine" ? <ClockIcon /> : <PlugIcon />}
+                  {v.name}
+                  {v.kind !== "routine" && v.agentId && (
+                    <span className="text-muted-foreground">{mentionables.find((a) => a.id === v.agentId)?.name}</span>
+                  )}
+                  <InputGroupButton size="icon-xs" aria-label={t.remove(v.name)} onClick={() => setInvocations((xs) => xs.filter((x) => x !== v))}>
+                    <CloseIcon />
+                  </InputGroupButton>
+                </Badge>
+              ))}
+            </InputGroupAddon>
+          )}
+          {replyTo && (
+            // The height is set at once (the thread follows in the same frame); only the quote fades in, so nothing bounces.
+            <InputGroupAddon align="block-start" className="chat-arrive">
+              <QuoteBlock
+                quote={replyTo}
+                actions={
+                  <InputGroupButton size="icon-xs" aria-label={tr.cancelReply} onClick={onCancelReply}>
+                    <CloseIcon />
+                  </InputGroupButton>
+                }
+              />
+            </InputGroupAddon>
+          )}
+          {files.length > 0 && (
+            <InputGroupAddon align="block-start">
+              <PendingFiles items={files} onRemove={removeFile} />
+            </InputGroupAddon>
+          )}
+          <div className="relative w-full">
             {highlighted && (
+              // Same box and type as the field below, so the colored copy lines up with its text.
               <div
                 ref={overlay}
                 aria-hidden
-                className="pointer-events-none absolute inset-x-0 inset-y-[7.5px] overflow-hidden whitespace-pre-wrap break-words p-0 text-[15px] leading-[21px] [scrollbar-gutter:stable]"
+                className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-2.5 py-2 text-base [scrollbar-gutter:stable] md:text-sm"
               >
                 <MentionText text={text} mentionables={colored} flat />
                 {/* A final line break takes a line in the field: the same here, so both scroll as far. */}
@@ -442,7 +432,6 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             )}
             <InputGroupTextarea
               ref={area}
-              rows={1}
               value={text}
               aria-expanded={!!token}
               aria-autocomplete="list"
@@ -497,21 +486,26 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
                 }
               }}
               placeholder={placeholder}
-              className={cn("max-h-[200px] min-h-0 min-w-0 p-0 text-[15px] leading-[21px] [scrollbar-gutter:stable] placeholder:text-subtle md:text-[15px]", highlighted && "text-transparent caret-foreground")}
+              className={cn("max-h-48 [scrollbar-gutter:stable]", highlighted && "text-transparent caret-foreground")}
             />
           </div>
-          <InputGroupAddon align="inline-end" className="cursor-default gap-1 p-0 has-[>button]:mr-0">
-            {botTools && <ModelPicker conversationId={conversationId} open={modelOpen} onOpenChange={setModelOpen} />}
-            {botTools && <ContextDialog conversationId={conversationId} open={contextOpen} onOpenChange={setContextOpen} />}
-            {onStop && !canSend ? (
-              <Button type="button" size="icon" aria-label={stopLabel} title={stopLabel} onClick={onStop} className="size-[34px] [&_svg:not([class*='size-'])]:size-4">
-                <StopIcon />
-              </Button>
-            ) : (
-              <Button type="submit" size="icon" aria-label={t.send} disabled={!canSend} style={addressedAccent(text, colored)} className="size-[34px] disabled:opacity-40 [&_svg:not([class*='size-'])]:size-[18px]">
-                <ArrowUpIcon strokeWidth={2.25} />
-              </Button>
-            )}
+          <InputGroupAddon align="block-end">
+            <InputGroupButton size="icon-sm" aria-label={t.attachFiles} onClick={() => picker.current?.click()}>
+              <PlusIcon />
+            </InputGroupButton>
+            <div className="ml-auto flex items-center gap-1">
+              {botTools && <ModelPicker conversationId={conversationId} open={modelOpen} onOpenChange={setModelOpen} />}
+              {botTools && <ContextDialog conversationId={conversationId} open={contextOpen} onOpenChange={setContextOpen} />}
+              {onStop && !canSend ? (
+                <InputGroupButton variant="default" size="icon-sm" aria-label={stopLabel} title={stopLabel} onClick={onStop}>
+                  <StopIcon />
+                </InputGroupButton>
+              ) : (
+                <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} disabled={!canSend} style={addressedAccent(text, colored)}>
+                  <ArrowUpIcon />
+                </InputGroupButton>
+              )}
+            </div>
           </InputGroupAddon>
         </InputGroup>
       </form>

@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { HermesError } from "../hermes-admin";
 import { cancelOAuth, createCustom, decide, getRequest, install, listRequests, oauthStatus, reconfigure, relayOAuthCallback, startOAuth } from "../mcp-requests";
-import { mcpRequestSchema } from "../mcp-requests";
+import { mcpCustomSchema } from "../mcp-requests";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
 import { errors } from "../errors.messages";
 import { currentLocale, defineMessages, tr, type Locale } from "../i18n";
@@ -36,7 +36,7 @@ export const mcpRequests = new Hono<AppEnv>()
 
   /** Custom connector declared by an admin (marketplace), with its integration type. */
   .post("/custom", requireAdmin, async (c) => {
-    const body = mcpRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    const body = mcpCustomSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!body.success || !body.data.type) throw new HermesError(tr(errors).invalidRequest, 400);
     return c.json(await createCustom({ ...body.data, type: body.data.type }, c.get("user")), 201);
   })
@@ -70,6 +70,8 @@ export const mcpRequests = new Hono<AppEnv>()
         auth: z.enum(["none", "header", "oauth"]).optional(),
         env: z.record(z.string().regex(/^[A-Z][A-Z0-9_]*$/), z.string().max(MCP_ENV_VALUE_MAX)).default({}).transform(envValues),
         bearer_token: z.string().min(1).max(4000).optional(),
+        /** Values of the headers a remote server expects, by header name. */
+        headers: z.record(z.string().regex(/^[A-Za-z0-9-]{1,60}$/), z.string().max(4000)).optional(),
         /** Client registered by hand with the provider (no dynamic registration). */
         oauth_client: z
           .object({

@@ -79,14 +79,14 @@ export function QuoteBlock({
       variant="muted"
       size="xs"
       render={onClick ? <button type="button" onClick={onClick} /> : undefined}
-      className={cn("w-full rounded-xl text-left", onClick && "hover:bg-muted/60", className)}
+      className={cn("w-full text-left", className)}
     >
       <ItemContent className="min-w-0">
-        <ItemTitle className="w-full truncate text-[13px]">{quote.authorName}</ItemTitle>
-        <ItemDescription className="line-clamp-1 text-[13px]">{label}</ItemDescription>
+        <ItemTitle className="w-full truncate">{quote.authorName}</ItemTitle>
+        <ItemDescription className="line-clamp-1">{label}</ItemDescription>
       </ItemContent>
       {image && (
-        <ItemMedia variant="image" className="size-8 rounded-md">
+        <ItemMedia variant="image">
           <img src={attachmentUrl(image.id)} alt="" />
         </ItemMedia>
       )}
@@ -121,7 +121,7 @@ export function ChatMessage(props: {
       {invocations.length > 0 && (
         <div className="flex flex-wrap justify-end gap-1.5">
           {invocations.map((v) => (
-            <Badge key={invocationKey(v)} variant="outline" size="lg" className="text-foreground/85">
+            <Badge key={invocationKey(v)} variant="outline">
               {v.kind === "skill" ? <PackageIcon /> : v.kind === "routine" ? <ClockIcon /> : <PlugIcon />}
               {v.name}
             </Badge>
@@ -133,23 +133,23 @@ export function ChatMessage(props: {
       {framed && rich && (
         <div
           className={cn(
-            "flex w-fit min-w-0 max-w-full flex-col gap-1 overflow-hidden rounded-[14px] p-1",
-            mine ? "bubble-mine bg-primary text-primary-foreground" : "bg-secondary",
-            attachments.some((a) => isImage(a.mime) || isVideo(a.mime)) ? "w-80" : "max-w-[min(100%,24rem)]",
+            "flex w-fit min-w-0 max-w-full flex-col gap-1 overflow-hidden rounded-2xl p-1",
+            mine ? "bubble-mine bg-primary text-primary-foreground" : "bg-muted",
+            attachments.some((a) => isImage(a.mime) || isVideo(a.mime)) ? "w-80" : "max-w-sm",
             replyTo && "min-w-56",
           )}
         >
-          {forwarded && <p className={cn("px-2.5 pt-1 text-[13px]", mine ? "text-primary-foreground/75" : "text-muted-foreground")}>{t.forwardedFrom(forwarded.authorName)}</p>}
+          {forwarded && <p className={cn("px-2 pt-1 text-xs", mine ? "text-primary-foreground/75" : "text-muted-foreground")}>{t.forwardedFrom(forwarded.authorName)}</p>}
           {replyTo && (
             <QuoteBlock
               quote={replyTo}
               onClick={onQuote && (() => onQuote(replyTo.id))}
-              className={mine ? "bg-white/15 hover:bg-white/22 [&_*]:text-primary-foreground!" : "bg-background/60 hover:bg-background/80"}
+              className={mine ? "bg-primary-foreground/15 **:text-primary-foreground" : undefined}
             />
           )}
           {attachments.length > 0 && <BubbleAttachments items={attachments} />}
           {text && (
-            <MessageText plain text={text} mentionables={mentionables} className="min-w-0 break-words px-2.5 pb-1 pt-0.5 text-[15px] leading-[1.45]" />
+            <MessageText plain text={text} mentionables={mentionables} className="min-w-0 break-words px-2 pb-1 text-sm" />
           )}
         </div>
       )}
@@ -194,7 +194,7 @@ export function useDeleteMessage(conversationId: string) {
 export function PendingRow({ failed, children }: { failed?: boolean; children: ReactNode }) {
   return (
     <div className="-mx-2 flex justify-end px-2">
-      <div className="flex min-w-0 max-w-[min(560px,80%)] flex-row-reverse items-center gap-1">
+      <div className="flex min-w-0 max-w-4/5 flex-row-reverse items-center gap-1">
         <div className={cn("min-w-0", !failed && "chat-pending")}>{children}</div>
         {/* The place of the "…" button. */}
         <span aria-hidden className="size-7 shrink-0" />
@@ -285,7 +285,7 @@ export function MessageRow(props: {
             "flex min-w-0 items-center gap-1",
             props.arriving && "chat-arrive",
             props.mine && "flex-row-reverse",
-            props.wide ? "w-full items-start" : "max-w-[min(560px,80%)]",
+            props.wide ? "w-full items-start" : "max-w-4/5",
           )}
         >
           <div className={cn("min-w-0", props.wide && "flex-1")}>{props.children}</div>
@@ -296,7 +296,7 @@ export function MessageRow(props: {
                   variant="ghost"
                   size="icon-sm"
                   aria-label={t.actions}
-                  className="shrink-0 text-muted-foreground opacity-0 group-hover/msg:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100 pointer-coarse:opacity-100"
+                  className="shrink-0 opacity-0 group-hover/msg:opacity-100 focus-visible:opacity-100 data-popup-open:opacity-100 pointer-coarse:opacity-100"
                 />
               }
             >

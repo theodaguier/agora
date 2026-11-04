@@ -1,20 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
-import { SearchIcon, CloseIcon } from "@/components/icons";
+import { BrainIcon, SearchIcon, CloseIcon } from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Item, ItemContent, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api";
+import { adminAgentsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useIsDark } from "@/lib/theme";
 import { MemoryGraph } from "./MemoryGraph";
 import { nodeColor, type WikiEdge, type WikiNode, type WikiNodeType } from "@/lib/wiki-graph";
 import { defineMessages, useT } from "@/i18n";
-import { ErrorText, Loading, SectionHeader } from "./ui";
+import { LoadError, LoadFailed, Loading } from "./ui";
 
 /** Only what the graph needs: it refreshes faster while the curator runs. */
 type CuratorStatus = { running: boolean };
@@ -40,6 +49,7 @@ const messages = defineMessages<{
   agent: string;
   linked: (n: number) => string;
   openWindow: string;
+  shown: string;
   fullScreen: string;
   exitFullScreen: string;
 }>({
@@ -71,12 +81,13 @@ const messages = defineMessages<{
     searchLabel: "Search memory",
     searchPlaceholder: "Search for a page…",
     noPage: "No pages.",
-    updated: (date) => `· updated ${date}`,
+    updated: (date) => `, updated ${date}`,
     closePage: "Close page",
     ghost: "This page is referenced but doesn't exist yet. The curator will create it when the topic comes up again.",
     agent: "Pages and conversations linked to this agent.",
     linked: (n) => (n === 1 ? "Linked to 1 page" : `Linked to ${n} pages`),
-    openWindow: "Open in a window",
+    openWindow: "Open in a new tab",
+    shown: "Pages shown",
     fullScreen: "Full screen",
     exitFullScreen: "Exit full screen",
   },
@@ -108,12 +119,13 @@ const messages = defineMessages<{
     searchLabel: "Chercher dans la mémoire",
     searchPlaceholder: "Chercher une page…",
     noPage: "Aucune page.",
-    updated: (date) => `· mis à jour le ${date}`,
+    updated: (date) => `, mis à jour le ${date}`,
     closePage: "Fermer la page",
     ghost: "Cette page est citée mais n'existe pas encore. Le curateur la créera quand le sujet reviendra.",
     agent: "Les pages et conversations reliées à cet agent.",
     linked: (n) => `Liée à ${n} page${n > 1 ? "s" : ""}`,
-    openWindow: "Ouvrir dans une fenêtre",
+    openWindow: "Ouvrir dans un nouvel onglet",
+    shown: "Pages affichées",
     fullScreen: "Plein écran",
     exitFullScreen: "Quitter le plein écran",
   },
@@ -123,10 +135,9 @@ const messages = defineMessages<{
 const noNodes: WikiNode[] = [];
 const noEdges: WikiEdge[] = [];
 
-/** Opens the graph alone in a window covering the screen (focused again if already open). */
-function openMemoryWindow() {
-  const { availWidth: w, availHeight: h, availLeft = 0, availTop = 0 } = window.screen as Screen & { availLeft?: number; availTop?: number };
-  window.open("/memory", "agora-memory", `popup,width=${w},height=${h},left=${availLeft},top=${availTop}`)?.focus();
+/** Opens the graph alone, the whole page for it, in a new browser tab. */
+function openBrainTab() {
+  window.open("/memory", "_blank", "noopener");
 }
 
 /** Follows the browser's full screen mode, toggled from the standalone window. */
@@ -145,7 +156,7 @@ function useFullScreen() {
  * Second brain: the agents' shared wiki, as an interactive graph. It fills its parent's height
  * (the settings pane, or the whole `/memory` window when `standalone`).
  */
-export function WikiMemory({ standalone = false }: { standalone?: boolean }) {
+export function WikiMemory({ standalone = false, inTab = false }: { standalone?: boolean; inTab?: boolean }) {
   const t = useT(messages);
   const [fullScreen, toggleFullScreen] = useFullScreen();
   const graph = useQuery({
@@ -159,7 +170,15 @@ export function WikiMemory({ standalone = false }: { standalone?: boolean }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
-  const nodes = graph.data?.nodes ?? noNodes;
+  // A profile's slug (bot-76a4ae2e) is shown as its bot's name.
+  const { data: agents } = useQuery(adminAgentsQuery);
+  const nodes = useMemo(() => {
+    const raw = graph.data?.nodes ?? noNodes;
+    const names = new Map((agents ?? []).map((a) => [a.hermesProfile, a.name]));
+    if (!names.size) return raw;
+    // A bot deleted since (its slug, no bot behind it) is no longer a page anyone can open.
+    return raw.filter((n) => !(n.type === "agent" && !names.has(n.label) && /^bot-[0-9a-f]+$/.test(n.label))).map((n) => (names.has(n.label) ? { ...n, label: names.get(n.label)! } : n));
+  }, [graph.data, agents]);
   const edges = graph.data?.edges ?? noEdges;
   const counts = useMemo(() => {
     const c = {} as Record<WikiNodeType, number>;
@@ -191,89 +210,91 @@ export function WikiMemory({ standalone = false }: { standalone?: boolean }) {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <SectionHeader
-        title={t.title}
-        text={t.intro}
-        action={standalone ? (fullScreen ? t.exitFullScreen : t.fullScreen) : t.openWindow}
-        onAction={standalone ? toggleFullScreen : openMemoryWindow}
-      />
+      {/* The title and where to open it (not in its own tab, where the graph is the page), then find a
+          page and pick which kinds of pages are shown, side by side. */}
+      {!inTab && (
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <h2 className="text-base font-medium">{t.title}</h2>
+          <Button variant="outline" onClick={standalone ? toggleFullScreen : openBrainTab}>
+            {standalone ? (fullScreen ? t.exitFullScreen : t.fullScreen) : t.openWindow}
+          </Button>
+        </div>
+      )}
+      <div className="mb-3">
+        {graph.data && (
+          <div className="flex items-center gap-2">
+            <div className="relative w-56">
+              <InputGroup>
+                <InputGroupAddon>
+                  <SearchIcon />
+                </InputGroupAddon>
+                <InputGroupInput aria-label={t.searchLabel} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.searchPlaceholder} />
+              </InputGroup>
+              <Popover open={!!matches} onOpenChange={(open) => !open && setQuery("")}>
+                <PopoverTrigger nativeButton={false} tabIndex={-1} render={<div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0" />} />
+                <PopoverContent align="start" sideOffset={6} initialFocus={false} finalFocus={false} className="w-(--anchor-width) p-1">
+                  <ItemGroup className="max-h-64 gap-0 overflow-y-auto has-data-[size=xs]:gap-0">
+                    {matches?.slice(0, 12).map((n) => (
+                      <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted" render={<button type="button" onClick={() => select(n.id)} />}>
+                        <ItemMedia>
+                          <Dot type={n.type} />
+                        </ItemMedia>
+                        <ItemContent>
+                          <ItemTitle>{n.label}</ItemTitle>
+                        </ItemContent>
+                      </Item>
+                    ))}
+                    {matches && !matches.length && <p className="px-2.5 py-2 text-sm text-muted-foreground">{t.noPage}</p>}
+                  </ItemGroup>
+                </PopoverContent>
+              </Popover>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" />}>{t.shown}</DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {LEGEND.filter((type) => counts[type]).map((type) => (
+                  <DropdownMenuCheckboxItem key={type} checked={!hidden.has(type)} onCheckedChange={() => toggle(type)} closeOnClick={false}>
+                    <Dot type={type} />
+                    {t.legend[type]}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+      </div>
 
       {graph.isPending && <Loading />}
-      <ErrorText error={graph.error} />
+      {!graph.data && graph.isError && <LoadFailed error={graph.error} onRetry={() => void graph.refetch()} />}
 
       {graph.data && (
-        <div className="relative flex min-h-[360px] flex-1 overflow-hidden rounded-lg border">
-          {nodes.length ? (
-            <MemoryGraph nodes={nodes} edges={edges} hidden={hidden} selected={selected} highlight={highlight} onSelect={select} />
-          ) : (
-            <Empty>
-              <EmptyHeader>
-                <EmptyTitle>{t.empty}</EmptyTitle>
-                <EmptyDescription>{t.emptyHint}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
+        <div className="flex min-h-0 flex-1 flex-col">
 
-          <div className="absolute left-3 top-3 w-[min(280px,calc(100%-24px))]">
-            <InputGroup className="h-8 bg-background">
-              <InputGroupAddon>
-                <SearchIcon />
-              </InputGroupAddon>
-              <InputGroupInput
-                aria-label={t.searchLabel}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t.searchPlaceholder}
+          <div className="relative min-h-96 flex-1">
+            {nodes.length ? (
+              <MemoryGraph nodes={nodes} edges={edges} hidden={hidden} selected={selected} highlight={highlight} onSelect={select} />
+            ) : (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <BrainIcon />
+                  </EmptyMedia>
+                  <EmptyTitle>{t.empty}</EmptyTitle>
+                  <EmptyDescription>{t.emptyHint}</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            )}
+            {selected && (
+              <PagePanel
+                id={selected}
+                node={nodes.find((n) => n.id === selected)}
+                nodes={nodes}
+                edges={edges}
+                onSelect={select}
+                onClose={() => setSelected(null)}
               />
-            </InputGroup>
-            {matches && (
-              <ItemGroup className="mt-1 max-h-64 gap-0 overflow-y-auto rounded-lg border bg-background p-1">
-                {matches.slice(0, 12).map((n) => (
-                  <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted/60" render={<button type="button" onClick={() => select(n.id)} />}>
-                    <ItemMedia>
-                      <Dot type={n.type} />
-                    </ItemMedia>
-                    <ItemContent>
-                      <ItemTitle className="truncate font-normal">{n.label}</ItemTitle>
-                    </ItemContent>
-                  </Item>
-                ))}
-                {!matches.length && (
-                  <Item size="xs" role="listitem">
-                    <ItemContent className="text-muted-foreground">{t.noPage}</ItemContent>
-                  </Item>
-                )}
-              </ItemGroup>
             )}
           </div>
-
-          <div className="absolute bottom-3 left-3 flex max-w-[calc(100%-24px)] flex-wrap gap-1">
-            {LEGEND.filter((type) => counts[type]).map((type) => (
-              <Button
-                key={type}
-                variant="outline"
-                size="xs"
-                aria-pressed={!hidden.has(type)}
-                onClick={() => toggle(type)}
-                className={cn("bg-background", hidden.has(type) && "opacity-50")}
-              >
-                <Dot type={type} />
-                {t.legend[type]}
-                <span className="tabular-nums text-muted-foreground">{counts[type]}</span>
-              </Button>
-            ))}
-          </div>
-
-          {selected && (
-            <PagePanel
-              id={selected}
-              node={nodes.find((n) => n.id === selected)}
-              nodes={nodes}
-              edges={edges}
-              onSelect={select}
-              onClose={() => setSelected(null)}
-            />
-          )}
         </div>
       )}
     </section>
@@ -327,27 +348,27 @@ function PagePanel(props: {
   const type = props.node?.type ?? "concept";
 
   return (
-    <aside
-      aria-label={title}
-      className="absolute inset-y-0 right-0 flex w-full flex-col border-l bg-background sm:w-[360px]"
-    >
-      <header className="flex items-start gap-2 border-b px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Dot type={type} /> {t.type[type]}
-            {typeof meta.updated === "string" && <span>{t.updated(meta.updated)}</span>}
-          </p>
-          <h3 className="mt-0.5 font-medium leading-snug">{title}</h3>
-        </div>
-        <Button variant="ghost" size="icon-sm" aria-label={t.closePage} onClick={props.onClose}>
-          <CloseIcon />
-        </Button>
-      </header>
+    <Card role="complementary" aria-label={title} className="absolute inset-y-3 right-3 left-3 sm:left-auto sm:w-96">
+      <CardHeader className="border-b">
+        <CardDescription className="flex items-center gap-2">
+          <Dot type={type} />
+          <span>
+            {t.type[type]}
+            {typeof meta.updated === "string" && t.updated(meta.updated)}
+          </span>
+        </CardDescription>
+        <CardTitle>{title}</CardTitle>
+        <CardAction>
+          <Button variant="ghost" size="icon-sm" aria-label={t.closePage} onClick={props.onClose}>
+            <CloseIcon />
+          </Button>
+        </CardAction>
+      </CardHeader>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
-        {typeof meta.summary === "string" && meta.summary && <p className="mb-3 text-sm text-muted-foreground">{meta.summary}</p>}
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        {typeof meta.summary === "string" && meta.summary && <p className="text-sm text-muted-foreground">{meta.summary}</p>}
         {Array.isArray(meta.tags) && meta.tags.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1">
             {meta.tags.map((tag) => (
               <Badge key={tag} variant="secondary">
                 #{tag}
@@ -359,10 +380,11 @@ function PagePanel(props: {
         {type === "ghost" && <p className="text-sm text-muted-foreground">{t.ghost}</p>}
         {type === "agent" && <p className="text-sm text-muted-foreground">{t.agent}</p>}
         {page.isPending && readable && <Loading />}
+        {page.isError && <LoadError error={page.error} />}
         {page.data && (
           <div
             className={cn(
-              "text-sm leading-normal [&_a]:underline [&_a]:underline-offset-4",
+              "text-sm [&_a]:underline [&_a]:underline-offset-4",
               "[&_h1]:mb-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-1.5 [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-semibold",
               "[&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_p]:my-1.5",
             )}
@@ -398,24 +420,24 @@ function PagePanel(props: {
         )}
 
         {linked.length > 0 && (
-          <div className="mt-5">
-            <Separator className="mb-3" />
-            <h4 className="mb-1.5 text-xs font-medium text-muted-foreground">{t.linked(linked.length)}</h4>
-            <ItemGroup className="gap-0">
+          <div className="flex flex-col gap-2">
+            <Separator />
+            <h4 className="text-xs font-medium text-muted-foreground">{t.linked(linked.length)}</h4>
+            <ItemGroup>
               {linked.map((n) => (
-                <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted/60" render={<button type="button" onClick={() => props.onSelect(n.id)} />}>
+                <Item key={n.id} size="xs" role="listitem" render={<button type="button" onClick={() => props.onSelect(n.id)} />}>
                   <ItemMedia>
                     <Dot type={n.type} />
                   </ItemMedia>
                   <ItemContent>
-                    <ItemTitle className="truncate font-normal">{n.label}</ItemTitle>
+                    <ItemTitle>{n.label}</ItemTitle>
                   </ItemContent>
                 </Item>
               ))}
             </ItemGroup>
           </div>
         )}
-      </div>
-    </aside>
+      </CardContent>
+    </Card>
   );
 }

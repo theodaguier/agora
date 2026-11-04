@@ -138,22 +138,22 @@ function Palette({ open }: { open: boolean }) {
         <CommandList>
           <CommandEmpty>{t.noResult}</CommandEmpty>
           <CommandGroup heading={t.actions}>
-            <CommandItem className="py-2" onSelect={run(() => navigate({ to: "/new" }))}>
-              <PlusIcon className="text-muted-foreground" /> {t.newConversation}
+            <CommandItem onSelect={run(() => navigate({ to: "/new" }))}>
+              <PlusIcon /> {t.newConversation}
               <CommandShortcut><ShortcutKeys shortcut={shortcuts.newConversation} /></CommandShortcut>
             </CommandItem>
-            <CommandItem className="py-2" onSelect={run(() => navigate({ to: "/tasks" }))}>
-              <TaskListIcon className="text-muted-foreground" /> {t.tasks}
+            <CommandItem onSelect={run(() => navigate({ to: "/tasks" }))}>
+              <TaskListIcon /> {t.tasks}
             </CommandItem>
-            <CommandItem className="py-2" onSelect={run(() => openSettings())}>
-              <SlidersIcon className="text-muted-foreground" /> {t.settings}
+            <CommandItem onSelect={run(() => openSettings())}>
+              <SlidersIcon /> {t.settings}
               <CommandShortcut><ShortcutKeys shortcut={shortcuts.settings} /></CommandShortcut>
             </CommandItem>
-            <CommandItem className="py-2" onSelect={run(() => openProfile(user.id))}>
-              <UserIcon className="text-muted-foreground" /> {t.profile}
+            <CommandItem onSelect={run(() => openProfile(user.id))}>
+              <UserIcon /> {t.profile}
             </CommandItem>
-            <CommandItem className="py-2" onSelect={() => setOverlay("help")}>
-              <KeyboardIcon className="text-muted-foreground" /> {t.help}
+            <CommandItem onSelect={() => setOverlay("help")}>
+              <KeyboardIcon /> {t.help}
               <CommandShortcut><ShortcutKeys shortcut={shortcuts.help} /></CommandShortcut>
             </CommandItem>
           </CommandGroup>
@@ -165,7 +165,6 @@ function Palette({ open }: { open: boolean }) {
                   <CommandItem
                     key={c.id}
                     value={`${name} ${c.id}`}
-                    className="py-1.5"
                     onSelect={run(() => navigate({ to: "/c/$conversationId", params: { conversationId: c.id } }))}
                   >
                     <ConversationAvatar conversation={c} me={user.id} className="size-6" status="ring-popover" />
@@ -218,7 +217,7 @@ function Help({ open }: { open: boolean }) {
         </DialogHeader>
         {sections.map((s) => (
           <section key={s.title} className="flex flex-col gap-1">
-            <h3 className="text-[13px] font-medium text-muted-foreground">{s.title}</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">{s.title}</h3>
             {s.rows.map(([label, shortcut]) => (
               <div key={label} className="flex items-center justify-between gap-4 py-1">
                 <span>{label}</span>

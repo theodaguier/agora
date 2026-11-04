@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext, useRouter } from "@tanstack/react-router";
-import { BotIcon, BuildingIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, ServerIcon, SlidersIcon, ShieldCheckIcon, SmartphoneIcon, UsersIcon, CloseIcon, SearchIcon, type IconComponent } from "@/components/icons";
+import { BotIcon, BuildingIcon, CodeIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, ServerIcon, SlidersIcon, ShieldCheckIcon, SmartphoneIcon, UsersIcon, CloseIcon, SearchIcon, type IconComponent } from "@/components/icons";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useDesktop } from "@/lib/workspace";
@@ -15,6 +15,7 @@ import { Status } from "@/components/admin/Status";
 import { Updates } from "@/components/admin/Updates";
 import { Users } from "@/components/admin/Users";
 import { Vault } from "@/components/admin/Vault";
+import { Safe } from "@/components/safe/Safe";
 import { Appearance } from "@/components/Appearance";
 import { MobileApp } from "@/components/MobileApp";
 import { TwoFactor } from "@/components/TwoFactor";
@@ -25,7 +26,10 @@ import { AvatarField, ProfileFields, type AvatarChange } from "@/components/Prof
 import { readProfile } from "@/lib/profile";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldGroup, FieldLegend, FieldSeparator, FieldSet } from "@/components/ui/field";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { FieldGroup } from "@/components/ui/field";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { api, uploadAvatar, type ProfileInput } from "@/lib/api";
 import { authClient } from "@/lib/auth";
@@ -44,6 +48,7 @@ const tabs: { id: SettingsTab; icon: IconComponent; group: Group; admin?: true }
   { id: "general", icon: SlidersIcon, group: "account" },
   { id: "security", icon: ShieldCheckIcon, group: "account" },
   { id: "availability", icon: CalendarClockIcon, group: "account" },
+  { id: "safe", icon: LockIcon, group: "account" },
   { id: "appearance", icon: PaletteIcon, group: "account" },
   { id: "mobile", icon: SmartphoneIcon, group: "account" },
   { id: "usage", icon: ChartIcon, group: "account" },
@@ -51,7 +56,7 @@ const tabs: { id: SettingsTab; icon: IconComponent; group: Group; admin?: true }
   { id: "users", icon: UsersIcon, group: "organization", admin: true },
   { id: "agents", icon: BotIcon, group: "organization", admin: true },
   { id: "access", icon: KeyIcon, group: "organization", admin: true },
-  { id: "vault", icon: LockIcon, group: "organization", admin: true },
+  { id: "vault", icon: CodeIcon, group: "organization", admin: true },
   { id: "integrations", icon: PlugIcon, group: "organization", admin: true },
   { id: "models", icon: LayersIcon, group: "organization", admin: true },
   { id: "memory", icon: BrainIcon, group: "organization", admin: true },
@@ -74,7 +79,8 @@ const messages = defineMessages({
       users: "Users",
       agents: "Agents",
       access: "Access",
-      vault: "Vault",
+      safe: "Vault",
+      vault: "Technical secrets",
       integrations: "Integrations",
       models: "Models",
       memory: "Memory",
@@ -89,8 +95,6 @@ const messages = defineMessages({
     groups: { account: "Account", organization: "Organization", instance: "Instance" } as Record<Group, string>,
     search: "Search settings",
     noMatch: "No setting matches.",
-    yourAccount: "Your account",
-    organization: "Organization",
     admin: "Admin",
     member: "Member",
     signOut: "Sign out",
@@ -109,7 +113,8 @@ const messages = defineMessages({
       users: "Utilisateurs",
       agents: "Agents",
       access: "Accès",
-      vault: "Coffre",
+      safe: "Coffre-fort",
+      vault: "Secrets techniques",
       integrations: "Intégrations",
       models: "Modèles",
       memory: "Mémoire",
@@ -124,8 +129,6 @@ const messages = defineMessages({
     groups: { account: "Compte", organization: "Organisation", instance: "Instance" },
     search: "Rechercher un réglage",
     noMatch: "Aucun réglage ne correspond.",
-    yourAccount: "Ton compte",
-    organization: "Organisation",
     admin: "Admin",
     member: "Membre",
     signOut: "Se déconnecter",
@@ -135,8 +138,7 @@ const messages = defineMessages({
 });
 
 /**
- * Figma « Fenêtre · Paramètres »: a modal over the app (full screen on a phone), its navigation on the
- * left. Mounted once in AppShell; opened via openSettings().
+ * The settings: a modal over the app, its navigation on the left (on top on a phone). Mounted once in AppShell; opened via openSettings().
  */
 export function Settings() {
   const tab = useSettingsTab();
@@ -154,12 +156,12 @@ export function Settings() {
     <Dialog open={tab !== null} onOpenChange={(open) => !open && closeSettings()}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-dvh max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[min(88vh,720px)] sm:w-[calc(100%-3rem)] sm:max-w-[920px] sm:flex-row sm:rounded-[18px] sm:border"
+        className="flex h-dvh flex-col overflow-hidden sm:h-180 sm:max-h-dvh sm:max-w-4xl sm:flex-row"
       >
         <DialogTitle className="sr-only">{t.settings}</DialogTitle>
         <SettingsBody key={opened.n} initial={opened.tab} />
         <DialogClose
-          render={<Button variant="ghost" size="icon-lg" className="absolute right-2 top-2 z-10 sm:right-3 sm:top-3" />}
+          render={<Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" />}
         >
           <CloseIcon />
           <span className="sr-only">{c.close}</span>
@@ -175,49 +177,48 @@ function SettingsBody({ initial }: { initial: SettingsTab }) {
   const [tab, setTab] = useState(visible.some((t) => t.id === initial) ? initial : "general");
   return (
     <>
-      <nav className="flex shrink-0 flex-col border-b border-border bg-sidebar pt-3 pr-12 sm:w-[210px] sm:border-r sm:border-b-0 sm:pr-0">
+      <nav className="flex max-h-60 shrink-0 flex-col pr-10 sm:max-h-none sm:w-52 sm:pr-0">
         <SettingsNav tabs={visible} tab={tab} onSelect={setTab} />
       </nav>
+      <Separator className="sm:hidden" />
+      <Separator orientation="vertical" className="hidden sm:block" />
       <SettingsContent tab={tab} />
     </>
   );
 }
 
-/** The settings' navigation (Figma « Navigation »): a search, then the tabs in their groups, grey icons. */
+/** The settings' navigation: a search, then the tabs in their groups. */
 function SettingsNav({ tabs: visible, tab, onSelect }: { tabs: typeof tabs; tab: SettingsTab; onSelect: (tab: SettingsTab) => void }) {
   const m = useT(messages);
   const [q, setQ] = useState("");
   const shown = visible.filter((x) => m.tabs[x.id].toLowerCase().includes(q.trim().toLowerCase()));
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-0.5 px-2">
-      <InputGroup className="mb-1 h-8 shrink-0 rounded-full bg-background">
-        <InputGroupInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={useT(common).search} aria-label={m.search} />
-        <InputGroupAddon className="text-subtle [&>svg:not([class*='size-'])]:size-[15px]">
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <InputGroup className="shrink-0">
+        <InputGroupAddon>
           <SearchIcon />
         </InputGroupAddon>
+        <InputGroupInput value={q} onChange={(e) => setQ(e.target.value)} placeholder={useT(common).search} aria-label={m.search} />
       </InputGroup>
-      <div className="min-h-0 flex-1 overflow-y-auto pb-4">
-        {!shown.length && <p className="px-2 py-4 text-[13px] text-muted-foreground">{m.noMatch}</p>}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+        {!shown.length && <p className="px-2 py-4 text-sm text-muted-foreground">{m.noMatch}</p>}
         {(["account", "organization", "instance"] as Group[]).map((group) => {
           const items = shown.filter((x) => x.group === group);
           if (!items.length) return null;
           return (
-            <div key={group} className="flex flex-col gap-px">
-              <p className="px-2 pt-4 pb-1.5 text-[13px] leading-[18px] tracking-[-0.05px] text-subtle">{m.groups[group]}</p>
+            <div key={group} className="flex flex-col gap-1">
+              <p className="px-2 text-xs text-muted-foreground">{m.groups[group]}</p>
               {items.map((x) => (
-                <button
+                <Button
                   key={x.id}
-                  type="button"
+                  variant={tab === x.id ? "secondary" : "ghost"}
                   aria-current={tab === x.id ? "page" : undefined}
                   onClick={() => onSelect(x.id)}
-                  className={cn(
-                    "flex h-[34px] items-center gap-2.5 rounded-[10px] px-2.5 text-left text-sm outline-none transition-colors hover:bg-black/4 focus-visible:ring-3 focus-visible:ring-ring/30 dark:hover:bg-white/5",
-                    tab === x.id && "bg-accent hover:bg-accent dark:hover:bg-accent",
-                  )}
+                  className="w-full justify-start"
                 >
-                  <x.icon className="size-4 shrink-0 text-icon" />
+                  <x.icon data-icon="inline-start" />
                   <span className="truncate">{m.tabs[x.id]}</span>
-                </button>
+                </Button>
               ))}
             </div>
           );
@@ -230,9 +231,10 @@ function SettingsNav({ tabs: visible, tab, onSelect }: { tabs: typeof tabs; tab:
 /** The open tab, in a centred column; the memory graph fills the pane instead of scrolling it. */
 function SettingsContent({ tab }: { tab: SettingsTab }) {
   return (
-    <div className={cn("settings-page h-full min-h-0 flex-1 overflow-y-auto", tab === "memory" && "flex flex-col")}>
-      <div className={cn("mx-auto px-5 pt-6 sm:px-10 sm:pt-9", tab === "memory" ? "flex w-full flex-1 flex-col pb-5 sm:pb-8" : "max-w-[700px] pb-12")}>
+    <div className={cn("h-full min-h-0 flex-1 overflow-y-auto", tab === "memory" && "flex flex-col")}>
+      <div className={cn("mx-auto px-1 sm:px-6", tab === "memory" ? "flex w-full flex-1 flex-col" : "flex max-w-2xl flex-col gap-4 pb-6")}>
         <RestartProvider>
+          {/* Each tab: its header, then its cards (shadcn Card), one gap between them. */}
           {tab === "general" && <General />}
           {tab === "security" && <Security />}
           {tab === "availability" && <Availability />}
@@ -242,6 +244,7 @@ function SettingsContent({ tab }: { tab: SettingsTab }) {
           {tab === "users" && <Users />}
           {tab === "agents" && <Agents />}
           {tab === "access" && <Access />}
+          {tab === "safe" && <Safe />}
           {tab === "vault" && <Vault />}
           {tab === "integrations" && <AppIntegrations />}
           {tab === "models" && <Models />}
@@ -273,15 +276,13 @@ function General() {
   return (
     <>
       <SectionHeader title={t.tabs.general} />
-      <FieldGroup>
-        <FieldSet>
-          <FieldLegend>{t.profile}</FieldLegend>
-          <ProfileEditor />
-        </FieldSet>
-        <FieldSeparator />
-        <FieldSet>
-          <FieldLegend>{t.account}</FieldLegend>
-          <Item variant="outline">
+      <ProfileEditor />
+      <ListCard>
+        <ListCardHeader>
+          <CardTitle>{t.account}</CardTitle>
+        </ListCardHeader>
+        <ListCardRows>
+          <Item size="xs" key="account">
             <ItemContent>
               <ItemTitle>{user.email}</ItemTitle>
               <ItemDescription>{user.role === "admin" ? t.admin : t.member}</ItemDescription>
@@ -300,8 +301,8 @@ function General() {
               </Button>
             </ItemActions>
           </Item>
-        </FieldSet>
-      </FieldGroup>
+        </ListCardRows>
+      </ListCard>
     </>
   );
 }
@@ -312,22 +313,13 @@ function Security() {
   return (
     <>
       <SectionHeader title={t.tabs.security} />
-      <FieldGroup>
-        <FieldSet>
-          <FieldLegend>{t.yourAccount}</FieldLegend>
-          <TwoFactor />
-        </FieldSet>
-        {user.role === "admin" && (
-          <>
-            <FieldSeparator />
-            <FieldSet>
-              <FieldLegend>{t.organization}</FieldLegend>
-              <RequireTwoFactor />
-              <NewBotsAllTools />
-            </FieldSet>
-          </>
-        )}
-      </FieldGroup>
+      <TwoFactor />
+      {user.role === "admin" && (
+        <>
+          <RequireTwoFactor />
+          <NewBotsAllTools />
+        </>
+      )}
     </>
   );
 }
@@ -368,6 +360,8 @@ function ProfileEditor() {
   const router = useRouter();
   const qc = useQueryClient();
   const [photo, setPhoto] = useState<AvatarChange>(undefined);
+  // Uncontrolled fields: any edit marks the form changed until it's saved.
+  const [edited, setEdited] = useState(false);
   const t = useT(messages);
   const c = useT(common);
   const save = useMutation({
@@ -378,6 +372,7 @@ function ProfileEditor() {
     },
     onSuccess: async () => {
       setPhoto(undefined);
+      setEdited(false);
       // The session (route context) carries the profile: refetch it.
       await router.invalidate();
       qc.invalidateQueries({ queryKey: ["users"] });
@@ -385,31 +380,44 @@ function ProfileEditor() {
     },
     meta: { success: t.profileSaved },
   });
+  const dirty = edited || photo !== undefined;
 
   return (
     <form
-      className="flex flex-col gap-6"
+      onChange={() => setEdited(true)}
       onSubmit={(e) => {
         e.preventDefault();
         save.mutate(readProfile(new FormData(e.currentTarget)));
       }}
     >
-      <AvatarField
-        id={user.id}
-        name={user.name}
-        current={user.image ?? null}
-        value={photo}
-        onChange={setPhoto}
-      />
-      <ProfileFields
-        idPrefix="profile"
-        defaults={{ firstName: user.firstName ?? "", lastName: user.lastName ?? "", title: user.title ?? "", username: user.username ?? "", bio: user.bio ?? "" }}
-      />
-      <Field orientation="horizontal">
-        <Button type="submit" disabled={save.isPending}>
-          {save.isPending ? c.saving : c.save}
-        </Button>
-      </Field>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t.profile}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <AvatarField
+              id={user.id}
+              name={user.name}
+              current={user.image ?? null}
+              value={photo}
+              onChange={setPhoto}
+            />
+            <ProfileFields
+              idPrefix="profile"
+              defaults={{ firstName: user.firstName ?? "", lastName: user.lastName ?? "", title: user.title ?? "", username: user.username ?? "", bio: user.bio ?? "" }}
+            />
+          </FieldGroup>
+        </CardContent>
+        {/* Saved on demand: the button only shows once something changed. */}
+        {dirty && (
+          <CardFooter className="justify-end">
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? c.saving : c.save}
+            </Button>
+          </CardFooter>
+        )}
+      </Card>
     </form>
   );
 }

@@ -1,7 +1,7 @@
 import { confirmAction } from "@/lib/confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { CheckCircleIcon, ChevronDownIcon, CircleIcon, LoaderIcon, MoreIcon } from "@/components/icons";
+import { CheckCircleIcon, ChevronDownIcon, CircleIcon, LoaderIcon, MoreIcon, PencilIcon, StopIcon, TaskListIcon, TrashIcon, UserIcon, WarningIcon } from "@/components/icons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState, type ReactNode } from "react";
 import { PersonAvatar } from "@/components/ConversationAvatar";
@@ -23,10 +23,12 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { EmptyFigure } from "@/components/EmptyFigure";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { CardAction, CardTitle } from "@/components/ui/card";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,7 +37,8 @@ import { formatDueDate, isOverdue } from "@/lib/dates";
 import { agentTasksQuery, tasksQuery } from "@/lib/queries";
 import { MentionText } from "@/lib/mentions";
 import { useMentionables, usePeople } from "@/lib/people";
-import { priorityMessages, priorityTone, TASK_PRIORITIES, TASK_STATUSES } from "@/lib/task-status";
+import { CodePriorityIcon } from "@/components/CodeSessionMarks";
+import { priorityMessages, TASK_PRIORITIES, TASK_STATUSES, taskPriorityMark } from "@/lib/task-status";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 import { cn } from "@/lib/utils";
@@ -44,7 +47,7 @@ const messages = defineMessages({
   en: {
     deleteTitle: (title: string) => `Delete "${title}"?`,
     deleteBody: "The task will be removed for everyone working on it.",
-    done: (n: number) => `Done · ${n}`,
+    done: "Done",
     group: { todo: "To do", in_progress: "In progress", done: "Done" } as Record<TaskStatus, string>,
     working: (names: string) => `${names} working on it`,
     all: "All",
@@ -66,11 +69,14 @@ const messages = defineMessages({
     editParticipants: (names: string) => `Working on it: ${names}. Change`,
     searchPeople: "Search a colleague…",
     noMatch: "No one matches.",
+    noneWithStatusTitle: "Nothing here",
+    errorTitle: "Tasks unavailable",
+    error: "Tasks can't be reached right now.",
   },
   fr: {
     deleteTitle: (title: string) => `Supprimer « ${title} » ?`,
     deleteBody: "La tâche disparaîtra pour toutes les personnes qui y travaillent.",
-    done: (n: number) => `Terminées · ${n}`,
+    done: "Terminées",
     group: { todo: "À faire", in_progress: "En cours", done: "Terminées" },
     working: (names: string) => `${names} y travaille`,
     all: "Toutes",
@@ -92,6 +98,9 @@ const messages = defineMessages({
     editParticipants: (names: string) => `Sur la tâche : ${names}. Modifier`,
     searchPeople: "Chercher un collègue…",
     noMatch: "Personne ne correspond.",
+    noneWithStatusTitle: "Rien ici",
+    errorTitle: "Tâches indisponibles",
+    error: "Les tâches sont injoignables pour le moment.",
   },
 });
 
@@ -104,21 +113,45 @@ type Filter = "all" | TaskStatus;
 export function TaskList({ userId, agentId, empty, emptyTitle }: ({ userId: string; agentId?: never } | { agentId: string; userId?: never }) & { empty: string; emptyTitle?: string }) {
   const t = useT(messages);
   const [filter, setFilter] = useState<Filter>("all");
-  const { data: tasks, isPending } = useQuery(agentId ? agentTasksQuery(agentId) : tasksQuery(userId!));
+  const c = useT(common);
+  const { data: tasks, isPending, isError, error, refetch } = useQuery(agentId ? agentTasksQuery(agentId) : tasksQuery(userId!));
   if (isPending)
     return (
       <div className="flex flex-col gap-3 py-2">
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-10 w-full rounded-lg" />
+          <Skeleton key={i} className="h-10 w-full" />
         ))}
       </div>
+    );
+  if (isError)
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <WarningIcon />
+          </EmptyMedia>
+          <EmptyTitle>{t.errorTitle}</EmptyTitle>
+          <EmptyDescription title={error.message}>{t.error}</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button variant="secondary" onClick={() => void refetch()}>
+            {c.retry}
+          </Button>
+        </EmptyContent>
+      </Empty>
     );
   const all = tasks ?? [];
   if (!all.length)
     return (
-      <Empty className="py-10">
+      <Empty>
         <EmptyHeader>
-          {emptyTitle && <EmptyFigure mascot="green" />}
+          {emptyTitle ? (
+            <EmptyFigure mascot="green" />
+          ) : (
+            <EmptyMedia variant="icon">
+              <TaskListIcon />
+            </EmptyMedia>
+          )}
           {emptyTitle && <EmptyTitle>{emptyTitle}</EmptyTitle>}
           <EmptyDescription>{empty}</EmptyDescription>
         </EmptyHeader>
@@ -131,20 +164,21 @@ export function TaskList({ userId, agentId, empty, emptyTitle }: ({ userId: stri
 
   const inProgress = open.filter((x) => x.status === "in_progress");
   const todo = open.filter((x) => x.status === "todo");
-  // Figma « Carte »: one white card with a hairline per group, its rows inside without frames of their own.
   const rows = (items: Task[]) => (
-    <div className="flex flex-col overflow-hidden rounded-[14px] border border-border bg-background py-1">
+    <ListCardRows>
       {items.map((task) => (
         <TaskRow key={task.id} task={task} owner={userId ?? null} />
       ))}
-    </div>
+    </ListCardRows>
   );
+  // A group without a title of its own: a card of rows.
+  const card = (items: Task[]) => <ListCard size="sm">{rows(items)}</ListCard>;
 
   return (
-    <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="gap-0">
-      <TabsList className={filterList}>
+    <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="gap-6">
+      <TabsList>
         {(["all", ...TASK_STATUSES] as Filter[]).map((f) => (
-          <TabsTrigger key={f} value={f} className={filterTrigger} aria-label={`${f === "all" ? t.all : t.statusTab[f]} (${count(f)})`}>
+          <TabsTrigger key={f} value={f} aria-label={`${f === "all" ? t.all : t.statusTab[f]} (${count(f)})`}>
             {f === "all" ? t.all : t.statusTab[f]}
           </TabsTrigger>
         ))}
@@ -154,41 +188,58 @@ export function TaskList({ userId, agentId, empty, emptyTitle }: ({ userId: stri
           {inProgress.length > 0 && <TaskGroup title={t.group.in_progress} count={inProgress.length}>{rows(inProgress)}</TaskGroup>}
           {todo.length > 0 && <TaskGroup title={t.group.todo} count={todo.length}>{rows(todo)}</TaskGroup>}
           {done.length > 0 && (
-            <Collapsible className="pt-6">
-              <CollapsibleTrigger className="group/done flex items-center gap-1 rounded-md pl-0.5 text-[13px] leading-[18px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30">
-                {t.done(done.length)}
-                <ChevronDownIcon className="size-3.5 transition-transform group-data-panel-open/done:rotate-180" />
+            <Collapsible className="flex flex-col gap-2">
+              <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="group/done self-start" />}>
+                {t.done}
+                <Badge variant="secondary" className="tabular-nums">
+                  {done.length}
+                </Badge>
+                <ChevronDownIcon data-icon="inline-end" className="transition-transform group-data-panel-open/done:rotate-180" />
               </CollapsibleTrigger>
-              <CollapsibleContent className="pt-2">{rows(done)}</CollapsibleContent>
+              <CollapsibleContent>{card(done)}</CollapsibleContent>
             </Collapsible>
           )}
         </>
       ) : shown.length ? (
-        <div className="pt-6">{rows(shown)}</div>
+        card(shown)
       ) : (
-        <p className="px-3 py-10 text-center text-sm text-muted-foreground">{t.noneWithStatus}</p>
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <TaskListIcon />
+            </EmptyMedia>
+            <EmptyTitle>{t.noneWithStatusTitle}</EmptyTitle>
+            <EmptyDescription>{t.noneWithStatus}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
     </Tabs>
   );
 }
 
-/** A group: its title and count in grey above its card (Figma section titles). */
+/** A group: a card with its title and count, then its rows. */
 function TaskGroup({ title, count, children }: { title: string; count: number; children: ReactNode }) {
   return (
-    <section className="pt-6">
-      <h3 className="mb-2 flex items-baseline gap-1.5 pl-0.5 text-[13px] leading-[18px] text-muted-foreground">
-        {title}
-        <span className="text-subtle tabular-nums">{count}</span>
-      </h3>
+    <ListCard size="sm">
+      <ListCardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardAction>
+          <Badge variant="secondary" className="tabular-nums">
+            {count}
+          </Badge>
+        </CardAction>
+      </ListCardHeader>
       {children}
-    </section>
+    </ListCard>
   );
 }
 
-/** Figma « Filtre »: grey pills, the active one in ink. Shared by the lists filtered by status (tasks, inbox). */
-export const filterList = "h-auto max-w-full gap-1.5 overflow-x-auto rounded-none bg-transparent p-0 dark:bg-transparent";
-export const filterTrigger =
-  "h-[30px] flex-none rounded-full border-0 bg-secondary px-3 text-[13px] font-normal text-foreground hover:bg-accent data-active:text-primary-foreground group-data-[variant=default]/tabs-list:data-active:border-transparent group-data-[variant=default]/tabs-list:data-active:bg-none group-data-[variant=default]/tabs-list:data-active:bg-primary dark:group-data-[variant=default]/tabs-list:data-active:border-transparent";
+/** Priority badge: urgent in red, the others neutral ("normal" shows none). */
+const priorityBadge: Record<Exclude<TaskPriority, "normal">, "destructive" | "secondary" | "outline"> = {
+  urgent: "destructive",
+  high: "secondary",
+  low: "outline",
+};
 
 /** `owner`: whose list it is (their own face is not repeated on each row). */
 function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
@@ -226,46 +277,33 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
   const StatusIcon = done ? CheckCircleIcon : task.status === "in_progress" ? LoaderIcon : CircleIcon;
 
   return (
-    <Item
-      size="sm"
-      // Figma « Ligne de réglage »: a row of the group's card, no frame of its own.
-      className="flex-nowrap gap-3 rounded-none border-0 bg-transparent py-2.5 pr-2.5 pl-3.5 hover:bg-transparent"
-    >
+    <Item size="sm" role="listitem" className="flex-nowrap">
       <ItemMedia>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           disabled={!task.canEdit || setStatus.isPending}
           onClick={() => setStatus.mutate(done ? "todo" : "done")}
           aria-label={done ? t.reopen : t.complete}
           aria-pressed={done}
-          className="flex size-5 items-center justify-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-default"
         >
-          <StatusIcon
-            className={cn(
-              "size-5",
-              done ? "text-muted-foreground" : task.status === "in_progress" ? "animate-spin text-brand [animation-duration:2s]" : "text-subtle hover:text-muted-foreground",
-            )}
-          />
-        </button>
+          <StatusIcon className={cn(task.status === "in_progress" ? "animate-spin text-brand" : "text-muted-foreground")} />
+        </Button>
       </ItemMedia>
-      <ItemContent className="min-w-0 gap-0.5">
-        <ItemTitle className={cn("flex-wrap text-sm leading-5 font-normal", done && "text-muted-foreground")}>
-          <span>
+      <ItemContent className="min-w-0">
+        <ItemTitle className="flex-wrap">
+          <span className={cn(done && "text-muted-foreground")}>
             <MentionText text={task.title} mentionables={mentions} />
           </span>
-          {task.priority !== "normal" && !done && (
-            <Badge variant="secondary" className={cn("font-normal", priorityTone[task.priority])}>
-              {p.label[task.priority]}
-            </Badge>
-          )}
+          {task.priority !== "normal" && !done && <Badge variant={priorityBadge[task.priority]}>{p.label[task.priority]}</Badge>}
         </ItemTitle>
         {task.description && (
-          <ItemDescription className="line-clamp-2 text-xs leading-4 whitespace-pre-line">
+          <ItemDescription className="whitespace-pre-line">
             <MentionText text={task.description} mentionables={mentions} />
           </ItemDescription>
         )}
         {(from || task.dueOn) && (
-          <p className="flex min-w-0 items-center gap-2.5 text-xs leading-4 text-muted-foreground">
+          <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
             {from && <span className="truncate">{from}</span>}
             {task.dueOn && <span className={cn("shrink-0", overdue && "text-destructive")}>{t.due(formatDueDate(task.dueOn))}</span>}
           </p>
@@ -279,23 +317,52 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
         {!(task.assignees.length === 1 && task.assignees[0]!.id === owner) && <Participants task={task} />}
         {(task.canEdit || task.canDelete) && (
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t.actions} className="size-6 text-subtle" />}>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t.actions} />}>
               <MoreIcon />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               {task.canEdit && (
                 <DropdownMenuGroup>
-                  {task.status !== "in_progress" && !done && <DropdownMenuItem onClick={() => setStatus.mutate("in_progress")}>{t.start}</DropdownMenuItem>}
-                  {task.status !== "todo" && <DropdownMenuItem onClick={() => setStatus.mutate("todo")}>{t.reopen}</DropdownMenuItem>}
-                  {!done && <DropdownMenuItem onClick={() => setStatus.mutate("done")}>{t.complete}</DropdownMenuItem>}
-                  {mine && !done && !mine.current && <DropdownMenuItem onClick={() => work.mutate(task.id)}>{t.workOn}</DropdownMenuItem>}
-                  {mine?.current && <DropdownMenuItem onClick={() => work.mutate(null)}>{t.stopWorking}</DropdownMenuItem>}
+                  {task.status !== "in_progress" && !done && (
+                    <DropdownMenuItem onClick={() => setStatus.mutate("in_progress")}>
+                      <LoaderIcon />
+                      {t.start}
+                    </DropdownMenuItem>
+                  )}
+                  {task.status !== "todo" && (
+                    <DropdownMenuItem onClick={() => setStatus.mutate("todo")}>
+                      <CircleIcon />
+                      {t.reopen}
+                    </DropdownMenuItem>
+                  )}
+                  {!done && (
+                    <DropdownMenuItem onClick={() => setStatus.mutate("done")}>
+                      <CheckCircleIcon />
+                      {t.complete}
+                    </DropdownMenuItem>
+                  )}
+                  {mine && !done && !mine.current && (
+                    <DropdownMenuItem onClick={() => work.mutate(task.id)}>
+                      <UserIcon />
+                      {t.workOn}
+                    </DropdownMenuItem>
+                  )}
+                  {mine?.current && (
+                    <DropdownMenuItem onClick={() => work.mutate(null)}>
+                      <StopIcon />
+                      {t.stopWorking}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>{p.priority}</DropdownMenuSubTrigger>
+                    <DropdownMenuSubTrigger>
+                      <CodePriorityIcon priority={taskPriorityMark[task.priority]} />
+                      {p.priority}
+                    </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent>
                       <DropdownMenuRadioGroup value={task.priority} onValueChange={(v) => setPriority.mutate(v as TaskPriority)}>
                         {TASK_PRIORITIES.map((level) => (
                           <DropdownMenuRadioItem key={level} value={level}>
+                            <CodePriorityIcon priority={taskPriorityMark[level]} />
                             {p.label[level]}
                           </DropdownMenuRadioItem>
                         ))}
@@ -308,13 +375,17 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
                 <>
                   {task.canEdit && <DropdownMenuSeparator />}
                   <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => setEditing(true)}>{t.edit}</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setEditing(true)}>
+                      <PencilIcon />
+                      {t.edit}
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
                       onClick={async () =>
                         (await confirmAction({ title: t.deleteTitle(task.title), description: t.deleteBody, action: c.delete })) && remove.mutate()
                       }
                     >
+                      <TrashIcon />
                       {c.delete}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
@@ -355,12 +426,12 @@ function Participants({ task }: { task: Task }) {
   };
   const names = task.assignees.map((a) => a.name).join(", ");
   const faces = (
-    <>
+    <span className="flex items-center">
       {task.assignees.slice(0, FACES).map((a, i) => (
         <PersonAvatar key={a.id} person={a} className={cn("size-6 ring-2 ring-background", i > 0 && "-ml-2")} />
       ))}
       {task.assignees.length > FACES && <span className="pl-1 text-xs tabular-nums text-muted-foreground">+{task.assignees.length - FACES}</span>}
-    </>
+    </span>
   );
   if (!task.canEdit)
     return (
@@ -370,14 +441,14 @@ function Participants({ task }: { task: Task }) {
     );
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<Button variant="ghost" size="sm" className="h-7 gap-0 rounded-full px-0.5" aria-label={t.editParticipants(names)} />}>
+      <PopoverTrigger render={<Button variant="ghost" size="sm" aria-label={t.editParticipants(names)} />}>
         {faces}
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 p-0">
+      <PopoverContent align="end" className="w-64">
         {/* Filter on the name and handle only: the value holds the id. */}
-        <Command className="p-1.5" filter={(_, search, keywords) => (keywords?.some((k) => k.toLowerCase().includes(search.trim().toLowerCase())) ? 1 : 0)}>
+        <Command filter={(_, search, keywords) => (keywords?.some((k) => k.toLowerCase().includes(search.trim().toLowerCase())) ? 1 : 0)}>
           <CommandInput placeholder={t.searchPeople} />
-          <CommandList className="max-h-72 pt-1.5">
+          <CommandList>
             <CommandEmpty>{t.noMatch}</CommandEmpty>
             {people.map((p) => {
               const checked = assigned.has(p.id);
@@ -388,7 +459,6 @@ function Participants({ task }: { task: Task }) {
                   keywords={[p.name, p.handle]}
                   onSelect={() => toggle(p.id)}
                   disabled={save.isPending || (checked && ids.length === 1)}
-                  className="h-9 gap-2.5 rounded-lg px-2.5 text-sm"
                 >
                   <PersonAvatar person={p} className="size-5" />
                   <span className="flex-1 truncate">{p.name}</span>

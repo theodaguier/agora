@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useState } from "react";
-import { MoreIcon } from "@/components/icons";
+import { useState } from "react";
+import { MoreIcon, RefreshIcon } from "@/components/icons";
 import { confirmAction } from "@/lib/confirm";
-import { ErrorText, Loading, SectionHeader } from "@/components/admin/ui";
+import { LoadError, LoadFailed, Loading, SectionHeader } from "@/components/admin/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemSeparator, ItemTitle } from "@/components/ui/item";
-import { cn } from "@/lib/utils";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { defineMessages, intlLocale, useLocale, useT } from "@/i18n";
 import { dateFormat } from "@/lib/intl";
 import { api } from "@/lib/api";
@@ -96,16 +96,10 @@ const messages = defineMessages({
   },
 });
 
-/** Status dot: the only color on the page, and it carries meaning. */
-const dot: Record<CheckState, string> = {
-  ok: "bg-success",
-  warn: "bg-warning",
-  down: "bg-destructive",
-  off: "bg-muted-foreground/40",
-};
-
-function Dot({ state, className }: { state: CheckState; className?: string }) {
-  return <span aria-hidden className={cn("size-2 shrink-0 rounded-full", dot[state], className)} />;
+/** Status badge: colour only where it means something (red = down, orange = degraded), neutral otherwise. */
+function StateBadge({ state, children }: { state: CheckState; children: React.ReactNode }) {
+  const variant = ({ down: "destructive", warn: "outline", off: "ghost", ok: "secondary" } as const)[state];
+  return <Badge variant={variant}>{children}</Badge>;
 }
 
 export function Status() {
@@ -138,8 +132,13 @@ export function Status() {
     restart.mutate(check);
   };
 
-  if (isPending) return <Loading />;
-  if (!data) return <ErrorText error={error} />;
+  if (!data)
+    return (
+      <>
+        <SectionHeader title={t.title} text={t.intro} />
+        {isPending ? <Loading /> : <LoadFailed error={error} onRetry={() => void refetch()} />}
+      </>
+    );
 
   const overall: Exclude<CheckState, "off"> = data.checks.some((c) => c.state === "down")
     ? "down"
@@ -151,63 +150,59 @@ export function Status() {
     <>
       <SectionHeader title={t.title} text={t.intro} />
 
-      <FieldGroup>
-        <Item variant="outline">
-          <ItemMedia>
-            <Dot state={overall} className="size-2.5" />
-          </ItemMedia>
-          <ItemContent>
-            <ItemTitle>{t.summary[overall]}</ItemTitle>
-            <ItemDescription>{t.checkedAt(time.format(new Date(data.checkedAt)))}</ItemDescription>
-          </ItemContent>
-          <ItemActions>
+      <Card>
+        <CardHeader>
+          <CardTitle>{t.summary[overall]}</CardTitle>
+          <CardDescription>{t.checkedAt(time.format(new Date(data.checkedAt)))}</CardDescription>
+          <CardAction>
             <Button variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
               {isFetching ? t.checking : t.refresh}
             </Button>
-          </ItemActions>
-        </Item>
+          </CardAction>
+        </CardHeader>
+      </Card>
 
-        <FieldSet>
-          <FieldLegend>{t.components}</FieldLegend>
-          <ItemGroup className="gap-0 rounded-lg border">
-            {data.checks.map((check, i) => (
-              <Fragment key={check.id}>
-                {i > 0 && <ItemSeparator className="my-0" />}
-                <Item role="listitem">
-                  <ItemContent>
-                    <ItemTitle>{t.names[check.id] ?? check.id}</ItemTitle>
-                    {check.detail && <ItemDescription>{check.detail}</ItemDescription>}
-                  </ItemContent>
-                  <ItemActions>
-                    {check.state !== "off" && check.latencyMs !== undefined && (
-                      <span className="text-sm tabular-nums text-muted-foreground">{check.latencyMs} ms</span>
-                    )}
-                    <Badge variant="outline">
-                      <Dot state={check.state} />
-                      {restarting === check.id ? t.restarting : t.states[check.state]}
-                    </Badge>
-                    {check.restart ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={<Button variant="ghost" size="icon-sm" aria-label={t.actions} className="text-muted-foreground" disabled={restarting !== null} />}
-                        >
-                          <MoreIcon />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => onRestart(check)}>{t.restart}</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
-                      <span aria-hidden className="size-7 shrink-0" />
-                    )}
-                  </ItemActions>
-                </Item>
-              </Fragment>
-            ))}
-          </ItemGroup>
-        </FieldSet>
-      </FieldGroup>
-      <ErrorText error={error} />
+      <ListCard>
+        <ListCardHeader>
+          <CardTitle>{t.components}</CardTitle>
+        </ListCardHeader>
+        <ListCardRows>
+          {data.checks.map((check) => (
+            <Item size="xs" key={check.id} role="listitem">
+              <ItemContent>
+                <ItemTitle>{t.names[check.id] ?? check.id}</ItemTitle>
+                {/* Server-written: an error message can be long or technical, the whole of it stays in the tooltip. */}
+                {check.detail && <ItemDescription title={check.detail}>{check.detail}</ItemDescription>}
+              </ItemContent>
+              <ItemActions>
+                {check.state !== "off" && check.latencyMs !== undefined && (
+                  <span className="text-sm text-muted-foreground tabular-nums">{check.latencyMs} ms</span>
+                )}
+                <StateBadge state={check.state}>{restarting === check.id ? t.restarting : t.states[check.state]}</StateBadge>
+                {check.restart ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={<Button variant="ghost" size="icon-sm" aria-label={t.actions} disabled={restarting !== null} />}
+                    >
+                      <MoreIcon />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => onRestart(check)}>
+                        <RefreshIcon />
+                        {t.restart}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  // Keeps the badges of every row lined up.
+                  <span aria-hidden className="size-7 shrink-0" />
+                )}
+              </ItemActions>
+            </Item>
+          ))}
+        </ListCardRows>
+      </ListCard>
+      {error && <LoadError error={error} />}
     </>
   );
 }

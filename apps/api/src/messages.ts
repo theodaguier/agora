@@ -130,8 +130,11 @@ export async function postMessage(values: typeof message.$inferInsert, author: A
  * System message ("Théo added Legal"). The event is kept in `data` so each member
  * reads it in their language; `text` is its rendering in the organization's.
  */
-export const postEvent = async (conversationId: string, event: ConversationEvent) =>
-  postMessage({ id: crypto.randomUUID(), conversationId, kind: "event", text: renderEvent(event, await orgLocale()), data: { event } }, null);
+export const postEvent = async (conversationId: string, event: ConversationEvent) => {
+  // The stored text is what the bots of a group read (formatGroupContext): it keeps a PR's link, the app shows the PR without it.
+  const text = renderEvent(event, await orgLocale()) + (event.type === "code.pr" ? ` : ${event.url}` : "");
+  return postMessage({ id: crypto.randomUUID(), conversationId, kind: "event", text, data: { event } }, null);
+};
 
 /**
  * Deletes a message for everyone: the row (its pins and inbox entries go with it), its files unless

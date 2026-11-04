@@ -3,10 +3,16 @@ import { useRouteContext } from "@tanstack/react-router";
 import { CloseIcon } from "@/components/icons";
 import { useState, type ReactNode } from "react";
 import { AgentScreen } from "@/components/AgentScreen";
+import { FilesPanel } from "@/components/ConversationPanels";
+import { useTurns } from "@/lib/realtime";
 import { AgentSheet } from "@/components/AgentSheet";
 import { openAgentProfile } from "@/lib/profile";
 import { RoutineActions, useToggleRoutine } from "@/components/RoutineDialog";
 import { Button } from "@/components/ui/button";
+import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CardTitle } from "@/components/ui/card";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { ShortcutTooltip } from "@/components/Shortcuts";
 import { shortcuts } from "@/lib/shortcuts";
 import { mascot } from "@/lib/agent-avatar";
@@ -24,6 +30,7 @@ const messages = defineMessages({
     hidePanel: "Hide panel",
     routines: "Routines",
     noRoutines: "No routines.",
+    routinesUnavailable: "Routines are unreachable for now.",
     next: (when: string) => `Next: ${when}`,
     paused: "Paused",
     failed: "Action failed.",
@@ -35,6 +42,7 @@ const messages = defineMessages({
     hidePanel: "Masquer le panneau",
     routines: "Routines",
     noRoutines: "Aucune routine.",
+    routinesUnavailable: "Routines injoignables pour le moment.",
     next: (when: string) => `Prochaine : ${when.charAt(0).toLowerCase()}${when.slice(1)}`,
     paused: "En pause",
     failed: "Action impossible.",
@@ -42,24 +50,32 @@ const messages = defineMessages({
 });
 
 /**
- * Figma « Panneau agent »: the bot's clay portrait and name, its actions as grey pills, then its
- * screen and its routines, each a grey title above a hairline card.
+ * Bot panel: the bot's portrait and name, its actions, then its screen and its routines.
  */
 export function RightPanel({
   conversationId,
   agent,
   onMention,
+  onJump,
+  initialTab = "details",
   onClose,
 }: {
   conversationId: string;
   agent: AgentSummary;
   /** Adds the routine to the message being written. */
   onMention: (routine: Routine) => void;
+  /** Shows a file's message in the conversation. */
+  onJump: (messageId: string) => void;
+  /** The tab it opens on: the header's screen and files buttons lead to theirs. */
+  initialTab?: PanelTab;
   onClose: () => void;
 }) {
-  const { data: routines = [] } = useQuery(routinesQuery(conversationId));
+  const routinesQ = useQuery(routinesQuery(conversationId));
+  const routines = routinesQ.data ?? noRoutines;
   const { user } = useRouteContext({ from: "/app" });
   const [editing, setEditing] = useState(false);
+  // A turn running: the bot is at work, so its computer is waking up.
+  const turns = useTurns(conversationId);
   const t = useT(messages);
   return (
     <aside className="flex h-full w-full flex-col bg-background">
@@ -71,68 +87,99 @@ export function RightPanel({
         </ShortcutTooltip>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pb-5">
-        <div className="flex flex-col gap-3">
-          <img src={mascot(agent.avatar.color).figure} alt="" draggable={false} className="aspect-[7/5] w-full rounded-2xl bg-[#efe9e1] object-cover" />
-          <h2 className="pt-1 text-xl leading-[26px] font-medium">{agent.name}</h2>
-          <div className="flex flex-wrap gap-2">
-            {user.role === "admin" && (
-              <>
-                <Button variant="secondary" onClick={() => setEditing(true)}>
-                  {t.edit}
-                </Button>
-                <AgentSheet agentId={agent.id} open={editing} onOpenChange={setEditing} />
-              </>
-            )}
-            <Button variant="secondary" onClick={() => openAgentProfile(agent.id)}>
-              {t.profile}
-            </Button>
+        {/* Who it is, centred, on its details only: its files and its computer need no introduction. */}
+        {initialTab === "details" && (
+          <div className="flex flex-col items-center gap-3 text-center">
+            <img src={mascot(agent.avatar.color).solo} alt="" draggable={false} className="size-24 object-contain" />
+            <h2 className="text-lg font-medium">{agent.name}</h2>
           </div>
-        </div>
+        )}
 
-        {/* Nothing to show: one grey line, never an empty card. */}
-        <PanelSection title={t.screen} card={false}>
-          <AgentScreen conversationId={conversationId} agentName={agent.name} />
-        </PanelSection>
-
-        <PanelSection title={t.routines} card={routines.length > 0}>
-          {routines.length === 0 ? (
-            <p className="pl-0.5 text-[13px] text-subtle">{t.noRoutines}</p>
-          ) : (
-            <div className="flex flex-col py-1">
-              {routines.map((r) => (
-                <RoutineItem key={r.id} conversationId={conversationId} routine={r} onMention={() => onMention(r)} />
-              ))}
+        {/* What the header button asked for: its details, its files or its computer. */}
+        {initialTab === "library" ? (
+          <FilesPanel conversationId={conversationId} onJump={onJump} />
+        ) : initialTab === "computer" ? (
+          <AgentScreen conversationId={conversationId} agentName={agent.name} mascotSrc={mascot(agent.avatar.color).head} waking={turns.length > 0} />
+        ) : (
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-wrap justify-center gap-2">
+              {user.role === "admin" && (
+                <>
+                  <Button variant="secondary" onClick={() => setEditing(true)}>
+                    {t.edit}
+                  </Button>
+                  <AgentSheet agentId={agent.id} open={editing} onOpenChange={setEditing} />
+                </>
+              )}
+              <Button variant="secondary" onClick={() => openAgentProfile(agent.id)}>
+                {t.profile}
+              </Button>
             </div>
-          )}
-        </PanelSection>
+            <PanelSection title={t.routines} card={routines.length > 0}>
+              {routinesQ.isPending ? (
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              ) : routinesQ.isError ? (
+                <p className="text-sm text-muted-foreground" title={routinesQ.error.message}>
+                  {t.routinesUnavailable}
+                </p>
+              ) : routines.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t.noRoutines}</p>
+              ) : (
+                <ListCardRows>
+                  {routines.map((r) => (
+                    <RoutineItem key={r.id} conversationId={conversationId} routine={r} onMention={() => onMention(r)} />
+                  ))}
+                </ListCardRows>
+              )}
+            </PanelSection>
+                    </div>
+        )}
       </div>
     </aside>
   );
 }
 
-/** A grey title above a hairline card (`card`), or above a plain line. */
+export type PanelTab = "details" | "library" | "computer";
+
+const noRoutines: Routine[] = [];
+
+/** A list card with its title (`card`, children are its ListCardRows), or a title above a plain line. */
 function PanelSection({ title, card, children }: { title: string; card: boolean; children: ReactNode }) {
+  if (card)
+    return (
+      <ListCard size="sm">
+        <ListCardHeader>
+          <CardTitle>{title}</CardTitle>
+        </ListCardHeader>
+        {children}
+      </ListCard>
+    );
   return (
-    <section className="flex flex-col gap-1.5">
-      <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{title}</h3>
-      {card ? <div className="overflow-hidden rounded-xl border border-border">{children}</div> : children}
+    <section className="flex flex-col gap-2">
+      <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+      {children}
     </section>
   );
 }
 
-/** Figma « Ligne de réglage »: the routine and when it runs; its actions on hover. */
+/** The routine and when it runs, then its actions. */
 function RoutineItem({ conversationId, routine, onMention }: { conversationId: string; routine: Routine; onMention: () => void }) {
   const t = useT(messages);
   const toggle = useToggleRoutine(conversationId, routine);
   return (
-    <div className="group/routine flex items-center gap-3 px-3.5 py-2.5">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="truncate text-sm leading-5">{routine.name}</p>
-        <p className="truncate text-xs leading-4 text-muted-foreground">
+    <Item size="sm" role="listitem" className="flex-nowrap">
+      <ItemContent className="min-w-0">
+        <ItemTitle>{routine.name}</ItemTitle>
+        <ItemDescription className="line-clamp-1">
           {routine.enabled ? (routine.nextRunAt ? t.next(dividerLabel(new Date(routine.nextRunAt))) : scheduleLabel(routine)) : t.paused}
-        </p>
-      </div>
-      <RoutineActions conversationId={conversationId} routine={routine} toggle={toggle} onMention={onMention} />
-    </div>
+        </ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        <RoutineActions conversationId={conversationId} routine={routine} toggle={toggle} onMention={onMention} />
+      </ItemActions>
+    </Item>
   );
 }

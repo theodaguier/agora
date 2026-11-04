@@ -37,7 +37,7 @@ const messages = defineMessages({
 const NEW_TASK = { key: "n", typing: false } as const;
 const WEEK = 7 * 86_400_000;
 
-/** Figma « Mes tâches »: the title and what's new this week, « Nouvelle tâche » (N) opens the quick add, then the groups. */
+/** My tasks: the title and what's new this week, « Nouvelle tâche » (N) opens the quick add, then the groups. */
 export function Tasks() {
   const { user } = useRouteContext({ from: "/app" });
   const t = useT(messages);
@@ -51,24 +51,24 @@ export function Tasks() {
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[712px] flex-col px-4 pt-6 pb-12 md:pt-10">
+        <div className="mx-auto flex w-full max-w-2xl flex-col px-4 pt-6 pb-12 md:pt-10">
           <Button
             variant="ghost"
             size="icon"
             nativeButton={false}
             render={<Link to="/" aria-label={t.back} />}
-            className="-ml-2 mb-2 hover:bg-transparent md:hidden"
+            className="-ml-2 mb-2 md:hidden"
           >
-            <ChevronLeftIcon className="size-5" />
+            <ChevronLeftIcon />
           </Button>
-          {/* Figma « Titre »: Titre/Panneau, the week in grey under it, the action on the right. */}
+          {/* The title, the week under it, the action on the right. */}
           <header className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <h1 className="text-xl leading-[26px] font-medium">{t.title}</h1>
+              <h1 className="text-xl font-medium">{t.title}</h1>
               {(doneThisWeek > 0 || overdue > 0) && (
-                <p className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {doneThisWeek > 0 && t.doneThisWeek(doneThisWeek)}
-                  {doneThisWeek > 0 && overdue > 0 && " · "}
+                  {doneThisWeek > 0 && overdue > 0 && ", "}
                   {overdue > 0 && <span className="text-destructive">{t.overdue(overdue)}</span>}
                 </p>
               )}

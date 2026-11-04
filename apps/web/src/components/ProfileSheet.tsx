@@ -1,9 +1,11 @@
 import { mascot } from "@/lib/agent-avatar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClockIcon } from "@/components/icons";
+import { ClockIcon, UserIcon } from "@/components/icons";
 import { toolLabel } from "@agora/core";
 import { codeSessions } from "@agora/core/i18n";
 import { useState } from "react";
+import { common } from "@agora/core/i18n";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { AgentSheet } from "@/components/AgentSheet";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate, useRouteContext, useRouterState } from "@tanstack/react-router";
@@ -30,17 +32,19 @@ import { dateFormat } from "@/lib/intl";
 const messages = defineMessages({
   en: {
     profile: "Profile",
-    unavailable: "Profile unavailable.",
+    unavailable: "Profile unavailable",
+    unavailableText: "This profile can't be reached for now. Try again in a moment.",
+    activityUnavailable: "What it's doing is unreachable for now.",
     noTasks: "No tasks.",
     message: (name: string) => `Message ${name}`,
     openFailed: "Couldn't open the conversation.",
     email: "Email",
     memberSince: "Member since",
-    common: (n: number) => `Conversations in common · ${n}`,
+    common: (n: number) => `Conversations in common (${n})`,
     tasks: "Tasks",
     members: (n: number) => `${n} members`,
     bot: "Bot",
-    botSince: (date: string) => `Bot · since ${date}`,
+    botSince: (date: string) => `Bot since ${date}`,
     botTasks: "Tasks it created",
     noBotTasks: "It hasn't created any tasks yet.",
     now: "Right now",
@@ -59,17 +63,19 @@ const messages = defineMessages({
   },
   fr: {
     profile: "Profil",
-    unavailable: "Profil indisponible.",
+    unavailable: "Profil indisponible",
+    unavailableText: "Ce profil est injoignable pour le moment. Réessaie dans un instant.",
+    activityUnavailable: "Son activité est injoignable pour le moment.",
     noTasks: "Aucune tâche.",
     message: (name: string) => `Écrire à ${name}`,
     openFailed: "Impossible d'ouvrir la conversation.",
     email: "Email",
     memberSince: "Membre depuis",
-    common: (n: number) => `Conversations en commun · ${n}`,
+    common: (n: number) => `Conversations en commun (${n})`,
     tasks: "Tâches",
     members: (n: number) => `${n} membres`,
     bot: "Bot",
-    botSince: (date: string) => `Bot · depuis ${date}`,
+    botSince: (date: string) => `Bot depuis ${date}`,
     botTasks: "Tâches qu'il a créées",
     noBotTasks: "Il n'a encore créé aucune tâche.",
     now: "En ce moment",
@@ -94,7 +100,7 @@ export function ProfileSheet() {
   const target = useProfileTarget();
   return (
     <Sheet open={!!target} onOpenChange={(open) => !open && closeProfile()}>
-      <SheetContent className="w-full gap-0 bg-background data-[side=right]:sm:max-w-md">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-md">
         {target?.kind === "user" && <Profile key={target.id} userId={target.id} />}
         {target?.kind === "agent" && <BotProfile key={target.id} agentId={target.id} />}
       </SheetContent>
@@ -105,12 +111,12 @@ export function ProfileSheet() {
 function Profile({ userId }: { userId: string }) {
   const { user: me } = useRouteContext({ from: "/app" });
   const t = useT(messages);
-  const { data: person, error } = useQuery(userProfileQuery(userId));
+  const { data: person, error, refetch } = useQuery(userProfileQuery(userId));
   const self = userId === me.id;
 
   return (
     <>
-      <SheetHeader className="gap-3 border-b border-border/60 px-5 py-5 pr-14">
+      <SheetHeader className="gap-3">
         {person ? (
           <PersonHeader person={person} self={self} />
         ) : (
@@ -128,16 +134,14 @@ function Profile({ userId }: { userId: string }) {
       </SheetHeader>
 
       {error ? (
-        <p role="alert" className="px-5 py-4 text-sm text-destructive">
-          {t.unavailable}
-        </p>
+        <ProfileError error={error} onRetry={() => void refetch()} />
       ) : (
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-6 px-5 pb-10 pt-4">
+          <div className="flex flex-col gap-6 px-4 pb-4">
             {person && <Details person={person} />}
             {!self && <CommonConversations userId={userId} />}
             <section className="flex flex-col gap-2">
-              <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.tasks}</h3>
+              <h3 className="text-sm text-muted-foreground">{t.tasks}</h3>
               <TaskList userId={userId} empty={t.noTasks} />
             </section>
           </div>
@@ -149,11 +153,11 @@ function Profile({ userId }: { userId: string }) {
 
 function BotProfile({ agentId }: { agentId: string }) {
   const t = useT(messages);
-  const { data: agent, error } = useQuery(agentProfileQuery(agentId));
+  const { data: agent, error, refetch } = useQuery(agentProfileQuery(agentId));
 
   return (
     <>
-      <SheetHeader className="gap-3 border-b border-border/60 px-5 py-5 pr-14">
+      <SheetHeader className="gap-3">
         {agent ? (
           <BotHeader agent={agent} />
         ) : (
@@ -170,15 +174,13 @@ function BotProfile({ agentId }: { agentId: string }) {
       </SheetHeader>
 
       {error ? (
-        <p role="alert" className="px-5 py-4 text-sm text-destructive">
-          {t.unavailable}
-        </p>
+        <ProfileError error={error} onRetry={() => void refetch()} />
       ) : (
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-6 px-5 pb-10 pt-4">
+          <div className="flex flex-col gap-6 px-4 pb-4">
             <BotActivity agentId={agentId} />
             <section className="flex flex-col gap-2">
-              <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.botTasks}</h3>
+              <h3 className="text-sm text-muted-foreground">{t.botTasks}</h3>
               <TaskList agentId={agentId} empty={t.noBotTasks} />
             </section>
           </div>
@@ -188,23 +190,51 @@ function BotProfile({ agentId }: { agentId: string }) {
   );
 }
 
+/** A profile that couldn't load: said plainly, with a way to try again. */
+function ProfileError({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const t = useT(messages);
+  const c = useT(common);
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <UserIcon />
+        </EmptyMedia>
+        <EmptyTitle>{t.unavailable}</EmptyTitle>
+        <EmptyDescription title={error.message}>{t.unavailableText}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button variant="secondary" onClick={onRetry}>
+          {c.retry}
+        </Button>
+      </EmptyContent>
+    </Empty>
+  );
+}
+
 /** What the bot is doing right now and the routines it runs, in your conversations only. */
 function BotActivity({ agentId }: { agentId: string }) {
   const t = useT(messages);
-  const { data: activity } = useQuery(agentActivityQuery(agentId));
+  const { data: activity, error } = useQuery(agentActivityQuery(agentId));
+  if (error)
+    return (
+      <p className="text-sm text-muted-foreground" title={error.message}>
+        {t.activityUnavailable}
+      </p>
+    );
   if (!activity)
     return (
       <div className="flex flex-col gap-2">
         <Skeleton className="h-3 w-24" />
-        <Skeleton className="h-10 w-full rounded-lg" />
+        <Skeleton className="h-10 w-full" />
       </div>
     );
   return (
     <>
       <section className="flex flex-col gap-2">
-        <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.now}</h3>
+        <h3 className="text-sm text-muted-foreground">{t.now}</h3>
         {activity.turns.length ? (
-          <ItemGroup className="-mx-2 gap-0.5">
+          <ItemGroup>
             {activity.turns.map((turn) => (
               <TurnItem key={`${turn.conversationId}:${turn.startedAt}`} turn={turn} />
             ))}
@@ -212,12 +242,12 @@ function BotActivity({ agentId }: { agentId: string }) {
         ) : (
           <p className="text-sm text-muted-foreground">{activity.elsewhere ? t.elsewhere : t.idle}</p>
         )}
-        {activity.turns.length > 0 && activity.elsewhere > 0 && <p className="text-[13px] text-muted-foreground">{t.alsoElsewhere(activity.elsewhere)}</p>}
+        {activity.turns.length > 0 && activity.elsewhere > 0 && <p className="text-sm text-muted-foreground">{t.alsoElsewhere(activity.elsewhere)}</p>}
       </section>
       <section className="flex flex-col gap-2">
-        <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.routines}</h3>
+        <h3 className="text-sm text-muted-foreground">{t.routines}</h3>
         {activity.routines.length ? (
-          <ItemGroup className="-mx-2 gap-0.5">
+          <ItemGroup>
             {activity.routines.map((r) => (
               <RoutineItem key={r.id} routine={r} />
             ))}
@@ -243,17 +273,13 @@ function TurnItem({ turn }: { turn: AgentActivity["turns"][number] }) {
   const tools = useT(codeSessions);
   const title = useConversationTitle(turn.conversationId);
   return (
-    <Item
-      size="sm"
-      className="px-2 py-1.5"
-      render={<Link to="/c/$conversationId" params={{ conversationId: turn.conversationId }} onClick={() => closeProfile()} />}
-    >
-      <ItemMedia>
-        <Spinner className="size-4 text-muted-foreground" />
+    <Item size="sm" render={<Link to="/c/$conversationId" params={{ conversationId: turn.conversationId }} onClick={() => closeProfile()} />}>
+      <ItemMedia variant="icon">
+        <Spinner />
       </ItemMedia>
       <ItemContent className="min-w-0">
-        <ItemTitle className="w-full truncate">{title ?? t.conversation}</ItemTitle>
-        <ItemDescription className="flex items-center gap-1.5">
+        <ItemTitle>{title ?? t.conversation}</ItemTitle>
+        <ItemDescription>
           {turn.tool ? `${t.using} ${toolLabel(turn.tool, tools.toolNames).name}` : t.writing}
         </ItemDescription>
       </ItemContent>
@@ -267,24 +293,22 @@ function RoutineItem({ routine }: { routine: AgentActivity["routines"][number] }
   const toggle = useToggleRoutine(routine.conversationId, routine);
   const when = routine.enabled ? (routine.nextRunAt ? t.next(dividerLabel(new Date(routine.nextRunAt))) : null) : t.paused;
   return (
-    <div className="flex items-start gap-1">
+    <div className="flex items-center gap-1">
       <Item
         size="sm"
-        className="min-w-0 flex-1 items-start px-2 py-1.5"
+        className="min-w-0 flex-1"
         render={<Link to="/c/$conversationId" params={{ conversationId: routine.conversationId }} onClick={() => closeProfile()} />}
       >
-        <ItemMedia className="pt-0.5">
-          <ClockIcon className={cn("size-4", routine.enabled ? "text-success" : "text-muted-foreground")} />
+        <ItemMedia variant="icon">
+          <ClockIcon className={cn(routine.enabled ? "text-success" : "text-muted-foreground")} />
         </ItemMedia>
-        <ItemContent className="min-w-0 gap-0.5">
-          <ItemTitle className="w-full truncate font-normal">{routine.name}</ItemTitle>
-          <ItemDescription className="text-[13px]">{[scheduleLabel(routine), when].filter(Boolean).join(" · ")}</ItemDescription>
-          {title && <ItemDescription className="truncate text-[13px]">{title}</ItemDescription>}
+        <ItemContent className="min-w-0">
+          <ItemTitle>{routine.name}</ItemTitle>
+          <ItemDescription>{[scheduleLabel(routine), when].filter(Boolean).join(", ")}</ItemDescription>
+          {title && <ItemDescription>{title}</ItemDescription>}
         </ItemContent>
       </Item>
-      <div className="pt-1">
-        <RoutineActions conversationId={routine.conversationId} routine={routine} toggle={toggle} />
-      </div>
+      <RoutineActions conversationId={routine.conversationId} routine={routine} toggle={toggle} />
     </div>
   );
 }
@@ -324,13 +348,13 @@ function BotHeader({ agent }: { agent: AgentProfile }) {
   const canWrite = agent.access && !agent.onboarding && !here;
   const admin = me.role === "admin";
 
-  // Figma « Panneau agent »: the bot's clay portrait, its name, then its actions as grey pills.
+  // The bot's clay portrait, its name, then its actions.
   return (
     <div className="flex flex-col gap-3">
-      <img src={mascot(agent.avatar.color).figure} alt="" draggable={false} className="aspect-[7/5] w-full rounded-2xl bg-[#efe9e1] object-cover" />
-      <div className="min-w-0 pt-1">
-        <SheetTitle className="truncate text-xl leading-[26px] font-medium">{agent.name}</SheetTitle>
-        <SheetDescription className="truncate">{[t.botSince(since), status].filter(Boolean).join(" · ")}</SheetDescription>
+      <img src={mascot(agent.avatar.color).solo} alt="" draggable={false} className="aspect-[7/5] w-full rounded-2xl bg-mascot object-contain" />
+      <div className="min-w-0">
+        <SheetTitle className="truncate">{agent.name}</SheetTitle>
+        <SheetDescription className="truncate">{[t.botSince(since), status].filter(Boolean).join(", ")}</SheetDescription>
       </div>
       {(canWrite || admin) && (
         <div className="flex flex-wrap gap-2">
@@ -368,7 +392,7 @@ function PersonHeader({ person, self }: { person: UserProfile; self: boolean }) 
     },
     meta: { error: t.openFailed },
   });
-  const subtitle = [person.title, person.username && `@${person.username}`].filter(Boolean).join(" · ");
+  const subtitle = [person.title, person.username && `@${person.username}`].filter(Boolean).join(", ");
   const here = useInDirectWith({ userId: person.id });
 
   return (
@@ -376,7 +400,7 @@ function PersonHeader({ person, self }: { person: UserProfile; self: boolean }) 
       <div className="flex items-center gap-3">
         <PersonAvatar person={person} className="size-14" />
         <div className="min-w-0">
-          <SheetTitle className="truncate text-xl leading-[26px] font-medium">{person.name}</SheetTitle>
+          <SheetTitle className="truncate">{person.name}</SheetTitle>
           <SheetDescription className="truncate">{subtitle}</SheetDescription>
           {status && <p className="truncate text-xs text-muted-foreground">{status}</p>}
         </div>
@@ -421,20 +445,19 @@ export function CommonConversations({ userId }: { userId: string }) {
 
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="pl-0.5 text-[13px] leading-[18px] text-muted-foreground">{t.common(shared.length)}</h3>
-      <ItemGroup className="-mx-2 gap-0.5">
+      <h3 className="text-sm text-muted-foreground">{t.common(shared.length)}</h3>
+      <ItemGroup>
         {shared.map((c) => (
           <Item
             key={c.id}
             size="sm"
-            className="px-2 py-1.5"
             render={<Link to="/c/$conversationId" params={{ conversationId: c.id }} onClick={() => closeProfile()} />}
           >
             <ItemMedia>
               <ConversationAvatar conversation={c} me={me.id} className="size-9" />
             </ItemMedia>
             <ItemContent className="min-w-0">
-              <ItemTitle className="w-full truncate">{conversationTitle(c, me.id)}</ItemTitle>
+              <ItemTitle>{conversationTitle(c, me.id)}</ItemTitle>
               <ItemDescription>{t.members(c.members.length + c.agents.length)}</ItemDescription>
             </ItemContent>
           </Item>

@@ -1,9 +1,9 @@
 import type { Drafts, DraftType, MailItem, ViewAction, ViewActionKind, ViewBlock } from "@agora/core";
 import { lazy, Suspense } from "react";
 import { integrations } from "@agora/core/i18n";
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { defineMessages, useT } from "@/i18n";
-import { cn } from "@/lib/utils";
 import { BlockCard } from "./block";
 import { DraftCard } from "./DraftCard";
 import { draftLabel } from "./format";
@@ -82,23 +82,24 @@ export function ViewCard(props: {
     }
   };
 
-  // One muted line under the title: where it comes from, and how many there are.
-  const subtitle =
-    view.kind === "draft"
-      ? (view.subtitle ?? m.draft[view.type])
-      : [view.subtitle ?? (view.source && serverName(view.source)), count ? String(count) : null].filter(Boolean).join(" · ");
-  const padded = view.kind !== "list";
+  // One muted line under the title: where it comes from; how many there are goes in a badge.
+  const subtitle = view.kind === "draft" ? (view.subtitle ?? m.draft[view.type]) : (view.subtitle ?? (view.source && serverName(view.source)));
 
   return (
-    <BlockCard className={cn(view.kind === "list" && "gap-3")}>
+    <BlockCard>
       <CardHeader>
         {/* A chart's title is its conclusion, a sentence: it wraps rather than being cut. */}
-        <CardTitle className={cn("text-[15px] leading-[21px] font-medium text-pretty", view.kind === "chart" || view.kind === "stats" ? "line-clamp-2" : "truncate")}>
+        <CardTitle className={view.kind === "chart" || view.kind === "stats" ? "line-clamp-2" : "truncate"}>
           {view.title || t.types[view.type]}
         </CardTitle>
-        {subtitle && <CardDescription className="text-pretty">{subtitle}</CardDescription>}
+        {subtitle && <CardDescription>{subtitle}</CardDescription>}
+        {count ? (
+          <CardAction>
+            <Badge variant="secondary">{count}</Badge>
+          </CardAction>
+        ) : null}
       </CardHeader>
-      {view.kind === "draft" ? body() : padded ? <CardContent>{body()}</CardContent> : body()}
+      {view.kind === "draft" ? body() : <CardContent>{body()}</CardContent>}
     </BlockCard>
   );
 }

@@ -26,6 +26,7 @@ export const CheckCircleIcon = createIcon("check-circle", {
 export const CircleIcon = createIcon("circle", { line: <circle cx="12" cy="12" r="9" /> });
 
 export const CloseIcon = createIcon("close", { line: <path d="M18 6L6 18M6 6l12 12" /> });
+export const MinusIcon = createIcon("minus", { line: <path d="M5 12h14" /> });
 
 export const CloseCircleIcon = createIcon("close-circle", {
   fill: <circle cx="12" cy="12" r="10" />,
@@ -113,6 +114,40 @@ export const LogOutIcon = createIcon("log-out", {
   line: <path d="M9.5 12H21M18 8.5s3 2.6 3 3.5-3 3.5-3 3.5" />,
 });
 
+export const PencilIcon = createIcon("pencil", {
+  fill: (
+    <path d="M21.17 6.81a2.82 2.82 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z" />
+  ),
+  cut: <path d="M15 5l4 4" />,
+});
+
+/** Media controls, solid like StopIcon. */
+export const PlayIcon = createIcon("play", {
+  solid: <path d="M7 5.6v12.8a1.6 1.6 0 0 0 2.45 1.36l10.2-6.4a1.6 1.6 0 0 0 0-2.72L9.45 4.24A1.6 1.6 0 0 0 7 5.6z" />,
+});
+
+export const PauseIcon = createIcon("pause", {
+  solid: (
+    <>
+      <rect x="5.5" y="4.5" width="5" height="15" rx="2" />
+      <rect x="13.5" y="4.5" width="5" height="15" rx="2" />
+    </>
+  ),
+});
+
+export const ArchiveIcon = createIcon("archive", {
+  fill: <path d="M3.5 10h17v6.5a4 4 0 0 1-4 4h-9a4 4 0 0 1-4-4z" />,
+  cut: <path d="M10 14h4" />,
+  solid: <rect x="2" y="3.5" width="20" height="5" rx="2" />,
+});
+
+/** Recurrence: two arrows chasing each other. */
+export const RepeatIcon = createIcon("repeat", {
+  line: (
+    <path d="M3.5 11.5V10a4 4 0 0 1 4-4h13M17 2.5s3.5 2.6 3.5 3.5-3.5 3.5-3.5 3.5M20.5 12.5V14a4 4 0 0 1-4 4h-13M7 14.5s-3.5 2.6-3.5 3.5 3.5 3.5 3.5 3.5" />
+  ),
+});
+
 // — Arrows & chevrons
 
 export const ArrowUpIcon = createIcon("arrow-up", { line: <path d="M12 20V4.5M6 10s4.4-6 6-6 6 6 6 6" /> });
@@ -126,6 +161,36 @@ export const BranchIcon = createIcon("branch", {
     </>
   ),
   line: <path d="M6 7.5v9M18 9.5c0 5.5-12 2.5-12 7" />,
+});
+
+/** A merge commit: a branch joining the line it came from. */
+export const MergeIcon = createIcon("merge", {
+  fill: (
+    <>
+      <circle cx="6" cy="5" r="2.75" />
+      <circle cx="6" cy="19" r="2.75" />
+      <circle cx="18" cy="13" r="2.75" />
+    </>
+  ),
+  line: <path d="M6 7.75v8.5M6 7.75c0 3.5 3.5 5.25 9.25 5.25" />,
+});
+
+/** Squash: the commits pressed into one. */
+export const SquashIcon = createIcon("squash", {
+  fill: <circle cx="12" cy="16.5" r="3.5" />,
+  line: <path d="M12 20v1.5M8.5 3s2.6 3 3.5 3 3.5-3 3.5-3M8.5 8s2.6 3 3.5 3 3.5-3 3.5-3" />,
+});
+
+/** Rebase: the branch's commits replayed on top of the target. */
+export const RebaseIcon = createIcon("rebase", {
+  fill: (
+    <>
+      <circle cx="6" cy="19" r="2.75" />
+      <circle cx="18" cy="5" r="2.75" />
+      <circle cx="18" cy="14" r="2.75" />
+    </>
+  ),
+  line: <path d="M18 7.75v3.5M6 16.25V9a4 4 0 0 1 4-4h5.25" />,
 });
 
 export const StopIcon = createIcon("stop", { solid: <rect x="6" y="6" width="12" height="12" rx="3" /> });
@@ -148,6 +213,79 @@ export const ChevronsRightIcon = createIcon("chevrons-right", {
 export const ClockIcon = createIcon("clock", {
   fill: <circle cx="12" cy="12" r="10" />,
   cut: <path d="M12 7.5V12l3 2" />,
+});
+
+export const SunIcon = createIcon("sun", {
+  fill: <circle cx="12" cy="12" r="4.5" />,
+  line: <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />,
+});
+
+/** A screen on its stand: follow the system (theme). */
+export const MonitorIcon = createIcon("monitor", {
+  fill: <rect x="2" y="3" width="20" height="14" rx="4" />,
+  line: <path d="M12 17v4M8 21h8" />,
+});
+
+// A calendar page: rings detached from the body, header hollowed out; each variant marks its days below.
+const page = <rect x="3" y="4.5" width="18" height="16.5" rx="4.5" />;
+const rings = "M8 2.5v4M16 2.5v4";
+
+export const CalendarIcon = createIcon("calendar", {
+  fill: page,
+  cut: (
+    <>
+      <path d={rings} strokeWidth={4.5} />
+      <path d="M3 10h18" />
+    </>
+  ),
+  line: <path d={rings} />,
+});
+
+/** One day picked out. */
+export const CalendarDayIcon = createIcon("calendar-day", {
+  fill: page,
+  cut: (
+    <>
+      <path d={rings} strokeWidth={4.5} />
+      <path d="M3 10h18" />
+      <Hole d="M7 14.3a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3v2.4a1.3 1.3 0 0 1-1.3 1.3H8.3A1.3 1.3 0 0 1 7 16.7z" />
+    </>
+  ),
+  line: <path d={rings} />,
+});
+
+/** A whole week picked out. */
+export const CalendarWeekIcon = createIcon("calendar-week", {
+  fill: page,
+  cut: (
+    <>
+      <path d={rings} strokeWidth={4.5} />
+      <path d="M3 10h18" />
+      <Hole d="M6.5 15a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2z" />
+    </>
+  ),
+  line: <path d={rings} />,
+});
+
+/** Away on leave. */
+export const PlaneIcon = createIcon("plane", {
+  solid: (
+    <path
+      transform="rotate(45 12 12) translate(0.5 -1)"
+      d="M12 2.5c-1 0-1.75 1-1.75 2.25V9.2L3.4 13.3c-.55.33-.9.9-.9 1.55v.35c0 .55.55.95 1.1.78l6.65-1.68v3.3l-2.1 1.55c-.3.22-.4.5-.4.8v.3c0 .45.45.78.9.65L12 20.1l3.35.8c.45.13.9-.2.9-.65v-.3c0-.3-.1-.58-.4-.8l-2.1-1.55v-3.3l6.65 1.68c.55.17 1.1-.23 1.1-.78v-.35c0-.65-.35-1.22-.9-1.55l-6.85-4.1V4.75C13.75 3.5 13 2.5 12 2.5z"
+    />
+  ),
+});
+
+/** Sick leave. */
+export const ThermometerIcon = createIcon("thermometer", {
+  fill: <path d="M15 12.9V5.5a3 3 0 0 0-6 0v7.4a5 5 0 1 0 6 0z" />,
+  cut: (
+    <>
+      <path d="M12 8.5v6.5" />
+      <Hole d={circle(12, 16.9, 2.1)} />
+    </>
+  ),
 });
 
 /** Do not disturb. */

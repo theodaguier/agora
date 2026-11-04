@@ -1,6 +1,8 @@
 import type { AgentSummary, Person } from "../lib/api";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "./AgentAvatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UsersIcon } from "@/components/icons";
 import { initials, othersOf, type Participant } from "@/lib/participants";
 import { defineMessages, useT } from "@/i18n";
 import { conversations } from "@agora/core/i18n";
@@ -14,13 +16,23 @@ const messages = defineMessages({
   fr: { justYou: conversations.fr.justYou, online: "En ligne", working: "Au travail", workingNow: "Au travail…" },
 });
 
-/** Colleague: photo if there is one, otherwise their initials on a neutral disc (never a coloured gradient). */
-export function PersonAvatar({ person, className }: { person: Person; className?: string }) {
-  if (person.image) return <img src={person.image} alt="" className={cn("shrink-0 rounded-full object-cover", className ?? "size-10")} />;
+/**
+ * Colleague: photo if there is one, otherwise their initials (never a coloured gradient).
+ * `size` picks a stock Avatar size; `className` carries a `size-*` the stock sizes don't cover.
+ */
+/** The stock Avatar size matching a `size-*` layout class, so the initials keep the right text size. */
+function avatarSize(className?: string): "sm" | "default" | "lg" {
+  const px = Number(/\bsize-(\d+)\b/.exec(className ?? "")?.[1] ?? 10);
+  // lg is exactly 40 px: any other size is the class itself, over the default.
+  return px <= 6 ? "sm" : px === 10 ? "lg" : "default";
+}
+
+export function PersonAvatar({ person, className, size }: { person: Person; className?: string; size?: "sm" | "default" | "lg" }) {
   return (
-    <span aria-hidden className={cn("@container inline-flex shrink-0 items-center justify-center rounded-full bg-black/6 font-medium dark:bg-white/10 text-[oklch(0.43_0.01_286)] dark:text-muted-foreground", className ?? "size-10")}>
-      <span className="text-[clamp(8px,calc(18cqw+6px),15px)] leading-none">{initials(person.name)}</span>
-    </span>
+    <Avatar aria-hidden size={size ?? avatarSize(className)} className={cn(!size && !className && "size-10", className)}>
+      {person.image && <AvatarImage src={person.image} alt="" />}
+      <AvatarFallback>{initials(person.name)}</AvatarFallback>
+    </Avatar>
   );
 }
 
@@ -37,7 +49,7 @@ export function StatusDot({ p, ring = "ring-background" }: { p: Participant; rin
   return p.kind === "agent" ? <AgentDot id={p.agent.id} ring={ring} /> : <PersonDot id={p.person.id} ring={ring} />;
 }
 
-const dot = "absolute bottom-0 right-0 size-[30%] min-h-2 min-w-2 rounded-full ring-2";
+const dot = "absolute bottom-0 right-0 size-2.5 rounded-full ring-2";
 
 function PersonDot({ id, ring }: { id: string; ring: string }) {
   const t = useT(messages);
@@ -46,7 +58,7 @@ function PersonDot({ id, ring }: { id: string; ring: string }) {
   if (isAway(away))
     return (
       <span role="img" aria-label={availabilityTitle(away)!} className={cn(dot, ring, "flex items-center justify-center bg-destructive")}>
-        <span className="h-[18%] min-h-px w-1/2 rounded-full bg-background" />
+        <span className="h-0.5 w-1/2 rounded-full bg-background" />
       </span>
     );
   if (!online) return null;
@@ -102,21 +114,32 @@ export function ConversationAvatar({
   status?: string;
 }) {
   const others = othersOf(conversation, me);
-  // A named group: its initials on a neutral disc, like a colleague without a photo.
+  // A named group: the group icon on a neutral disc (its initials, « C& », read as noise).
   if (conversation.kind === "group" && conversation.title)
-    return <PersonAvatar person={{ id: conversation.title, name: conversation.title, image: null }} className={className} />;
+    return (
+      <Avatar aria-hidden className={className ?? "size-10"}>
+        <AvatarFallback>
+          <UsersIcon size="55%" />
+        </AvatarFallback>
+      </Avatar>
+    );
   if (conversation.kind !== "group" || others.length < 2) {
     const first = others[0];
-    if (!first) return <span className={cn("shrink-0 rounded-full bg-secondary", className ?? "size-10")} />;
+    if (!first)
+      return (
+        <Avatar aria-hidden className={className ?? "size-10"}>
+          <AvatarFallback />
+        </Avatar>
+      );
     return status ? <StatusAvatar p={first} className={className} ring={status} /> : <ParticipantAvatar p={first} className={className} />;
   }
   return (
     <span className={cn("relative shrink-0", className ?? "size-10")}>
-      <span className="absolute left-0 top-0 size-[70%]" style={{ mask: cutout(others[1]!), WebkitMask: cutout(others[1]!) }} aria-hidden>
+      <span className="absolute left-0 top-0 size-2/3" style={{ mask: cutout(others[1]!), WebkitMask: cutout(others[1]!) }} aria-hidden>
         <ParticipantAvatar p={others[0]!} className="size-full" />
       </span>
       <span aria-hidden>
-        <ParticipantAvatar p={others[1]!} className="absolute bottom-0 right-0 size-[70%]" />
+        <ParticipantAvatar p={others[1]!} className="absolute bottom-0 right-0 size-2/3" />
       </span>
       {status && <GroupWorkingDot agentIds={conversation.agents.map((a) => a.id)} ring={status} />}
     </span>
@@ -137,14 +160,14 @@ const circlePath = "M16 0a16 16 0 1 1 0 32a16 16 0 0 1 0-32Z";
 /**
  * Cuts the back avatar along the silhouette of the front one, widened by a thin border,
  * whatever the background (hovered row, selected…); a colored ring would not follow it.
- * Coordinates: back avatar = 100 × 100, front one offset by 42.9 at the same scale (70% each).
+ * Coordinates: back avatar = 100 × 100, front one offset by 50 at the same scale (2/3 each).
  */
 function cutout(_front: Participant) {
   const d = circlePath;
   const svg =
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><mask id='m'>" +
     "<rect width='100' height='100' fill='white'/>" +
-    `<path d='${d}' transform='translate(42.9 42.9) scale(3.125)' fill='black' stroke='black' stroke-width='5' stroke-linejoin='round'/>` +
+    `<path d='${d}' transform='translate(50 50) scale(3.125)' fill='black' stroke='black' stroke-width='5' stroke-linejoin='round'/>` +
     "</mask></defs><rect width='100' height='100' mask='url(#m)'/></svg>";
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 0 0 / 100% 100% no-repeat`;
 }

@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { barRows, CHART_COLORS, chartLabel, funnelSteps, pieSlices, unitOnTicks, withUnit, type ChartView, type StatsView } from "@agora/core";
 import { integrations } from "@agora/core/i18n";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts";
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipPanel, ChartTooltipRow, type ChartConfig } from "@/components/ui/chart";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { intlLocale, useLocale, useT } from "@/i18n";
 import { numberFormat } from "@/lib/intl";
 import { cn } from "@/lib/utils";
@@ -30,9 +30,9 @@ const Caption = ({ unit }: { unit?: string }) => (unit ? <p className="px-2 pt-2
 
 /** A series' color square; outside the chart, its light and dark colors are given (the chart's variables stop at it). */
 function Swatch({ color }: { color: string | { light: string; dark: string } }) {
-  if (typeof color === "string") return <span className="size-2.5 shrink-0 rounded-[2px]" style={{ background: color }} />;
+  if (typeof color === "string") return <span className="size-2.5 shrink-0 rounded-sm" style={{ background: color }} />;
   const vars = { "--light": color.light, "--dark": color.dark } as CSSProperties;
-  return <span className="size-2.5 shrink-0 rounded-[2px] bg-(--light) dark:bg-(--dark)" style={vars} />;
+  return <span className="size-2.5 shrink-0 rounded-sm bg-(--light) dark:bg-(--dark)" style={vars} />;
 }
 
 /**
@@ -67,21 +67,7 @@ export function ViewChart({ view }: { view: ChartView }) {
       {!values && <CartesianGrid vertical={false} />}
       <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} tickFormatter={tick} />
       {!values && <YAxis tickLine={false} axisLine={false} width={scale} tickFormatter={f.axis} />}
-      <ChartTooltip
-        cursor={view.chart === "bar" ? { fill: "var(--muted)", opacity: 0.5 } : true}
-        content={({ active, payload, label }) => {
-          if (!active || !payload?.length) return null;
-          const { j } = payload[0]!.payload as { j: number };
-          return (
-            <ChartTooltipPanel title={tick(String(label))}>
-              {view.series.map((s, i) => {
-                const v = s.values[j];
-                return v == null ? null : <ChartTooltipRow key={keys[i]} color={`var(--color-${keys[i]})`} name={s.name} value={f.exact(v)} />;
-              })}
-            </ChartTooltipPanel>
-          );
-        }}
-      />
+      <ChartTooltip cursor={view.chart === "bar" ? { fill: "var(--muted)", opacity: 0.5 } : true} content={<ChartTooltipContent labelFormatter={(label) => tick(String(label))} />} />
       {several && <ChartLegend content={<ChartLegendContent className="flex-wrap" />} />}
     </>
   );
@@ -189,7 +175,7 @@ function BarRows({ view }: { view: ChartView }) {
   const figure = (st: (typeof series)[number]["steps"][number], j: number) => (
     <span className="shrink-0 tabular-nums">
       {f.exact(st.value)}
-      {funnel && j > 0 && <span className="text-muted-foreground"> · {t.ofStart(percent.format(st.ofFirst))}</span>}
+      {funnel && j > 0 && <span className="text-muted-foreground"> ({t.ofStart(percent.format(st.ofFirst))})</span>}
     </span>
   );
   const bar = (s: (typeof series)[number], j: number) => {
@@ -269,11 +255,11 @@ export function ViewStats({ view }: { view: StatsView }) {
     <div className="grid gap-y-5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
       {view.stats.map((s, i) => (
         <div key={i} className={cn("flex min-w-0 flex-col gap-1", i % cols === 0 ? "pr-4" : "border-l px-4")}>
-          <p className="line-clamp-2 text-[13px] text-muted-foreground" title={s.label}>
+          <p className="line-clamp-2 text-xs text-muted-foreground" title={s.label}>
             {s.label}
           </p>
-          <p className="truncate text-[28px] leading-tight font-semibold tabular-nums">{value(s)}</p>
-          {s.note && <p className="text-xs text-subtle">{s.note}</p>}
+          <p className="truncate text-2xl font-semibold tabular-nums">{value(s)}</p>
+          {s.note && <p className="text-xs text-muted-foreground">{s.note}</p>}
         </div>
       ))}
     </div>
@@ -292,14 +278,7 @@ function PieView({ view, rest }: { view: ChartView; rest: string }) {
       <ChartContainer config={config} className="aspect-square h-48 shrink-0">
         <PieChart>
           <ChartTooltip
-            content={({ active, payload }) => {
-              const s = active ? (payload?.[0]?.payload as (typeof slices)[number] | undefined) : undefined;
-              return s ? (
-                <ChartTooltipPanel>
-                  <ChartTooltipRow color={`var(--color-${s.key})`} name={s.label} value={`${f.exact(s.value)} · ${share(s.value)}`} />
-                </ChartTooltipPanel>
-              ) : null;
-            }}
+            content={<ChartTooltipContent nameKey="key" hideLabel />}
           />
           <Pie data={slices} dataKey="value" nameKey="label" innerRadius="55%" strokeWidth={2} stroke="var(--background)">
             {slices.map((s) => (
@@ -314,7 +293,7 @@ function PieView({ view, rest }: { view: ChartView; rest: string }) {
             <Swatch color={s.color} />
             <span className="min-w-0 truncate">{s.label}</span>
             <span className="ml-auto pl-3 tabular-nums">
-              {f.exact(s.value)} <span className="text-muted-foreground">· {share(s.value)}</span>
+              {f.exact(s.value)} <span className="text-muted-foreground">({share(s.value)})</span>
             </span>
           </li>
         ))}
