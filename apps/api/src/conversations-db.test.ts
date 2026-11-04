@@ -30,13 +30,11 @@ describe.skipIf(process.env.AGORA_DB_TESTS !== "1")("conversation list against P
       { id: `${prefix}-hidden-message`, conversationId: hidden, kind: "user", authorUserId: other, text: "hidden", createdAt: at(6) },
     ]);
   }, 60_000);
+  // The connection is shared by every test file of the run (vaults.test.ts too): it isn't closed here.
   afterAll(async () => {
-    try {
-      if (migrated) {
-        await db.delete(schema.conversation).where(inArray(schema.conversation.id, conversationIds));
-        await db.delete(schema.user).where(inArray(schema.user.id, [me, other]));
-      }
-    } finally { await db.$client.end(); }
+    if (!migrated) return;
+    await db.delete(schema.conversation).where(inArray(schema.conversation.id, conversationIds));
+    await db.delete(schema.user).where(inArray(schema.user.id, [me, other]));
   }, 30_000);
 
   test("only accessible conversations are returned, including empty ones", async () => {
