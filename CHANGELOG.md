@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.52.1 — 2026-11-04
+
+### Fixes
+- **api**: les listes de sessions de code ne lisent plus leurs étapes
+
 ## v0.52.0 — 2026-11-04
 
 ### Features
