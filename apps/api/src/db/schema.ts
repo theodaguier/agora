@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodeMergeMethod, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, GitHubMergeRequestStatus, IntegrationType, McpEnvField, VaultItemKind, VaultKind, VaultRequestKind, VaultRequestStatus, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, BotWebhookStatus, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodeMergeMethod, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, GitHubMergeRequestStatus, IntegrationType, McpEnvField, VaultItemKind, VaultKind, VaultRequestKind, VaultRequestStatus, WeeklyHours } from "@agora/core";
 import type { ImplicitCall } from "../group";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
@@ -233,6 +233,53 @@ export const agent = pgTable("agent", {
   ...timestamps,
 });
 
+/**
+ * An address an outside service calls to start a bot (an alert, a form, a CI run…). The bot answers in
+ * its direct conversation with the owner, who the turn runs as: their rights, their code subscription.
+ */
+export const botWebhook = pgTable(
+  "bot_webhook",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** What the bot has to do with what it receives. */
+    instructions: text("instructions").notNull(),
+    /** SHA-256 of the address's secret, shown once at creation. */
+    tokenHash: text("token_hash").notNull().unique(),
+    /** Payload field naming the event (`issue.id`): calls with the same value count as one. Empty: the whole body. */
+    dedupeField: text("dedupe_field"),
+    enabled: boolean("enabled").default(true).notNull(),
+    lastReceivedAt: timestamp("last_received_at"),
+    lastStatus: text("last_status").$type<BotWebhookStatus>(),
+    ...timestamps,
+  },
+  (t) => [index("bot_webhook_agent_idx").on(t.agentId)],
+);
+
+/** What a webhook received: one row per distinct event, its payload read by the bot's turn. */
+export const botWebhookDelivery = pgTable(
+  "bot_webhook_delivery",
+  {
+    id: text("id").primaryKey(),
+    webhookId: text("webhook_id")
+      .notNull()
+      .references(() => botWebhook.id, { onDelete: "cascade" }),
+    dedupeKey: text("dedupe_key").notNull(),
+    payload: text("payload").notNull(),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+  },
+  (t) => [unique("bot_webhook_delivery_key").on(t.webhookId, t.dedupeKey)],
+);
+
 /** Which agents each employee may use. */
 export const agentAccess = pgTable(
   "agent_access",
@@ -355,7 +402,7 @@ export const pendingTurn = pgTable("pending_turn", {
   triggerId: text("trigger_id").notNull(),
   requestedBy: text("requested_by"),
   /** How the turn was called, and the exchange between bots it belongs to. */
-  options: jsonb("options").$type<{ implicit?: ImplicitCall; answer?: boolean; retry?: boolean; wake?: { sessionId: string; reason: "idle" | "failed" | "question" }; chainId: string; relays: number }>().notNull(),
+  options: jsonb("options").$type<{ implicit?: ImplicitCall; answer?: boolean; retry?: boolean; wake?: { sessionId: string; reason: "idle" | "failed" | "question" }; webhook?: string; chainId: string; relays: number }>().notNull(),
   startedAt: timestamp("started_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

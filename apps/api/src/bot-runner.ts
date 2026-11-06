@@ -24,6 +24,7 @@ import { BOT_CREATE_PROMPT, createBotRequest } from "./bot-requests";
 import { accessibleAgentIds } from "./conversations";
 import { applyTasksBlock, TASKS_PROMPT, tasksContext } from "./tasks";
 import { CODE_DELEGATION_PROMPT, codeSessionsContext, wakePrompt } from "./code-sessions";
+import { webhookTurnPrompt } from "./webhook-prompt";
 import { applyAvailabilityBlock, AVAILABILITY_BLOCK_PROMPT, availabilityContext } from "./availability-bot";
 import { withAttachments, withInvocations, type Invocation } from "./prompt";
 import { typesForProfile } from "./integrations";
@@ -52,6 +53,8 @@ export type TurnRequest = {
   retry?: boolean;
   /** Woken by a Claude Code session it started (code-wake.ts): the trigger is the event line, the prompt is the session's report. */
   wake?: CodeWake;
+  /** Started by an outside service (webhooks.ts): the trigger is the event line, the prompt comes from this delivery. */
+  webhook?: string;
 };
 
 /** Why a session woke its bot, and what it had to say then. */
@@ -124,7 +127,7 @@ function endTurn(turn: Turn) {
 
 /** Kept in the database until it ends, so that a restart of the API doesn't lose it silently. */
 function rememberTurn(turn: Turn) {
-  const { implicit, answer, retry, chain, wake } = turn;
+  const { implicit, answer, retry, chain, wake, webhook } = turn;
   return db
     .insert(pendingTurn)
     .values({
@@ -133,7 +136,7 @@ function rememberTurn(turn: Turn) {
       agentId: turn.agentId,
       triggerId: turn.triggerId,
       requestedBy: turn.requestedBy,
-      options: { implicit, answer, retry, wake, chainId: chain.id, relays: chain.relays },
+      options: { implicit, answer, retry, wake, webhook, chainId: chain.id, relays: chain.relays },
     })
     .catch((err) => console.error("bot-runner: pending turn", err));
 }
@@ -167,11 +170,11 @@ export async function recoverTurns() {
       await postEvent(r.conversationId, { type: "bot.interrupted", bot: names.get(r.agentId) ?? "?" });
       continue;
     }
-    const { chainId, relays, implicit, answer, retry, wake } = r.options;
+    const { chainId, relays, implicit, answer, retry, wake, webhook } = r.options;
     const chain = chains.get(chainId) ?? newChain(relays, chainId);
     chain.relays = Math.max(chain.relays, relays);
     chains.set(chainId, chain);
-    enqueueTurn({ conversationId: r.conversationId, agentId: r.agentId, triggerId: r.triggerId, requestedBy: r.requestedBy, chain, implicit, answer, retry, wake });
+    enqueueTurn({ conversationId: r.conversationId, agentId: r.agentId, triggerId: r.triggerId, requestedBy: r.requestedBy, chain, implicit, answer, retry, wake, webhook });
   }
   console.log(`bot-runner: ${rows.length} turn(s) recovered after restart`);
 }
@@ -508,8 +511,8 @@ async function runTurn(turn: Turn) {
   let people: { id: string; name: string }[] = [];
   /** Direct conversation: the employee's other bots, which this bot may bring into a group. */
   let otherBots: { id: string; name: string }[] = [];
-  // Woken by a session: the event line has no author, the turn is the session owner's.
-  const requesterId = trigger.authorUserId ?? (turn.wake ? turn.requestedBy : null);
+  // Woken by a session or a webhook: the event line has no author, the turn is its owner's.
+  const requesterId = trigger.authorUserId ?? (turn.wake || turn.webhook ? turn.requestedBy : null);
   const [requester] = !group && requesterId ? await db.select().from(user).where(eq(user.id, requesterId)) : [];
   if (group) {
     const [humans, bots, context] = await Promise.all([
@@ -612,6 +615,8 @@ async function runTurn(turn: Turn) {
   }
   // Woken by a Claude Code session: the prompt is its report, whatever the event line says.
   if (turn.wake) text = await wakePrompt(turn.wake, requester?.name ?? null);
+  // Started by an outside service: the prompt carries what it sent, marked as data.
+  if (turn.webhook) text = (await webhookTurnPrompt(turn.webhook)) ?? text;
   // /retry: same message again, but the previous answer is already in the session.
   if (turn.retry) text = `${text}\n\n---\n\n(Nouvelle tentative : ta réponse précédente à ce message ne convenait pas. Propose une autre réponse, sans y faire référence.)`;
   // First message after /compact: the new session starts from the summary.

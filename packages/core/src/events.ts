@@ -1,3 +1,6 @@
+/** What became of a webhook's last call: a turn started, or why not. */
+export type BotWebhookStatus = "accepted" | "duplicate" | "rate_limited" | "no_access";
+
 /**
  * System events posted in a conversation ("Théo added Legal"). They are stored
  * with their parameters so every member reads them in their own language; the
@@ -27,6 +30,8 @@ export type ConversationEvent =
   | { type: "code.pr"; actor: string; title: string; sessionId: string; number: number; url: string; merged: boolean }
   /** A session the bot started needs it (its run ended or failed, or it asks a question): the bot takes over by itself. */
   | { type: "code.wake"; bot: string; title: string; sessionId: string; reason: "idle" | "failed" | "question" }
+  /** An outside service called a webhook of the bot: it starts by itself. */
+  | { type: "webhook.received"; bot: string; name: string }
   | { type: "session.compacted"; actor: string }
   | { type: "session.compactFailed"; bot: string }
   | { type: "agent.updated" }
@@ -123,6 +128,8 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
         failed: fr ? `« ${e.title} » a échoué, ${e.bot} reprend la main` : `“${e.title}” failed, ${e.bot} takes over`,
         question: fr ? `La session « ${e.title} » pose une question à ${e.bot}` : `The “${e.title}” session asks ${e.bot} a question`,
       }[e.reason];
+    case "webhook.received":
+      return fr ? `Déclencheur « ${e.name} » reçu, ${e.bot} prend la main` : `“${e.name}” trigger received, ${e.bot} takes over`;
     case "session.reset":
       return fr ? `${e.actor} a démarré un nouveau contexte` : `${e.actor} started a fresh context`;
     case "session.compacted":
