@@ -23,6 +23,7 @@ import { invitations } from "./routes/invitations";
 import { me } from "./routes/me";
 import { mobile } from "./routes/mobile";
 import { mcpOAuthCallback, mcpRequests } from "./routes/mcp-requests";
+import { agentWebhooks, publicHooks } from "./routes/webhooks";
 import { presence } from "./routes/presence";
 import { availability } from "./routes/availability";
 import { skillRequests } from "./routes/skill-requests";
@@ -65,7 +66,8 @@ const smallBodies = bodyLimit({ maxSize: BODY_LIMIT, onError: (c) => c.json({ er
 
 const app = new Hono()
   .basePath("/api")
-  .use(logger())
+  // A webhook's address is its secret: it stays out of the logs.
+  .use(logger((line, ...rest) => console.log(line.replace(/\/api\/hooks\/\S+/, "/api/hooks/…"), ...rest)))
   .use(localeMiddleware)
   .use((c, next) => (c.req.method === "POST" && UPLOAD.test(c.req.path) ? next() : smallBodies(c, next)))
   .get("/health", (c) => c.json({ ok: true, version: version.app }))
@@ -102,6 +104,8 @@ const app = new Hono()
   .route("/skill-requests", skillRequests)
   .route("/tasks", tasks)
   .route("/mcp-oauth/callback", mcpOAuthCallback)
+  .route("/hooks", publicHooks)
+  .route("/agents/:agentId/webhooks", agentWebhooks)
   .route("/usage", usage)
   .route("/users", users)
   .route("/vaults", vaults)
