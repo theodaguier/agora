@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.53.0 — 2026-11-06
+
+### Features
+- **bots**: déclencheurs webhook pour lancer un bot depuis un service externe
+
 ## v0.52.3 — 2026-11-04
 
 ### Fixes
