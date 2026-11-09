@@ -1,7 +1,8 @@
 import { and, eq, lt, sql } from "drizzle-orm";
 import type { CodeMergeMethod, CodePullRequest, ConversationEvent, GitHubMergeRequestDto, GitHubMergeRequestStatus, GitHubPullRequest } from "@agora/core";
 import { canUseCodeSessions } from "./code-engines";
-import { getPullRequest, GitError, mergePull, parsePullUrl, parseRepo } from "./code-git";
+import { autoMergeBlocker } from "./auto-merge";
+import { getPullRequest, GitError, mergePull, parsePullUrl, parseRepo, pullFiles } from "./code-git";
 import { db, schema } from "./db";
 import { defineMessages, tr } from "./i18n";
 
@@ -152,6 +153,15 @@ export async function requestMerge(turn: MergeTurn, input: { sessionId?: string;
   if (!pr) throw new GitHubMergeError("Pull request not found, or no GitHub access (GH_TOKEN).", 404);
   if (pr.state !== "open") throw new GitHubMergeError(`Pull request #${pr.number} is ${pr.state}: nothing to merge.`, 409);
   const method = input.method && (!pr.methods || pr.methods.includes(input.method)) ? input.method : (pr.methods?.[0] ?? "squash");
+  let reason = input.reason.trim();
+  // A session an alert started, on a webhook that allows it: merged at once when nothing needs a person.
+  const hook = target.sessionId ? await (await import("./webhook-prompt")).autoMergeWebhook(target.sessionId) : null;
+  if (hook) {
+    const blocker = autoMergeBlocker(pr, await pullFiles(target.repo, target.number));
+    const merged = blocker ? null : await autoMerge(turn, target, pr, method, reason).catch((err) => (err instanceof GitError ? err.message : (console.error("auto merge", err), "GitHub")));
+    if (merged && typeof merged === "object") return merged;
+    reason = `${reason}\n\nMerge automatique (${hook.name}) refusé : ${blocker ?? merged}.`;
+  }
   await expireStale(and(eq(githubMergeRequest.repo, target.repo), eq(githubMergeRequest.number, target.number)));
   const [pending] = await db
     .select()
@@ -181,12 +191,46 @@ export async function requestMerge(turn: MergeTurn, input: { sessionId?: string;
       conversationId: turn.conversationId,
       sessionId: target.sessionId,
       requestedBy: turn.requestedBy,
-      reason: input.reason.trim().slice(0, 500),
+      reason: reason.slice(0, 500),
     })
     .returning();
   const [bot] = await db.select({ name: agent.name }).from(agent).where(eq(agent.id, turn.agentId));
   await announce(turn.conversationId, { type: "github.merge", bot: bot?.name ?? "bot", repo: target.repo, number: target.number, title: pr.title, requestId: created!.id });
   return { row: created!, pr };
+}
+
+/**
+ * Merges a session's pull request without a card, on the head commit just checked (a branch that
+ * moved since is refused by GitHub). Kept as an approved request, so it reads like any other merge;
+ * the session's panel and the conversation say the bot merged it.
+ */
+async function autoMerge(turn: MergeTurn, target: { repo: string; number: number; sessionId: string | null }, pr: CodePullRequest, method: CodeMergeMethod, reason: string) {
+  const merged = await mergePull(target.repo, target.number, method, pr.head ?? null);
+  const [row] = await db
+    .insert(githubMergeRequest)
+    .values({
+      id: crypto.randomUUID(),
+      repo: target.repo,
+      number: target.number,
+      title: pr.title,
+      url: pr.url,
+      headSha: pr.head ?? null,
+      method,
+      agentId: turn.agentId,
+      conversationId: turn.conversationId,
+      sessionId: target.sessionId,
+      requestedBy: turn.requestedBy,
+      reason: `${reason}\n\nMergée automatiquement : CI verte, aucune zone sensible.`.slice(0, 500),
+      status: "approved",
+      decidedAt: new Date(),
+    })
+    .returning();
+  if (target.sessionId) {
+    const [bot] = await db.select({ name: agent.name }).from(agent).where(eq(agent.id, turn.agentId));
+    const { noteCodeSessionMerge } = await import("./code-sessions");
+    await noteCodeSessionMerge(target.sessionId, turn.conversationId, bot?.name ?? "bot", merged, method).catch((err) => console.error("auto merge: session", err));
+  }
+  return { row: row!, pr: merged };
 }
 
 /** Where a bot's request stands, polled by the plugin while it waits. Approved: the merged pull request. */

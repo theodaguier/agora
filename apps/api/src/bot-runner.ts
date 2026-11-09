@@ -380,7 +380,7 @@ export function activeTurns(conversationId: string) {
 /** The turn a Hermes session is running right now (a plugin's tool call happens during it). */
 export function turnOfHermesSession(sessionId: string) {
   for (const t of turns.values()) {
-    if (t.started && t.hermesSession === sessionId) return { conversationId: t.conversationId, agentId: t.agentId, requestedBy: t.requestedBy };
+    if (t.started && t.hermesSession === sessionId) return { conversationId: t.conversationId, agentId: t.agentId, requestedBy: t.requestedBy, webhook: t.webhook };
   }
   return null;
 }

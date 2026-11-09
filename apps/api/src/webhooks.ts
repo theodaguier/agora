@@ -82,6 +82,7 @@ const columns = {
   name: botWebhook.name,
   instructions: botWebhook.instructions,
   dedupeField: botWebhook.dedupeField,
+  autoMerge: botWebhook.autoMerge,
   enabled: botWebhook.enabled,
   lastReceivedAt: botWebhook.lastReceivedAt,
   lastStatus: botWebhook.lastStatus,
@@ -91,7 +92,7 @@ const columns = {
 export const listWebhooks = (agentId: string) =>
   db.select(columns).from(botWebhook).innerJoin(schema.user, eq(schema.user.id, botWebhook.ownerId)).where(eq(botWebhook.agentId, agentId)).orderBy(desc(botWebhook.createdAt));
 
-type WebhookFields = { name: string; instructions: string; dedupeField?: string | null };
+type WebhookFields = { name: string; instructions: string; dedupeField?: string | null; autoMerge?: boolean };
 
 /** The address is only ever returned here: the database keeps its hash. Null: the owner can't use this bot. */
 export async function createWebhook(agentId: string, ownerId: string, fields: WebhookFields) {

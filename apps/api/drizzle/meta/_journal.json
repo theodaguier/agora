@@ -316,6 +316,13 @@
       "when": 1793958965748,
       "tag": "0044_bot_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794217941237,
+      "tag": "0045_webhook_auto_merge",
+      "breakpoints": true
     }
   ]
 }

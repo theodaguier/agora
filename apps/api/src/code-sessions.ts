@@ -595,6 +595,8 @@ export async function startCodeSession(opts: {
   mode?: CodePermissionMode;
   /** Attachments of the conversation joined to the task (checked by the caller). */
   files?: AttachmentRow[];
+  /** The webhook whose call started the bot's turn (webhooks.ts): its rules follow the session. */
+  webhookId?: string | null;
 }): Promise<CodeSession> {
   const task = opts.task.trim();
   const files = opts.files ?? [];
@@ -631,6 +633,7 @@ export async function startCodeSession(opts: {
       conversationId: opts.conversationId,
       agentId: opts.agentId,
       requestedBy: opts.requestedBy,
+      webhookId: opts.webhookId ?? null,
       title,
       engine,
       status: "running",

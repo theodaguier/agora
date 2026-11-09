@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { CardAction, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { Switch } from "@/components/ui/switch";
@@ -49,6 +49,9 @@ const messages = defineMessages({
     field: "Event identifier",
     fieldPlaceholder: "issue.id",
     fieldHelp: "Field of the received JSON that names the event: calls with the same value count as one for 24 hours. Empty: identical calls only.",
+    autoMerge: "Merge on its own when safe",
+    autoMergeHelp:
+      "Pull requests of the code sessions it starts merge without asking when CI passes and they touch no migrations, secrets, CI, deployment or dependencies. Anything else waits for your approval, with the reason.",
     createdTitle: "Trigger created",
     createdBody: "Paste this address in the service that will call it. It won't be shown again, so copy it now.",
     address: "Address",
@@ -82,6 +85,9 @@ const messages = defineMessages({
     field: "Identifiant de l'événement",
     fieldPlaceholder: "issue.id",
     fieldHelp: "Champ du JSON reçu qui nomme l'événement : les appels de même valeur comptent pour un seul pendant 24 heures. Vide : seuls les appels identiques.",
+    autoMerge: "Merger seul quand c'est sûr",
+    autoMergeHelp:
+      "Les PR des sessions de code qu'il lance sont mergées sans te demander si la CI passe et qu'elles ne touchent ni migrations, ni secrets, ni CI, ni déploiement, ni dépendances. Le reste attend ta validation, avec la raison.",
     createdTitle: "Déclencheur créé",
     createdBody: "Colle cette adresse dans le service qui l'appellera. Elle ne sera plus affichée : copie-la maintenant.",
     address: "Adresse",
@@ -211,9 +217,10 @@ function WebhookForm({ path, hook, onDone }: { path: string; hook: BotWebhook | 
   const [name, setName] = useState(hook?.name ?? "");
   const [instructions, setInstructions] = useState(hook?.instructions ?? "");
   const [dedupeField, setDedupeField] = useState(hook?.dedupeField ?? "");
+  const [autoMerge, setAutoMerge] = useState(hook?.autoMerge ?? false);
   const save = useMutation({
     mutationFn: () => {
-      const body = JSON.stringify({ name, instructions, dedupeField });
+      const body = JSON.stringify({ name, instructions, dedupeField, autoMerge });
       return hook ? api(`${path}/${hook.id}`, { method: "PATCH", body }).then(() => undefined) : api<{ url: string }>(path, { method: "POST", body }).then((r) => r.url);
     },
     onSuccess: onDone,
@@ -253,6 +260,13 @@ function WebhookForm({ path, hook, onDone }: { path: string; hook: BotWebhook | 
           <FormLabel htmlFor={`${id}-field`}>{t.field}</FormLabel>
           <Input id={`${id}-field`} maxLength={200} value={dedupeField} placeholder={t.fieldPlaceholder} onChange={(e) => setDedupeField(e.target.value)} />
           <FieldDescription>{t.fieldHelp}</FieldDescription>
+        </Field>
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldLabel htmlFor={`${id}-merge`}>{t.autoMerge}</FieldLabel>
+            <FieldDescription>{t.autoMergeHelp}</FieldDescription>
+          </FieldContent>
+          <Switch id={`${id}-merge`} checked={autoMerge} onCheckedChange={setAutoMerge} />
         </Field>
       </FieldGroup>
       {save.error && (
