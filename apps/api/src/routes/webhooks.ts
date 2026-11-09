@@ -18,6 +18,7 @@ const fields = z.object({
     .transform((v) => v || null)
     .nullable()
     .optional(),
+  autoMerge: z.boolean().optional(),
 });
 
 /** A bot's webhooks, in its settings. */

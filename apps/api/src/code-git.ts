@@ -602,6 +602,15 @@ export async function getPullRequest(repo: string, number: number): Promise<Code
   });
 }
 
+/** The paths a pull request changes (first page: AUTO_MERGE_MAX_FILES of them at most); null without GitHub access. */
+export async function pullFiles(repo: string, number: number): Promise<string[] | null> {
+  const token = await githubToken();
+  if (!token) return null;
+  const files = await github<{ filename: string; previous_filename?: string }[]>(token, "GET", `/repos/${repo}/pulls/${number}/files?per_page=100`).catch(() => null);
+  // A renamed file counts from where it came too: moving a migration out is still touching it.
+  return files && files.flatMap((f) => (f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]));
+}
+
 /** owner/name and number of a pull request's link (github.com/{owner}/{repo}/pull/{n}). */
 export function parsePullUrl(url: string): { repo: string; number: number } | null {
   const m = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9-]+\/[A-Za-z0-9._-]+)\/pull\/(\d+)/.exec(url.trim());

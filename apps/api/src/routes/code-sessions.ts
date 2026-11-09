@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { webhookOfDelivery } from "../webhook-prompt";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { attachCodeSession, turnOfHermesSession } from "../bot-runner";
@@ -446,6 +447,7 @@ export const internalCode = new Hono()
       model: model?.id,
       repo: body.data.repo,
       branch: body.data.branch,
+      webhookId: turn.webhook ? await webhookOfDelivery(turn.webhook) : null,
     }).then(
       async (s) => {
         // Its card goes into the bot's reply, where the bot is in its text; the turn just ended: a line of its own.

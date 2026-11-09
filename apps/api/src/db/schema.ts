@@ -257,6 +257,8 @@ export const botWebhook = pgTable(
     tokenHash: text("token_hash").notNull().unique(),
     /** Payload field naming the event (`issue.id`): calls with the same value count as one. Empty: the whole body. */
     dedupeField: text("dedupe_field"),
+    /** Its code sessions' pull requests merge without asking when nothing sensitive is touched (auto-merge.ts). */
+    autoMerge: boolean("auto_merge").default(false).notNull(),
     enabled: boolean("enabled").default(true).notNull(),
     lastReceivedAt: timestamp("last_received_at"),
     lastStatus: text("last_status").$type<BotWebhookStatus>(),
@@ -421,6 +423,8 @@ export const codeSession = pgTable(
       .references(() => conversation.id, { onDelete: "cascade" }),
     agentId: text("agent_id").references(() => agent.id, { onDelete: "set null" }),
     requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+    /** Started by a bot answering this webhook: its rules (auto-merge) apply to the session's pull request. */
+    webhookId: text("webhook_id").references(() => botWebhook.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     /** The agent CLI it runs on (code-engines.ts). */
     engine: text("engine").$type<CodeEngine>().notNull().default("claude"),
