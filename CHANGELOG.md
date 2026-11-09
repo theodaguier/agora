@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.54.0 — 2026-11-09
+
+### Features
+- **bots**: merge automatique des PR lancées par un déclencheur
+
 ## v0.53.0 — 2026-11-06
 
 ### Features
