@@ -8,7 +8,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } fro
 import { defineMessages, useT } from "@/i18n";
 import { invocationKey, retryLast, sessionCommand, uploadAttachment, type AgentSummary, type Attachment, type Invocation, type ReplyTo } from "@/lib/api";
 import { ALL_HANDLE, MAX_ATTACHMENT } from "@agora/core";
-import { addressedAccent, allMentionable, MentionText, splitMentions } from "@/lib/mentions";
+import { allMentionable, MentionText, splitMentions } from "@/lib/mentions";
 import { personMentionables, usePeople } from "@/lib/people";
 import { AwayNotice } from "@/components/AwayNotice";
 import { useDraft } from "@/lib/drafts";
@@ -501,7 +501,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
                   <StopIcon />
                 </InputGroupButton>
               ) : (
-                <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} disabled={!canSend} style={addressedAccent(text, colored)}>
+                <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} disabled={!canSend}>
                   <ArrowUpIcon />
                 </InputGroupButton>
               )}

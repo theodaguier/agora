@@ -1,17 +1,6 @@
-import { cn } from "@/lib/utils";
-import { mascot } from "@/lib/agent-avatar";
+import { AgentOrb } from "@/components/AgentOrb";
 
-/**
- * Figma « Avatar agent »: the bot's clay mascot, the one of its colour, cut out on a disc that follows the theme.
- */
+/** Figma « Avatar agent »: the bot's orb, the one of its colour. */
 export function AgentAvatar({ agent, className }: { agent: { avatar: { color: string; shape?: string } }; className?: string }) {
-  return (
-    <img
-      src={mascot(agent.avatar.color).head}
-      alt=""
-      aria-hidden
-      draggable={false}
-      className={cn("shrink-0 rounded-full bg-mascot object-cover", className ?? "size-10")}
-    />
-  );
+  return <AgentOrb color={agent.avatar.color} className={className ?? "size-10"} />;
 }

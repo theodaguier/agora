@@ -60,6 +60,7 @@ import { presenceQuery } from "@/lib/presence";
 import { setOverlay, shortcuts } from "@/lib/shortcuts";
 import { setWhatsNewOpen } from "@/lib/whats-new";
 import { ShortcutKeys, ShortcutTooltip } from "@/components/Shortcuts";
+import { SidebarUsage } from "@/components/SidebarUsage";
 import { openBeside, openHere, startTabDrag, tabPath, writeSize } from "@/lib/workspace";
 
 const messages = defineMessages({
@@ -358,9 +359,10 @@ function SidebarBody() {
 }
 
 /**
- * Desktop: search and new conversation, the organisation at the top (its recap on click), the inbox,
- * the tasks and the sessions, then every conversation in one flat list.
- * At the bottom, the apps (Marketplace) and your account.
+ * Desktop (Figma « Barre latérale sombre »): the organisation at the top (its recap on click), then the
+ * inbox, the tasks and the sessions as icons with a dot when something waits, and new conversation
+ * (searching is the command palette's, ⌘K). The bots, then the team. At the bottom, today's usage per
+ * provider and the subscriptions, the apps (Marketplace) and your account.
  */
 function DesktopSidebar() {
   const { conversationId } = useParams({ strict: false }) as { conversationId?: string };
@@ -368,8 +370,6 @@ function DesktopSidebar() {
   const pathname = useLocation({ select: (l) => l.pathname });
   const t = useT(messages);
   const org = useOrgName();
-  const [searching, setSearching] = useState(false);
-  const [q, setQ] = useState("");
   const [market, setMarket] = useState(false);
   const conversationList = useQuery(conversationsQuery);
   const { data: conversations = [], isPending } = conversationList;
@@ -382,13 +382,7 @@ function DesktopSidebar() {
     select: (list) => ({ any: list.length > 0, waiting: list.filter((s) => s.status === "waiting" && s.requestedBy === user.id).length }),
   });
   const waitingSessions = sessionsPill?.waiting ?? 0;
-  const list = conversations
-    .map((c) => ({ ...c, name: conversationTitle(c, user.id) }))
-    .filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
-  const closeSearch = () => {
-    setSearching(false);
-    setQ("");
-  };
+  const list = conversations.map((c) => ({ ...c, name: conversationTitle(c, user.id) }));
 
   return (
     <>
@@ -408,62 +402,48 @@ function DesktopSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant={searching ? "secondary" : "outline"}
-                  size="icon-sm"
-                  aria-label={t.searchConversation}
-                  aria-pressed={searching}
-                  onClick={() => (searching ? closeSearch() : setSearching(true))}
-                />
-              }
-            >
-              <SearchIcon />
-            </TooltipTrigger>
-            <TooltipContent>{t.searchConversation}</TooltipContent>
-          </Tooltip>
+          {/* Inbox, tasks and sessions beside the name, as icons with a dot when something waits. */}
+          <ShortcutItem to="/inbox" active={pathname.startsWith("/inbox")} icon={<InboxIcon />} label={t.inboxShort} count={unreadInbox} countLabel={t.unreadInbox(unreadInbox)} tone="bg-brand" />
+          <ShortcutItem to="/tasks" active={pathname.startsWith("/tasks")} icon={<TaskListIcon />} label={t.tasksShort} />
+          {sessionsPill?.any && (
+            <ShortcutItem to="/sessions" active={pathname.startsWith("/sessions")} icon={<TerminalIcon />} label={t.sessionsShort} count={waitingSessions} countLabel={t.waitingSessions(waitingSessions)} tone="bg-warning" />
+          )}
           <ShortcutTooltip label={t.newConversation} shortcut={shortcuts.newConversation}>
-            <Button variant="outline" size="icon-sm" aria-label={t.newConversation} nativeButton={false} render={<Link to="/new" {...tabLink("/new", true)} />}>
+            <Button variant="ghost" size="icon-sm" aria-label={t.newConversation} nativeButton={false} render={<Link to="/new" {...tabLink("/new", true)} />}>
               <PlusIcon />
             </Button>
           </ShortcutTooltip>
         </div>
-        {searching && <ConversationSearch value={q} onChange={setQ} onEscape={closeSearch} autoFocus />}
       </SidebarHeader>
-
-      {/* Inbox, tasks and sessions on one line, as icons with what waits. */}
-      {!searching && (
-        <div className="flex items-center gap-1 px-2">
-          <ShortcutItem to="/inbox" active={pathname.startsWith("/inbox")} icon={<InboxIcon />} label={t.inboxShort} count={unreadInbox} countLabel={t.unreadInbox(unreadInbox)} />
-          <ShortcutItem to="/tasks" active={pathname.startsWith("/tasks")} icon={<TaskListIcon />} label={t.tasksShort} />
-          {sessionsPill?.any && (
-            <ShortcutItem to="/sessions" active={pathname.startsWith("/sessions")} icon={<TerminalIcon />} label={t.sessionsShort} count={waitingSessions} countLabel={t.waitingSessions(waitingSessions)} />
-          )}
-        </div>
-      )}
 
       <SidebarContent role="navigation" aria-label={t.conversations}>
         {isPending && <ListSkeleton />}
         {!isPending && !list.length && <EmptyList query={conversations.length > 0} list={conversationList} />}
-        {list.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>{t.conversations}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              {/* A little air between rows: the open one and the hovered one stay two rows. */}
-              <SidebarMenu className="gap-1">
-                {list.map((c) => (
-                  <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+        {/* The bots (a direct conversation with one), then the team: colleagues and groups. */}
+        {[
+          { key: "agents", label: t.agents, rows: list.filter((c) => c.kind === "direct" && c.agents.length > 0) },
+          { key: "team", label: t.team, rows: list.filter((c) => !(c.kind === "direct" && c.agents.length > 0)) },
+        ].map(
+          (g) =>
+            g.rows.length > 0 && (
+              <SidebarGroup key={g.key}>
+                <SidebarGroupLabel>{g.label}</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  {/* A little air between rows: the open one and the hovered one stay two rows. */}
+                  <SidebarMenu className="gap-1">
+                    {g.rows.map((c) => (
+                      <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ),
         )}
       </SidebarContent>
 
       {/* Your account, and the apps installed in the organisation. */}
       <SidebarFooter>
+        <SidebarUsage />
         <SidebarMenu>
           {user.role === "admin" && <AppsItem onClick={() => setMarket(true)} label={t.marketplace} />}
           <SidebarMenuItem>
@@ -537,25 +517,26 @@ function EmptyList({ query, list }: { query: boolean; list: { error: Error | nul
   );
 }
 
-/** A destination above the list (inbox, tasks, sessions), with what waits for you. */
-function ShortcutItem({ to, active, icon, label, count = 0, countLabel }: { to: string; active: boolean; icon: ReactNode; label: string; count?: number; countLabel?: string }) {
+/** A destination beside the organisation (inbox, tasks, sessions): its icon, a dot in `tone` when something waits (the count in its label). */
+function ShortcutItem({ to, active, icon, label, count = 0, countLabel, tone }: { to: string; active: boolean; icon: ReactNode; label: string; count?: number; countLabel?: string; tone?: string }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Button
             variant={active ? "secondary" : "ghost"}
-            size={count > 0 ? "sm" : "icon-sm"}
+            size="icon-sm"
             aria-label={count > 0 ? `${label}, ${countLabel}` : label}
             nativeButton={false}
             render={<Link to={to} {...tabLink(to, true)} aria-current={active ? "page" : undefined} />}
+            className="relative"
           />
         }
       >
         {icon}
-        {count > 0 && <span className="tabular-nums">{count}</span>}
+        {count > 0 && tone && <span aria-hidden className={cn("absolute top-1 right-1 size-1.5 rounded-full ring-2 ring-sidebar", tone)} />}
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent>{count > 0 ? `${label}, ${countLabel}` : label}</TooltipContent>
     </Tooltip>
   );
 }

@@ -134,7 +134,7 @@ export function ChatMessage(props: {
         <div
           className={cn(
             "flex w-fit min-w-0 max-w-full flex-col gap-1 overflow-hidden rounded-2xl p-1",
-            mine ? "bubble-mine bg-primary text-primary-foreground" : "bg-muted",
+            mine ? "bubble-mine bg-bot text-bot-foreground" : "bg-muted",
             attachments.some((a) => isImage(a.mime) || isVideo(a.mime)) ? "w-80" : "max-w-sm",
             replyTo && "min-w-56",
           )}

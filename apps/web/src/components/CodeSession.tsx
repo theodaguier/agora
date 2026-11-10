@@ -37,6 +37,7 @@ import {
   BranchIcon,
   CheckCircleIcon,
   CheckIcon,
+  ChevronRightIcon,
   CommandIcon,
   FileTextIcon,
   LayersIcon,
@@ -151,7 +152,7 @@ import {
 } from "@/lib/code-sessions";
 import { confirmAction } from "@/lib/confirm";
 import { playSound } from "@/lib/sounds";
-import { dividerLabel } from "@/lib/dates";
+import { dividerLabel, listTime } from "@/lib/dates";
 import { useDraft } from "@/lib/drafts";
 import { useFormat } from "@/lib/usage-format";
 import { cn } from "@/lib/utils";
@@ -195,7 +196,7 @@ function StatusText({ session }: { session: CodeSession }) {
 
 /* ---------- in the thread ---------- */
 
-/** Card of a Claude Code session, where it was started in the conversation: where it stands, and the way into its steps. */
+/** Card of a code session, where it was started in the conversation: it fetches the session, then shows it live. */
 export function CodeSessionCard({
   conversationId,
   sessionId,
@@ -213,46 +214,89 @@ export function CodeSessionCard({
   const { data } = useQuery(codeSessionsQuery(conversationId));
   const session = data?.find((s) => s.id === sessionId);
   // Deleted by its owner: the card stays, without the way into it.
-  const gone = !!data && !session;
-  const status = session?.status ?? "running";
-  const detail = session && codeDetailLine(session);
+  if (!session) {
+    return (
+      <Card size="sm" className={cn("w-full max-w-xl", className)}>
+        <CardHeader>
+          <CardTitle className="truncate">{title}</CardTitle>
+          <CardDescription>{data ? t.gone : t.status.running}</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+  return <LiveSessionCard session={session} onOpen={onOpen} className={className} />;
+}
+
+/**
+ * Figma « Carte de session vivante »: one card per session, that lives. Running: what it does now and
+ * its tasks. Waiting for you: the decision itself, in the card (no separate block). At rest: its pull
+ * request, or its answer. The way into the session at the bottom.
+ */
+export function LiveSessionCard({ session, onOpen, className }: { session: CodeSession; onOpen: () => void; className?: string }) {
+  const t = useT(messages);
+  const { user } = useRouteContext({ from: "/app" });
+  const owner = session.requestedBy === user.id;
+  const waiting = !!(session.approval || session.question);
+  const running = session.status === "running" && !waiting;
+  const done = session.todos.filter((x) => x.status === "completed").length;
+  const branch = session.git?.branch ?? session.worktree?.branch;
+  const where = [session.repo?.split("/")[1], branch].filter(Boolean).join(", ");
   return (
-    <Card size="sm" className={cn("w-full max-w-lg", className)}>
-      {/* One line: what it is and where it stands, the way in on the right. */}
+    <Card size="sm" className={cn("w-full max-w-xl", className)}>
       <CardHeader>
-        <CardTitle className="truncate">{session?.title ?? title}</CardTitle>
-        <CardDescription className="flex min-w-0 items-center gap-2">
-          {session && <StatusIcon session={session} />}
-          <span className="shrink-0">{session ? <StatusText session={session} /> : gone ? t.gone : t.status[status]}</span>
-          {detail && <span className={cn("min-w-0 truncate", status === "running" && !session?.approval && !session?.question && "typing-shimmer")}>{detail}</span>}
-          {session && <span className="shrink-0">{CODE_ENGINE_NAMES[session.engine]}</span>}
-        </CardDescription>
-        {!gone && (
-          <CardAction>
-            <Button variant="outline" size="sm" onClick={onOpen}>
-              {active(status) ? t.follow : t.open}
-            </Button>
-          </CardAction>
-        )}
+        <CardTitle className="truncate">{session.title}</CardTitle>
+        {where && <CardDescription className="truncate">{where}</CardDescription>}
+        <CardAction>
+          <Badge variant="secondary">
+            <StatusIcon session={session} />
+            <StatusText session={session} />
+          </Badge>
+        </CardAction>
       </CardHeader>
-      {/* Its pull request: state and CI on one line. */}
-      {session?.git?.pr && (
+      {waiting ? (
+        <CardContent>
+          <SessionDecision conversationId={session.conversationId} session={session} canAnswer={owner} inline />
+        </CardContent>
+      ) : running ? (
+        <CardContent className="flex min-w-0 items-center gap-2 text-sm">
+          <Spinner className="shrink-0 text-muted-foreground" />
+          <span className="typing-shimmer min-w-0 truncate">{session.activity || t.status.running}</span>
+          {session.todos.length > 0 && <span className="ml-auto shrink-0 text-muted-foreground">{t.view.tasksCount(done, session.todos.length)}</span>}
+        </CardContent>
+      ) : session.git?.pr ? (
         <CardContent>
           <PullRequestStatus pr={session.git.pr} />
         </CardContent>
-      )}
-      {/* Its question to its bot, until it is answered. */}
-      {session?.question && (
+      ) : session.result ? (
         <CardContent>
-          <p className="flex min-w-0 items-center gap-2">
-            <ModelLogo provider={session.engine === "codex" ? "codex" : session.engine === "cursor" ? "cursor" : "claude-code"} className="size-4 shrink-0" />
-            <span className="min-w-0 truncate text-muted-foreground">
-              {t.view.asks} {session.question.text}
-            </span>
-          </p>
+          <p className="line-clamp-2 text-sm text-muted-foreground">{session.result}</p>
         </CardContent>
-      )}
+      ) : null}
+      <CardFooter className="justify-between gap-2">
+        <span className="text-xs text-muted-foreground tabular-nums">{listTime(new Date(session.updatedAt))}</span>
+        <Button variant="ghost" size="sm" onClick={onOpen}>
+          {t.open}
+          <ChevronRightIcon data-icon="inline-end" />
+        </Button>
+      </CardFooter>
     </Card>
+  );
+}
+
+/** What a session waits for, whichever it is: its tool to approve, its questions, its plan, or its question to its bot. */
+function SessionDecision({ conversationId, session, canAnswer, inline }: { conversationId: string; session: CodeSession; canAnswer: boolean; inline?: boolean }) {
+  const approval = session.approval;
+  return (
+    <div className="flex flex-col gap-4">
+      {approval?.kind === "question" && approval.questions ? (
+        <QuestionBlock conversationId={conversationId} session={session} approval={approval} questions={approval.questions} canAnswer={canAnswer} inline={inline} />
+      ) : approval?.kind === "plan" ? (
+        <PlanBlock conversationId={conversationId} session={session} approval={approval} canAnswer={canAnswer} inline={inline} />
+      ) : (
+        approval && <ApprovalBlock conversationId={conversationId} session={session} approval={approval} canAnswer={canAnswer} inline={inline} />
+      )}
+      {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={canAnswer} inline={inline} />}
+    </div>
   );
 }
 
@@ -1179,19 +1223,11 @@ function CodeSessionView({
 
   const owner = !!session && session.requestedBy === user.id;
   const approval = session?.approval;
-  const pending =
-    session && (approval || session.question) ? (
-      <>
-        {approval?.kind === "question" && approval.questions ? (
-          <QuestionBlock conversationId={conversationId} session={session} approval={approval} questions={approval.questions} canAnswer={owner} />
-        ) : approval?.kind === "plan" ? (
-          <PlanBlock conversationId={conversationId} session={session} approval={approval} canAnswer={owner} />
-        ) : (
-          approval && <ApprovalBlock conversationId={conversationId} session={session} approval={approval} canAnswer={owner} />
-        )}
-        {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
-      </>
-    ) : null;
+  // What it waits for: pinned above the field, where you answer, never lost in its stream.
+  const pending = session && (approval || session.question) ? <SessionDecision conversationId={conversationId} session={session} canAnswer={owner} /> : null;
+  // A tab of its own on a large screen: its progress (tasks, branch and pull request) in a rail beside the stream.
+  const wide = useWide();
+  const rail = !!page && wide;
   // A new one comes into view: Avancement shows it, at the end of the stream.
   const waitingFor = approval?.id ?? session?.question?.text;
   useLayoutEffect(() => {
@@ -1309,6 +1345,8 @@ function CodeSessionView({
         <>
           {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
 
+          <div className="flex min-h-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
             <div
               ref={scroller}
@@ -1321,7 +1359,7 @@ function CodeSessionView({
               className="relative h-full overflow-y-auto px-5 pt-2 pb-4"
             >
               <div ref={content} className="flex min-h-full flex-col">
-                <Overview conversationId={conversationId} session={session} owner={owner} pending={pending} />
+                <Overview conversationId={conversationId} session={session} owner={owner} waiting={!!pending} rail={rail} />
               </div>
             </div>
             {!atBottom && (
@@ -1339,8 +1377,12 @@ function CodeSessionView({
             )}
           </div>
 
-          <div className="shrink-0 px-4 pt-2 pb-4">
+          <div className="flex shrink-0 flex-col gap-3 px-4 pt-2 pb-4">
+            {pending && <div className="max-h-96 overflow-y-auto">{pending}</div>}
             {owner ? <SessionComposer ref={composer} conversationId={conversationId} session={session} /> : <p className="text-sm text-muted-foreground">{t.readOnly}</p>}
+          </div>
+          </div>
+          {rail && <ProgressRail conversationId={conversationId} session={session} owner={owner} />}
           </div>
         </>
       )}
@@ -1419,13 +1461,17 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
 function Overview({
   session,
   owner,
-  pending,
+  waiting,
+  rail,
   conversationId,
 }: {
   conversationId: string;
   session: CodeSessionDetail;
   owner: boolean;
-  pending: ReactNode;
+  /** It waits for an answer: the decision is pinned above the field, not in the stream. */
+  waiting: boolean;
+  /** Its progress is in the rail beside the stream: the stream holds its steps only. */
+  rail: boolean;
 }) {
   const t = useT(messages);
   const v = t.view;
@@ -1434,8 +1480,8 @@ function Overview({
   // What it does, as it does it: instructions, its words streaming, its actions; what it waits for at the end.
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
-      {session.todos.length > 0 && (
+      {!rail && <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />}
+      {!rail && session.todos.length > 0 && (
         <Section title={<>{v.tasks}<Badge variant="secondary" className="ml-2">{v.tasksCount(done, session.todos.length)}</Badge></>}>
           <ListCard size="sm">
             <ListCardRows>
@@ -1455,7 +1501,7 @@ function Overview({
           </ListCard>
         </Section>
       )}
-      {session.steps.length === 0 && !pending ? (
+      {session.steps.length === 0 && !waiting ? (
         <Empty className="flex-1">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -1468,12 +1514,45 @@ function Overview({
         <div className="flex flex-col gap-4">
           <Timeline steps={session.steps} running={running} />
           {/* While it works and waits for nobody: what it does now, a light passing over the words. */}
-          {running && !pending && <p className="typing-shimmer text-sm">{session.activity || t.status.running}</p>}
-          {pending}
+          {running && !waiting && <p className="typing-shimmer text-sm">{session.activity || t.status.running}</p>}
         </div>
       )}
       {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
     </div>
+  );
+}
+
+/**
+ * Figma « Session — panneau d'avancement »: beside the stream, what you check at a glance. Its tasks
+ * (done over total), its branch and pull request with what to do next, its changed files.
+ */
+function ProgressRail({ conversationId, session, owner }: { conversationId: string; session: CodeSessionDetail; owner: boolean }) {
+  const t = useT(messages);
+  const v = t.view;
+  const running = session.status === "running";
+  const done = session.todos.filter((x) => x.status === "completed").length;
+  return (
+    <aside aria-label={v.overview} className="flex w-80 shrink-0 flex-col gap-6 overflow-y-auto border-l bg-sidebar px-4 py-4">
+      {session.todos.length > 0 && (
+        <Section title={<>{v.tasks}<span className="ml-2 font-normal text-muted-foreground">{v.tasksCount(done, session.todos.length)}</span></>}>
+          <ItemGroup>
+            {session.todos.map((todo) => (
+              <Item key={todo.id} size="xs">
+                <ItemMedia variant="icon">
+                  <TodoMark status={todo.status} running={running} />
+                </ItemMedia>
+                <ItemContent className="min-w-0">
+                  <ItemTitle className={cn("line-clamp-2", todo.status === "completed" && "text-muted-foreground")}>
+                    {todo.status === "in_progress" && todo.activeForm && running ? todo.activeForm : todo.content}
+                  </ItemTitle>
+                </ItemContent>
+              </Item>
+            ))}
+          </ItemGroup>
+        </Section>
+      )}
+      <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
+    </aside>
   );
 }
 
@@ -2198,7 +2277,37 @@ function CodeBlock({ className, children }: { className?: string; children: Reac
 
 /* ---------- approval and writing ---------- */
 
-function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conversationId: string; session: CodeSession; approval: CodeApproval; canAnswer: boolean }) {
+/**
+ * The frame of a decision: a card of its own in the session, or `inline` its parts only, inside the
+ * session's card in the thread (one card, no box in a box). The way to decide comes last, the
+ * refusal on the left, the main answer on the right.
+ */
+function DecisionShell({ inline, label, title, description, children, footer }: { inline?: boolean; label: string; title: ReactNode; description?: ReactNode; children?: ReactNode; footer?: ReactNode }) {
+  if (inline) {
+    return (
+      <div role="region" aria-label={label} className="flex flex-col gap-3">
+        <div className="flex flex-col gap-0.5">
+          <p className="text-sm font-medium">{title}</p>
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        </div>
+        {children}
+        {footer && <div className="flex flex-wrap items-center gap-2">{footer}</div>}
+      </div>
+    );
+  }
+  return (
+    <Card size="sm" role="region" aria-label={label}>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
+      </CardHeader>
+      {children && <CardContent className="flex flex-col gap-3">{children}</CardContent>}
+      {footer && <CardFooter className="flex-wrap gap-2">{footer}</CardFooter>}
+    </Card>
+  );
+}
+
+function ApprovalBlock({ conversationId, session, approval, canAnswer, inline }: { conversationId: string; session: CodeSession; approval: CodeApproval; canAnswer: boolean; inline?: boolean }) {
   const t = useT(messages);
   const c = useT(common);
   const qc = useQueryClient();
@@ -2207,38 +2316,40 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { error: false },
   });
+  // Refuse on the left; the other answers on the right, the main one (its first choice) last.
+  const [first, ...others] = approval.choices.filter((ch) => ch !== "deny");
+  const button = (choice: CodeApproval["choices"][number], variant: "default" | "outline" | "destructive") => (
+    <Button key={choice} size="sm" variant={variant} disabled={answer.isPending} onClick={() => answer.mutate(choice)}>
+      {answer.isPending && answer.variables === choice ? c.inProgress : t.choices[choice]}
+    </Button>
+  );
   return (
-    <Card size="sm" role="region" aria-label={t.asks}>
-      <CardHeader>
-        <CardTitle>
+    <DecisionShell
+      inline={inline}
+      label={t.asks}
+      title={
+        <>
           {t.asks} <span className="font-mono">{approval.tool}</span>
-        </CardTitle>
-        <CardDescription className="truncate">{approval.title}</CardDescription>
-      </CardHeader>
-      {approval.detail && (
-        <CardContent>
-          <CodeBlock className="max-h-40">{approval.detail}</CodeBlock>
-        </CardContent>
-      )}
-      <CardFooter className="flex-wrap gap-2">
-        {canAnswer ? (
-          approval.choices.map((choice, i) => (
-            <Button
-              key={choice}
-              size="sm"
-              variant={choice === "deny" ? "ghost" : i === 0 ? "default" : "outline"}
-              disabled={answer.isPending}
-              onClick={() => answer.mutate(choice)}
-            >
-              {answer.isPending && answer.variables === choice ? c.inProgress : t.choices[choice]}
-            </Button>
-          ))
+        </>
+      }
+      description={approval.title}
+      footer={
+        canAnswer ? (
+          <>
+            {approval.choices.includes("deny") && button("deny", "destructive")}
+            <span className="flex flex-1 flex-wrap justify-end gap-2">
+              {others.map((ch) => button(ch, "outline"))}
+              {first && button(first, "default")}
+            </span>
+            {answer.error && <p className="w-full text-sm text-destructive">{answer.error.message}</p>}
+          </>
         ) : (
           <p className="text-sm text-muted-foreground">{t.waitingOwner}</p>
-        )}
-        {answer.error && <p className="w-full text-sm text-destructive">{answer.error.message}</p>}
-      </CardFooter>
-    </Card>
+        )
+      }
+    >
+      {approval.detail && <CodeBlock className="max-h-40">{approval.detail}</CodeBlock>}
+    </DecisionShell>
   );
 }
 
@@ -2246,7 +2357,7 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
  * Its question to the bot that started it (ask_bot): the bot answers it, or its owner, with one of
  * its options or the next message of the field below, which goes to it as the answer.
  */
-function BotQuestionBlock({ conversationId, session, question, canAnswer }: { conversationId: string; session: CodeSession; question: CodeBotQuestion; canAnswer: boolean }) {
+function BotQuestionBlock({ conversationId, session, question, canAnswer, inline }: { conversationId: string; session: CodeSession; question: CodeBotQuestion; canAnswer: boolean; inline?: boolean }) {
   const t = useT(messages);
   const c = useT(common);
   const qc = useQueryClient();
@@ -2263,61 +2374,61 @@ function BotQuestionBlock({ conversationId, session, question, canAnswer }: { co
   const help = !canAnswer ? t.botQuestion.waiting(question.bot) : options.length ? t.botQuestion.pick(question.bot, options[0]!.label) : t.botQuestion.help(question.bot);
   const id = (i: number) => `bot-q-${i}`;
   return (
-    <Card size="sm" role="region" aria-label={t.botQuestion.title(question.bot)}>
-      <CardHeader>
-        <CardTitle>{t.botQuestion.title(question.bot)}</CardTitle>
-        <CardDescription>{help}</CardDescription>
-      </CardHeader>
-      <form
-        className="contents"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (value && !answer.isPending) answer.mutate(value);
-        }}
-      >
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <MessageText text={question.text} className="text-sm font-medium" />
-            {question.context && (
-              <div className="max-h-48 overflow-y-auto text-muted-foreground">
-                <MessageText text={question.context} className="text-sm" />
-              </div>
-            )}
-          </div>
-          {options.length > 0 && (
-            <FieldSet disabled={!canAnswer || answer.isPending} aria-label={question.text}>
-              <RadioGroup value={choice.picked[0] ?? ""} onValueChange={(v) => setChoice((all) => ({ ...all, picked: [String(v)] }))}>
-                {options.map((o, i) => (
-                  <Field key={o.value} orientation="horizontal">
-                    <RadioGroupItem value={o.value} id={id(i)} />
-                    <FieldContent>
-                      <FieldLabel htmlFor={id(i)}>{o.label}</FieldLabel>
-                      {o.description && <FieldDescription>{o.description}</FieldDescription>}
-                    </FieldContent>
-                  </Field>
-                ))}
-              </RadioGroup>
-              {choice.picked.includes(OTHER_ANSWER) && (
-                <Input
-                  autoFocus
-                  aria-label={t.question.other}
-                  placeholder={t.question.otherPlaceholder}
-                  value={choice.other}
-                  onChange={(e) => setChoice((all) => ({ ...all, other: e.target.value }))}
-                />
-              )}
-            </FieldSet>
-          )}
-        </CardContent>
-        {canAnswer && options.length > 0 && (
-          <CardFooter className="flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={!value || answer.isPending}>
+    <form
+      className="contents"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (value && !answer.isPending) answer.mutate(value);
+      }}
+    >
+      <DecisionShell
+        inline={inline}
+        label={t.botQuestion.title(question.bot)}
+        title={t.botQuestion.title(question.bot)}
+        description={help}
+        footer={
+          canAnswer &&
+          options.length > 0 && (
+            <Button type="submit" size="sm" disabled={!value || answer.isPending} className="ml-auto">
               {answer.isPending ? c.inProgress : t.question.answer}
             </Button>
-          </CardFooter>
+          )
+        }
+      >
+        <div className="flex flex-col gap-2">
+          <MessageText text={question.text} className="text-sm font-medium" />
+          {question.context && (
+            <div className="max-h-48 overflow-y-auto text-muted-foreground">
+              <MessageText text={question.context} className="text-sm" />
+            </div>
+          )}
+        </div>
+        {options.length > 0 && (
+          <FieldSet disabled={!canAnswer || answer.isPending} aria-label={question.text}>
+            <RadioGroup value={choice.picked[0] ?? ""} onValueChange={(v) => setChoice((all) => ({ ...all, picked: [String(v)] }))}>
+              {options.map((o, i) => (
+                <Field key={o.value} orientation="horizontal">
+                  <RadioGroupItem value={o.value} id={id(i)} />
+                  <FieldContent>
+                    <FieldLabel htmlFor={id(i)}>{o.label}</FieldLabel>
+                    {o.description && <FieldDescription>{o.description}</FieldDescription>}
+                  </FieldContent>
+                </Field>
+              ))}
+            </RadioGroup>
+            {choice.picked.includes(OTHER_ANSWER) && (
+              <Input
+                autoFocus
+                aria-label={t.question.other}
+                placeholder={t.question.otherPlaceholder}
+                value={choice.other}
+                onChange={(e) => setChoice((all) => ({ ...all, other: e.target.value }))}
+              />
+            )}
+          </FieldSet>
         )}
-      </form>
-    </Card>
+      </DecisionShell>
+    </form>
   );
 }
 
@@ -2335,12 +2446,14 @@ function QuestionBlock({
   approval,
   questions,
   canAnswer,
+  inline,
 }: {
   conversationId: string;
   session: CodeSession;
   approval: CodeApproval;
   questions: CodeQuestion[];
   canAnswer: boolean;
+  inline?: boolean;
 }) {
   const t = useT(messages);
   const c = useT(common);
@@ -2361,82 +2474,83 @@ function QuestionBlock({
     setChoices((all) => ({ ...all, [question]: { ...(all[question] ?? { picked: [], other: "" }), ...change } }));
   const complete = questions.every((q) => answerOf(choices[q.question]));
   return (
-    <Card size="sm" role="region" aria-label={questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}>
-      <CardHeader>
-        <CardTitle>{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</CardTitle>
-        {!canAnswer && <CardDescription>{t.waitingOwner}</CardDescription>}
-      </CardHeader>
-      <form
-        className="contents"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (complete && !answer.isPending) answer.mutate(false);
-        }}
+    <form
+      className="contents"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (complete && !answer.isPending) answer.mutate(false);
+      }}
+    >
+      <DecisionShell
+        inline={inline}
+        label={questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}
+        title={questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}
+        description={!canAnswer ? t.waitingOwner : undefined}
+        footer={
+          canAnswer && (
+            <>
+              <Button type="button" size="sm" variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate(true)}>
+                {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
+              </Button>
+              <Button type="submit" size="sm" disabled={!complete || answer.isPending} className="ml-auto">
+                {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
+              </Button>
+            </>
+          )
+        }
       >
-        <CardContent>
-          <FieldGroup>
-            {questions.map((q, qi) => {
-              const choice = choices[q.question];
-              const picked = choice?.picked ?? [];
-              const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
-              const id = (i: number) => `code-q${qi}-${i}`;
-              const row = (o: (typeof options)[number], i: number, control: ReactNode) => (
-                <ChoiceOption key={o.value} id={id(i)} label={o.label} description={o.description}>
-                  {control}
-                </ChoiceOption>
-              );
-              return (
-                <FieldSet key={q.question} disabled={!canAnswer}>
-                  {/* Its short tag above, then the question alone. */}
-                  <div className="flex flex-col gap-1">
-                    {q.header && <FieldDescription>{q.header}</FieldDescription>}
-                    <FieldLegend className="mb-0">{q.question}</FieldLegend>
+        <FieldGroup>
+          {questions.map((q, qi) => {
+            const choice = choices[q.question];
+            const picked = choice?.picked ?? [];
+            const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
+            const id = (i: number) => `code-q${qi}-${i}`;
+            const row = (o: (typeof options)[number], i: number, control: ReactNode) => (
+              <ChoiceOption key={o.value} id={id(i)} label={o.label} description={o.description}>
+                {control}
+              </ChoiceOption>
+            );
+            return (
+              <FieldSet key={q.question} disabled={!canAnswer}>
+                {/* Its short tag above, then the question alone. */}
+                <div className="flex flex-col gap-1">
+                  {q.header && <FieldDescription>{q.header}</FieldDescription>}
+                  <FieldLegend className="mb-0">{q.question}</FieldLegend>
+                </div>
+                {q.multiSelect ? (
+                  <div data-slot="checkbox-group" className="flex flex-col gap-2">
+                    {options.map((o, i) =>
+                      row(
+                        o,
+                        i,
+                        <Checkbox
+                          id={id(i)}
+                          checked={picked.includes(o.value)}
+                          onCheckedChange={(on) => set(q.question, { picked: on ? [...picked, o.value] : picked.filter((p) => p !== o.value) })}
+                        />,
+                      ),
+                    )}
                   </div>
-                  {q.multiSelect ? (
-                    <div data-slot="checkbox-group" className="flex flex-col gap-2">
-                      {options.map((o, i) =>
-                        row(
-                          o,
-                          i,
-                          <Checkbox
-                            id={id(i)}
-                            checked={picked.includes(o.value)}
-                            onCheckedChange={(on) => set(q.question, { picked: on ? [...picked, o.value] : picked.filter((p) => p !== o.value) })}
-                          />,
-                        ),
-                      )}
-                    </div>
-                  ) : (
-                    <RadioGroup className="gap-2" value={picked[0] ?? ""} onValueChange={(v) => set(q.question, { picked: [String(v)] })}>
-                      {options.map((o, i) => row(o, i, <RadioGroupItem value={o.value} id={id(i)} />))}
-                    </RadioGroup>
-                  )}
-                  {picked.includes(OTHER_ANSWER) && (
-                    <Input
-                      autoFocus
-                      aria-label={t.question.other}
-                      placeholder={t.question.otherPlaceholder}
-                      value={choice?.other ?? ""}
-                      onChange={(e) => set(q.question, { other: e.target.value })}
-                    />
-                  )}
-                </FieldSet>
-              );
-            })}
-          </FieldGroup>
-        </CardContent>
-        {canAnswer && (
-          <CardFooter className="flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={!complete || answer.isPending}>
-              {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
-            </Button>
-            <Button type="button" size="sm" variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate(true)}>
-              {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
-            </Button>
-          </CardFooter>
-        )}
-      </form>
-    </Card>
+                ) : (
+                  <RadioGroup className="gap-2" value={picked[0] ?? ""} onValueChange={(v) => set(q.question, { picked: [String(v)] })}>
+                    {options.map((o, i) => row(o, i, <RadioGroupItem value={o.value} id={id(i)} />))}
+                  </RadioGroup>
+                )}
+                {picked.includes(OTHER_ANSWER) && (
+                  <Input
+                    autoFocus
+                    aria-label={t.question.other}
+                    placeholder={t.question.otherPlaceholder}
+                    value={choice?.other ?? ""}
+                    onChange={(e) => set(q.question, { other: e.target.value })}
+                  />
+                )}
+              </FieldSet>
+            );
+          })}
+        </FieldGroup>
+      </DecisionShell>
+    </form>
   );
 }
 
@@ -2444,7 +2558,7 @@ function QuestionBlock({
  * The plan Claude Code wrote in plan mode (ExitPlanMode): read whole, then approved (it starts, in
  * the mode it had before planning) or sent back with what to change (it keeps planning).
  */
-function PlanBlock({ conversationId, session, approval, canAnswer }: { conversationId: string; session: CodeSession; approval: CodeApproval; canAnswer: boolean }) {
+function PlanBlock({ conversationId, session, approval, canAnswer, inline }: { conversationId: string; session: CodeSession; approval: CodeApproval; canAnswer: boolean; inline?: boolean }) {
   const t = useT(messages);
   const c = useT(common);
   const qc = useQueryClient();
@@ -2459,43 +2573,42 @@ function PlanBlock({ conversationId, session, approval, canAnswer }: { conversat
     meta: { success: (_: CodeSession, approve: boolean) => (approve ? t.plan.approved : t.plan.sentBack) },
   });
   return (
-    <Card size="sm" role="region" aria-label={t.plan.title}>
-      <CardHeader>
-        <CardTitle>{t.plan.title}</CardTitle>
-        <CardDescription>{t.plan.help}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {approval.plan && (
-          <div className="max-h-96 overflow-y-auto">
-            <MessageText text={approval.plan} className="text-sm" />
-          </div>
-        )}
-        {canAnswer && (
-          <Textarea
-            rows={2}
-            value={feedback}
-            aria-label={t.plan.feedback}
-            placeholder={t.plan.feedbackPlaceholder}
-            onChange={(e) => setFeedback(e.target.value)}
-            className="max-h-32"
-          />
-        )}
-      </CardContent>
-      <CardFooter className="flex-wrap gap-2">
-        {canAnswer ? (
+    <DecisionShell
+      inline={inline}
+      label={t.plan.title}
+      title={t.plan.title}
+      description={t.plan.help}
+      footer={
+        canAnswer ? (
           <>
+            <Button size="sm" variant="outline" disabled={answer.isPending} onClick={() => answer.mutate(false)} className="ml-auto">
+              {answer.isPending && !answer.variables ? c.inProgress : t.plan.revise}
+            </Button>
             <Button size="sm" disabled={answer.isPending || !!feedback.trim()} onClick={() => answer.mutate(true)}>
               {answer.isPending && answer.variables ? c.inProgress : t.plan.approve}
-            </Button>
-            <Button size="sm" variant="outline" disabled={answer.isPending} onClick={() => answer.mutate(false)}>
-              {answer.isPending && !answer.variables ? c.inProgress : t.plan.revise}
             </Button>
           </>
         ) : (
           <p className="text-sm text-muted-foreground">{t.waitingOwner}</p>
-        )}
-      </CardFooter>
-    </Card>
+        )
+      }
+    >
+      {approval.plan && (
+        <div className="max-h-96 overflow-y-auto">
+          <MessageText text={approval.plan} className="text-sm" />
+        </div>
+      )}
+      {canAnswer && (
+        <Textarea
+          rows={2}
+          value={feedback}
+          aria-label={t.plan.feedback}
+          placeholder={t.plan.feedbackPlaceholder}
+          onChange={(e) => setFeedback(e.target.value)}
+          className="max-h-32"
+        />
+      )}
+    </DecisionShell>
   );
 }
 

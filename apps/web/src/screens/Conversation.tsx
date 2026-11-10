@@ -1150,7 +1150,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
     <ConversationFilesProvider messages={messages}>
       <WideProvider value={wide}>
         {/* A conversation with a bot is dressed in its colour (your bubbles, send, primary buttons). */}
-        <div ref={measured.ref} className="flex h-full min-w-0 flex-1" style={directBot ? ({ "--primary": agentAccent(directBot.avatar.color), "--primary-foreground": "#fff" } as CSSProperties) : undefined}>
+        <div ref={measured.ref} className="flex h-full min-w-0 flex-1" style={directBot ? ({ "--bot": agentAccent(directBot.avatar.color), "--bot-foreground": "#fff" } as CSSProperties) : undefined}>
           {wide ? (
             // The thread and its side panel, the line between them dragged to share the width.
             <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">

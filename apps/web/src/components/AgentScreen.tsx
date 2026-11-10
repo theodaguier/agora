@@ -12,6 +12,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, conversationPath } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { AgentOrb } from "@/components/AgentOrb";
 import { useTabPlace } from "@/lib/workspace";
 import { defineMessages, useT } from "@/i18n";
 
@@ -343,10 +344,10 @@ function ScreenView({
 
 /**
  * `agentName`: the bot of a direct conversation; without it, the conversation's screen (any of its bots or sessions).
- * `mascotSrc` / `waking`: no screen yet, a framed space with the bot's mascot, asleep or waking up (as it works),
+ * `mascotColor` / `waking`: no screen yet, a framed space with the bot's orb, asleep or waking up (as it works),
  * and the screen's name under it; without them, one grey line.
  */
-export function AgentScreen({ conversationId, agentName, mascotSrc, waking }: { conversationId: string; agentName?: string; mascotSrc?: string; waking?: boolean }) {
+export function AgentScreen({ conversationId, agentName, mascotColor, waking }: { conversationId: string; agentName?: string; mascotColor?: string; waking?: boolean }) {
   const t = useT(messages);
   const { user } = useRouteContext({ from: "/app" });
   // The browser reaches the server's own network: only admins drive it (as the API checks).
@@ -364,7 +365,7 @@ export function AgentScreen({ conversationId, agentName, mascotSrc, waking }: { 
     <>
       {frame ? (
         <ScreenView conversationId={conversationId} frame={frame} viewport={viewport} canControl={canControl} onEnlarge={() => setEnlarged(true)} />
-      ) : mascotSrc ? (
+      ) : mascotColor ? (
         <div className="flex flex-col gap-2">
           {/* Asleep: a click wakes it (a blank browser of the conversation), then the screen shows as soon as it runs. */}
           <button
@@ -373,7 +374,7 @@ export function AgentScreen({ conversationId, agentName, mascotSrc, waking }: { 
             onClick={() => wake.mutate()}
             className="flex aspect-[16/10] flex-col items-center justify-center gap-1 rounded-xl border bg-muted transition-colors outline-none enabled:hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <img src={mascotSrc} alt="" draggable={false} className={cn("mb-1 size-12 object-contain", !(waking || wake.isPending || wake.isSuccess) && "opacity-60 grayscale")} />
+            <AgentOrb color={mascotColor} className={cn("mb-1 size-12", !(waking || wake.isPending || wake.isSuccess) && "opacity-60 grayscale")} />
             {waking || wake.isPending || wake.isSuccess ? (
               <span className="text-sm text-muted-foreground">{t.waking}</span>
             ) : (

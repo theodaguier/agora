@@ -19,6 +19,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { CodePriorityIcon, CodeStateIcon, IssueIcon } from "@/components/CodeSessionMarks";
 import { CodePriorityMenu, priorityOfKey, useSetCodePriority, useSetCodePriorityOf } from "@/components/CodePriorityMenu";
 import { EmptyFigure } from "@/components/EmptyFigure";
+import { LiveSessionCard } from "@/components/CodeSession";
 import { BranchIcon, ChevronLeftIcon, ClockIcon, FolderIcon, HistoryIcon, TerminalIcon, WarningIcon } from "@/components/icons";
 import { OptionSelect } from "@/components/Pickers";
 import { Button } from "@/components/ui/button";
@@ -100,7 +101,13 @@ export function Sessions() {
   const { data: sessions = [], isPending, isError, error, refetch } = useQuery(allCodeSessionsQuery);
   // What each view would show, stopped sessions counted only when they are shown.
   const count = (view: CodeSessionView) => groupCodeSessions(sessions, { ...display, view }).reduce((n, g) => n + g.sessions.length, 0);
-  const groups = groupCodeSessions(sessions, display);
+  // What waits for an answer comes first, as cards you decide in without opening them; not repeated below.
+  const toDecide = display.view === "parked" || display.view === "finished" ? [] : sessions.filter((s) => codeSessionState(s) === "waiting" && !s.parked);
+  const groups = groupCodeSessions(
+    sessions.filter((s) => !toDecide.includes(s)),
+    display,
+  );
+  const navigate = useNavigate();
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -145,7 +152,7 @@ export function Sessions() {
                 </Button>
               </EmptyContent>
             </Empty>
-          ) : !groups.length ? (
+          ) : !groups.length && !toDecide.length ? (
             <Empty className="mt-10">
               {sessions.length ? (
                 <EmptyHeader>
@@ -164,7 +171,28 @@ export function Sessions() {
               )}
             </Empty>
           ) : (
-            groups.map((g) => <Group key={g.key} group={display.group} groupKey={g.key} sessions={g.sessions} />)
+            <>
+              {toDecide.length > 0 && (
+                <div className="mt-6 flex flex-col gap-3">
+                  <h2 className="flex items-center gap-2 text-sm font-medium">
+                    <CodeStateIcon state="waiting" className="size-4" />
+                    {t.stateGroups.waiting}
+                    <span className="text-muted-foreground tabular-nums">{toDecide.length}</span>
+                  </h2>
+                  {toDecide.map((s) => (
+                    <LiveSessionCard
+                      key={s.id}
+                      session={s}
+                      className="max-w-none"
+                      onOpen={() => void navigate({ to: "/c/$conversationId/code/$sessionId", params: { conversationId: s.conversationId, sessionId: s.id } })}
+                    />
+                  ))}
+                </div>
+              )}
+              {groups.map((g) => (
+                <Group key={g.key} group={display.group} groupKey={g.key} sessions={g.sessions} />
+              ))}
+            </>
           )}
         </div>
       </div>
