@@ -50,14 +50,14 @@ export function BotBubble({
   );
 }
 
-/** Our message: the bot's colour (--primary in a conversation). */
+/** Our message: the bot's colour (--bot in a conversation). */
 export function UserBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
   return (
     <MessageText
       plain
       text={text}
       mentionables={mentionables}
-      className={cn("bubble-mine ml-auto w-fit min-w-0 max-w-lg break-words rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground", className)}
+      className={cn("bubble-mine ml-auto w-fit min-w-0 max-w-lg break-words rounded-2xl bg-bot px-3 py-2 text-sm text-bot-foreground", className)}
     />
   );
 }

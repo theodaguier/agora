@@ -15,7 +15,7 @@ import { CardTitle } from "@/components/ui/card";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { ShortcutTooltip } from "@/components/Shortcuts";
 import { shortcuts } from "@/lib/shortcuts";
-import { mascot } from "@/lib/agent-avatar";
+import { AgentOrb } from "@/components/AgentOrb";
 import type { AgentSummary } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { dividerLabel } from "@/lib/dates";
@@ -90,7 +90,7 @@ export function RightPanel({
         {/* Who it is, centred, on its details only: its files and its computer need no introduction. */}
         {initialTab === "details" && (
           <div className="flex flex-col items-center gap-3 text-center">
-            <img src={mascot(agent.avatar.color).solo} alt="" draggable={false} className="size-24 object-contain" />
+            <AgentOrb color={agent.avatar.color} className="size-24" />
             <h2 className="text-lg font-medium">{agent.name}</h2>
           </div>
         )}
@@ -99,7 +99,7 @@ export function RightPanel({
         {initialTab === "library" ? (
           <FilesPanel conversationId={conversationId} onJump={onJump} />
         ) : initialTab === "computer" ? (
-          <AgentScreen conversationId={conversationId} agentName={agent.name} mascotSrc={mascot(agent.avatar.color).head} waking={turns.length > 0} />
+          <AgentScreen conversationId={conversationId} agentName={agent.name} mascotColor={agent.avatar.color} waking={turns.length > 0} />
         ) : (
           <div className="flex flex-col gap-5">
             <div className="flex flex-wrap justify-center gap-2">

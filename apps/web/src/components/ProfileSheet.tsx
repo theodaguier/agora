@@ -1,4 +1,4 @@
-import { mascot } from "@/lib/agent-avatar";
+import { AgentOrb } from "@/components/AgentOrb";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClockIcon, UserIcon } from "@/components/icons";
 import { toolLabel } from "@agora/core";
@@ -348,10 +348,12 @@ function BotHeader({ agent }: { agent: AgentProfile }) {
   const canWrite = agent.access && !agent.onboarding && !here;
   const admin = me.role === "admin";
 
-  // The bot's clay portrait, its name, then its actions.
+  // The bot's orb, its name, then its actions.
   return (
     <div className="flex flex-col gap-3">
-      <img src={mascot(agent.avatar.color).solo} alt="" draggable={false} className="aspect-[7/5] w-full rounded-2xl bg-mascot object-contain" />
+      <div className="flex aspect-[7/5] w-full items-center justify-center rounded-2xl bg-muted">
+        <AgentOrb color={agent.avatar.color} className="size-28" />
+      </div>
       <div className="min-w-0">
         <SheetTitle className="truncate">{agent.name}</SheetTitle>
         <SheetDescription className="truncate">{[t.botSince(since), status].filter(Boolean).join(", ")}</SheetDescription>
