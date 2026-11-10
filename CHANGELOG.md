@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.55.0 — 2026-11-10
+
+### Features
+- **web**: refonte sombre, orbes, sessions de code vivantes et barre latérale
+
 ## v0.54.0 — 2026-11-09
 
 ### Features
