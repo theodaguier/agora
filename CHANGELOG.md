@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.56.0 — 2026-11-12
+
+### Features
+- vues de données, marketplace, écrans de connexion et app mobile dans la refonte sombre
+- **web**: boîte façon Linear, blocs du fil, tâches en tableau, consommation, palette et réglages
+
 ## v0.55.0 — 2026-11-10
 
 ### Features
