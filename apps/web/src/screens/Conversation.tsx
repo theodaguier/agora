@@ -7,7 +7,7 @@ import { BrowserIcon, ChevronLeftIcon, FilesIcon, PanelLeftIcon, PinIcon, Search
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { agentAccent } from "@/lib/agent-avatar";
-import { AuthorLine, BotBubble, DateDivider, ToolLine, TypingBubble, TypingLine } from "@/components/Bubbles";
+import { DateDivider, FlatText, Lead, ToolLine, TypingBubble, TypingLine } from "@/components/Bubbles";
 import { ApprovalCard, ApprovalLog } from "@/components/ApprovalCard";
 import { ChoiceCard } from "@/components/ChoiceCard";
 import { McpRequestCard } from "@/components/McpRequestCard";
@@ -67,7 +67,7 @@ import {
   type Person,
   type ReplyTo,
 } from "@/lib/api";
-import { dividerLabel, needsDivider } from "@/lib/dates";
+import { clockTime, dividerLabel, needsDivider } from "@/lib/dates";
 import { ConversationFilesProvider } from "@/lib/conversation-files";
 import { codeSessionsQuery } from "@/lib/code-sessions";
 import { updateSide, useConversationSide, type ConversationSide } from "@/lib/conversation-side";
@@ -207,16 +207,14 @@ function BotViews({
 }
 
 /**
- * A bot's message and what comes with it (tools, cards). `avatar` (direct conversation with the bot):
- * the content sits right of a 28 px gutter, the avatar at its bottom (null: gutter left empty, the run
- * goes on). Undefined (groups, colleagues): no gutter, as before.
+ * Figma « Conversation — blocs riches »: a message from a bot or a colleague, flat in a column right
+ * of a 36 px gutter; `avatar` (the first message of a run) sits in it, centred on the first line.
  */
-function BotRun({ avatar, className, children }: { avatar?: ReactNode; className?: string; children: ReactNode }) {
-  if (avatar === undefined || avatar === false) return <div className={cn("flex min-w-0 flex-col gap-1", className)}>{children}</div>;
+function Post({ avatar, className, children }: { avatar?: ReactNode; className?: string; children: ReactNode }) {
   return (
-    <div className={cn("relative flex min-w-0 flex-col gap-1 pl-9", className)}>
+    <div className={cn("relative flex min-w-0 flex-col gap-3 pl-12", className)}>
+      {avatar && <span className="absolute top-0 left-0 -translate-y-2">{avatar}</span>}
       {children}
-      {avatar && <span className="absolute bottom-0 left-0">{avatar}</span>}
     </div>
   );
 }
@@ -230,10 +228,15 @@ function LiveTurn({
   mentionables: mentions,
   onOpenCode,
   onOpenPreview,
-  avatar,
+  head,
+  at,
+  className,
 }: {
-  /** Direct conversation with the bot: its avatar in the gutter (see BotRun). */
-  avatar?: ReactNode;
+  className?: string;
+  /** When the reply started: on its first line. */
+  at: Date;
+  /** Starts a run: the bot's avatar in the gutter and who/when on the first line (see Post). */
+  head: boolean;
   turn: ActiveTurn;
   bot: AgentSummary | undefined;
   conversationId: string;
@@ -249,9 +252,15 @@ function LiveTurn({
   // A mockup being written says so on its card.
   const quiet = !!turn.approval || previews.some((p) => !p.done);
   const typing = <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} className="chat-arrive" />;
+  const lead = head ? <Lead name={group ? bot?.name : undefined} time={clockTime(at)} /> : undefined;
+  let first = true;
+  const text = (value: string, streaming: boolean) => {
+    const l = first ? lead : undefined;
+    first = false;
+    return <FlatText text={value} streaming={streaming} mentionables={mentions} lead={l} />;
+  };
   return (
-    <BotRun avatar={avatar}>
-      {group && bot && <AuthorLine name={bot.name} avatar={<AgentAvatar agent={bot} className="size-5" />} className="chat-arrive" />}
+    <Post avatar={head && bot && <AgentAvatar agent={bot} className="size-9" />} className={className}>
       <ToolLine tools={turn.tools} running={!visible} className="chat-arrive" />
       {turn.codeSessions?.length ? (
         <div className="w-full">
@@ -262,13 +271,18 @@ function LiveTurn({
             streaming
             typing={!quiet && typing}
             onOpen={onOpenCode}
-            bubble={(text, streaming) => <BotBubble text={text} streaming={streaming} mentionables={mentions} />}
+            bubble={text}
           />
         </div>
       ) : visible ? (
-        <BotBubble text={visible} streaming mentionables={mentions} />
+        text(visible, true)
       ) : (
-        !quiet && <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} className="chat-arrive" />
+        !quiet && (
+          <div className="flex items-center gap-2 text-sm">
+            {lead}
+            {typing}
+          </div>
+        )
       )}
       {previews.map((p, i) => (
         <PreviewCard key={i} title={p.title} writing={!p.done} onOpen={() => onOpenPreview(`${turn.turnId}:${i}`)} className="chat-arrive" />
@@ -283,7 +297,7 @@ function LiveTurn({
           canAnswer={turn.requestedBy === user.id || user.role === "admin"}
         />
       )}
-    </BotRun>
+    </Post>
   );
 }
 
@@ -321,12 +335,12 @@ function HeaderTitle({
     </Button>
     {directPerson || directBot ? (
       <Button
-        variant="outline"
+        variant="ghost"
         onClick={() => (directPerson ? openProfile(directPerson.id) : openAgentProfile(directBot!.id))}
         aria-label={t.openProfile((directPerson ?? directBot)!.name)}
-        className="min-w-0"
+        className="h-auto min-w-0 py-1"
       >
-        <TitleWithStatus title={title} p={othersOf(conv!, me)[0]} waiting={waiting} avatar={<ConversationAvatar conversation={conv!} me={me} className="size-6" />} />
+        <TitleWithStatus title={title} p={othersOf(conv!, me)[0]} waiting={waiting} avatar={<ConversationAvatar conversation={conv!} me={me} className="size-8" />} />
       </Button>
     ) : (
       title && (
@@ -334,7 +348,7 @@ function HeaderTitle({
           title={title}
           p={conv && !group ? othersOf(conv, me)[0] : undefined}
           // A group's members are the facepile beside it: no initials tile repeating them.
-          avatar={conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-6" />}
+          avatar={conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-8" />}
         />
       )
     )}
@@ -840,8 +854,8 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
           {directBot ? t.dropTo(directBot.name) : group ? t.dropToGroup : t.dropTo(title)}
         </div>
       )}
-      <header className="@container/header grid h-16 shrink-0 grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-2 px-4">
-        <div className="col-span-2 col-start-1 flex min-w-0 items-center justify-center gap-2 md:col-span-1 md:col-start-2">
+      <header className="@container/header grid h-16 shrink-0 grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-2 border-b px-4 md:px-6">
+        <div className="col-span-2 col-start-1 flex min-w-0 items-center gap-2">
           <HeaderTitle conv={conv} me={user.id} title={title} directBot={directBot} directPerson={directPerson} waiting={turns.some((x) => x.approval)} onOpenInfo={() => setPanel("info")} />
         </div>
         <PanelButtons
@@ -878,7 +892,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
           // gets a blank area to scroll under the composer.
           className="relative min-h-0 flex-1 overflow-y-auto"
         >
-          <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-1 px-4 pt-4 pb-6">
+          <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col justify-end gap-1 px-4 pt-6 pb-6 md:px-12">
             {isPending && (
               <div className="chat-loading flex flex-col gap-3" aria-busy>
                 <Skeleton className="h-10 w-2/3" />
@@ -916,29 +930,41 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
               const at = new Date(entry.createdAt);
               const previous = timeline[i - 1];
               const divider = needsDivider(previous && new Date(previous.createdAt), at);
-              if (entry.kind === "turn") return (
+              // A run (Figma « Conversation »): the same author within the same minute; it starts with an
+              // avatar and who/when on its first line, 20 px under the previous one.
+              const prevAuthor = previous?.kind === "message" ? authorKey(previous.message.author) : previous ? `agent:${previous.turn.agentId}` : null;
+              const sameMinute = !!previous && clockTime(new Date(previous.createdAt)) === clockTime(at);
+              if (entry.kind === "turn") {
+                const head = divider || !sameMinute || prevAuthor !== `agent:${entry.turn.agentId}`;
+                return (
                 <Fragment key={entry.key}>
                   {divider && <DateDivider label={dividerLabel(at)} />}
                   <LiveTurn turn={entry.turn} bot={agentById(entry.turn.agentId)} conversationId={conversationId}
-                    avatar={directBot ? <AgentAvatar agent={directBot} className="size-7" /> : undefined}
+                    head={head} at={at} className={head && i > 0 && !divider ? "mt-5" : undefined}
                     group={group} mentionables={mentions} onOpenCode={openCodeSession} onOpenPreview={openPreview} />
                 </Fragment>
-              );
+                );
+              }
               const m = entry.message;
               const prev = previous?.kind === "message" ? previous.message : undefined;
               const newAuthor = divider || !prev || authorKey(prev.author) !== authorKey(m.author);
               const fromMe = m.kind === "user" && m.author?.kind === "user" && m.author.id === user.id;
-              const showAuthor = newAuthor && !fromMe && m.kind !== "event" && (group || (m.kind === "user" && !directBot)) && !!m.author;
               // A bot's reply takes the place of its live turn and ours of its pending copy: only others' messages arrive.
               const arriving = m.kind === "user" && !fromMe && arrived(m.id);
-              // In a direct conversation with a bot, its messages sit right of a 28 px
-              // gutter, its avatar under the last one of a run; 16 px between runs, 4 px inside one.
-              const nextEntry = timeline[i + 1];
-              const next = nextEntry?.kind === "message" ? nextEntry.message : undefined;
-              const runEnds = next
-                ? next.kind !== "bot" || authorKey(next.author) !== authorKey(m.author) || needsDivider(at, new Date(nextEntry!.createdAt))
-                : nextEntry?.kind !== "turn" || m.author?.kind !== "agent" || nextEntry.turn.agentId !== m.author.id;
-              const gap = newAuthor && i > 0 && !divider && "mt-3";
+              const head = !fromMe && m.kind !== "event" && (newAuthor || !sameMinute || prevAuthor !== authorKey(m.author));
+              const lead = head ? <Lead name={group ? m.author?.name : undefined} time={clockTime(at)} /> : undefined;
+              const avatar =
+                head && m.author ? (
+                  m.author.kind === "agent" ? <AgentAvatar agent={m.author} className="size-9" /> : <PersonAvatar person={m.author} className="size-9" />
+                ) : undefined;
+              const gap = i > 0 && !divider && (head || (fromMe && newAuthor)) && "mt-5";
+              // A reply cut by its code sessions: who/when on its first piece of text only.
+              let firstText = true;
+              const flat = (text: string) => {
+                const l = firstText ? lead : undefined;
+                firstText = false;
+                return <FlatText text={text} mentionables={mentions} lead={l} />;
+              };
               /** A Claude Code session started here: its card instead of the event line. */
               const codeStarted = m.kind === "event" && m.data?.event?.type === "code.started" ? m.data.event : null;
               if (codeStarted && shownSessions.has(codeStarted.sessionId)) return null;
@@ -949,22 +975,11 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
               return (
                 <Fragment key={entry.key}>
                   {divider && <DateDivider label={dividerLabel(at)} />}
-                  {showAuthor && m.author && group && (
-                    <AuthorLine
-                      className={arriving ? "chat-arrive" : undefined}
-                      name={m.author.name}
-                      avatar={
-                        m.author.kind === "agent" ? (
-                          <AgentAvatar agent={m.author} className="size-5" />
-                        ) : (
-                          <PersonAvatar person={m.author} className="size-5" />
-                        )
-                      }
-                    />
-                  )}
-                  {m.kind === "user" && (
+                  {m.kind === "user" &&
+                    (fromMe ? (
                     <MessageRow
-                      className={gap || undefined}
+                      className={fromMe ? gap || undefined : undefined}
+                      wide={!fromMe}
                       id={m.id}
                       mine={fromMe}
                       arriving={arriving}
@@ -979,6 +994,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                     >
                       <ChatMessage
                         mine={fromMe}
+                        lead={lead}
                         text={m.text}
                         attachments={m.data?.attachments}
                         invocations={fromMe ? m.data?.invocations : undefined}
@@ -988,15 +1004,42 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                         onQuote={jumpTo}
                       />
                     </MessageRow>
-                  )}
+                    ) : (
+                      <Post avatar={avatar} className={cn(gap || undefined, arriving && "chat-arrive")}>
+                    <MessageRow
+                      className={fromMe ? gap || undefined : undefined}
+                      wide={!fromMe}
+                      id={m.id}
+                      mine={fromMe}
+                      arriving={arriving}
+                      highlighted={highlight === m.id}
+                      text={m.text}
+                      attachments={m.data?.attachments}
+                      onReply={() => setReplyTo(quoteOf(m))}
+                      onForward={() => setForwarding(m)}
+                      pinned={isPinned({ messageId: m.id })}
+                      onTogglePin={() => togglePin({ messageId: m.id })}
+                      onDelete={fromMe ? () => deleteMessage(m.id) : undefined}
+                    >
+                      <ChatMessage
+                        mine={fromMe}
+                        lead={lead}
+                        text={m.text}
+                        attachments={m.data?.attachments}
+                        invocations={fromMe ? m.data?.invocations : undefined}
+                        replyTo={m.data?.replyTo}
+                        forwarded={m.data?.forwarded}
+                        mentionables={mentions}
+                        onQuote={jumpTo}
+                      />
+                    </MessageRow>
+                      </Post>
+                    ))}
                   {m.kind === "user" && <PullRequestLinks text={m.text} shown={sessionPulls} align={fromMe ? "end" : "start"} className={cn("mt-1.5", fromMe && "pr-8")} />}
                   {m.kind === "bot" && (
-                    <BotRun
-                      className={gap || undefined}
-                      avatar={directBot && m.author?.kind === "agent" ? runEnds ? <AgentAvatar agent={directBot} className="size-7" /> : null : undefined}
-                    >
-                      {m.data?.tools && <ToolLine tools={m.data.tools} />}
+                    <Post className={gap || undefined} avatar={avatar}>
                       {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
+                      {lead && !m.text && !m.data?.codeSessions?.length && <p className="text-sm">{lead}</p>}
                       {(m.text || !!m.data?.codeSessions?.length) && (
                         <MessageRow
                           id={m.id}
@@ -1015,13 +1058,14 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                               text={m.text}
                               sessions={m.data.codeSessions}
                               onOpen={openCodeSession}
-                              bubble={(text) => <BotBubble text={text} mentionables={mentions} />}
+                              bubble={flat}
                             />
                           ) : (
-                            <BotBubble text={m.text} mentionables={mentions} />
+                            <FlatText text={m.text} mentionables={mentions} lead={lead} />
                           )}
                         </MessageRow>
                       )}
+                      {m.data?.tools && <ToolLine tools={m.data.tools} />}
                       {m.data?.views && <BotViews message={m} views={m.data.views} answers={viewAnswers} send={send} />}
                       {m.data?.previews && <PreviewCards previews={m.data.previews} onOpen={openPreview} />}
                       <BotFiles message={m} />
@@ -1029,23 +1073,25 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                       {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
                       {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
                       {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}
-                    </BotRun>
+                    </Post>
                   )}
                   {codeStarted && (
+                    <div className="mt-3 pl-12">
                     <CodeSessionCard
                       conversationId={conversationId}
                       sessionId={codeStarted.sessionId}
                       title={codeStarted.title}
                       onOpen={() => openCodeSession(codeStarted.sessionId)}
                     />
+                    </div>
                   )}
                   {vaultRequest && (
-                    <div className="mt-3">
+                    <div className="mt-3 pl-12">
                       <VaultRequestCard id={vaultRequest.requestId} />
                     </div>
                   )}
                   {githubMerge && (
-                    <div className="mt-3">
+                    <div className="mt-3 pl-12">
                       <GitHubMergeCard id={githubMerge.requestId} bot={githubMerge.bot} repo={githubMerge.repo} number={githubMerge.number} />
                     </div>
                   )}
@@ -1060,22 +1106,22 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
             })}
             {/* The bot's question: in its column (right of the avatar gutter), a block apart from its message. */}
             {question?.data?.questions && (
-              <BotRun key={question.id} className="mt-3" avatar={directBot ? null : undefined}>
+              <Post key={question.id} className="mt-3">
                 <QuestionsCard
                   questions={question.data.questions}
                   onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
                   onDismiss={() => setDismissed(question.id)}
                 />
-              </BotRun>
+              </Post>
             )}
             {question?.data?.choices && (
-              <BotRun key={question.id} className="mt-3" avatar={directBot ? null : undefined}>
+              <Post key={question.id} className="mt-3">
                 <ChoiceCard
                   choices={question.data.choices}
                   onAnswer={(text) => send(text, [], [], question.author?.kind === "agent" ? [question.author.id] : [])}
                   onDismiss={() => setDismissed(question.id)}
                 />
-              </BotRun>
+              </Post>
             )}
             {sending.map((s) => (
               <Fragment key={s.key}>
@@ -1112,7 +1158,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
         )}
       </div>
 
-      <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">
+      <div className="mx-auto w-full max-w-5xl shrink-0 px-4 pb-4 md:px-12">
         {conv && (
           <QueueList
             items={queue}
@@ -1218,10 +1264,13 @@ function BotFiles({ message }: { message: Message }) {
 function TitleWithStatus({ title, p, avatar, waiting, className }: { title: string; p?: Participant; avatar?: ReactNode; waiting?: boolean; className?: string }) {
   const t = useT(strings);
   return (
-    <span className={cn("flex min-w-0 items-center gap-2 text-sm font-medium", className)}>
+    // Figma « Conversation »: the name over what they are doing, left of the thread.
+    <span className={cn("flex min-w-0 items-center gap-3 text-left", className)}>
       {avatar}
-      <span className="truncate">{title}</span>
-      {waiting ? <span className="shrink-0 text-xs font-normal text-warning-foreground">{t.waitingYou}</span> : p && <HeaderStatus p={p} />}
+      <span className="grid min-w-0">
+        <span className="truncate text-sm font-medium">{title}</span>
+        {waiting ? <span className="truncate text-xs font-normal text-muted-foreground">{t.waitingYou}</span> : p && <HeaderStatus p={p} />}
+      </span>
     </span>
   );
 }
@@ -1233,7 +1282,7 @@ function HeaderStatus({ p }: { p: Participant }) {
   return (
     <span
       className={cn(
-        "shrink-0 text-xs font-normal",
+        "truncate text-xs font-normal",
         status.tone === "dnd" ? "text-destructive" : "text-muted-foreground",
       )}
     >
