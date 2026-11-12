@@ -23,6 +23,8 @@ const Inbox = lazyRouteComponent(() => import("./screens/Inbox"), "Inbox");
 const TwoFactorRequired = lazyRouteComponent(() => import("./screens/TwoFactorRequired"), "TwoFactorRequired");
 const MemoryWindow = lazyRouteComponent(() => import("./screens/MemoryWindow"), "MemoryWindow");
 const Sessions = lazyRouteComponent(() => import("./screens/Sessions"), "Sessions");
+const Artifacts = lazyRouteComponent(() => import("./screens/Artifacts"), "Artifacts");
+const ArtifactRoute = lazyRouteComponent(() => import("./screens/ConversationTabs"), "ArtifactRoute");
 
 export const queryClient = new QueryClient({
   mutationCache,
@@ -108,6 +110,8 @@ const homeRoute = createRoute({ getParentRoute: () => appRoute, path: "/", compo
 const newChatRoute = createRoute({ getParentRoute: () => appRoute, path: "/new", component: NewChat });
 const tasksRoute = createRoute({ getParentRoute: () => appRoute, path: "/tasks", component: Tasks });
 const sessionsRoute = createRoute({ getParentRoute: () => appRoute, path: "/sessions", component: Sessions });
+const artifactsRoute = createRoute({ getParentRoute: () => appRoute, path: "/artifacts", component: Artifacts });
+const artifactRoute = createRoute({ getParentRoute: () => appRoute, path: "/artifacts/$artifactId", component: ArtifactRoute });
 const inboxRoute = createRoute({ getParentRoute: () => appRoute, path: "/inbox", component: Inbox });
 /** `?m=<messageId>`: opens the conversation on that message (from the inbox). */
 const conversationRoute = createRoute({
@@ -140,7 +144,7 @@ const memoryRoute = createRoute({
   },
   component: MemoryWindow,
 });
-const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, memoryRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, sessionsRoute, inboxRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, memoryRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, sessionsRoute, artifactsRoute, artifactRoute, inboxRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
 
 export const router = createRouter({ routeTree, defaultPendingComponent: RoutePending, defaultErrorComponent: RouteError, defaultNotFoundComponent: RouteNotFound });
 

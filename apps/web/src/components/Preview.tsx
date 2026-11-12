@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { previewFileName, readPreviews, SCREEN_DEVICES, type PreviewRef, type ScreenDevice } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useWide } from "@/components/CodeSession";
+import { ArtifactShareMenu, ArtifactVersionMenu } from "@/components/ArtifactShare";
 import { BesideButton } from "@/components/BesideButton";
 import { PaneHeader } from "@/components/PaneHeader";
 import { CloseIcon, FileCodeIcon, WarningIcon } from "@/components/icons";
@@ -16,6 +17,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { defineMessages, useT } from "@/i18n";
 import { attachmentUrl, type ActiveTurn, type Message } from "@/lib/api";
+import { artifactContentUrl, artifactQuery } from "@/lib/artifacts";
 import { messagesQuery } from "@/lib/queries";
 import { useTurns } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
@@ -23,6 +25,8 @@ import { cn } from "@/lib/utils";
 const messages = defineMessages({
   en: {
     mockup: "HTML mockup",
+    artifact: "Artifact",
+    versioned: (n: number) => `Artifact · v${n}`,
     untitled: "Mockup",
     writing: "Being written…",
     ready: "Ready",
@@ -42,6 +46,8 @@ const messages = defineMessages({
   },
   fr: {
     mockup: "Maquette HTML",
+    artifact: "Artefact",
+    versioned: (n: number) => `Artefact · v${n}`,
     untitled: "Maquette",
     writing: "En cours d'écriture…",
     ready: "Prête",
@@ -62,7 +68,7 @@ const messages = defineMessages({
 });
 
 /** Where a mockup is read from: the reply being written, or the file its saved message keeps. */
-export type PreviewSource = { title: string; writing: boolean } & ({ html: string } | { id: string });
+export type PreviewSource = { title: string; writing: boolean } & ({ html: string } | { id: string; artifactId?: string; version?: number });
 
 /** The mockup `<turnId>:<index>`: in its live reply while there is one, then in the saved message. */
 export function findPreview(key: string, turns: ActiveTurn[], thread: Message[]): PreviewSource | null {
@@ -72,19 +78,19 @@ export function findPreview(key: string, turns: ActiveTurn[], thread: Message[])
   if (live) return { title: live.title, html: live.html, writing: !live.done };
   for (let i = thread.length - 1; i >= 0; i--) {
     const ref = thread[i]!.data?.previews?.find((p) => p.key === key);
-    if (ref) return { title: ref.title, id: ref.id, writing: false };
+    if (ref) return { title: ref.title, id: ref.id, artifactId: ref.artifactId, version: ref.version, writing: false };
   }
   return null;
 }
 
-/** A mockup in the thread, where the bot wrote it: its state, and the way into the preview. */
-export function PreviewCard({ title, writing, onOpen, className }: { title: string; writing: boolean; onOpen: () => void; className?: string }) {
+/** A page in the thread, where the bot wrote it: its state, its version, and the ways into it (open, share). */
+export function PreviewCard({ title, writing, onOpen, artifactId, version, className }: { title: string; writing: boolean; onOpen: () => void; artifactId?: string; version?: number; className?: string }) {
   const t = useT(messages);
   return (
     <Card className={cn("w-full max-w-lg", className)}>
       <CardHeader>
         <CardTitle className="truncate">{title || t.untitled}</CardTitle>
-        <CardDescription>{t.mockup}</CardDescription>
+        <CardDescription>{version ? t.versioned(version) : artifactId || writing ? t.artifact : t.mockup}</CardDescription>
         <CardAction>
           <Badge variant="outline">
             {writing ? <Spinner data-icon="inline-start" /> : <FileCodeIcon data-icon="inline-start" />}
@@ -92,7 +98,8 @@ export function PreviewCard({ title, writing, onOpen, className }: { title: stri
           </Badge>
         </CardAction>
       </CardHeader>
-      <CardFooter className="justify-end">
+      <CardFooter className="justify-end gap-2">
+        {artifactId && <ArtifactShareMenu artifactId={artifactId} />}
         <Button variant="secondary" onClick={onOpen}>
           {writing ? t.follow : t.open}
         </Button>
@@ -103,7 +110,7 @@ export function PreviewCard({ title, writing, onOpen, className }: { title: stri
 
 /** The mockups of a saved bot message. */
 export function PreviewCards({ previews, onOpen }: { previews: PreviewRef[]; onOpen: (key: string) => void }) {
-  return previews.map((p) => <PreviewCard key={p.key} title={p.title} writing={false} onOpen={() => onOpen(p.key)} />);
+  return previews.map((p) => <PreviewCard key={p.key} title={p.title} writing={false} artifactId={p.artifactId} version={p.version} onOpen={() => onOpen(p.key)} />);
 }
 
 /** Large screens show the mockup beside the thread (`onDetach`: in a pane of its own); smaller ones in a sheet over it. */
@@ -159,6 +166,40 @@ export function PreviewPage({ conversationId, previewKey, onClose }: { conversat
   );
 }
 
+/** An artifact on its own (from the Artefacts screen): its latest version, the whole pane for it. */
+export function ArtifactPage({ artifactId, onClose }: { artifactId: string; onClose?: () => void }) {
+  const c = useT(common);
+  const t = useT(messages);
+  const { data: artifact, isPending, isError, error, refetch } = useQuery(artifactQuery(artifactId));
+  const latest = artifact?.versions[0];
+  return (
+    <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      {isPending ? (
+        <div className="grid flex-1 place-items-center">
+          <Spinner />
+        </div>
+      ) : isError ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <WarningIcon />
+            </EmptyMedia>
+            <EmptyTitle>{t.unreachableTitle}</EmptyTitle>
+            <EmptyDescription title={error.message}>{t.unreachable}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button variant="secondary" onClick={() => void refetch()}>
+              {c.retry}
+            </Button>
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <PreviewView source={latest ? { title: artifact.title, id: latest.attachmentId, artifactId: artifact.id, writing: false } : null} onClose={onClose} page />
+      )}
+    </section>
+  );
+}
+
 const DEVICES = ["mobile", "tablet", "desktop"] as const satisfies readonly ScreenDevice[];
 
 function DeviceToggle({ value, onChange }: { value: ScreenDevice; onChange: (device: ScreenDevice) => void }) {
@@ -190,6 +231,11 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
   const [device, setDevice] = useState<ScreenDevice>("mobile");
   const [enlarged, setEnlarged] = useState(false);
   const id = source && "id" in source ? source.id : null;
+  const artifactId = source && "id" in source ? source.artifactId : undefined;
+  // The version this message saved, until another is picked for this page (undefined: the latest).
+  const [picked, setPicked] = useState<{ id: string | null; version: number | undefined } | null>(null);
+  const version = picked && picked.id === id ? picked.version : source && "id" in source ? source.version : undefined;
+  const setVersion = (v: number | undefined) => setPicked({ id, version: v });
   const saved = useQuery({
     queryKey: ["preview", id],
     queryFn: async () => {
@@ -197,7 +243,8 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
       if (!res.ok) throw new Error(String(res.status));
       return res.text();
     },
-    enabled: !!id,
+    // An artifact's page loads from its own address, where its scripts run (ArtifactFrame).
+    enabled: !!id && !artifactId,
     staleTime: Infinity,
   });
   const html = source && "html" in source ? source.html : saved.data;
@@ -206,13 +253,16 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
   if (html !== undefined && (kept?.html !== html || kept.title !== source?.title)) setKept({ html, title: source?.title ?? "" });
   const writing = !!source?.writing;
   const title = kept?.title || source?.title || t.untitled;
+  const frame = (style: CSSProperties) =>
+    artifactId ? <ArtifactFrame src={artifactContentUrl(artifactId, version)} title={title} style={style} /> : kept && <HtmlFrame html={kept.html} done={!writing} style={style} />;
+  const ready = !!artifactId || !!kept;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PaneHeader
         media={writing && <Spinner />}
         title={title}
-        description={`${t.mockup}, ${writing ? t.writing.toLowerCase() : t.ready.toLowerCase()}`}
+        description={writing ? `${t.artifact}, ${t.writing.toLowerCase()}` : version ? t.versioned(version) : `${artifactId ? t.artifact : t.mockup}, ${t.ready.toLowerCase()}`}
         actions={
           <>
             {onDetach && <BesideButton onClick={onDetach} />}
@@ -227,18 +277,26 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
       <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-3">
         <DeviceToggle value={device} onChange={setDevice} />
         <div className="flex-1" />
+        {artifactId && <ArtifactVersionMenu artifactId={artifactId} value={version} onChange={setVersion} />}
         {!page && (
-          <Button variant="outline" size="sm" disabled={!kept} onClick={() => setEnlarged(true)}>
+          <Button variant="outline" size="sm" disabled={!ready} onClick={() => setEnlarged(true)}>
             {t.enlarge}
           </Button>
         )}
-        <Button variant="outline" size="sm" disabled={!kept} onClick={() => kept && download(kept.html, kept.title)}>
-          {t.download}
-        </Button>
+        {artifactId ? (
+          <Button variant="outline" size="sm" nativeButton={false} render={<a href={artifactContentUrl(artifactId, version)} download={previewFileName(title)} />}>
+            {t.download}
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" disabled={!kept} onClick={() => kept && download(kept.html, kept.title)}>
+            {t.download}
+          </Button>
+        )}
+        {artifactId && <ArtifactShareMenu artifactId={artifactId} />}
       </div>
       <div className="min-h-0 flex-1 px-4 pb-4">
-        {kept ? (
-          <ScaledFrame html={kept.html} done={!writing} device={device} />
+        {ready ? (
+          <ScaledFrame device={device}>{frame}</ScaledFrame>
         ) : saved.isError ? (
           <Empty className="h-full">
             <EmptyHeader>
@@ -272,16 +330,16 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
       </div>
 
       {/* The whole window, at the size chosen. */}
-      <Dialog open={enlarged && !!kept} onOpenChange={setEnlarged}>
+      <Dialog open={enlarged && ready} onOpenChange={setEnlarged}>
         <DialogContent className="flex h-full max-h-dvh w-full max-w-none flex-col sm:max-w-none">
           <DialogHeader>
             <DialogTitle className="truncate">{title}</DialogTitle>
             <DialogDescription>{t.sandboxed}</DialogDescription>
           </DialogHeader>
           <DeviceToggle value={device} onChange={setDevice} />
-          {kept && (
+          {ready && (
             <div className="min-h-0 flex-1">
-              <ScaledFrame html={kept.html} done={!writing} device={device} />
+              <ScaledFrame device={device}>{frame}</ScaledFrame>
             </div>
           )}
         </DialogContent>
@@ -294,7 +352,7 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
  * The page at the device's width, scaled down to fit the box and centered in it. A phone or a
  * tablet keeps its screen's proportions; a computer takes the box's whole height.
  */
-function ScaledFrame({ html, done, device }: { html: string; done: boolean; device: ScreenDevice }) {
+function ScaledFrame({ device, children }: { device: ScreenDevice; children: (style: CSSProperties) => ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {
@@ -312,11 +370,11 @@ function ScaledFrame({ html, done, device }: { html: string; done: boolean; devi
       {size.width > 0 &&
         (mobile ? (
           <div style={{ width: base * scale, height: baseHeight * scale }} className="shrink-0 overflow-hidden rounded-xl border bg-background">
-            <HtmlFrame html={html} done={done} style={{ width: base, height: baseHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} />
+            {children({ width: base, height: baseHeight, transform: `scale(${scale})`, transformOrigin: "top left" })}
           </div>
         ) : (
           <div style={{ width: base * scale, height: size.height }} className="shrink-0">
-            <HtmlFrame html={html} done={done} style={{ width: base, height: size.height / scale, transform: `scale(${scale})`, transformOrigin: "top left" }} />
+            {children({ width: base, height: size.height / scale, transform: `scale(${scale})`, transformOrigin: "top left" })}
           </div>
         ))}
     </div>
@@ -359,6 +417,14 @@ function HtmlFrame({ html, done, style }: { html: string; done: boolean; style: 
   useEffect(write);
 
   return <iframe ref={frame} title="preview" sandbox="allow-same-origin" onLoad={write} style={style} className="block border-0 bg-white" />;
+}
+
+/**
+ * A saved artifact, loaded from its own address: its scripts run there, on an opaque origin (the
+ * sandbox here and the CSP the API sends with it), so they never reach the app's session.
+ */
+function ArtifactFrame({ src, title, style }: { src: string; title: string; style: CSSProperties }) {
+  return <iframe src={src} title={title} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads" style={style} className="block border-0 bg-white" />;
 }
 
 /** A click on a link to elsewhere does nothing; one to a section of the page scrolls to it. */

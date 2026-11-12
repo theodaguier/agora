@@ -8,7 +8,7 @@ import { CodeSessionPage, isNewCodeSession } from "@/components/CodeSession";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
 import { TabChip } from "@/components/TabChip";
-import { findPreview, PreviewPage } from "@/components/Preview";
+import { ArtifactPage, findPreview, PreviewPage } from "@/components/Preview";
 import { CodePriorityIcon, CodeStateIcon } from "@/components/CodeSessionMarks";
 import { codeSessionState, type CodeSession } from "@agora/core";
 import { useCodeSessionUnread } from "@/lib/code-seen";
@@ -25,6 +25,7 @@ import { common } from "@agora/core/i18n";
 import { codeSessionsQuery } from "@/lib/code-sessions";
 import { listTime } from "@/lib/dates";
 import { conversationTitle } from "@/lib/participants";
+import { artifactQuery } from "@/lib/artifacts";
 import { conversationsQuery, messagesQuery } from "@/lib/queries";
 import { useOrgTitle } from "@/lib/org";
 import { useTurns } from "@/lib/realtime";
@@ -33,6 +34,7 @@ import { ConversationView } from "@/screens/Conversation";
 import { Inbox } from "@/screens/Inbox";
 import { NewChat } from "@/screens/NewChat";
 import { Sessions } from "@/screens/Sessions";
+import { Artifacts } from "@/screens/Artifacts";
 import { Tasks } from "@/screens/Tasks";
 import {
   activateTab,
@@ -69,6 +71,8 @@ const messages = defineMessages({
     closeTab: (title: string) => `Close ${title}`,
     newChat: "New conversation",
     tasks: "My tasks",
+    artifacts: "Artifacts",
+    artifact: "Artifact",
     sessions: "Sessions",
     inbox: "Inbox",
     screen: "Screen",
@@ -95,6 +99,8 @@ const messages = defineMessages({
     closeTab: (title: string) => `Fermer ${title}`,
     newChat: "Nouvelle conversation",
     tasks: "Mes tâches",
+    artifacts: "Artefacts",
+    artifact: "Artefact",
     sessions: "Sessions",
     inbox: "Boîte de réception",
     screen: "Écran",
@@ -280,6 +286,10 @@ function TabContent({ path, focus }: { path: string; focus?: string }) {
       return <NewChat />;
     case "tasks":
       return <Tasks />;
+    case "artifacts":
+      return <Artifacts />;
+    case "artifact":
+      return <ArtifactPage artifactId={target.artifactId} onClose={close} />;
     case "sessions":
       return <Sessions />;
     case "inbox":
@@ -396,6 +406,7 @@ function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: bo
   const { data: sessions } = useQuery({ ...codeSessionsQuery(conversationId), enabled: target?.kind === "code" });
   const turns = useTurns(conversationId);
   const { data: thread } = useQuery({ ...messagesQuery(conversationId), enabled: target?.kind === "preview" });
+  const { data: artifact } = useQuery({ ...artifactQuery(target?.kind === "artifact" ? target.artifactId : ""), enabled: target?.kind === "artifact" });
   switch (target?.kind) {
     case "conversation":
       // A bot shows its orb; people and groups the conversation icon (initials can't be read at this size).
@@ -425,6 +436,10 @@ function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: bo
       return { title: t.newChat, icon: <PlusIcon /> };
     case "tasks":
       return { title: t.tasks, icon: <TaskListIcon /> };
+    case "artifacts":
+      return { title: t.artifacts, icon: <FileCodeIcon /> };
+    case "artifact":
+      return { title: artifact?.title || t.artifact, icon: <FileCodeIcon /> };
     case "sessions":
       return { title: t.sessions, icon: <TerminalIcon /> };
     case "inbox":

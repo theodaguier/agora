@@ -1,7 +1,8 @@
 /**
  * Local demo data, to see every screen full: colleagues, bots of every colour, direct and group
  * conversations (markdown, code, tables, tool traces, choices, events), code sessions in every state
- * (running, waiting, set aside, done, merged, stopped, failed), tasks, inbox, an absence and usage.
+ * (running, waiting, set aside, done, merged, stopped, failed), tasks, inbox, an absence, usage, and
+ * artifacts (Artefacts screen: one in three versions shared with the organization, one shared by link).
  *
  *   cd apps/api && bun scripts/seed.ts            # seeds for the first admin
  *   SEED_OWNER=me@example.com bun scripts/seed.ts  # for another account
@@ -11,8 +12,9 @@
  * (recoverCodeSessions), as real ones would.
  */
 import { eq, inArray, like } from "drizzle-orm";
-import type { CodeGit, CodeStep, CodeTodo, CodeUsage, ConversationEvent } from "@agora/core";
+import { previewTitle, type CodeGit, type CodeStep, type CodeTodo, type CodeUsage, type ConversationEvent } from "@agora/core";
 import { db, schema } from "../src/db";
+import { savePreviews } from "../src/previews";
 
 const {
   user,
@@ -28,6 +30,8 @@ const {
   notification,
   absence,
   usageEvent,
+  artifact,
+  artifactVersion,
 } = schema;
 
 if (/hermes\.e-do\.studio|amazonaws|neon\.tech|supabase/.test(process.env.DATABASE_URL ?? "")) throw new Error("seed: refusing to run on what looks like a production database");
@@ -628,6 +632,66 @@ await conv({
   ],
 });
 
+/* ---------- Artifacts ---------- */
+
+// Pages the bots wrote, saved as a real reply would (files of the conversation + versions); one of
+// them rewritten twice, one shared with the organization, one by link (its link is printed at the end).
+const page = (title: string, body: string, script = "") =>
+  `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><style>body{font-family:system-ui,sans-serif;margin:0;padding:32px;background:#fafafa;color:#111}h1{font-size:22px;margin:0 0 4px}p.sub{color:#666;margin:0 0 24px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}.tile{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:16px}.tile b{display:block;font-size:24px;margin-top:6px}button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}input{font:inherit;padding:8px;border-radius:8px;border:1px solid #ddd;width:120px}</style></head><body>${body}${script}</body></html>`;
+
+const revenue = (months: number[]) =>
+  page(
+    "Chiffre d'affaires — 2026",
+    `<h1>Chiffre d'affaires 2026</h1><p class="sub">Factures émises, en euros HT</p><div class="grid"><div class="tile">Total<b id="total"></b></div><div class="tile">Meilleur mois<b id="best"></b></div></div><canvas id="chart" height="120" style="margin-top:24px;background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:12px"></canvas>`,
+    `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script><script>const data=${JSON.stringify(months)};const labels=["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Août","Sep","Oct"].slice(0,data.length);document.getElementById("total").textContent=data.reduce((a,b)=>a+b,0).toLocaleString("fr-FR")+" €";document.getElementById("best").textContent=labels[data.indexOf(Math.max(...data))];new Chart(document.getElementById("chart"),{type:"bar",data:{labels,datasets:[{label:"CA HT",data,backgroundColor:"#1fa855"}]},options:{plugins:{legend:{display:false}}}});</script>`,
+  );
+
+const contrast = page(
+  "Contraste des tuiles — deux variantes",
+  `<h1>Contraste des tuiles en sombre</h1><p class="sub">À gauche la maquette (4,2:1), à droite AA strict (4,6:1)</p><div class="grid"><div class="tile" style="background:#1c1c1e;color:#8e8e93;border-color:#333">Maquette<b style="color:#9a9aa0">38 620 €</b></div><div class="tile" style="background:#1c1c1e;color:#a1a1a6;border-color:#333">AA strict<b style="color:#c7c7cc">38 620 €</b></div></div><p style="margin-top:24px"><button id="swap">Inverser le fond</button></p>`,
+  `<script>document.getElementById("swap").onclick=()=>{document.body.style.background=document.body.style.background==="rgb(0, 0, 0)"?"#fafafa":"#000"}</script>`,
+);
+
+const pricing = page(
+  "Simulateur de prix",
+  `<h1>Simulateur de prix</h1><p class="sub">Combien coûte Agora pour votre équipe</p><label>Collègues <input id="seats" type="number" value="8" min="1"></label> <label style="margin-left:12px">Bots <input id="bots" type="number" value="4" min="0"></label><div class="grid" style="margin-top:24px"><div class="tile">Par mois<b id="month"></b></div><div class="tile">Par an (−15 %)<b id="year"></b></div></div>`,
+  `<script>const f=n=>n.toLocaleString("fr-FR",{style:"currency",currency:"EUR"});function go(){const m=Number(seats.value)*12+Number(bots.value)*9;month.textContent=f(m);year.textContent=f(m*12*0.85)}seats.oninput=bots.oninput=go;go();</script>`,
+);
+
+async function artifactReply(conversationId: string, bot: BotId, at: number, text: string, slug: string, html: string) {
+  const id = `seed-m${++n}`;
+  const [saved] = await savePreviews([{ title: previewTitle(html), html, done: true, slug }], { conversationId, turnId: `seed-turn-${n}`, directProfile: null });
+  if (!saved) throw new Error(`seed: artifact ${slug} not saved`);
+  const createdAt = ago(at);
+  await db.insert(message).values({
+    id,
+    conversationId,
+    kind: "bot",
+    authorAgentId: bot,
+    text,
+    data: { turn: { id: `seed-turn-${n}`, startedAt: new Date(createdAt.getTime() - 20_000).toISOString() }, attachments: [saved.attachment], previews: [saved.preview] },
+    createdAt,
+  });
+  // Changed when its reply was written, not when the seed ran: the Artefacts list keeps the thread's order.
+  await db.update(artifact).set({ updatedAt: createdAt }).where(eq(artifact.id, saved.preview.artifactId!));
+  await db.update(artifactVersion).set({ createdAt }).where(eq(artifactVersion.attachmentId, saved.attachment.id));
+  return saved.preview.artifactId!;
+}
+
+await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tresorerie", kind: "user", authorUserId: ME, text: "Fais-moi un tableau de bord du chiffre d'affaires de l'année.", createdAt: ago(3 * H) });
+await artifactReply("seed-c-tresorerie", "seed-tresorerie", 3 * H - 2, "Voici le tableau de bord, jusqu'à août.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500]));
+await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tresorerie", kind: "user", authorUserId: ME, text: "Ajoute septembre et octobre.", createdAt: ago(90) });
+await artifactReply("seed-c-tresorerie", "seed-tresorerie", 88, "C'est ajouté.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500, 37800, 38620]));
+await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tresorerie", kind: "user", authorUserId: ME, text: "Les barres en vert foncé, c'est plus lisible.", createdAt: ago(20) });
+const ca = await artifactReply("seed-c-tresorerie", "seed-tresorerie", 19, "Voilà, en vert foncé.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500, 37800, 38620]).replace("#1fa855", "#0f6b35"));
+await db.update(artifact).set({ shareMode: "org", updatedAt: ago(19) }).where(eq(artifact.id, ca));
+
+await artifactReply("seed-g-produit", "seed-atelier", 15, "Les deux variantes côte à côte pour la réunion de demain.", "contraste-tuiles", contrast);
+
+await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-atelier", kind: "user", authorUserId: ME, text: "Un simulateur de prix pour la page tarifs ?", createdAt: ago(6 * H) });
+const sim = await artifactReply("seed-c-atelier", "seed-atelier", 6 * H - 1, "Le voici : change le nombre de collègues et de bots.", "simulateur-prix", pricing);
+const [shared] = await db.update(artifact).set({ shareMode: "link", updatedAt: ago(6 * H - 1) }).where(eq(artifact.id, sim)).returning();
+
 /* ---------- Sessions ---------- */
 
 await db.insert(codeSession).values(
@@ -729,5 +793,6 @@ const usageRows = Array.from({ length: 60 }, (_, i) => {
 });
 await db.insert(usageEvent).values(usageRows);
 
-console.log(`seed: ${people.length} collègues, ${bots.length} bots, ${n} messages, ${sessions.length} sessions de code, ${tasks.length} tâches, ${usageRows.length} lignes de consommation, pour ${owner.email}.`);
+console.log(`seed: ${people.length} collègues, ${bots.length} bots, ${n} messages, ${sessions.length} sessions de code, ${tasks.length} tâches, 3 artefacts, ${usageRows.length} lignes de consommation, pour ${owner.email}.`);
+console.log(`seed: artefact partagé par lien → /s/${shared!.shareToken} (sur le port du web en dev)`);
 process.exit(0);

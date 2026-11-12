@@ -3,7 +3,7 @@ import { auth, common, conversations } from "@agora/core/i18n";
 import { useEventText } from "@/i18n/events";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams, useRouteContext } from "@tanstack/react-router";
-import { CalendarClockIcon, ClockIcon, CloseIcon, SplitIcon, FileTextIcon, KeyboardIcon, InboxIcon, LoaderIcon, TaskListIcon, LogOutIcon, MoonIcon, PlugIcon, PlusIcon, PuzzleIcon, SearchIcon, SlidersIcon, SparklesIcon, TerminalIcon, UserIcon } from "@/components/icons";
+import { CalendarClockIcon, ClockIcon, CloseIcon, SplitIcon, FileCodeIcon, FileTextIcon, KeyboardIcon, InboxIcon, LoaderIcon, TaskListIcon, LogOutIcon, MoonIcon, PlugIcon, PlusIcon, PuzzleIcon, SearchIcon, SlidersIcon, SparklesIcon, TerminalIcon, UserIcon } from "@/components/icons";
 import { useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { OrgLogo } from "@/components/OrgLogo";
@@ -74,6 +74,7 @@ const messages = defineMessages({
     inbox: "Inbox",
     inboxShort: "Inbox",
     tasksShort: "Tasks",
+    artifactsShort: "Artifacts",
     sessionsShort: "Sessions",
     waitingSessions: (n: number) => `${n} waiting for you`,
     unreadInbox: (n: number) => `${n} unread`,
@@ -107,6 +108,7 @@ const messages = defineMessages({
     inbox: "Boîte de réception",
     inboxShort: "Boîte",
     tasksShort: "Tâches",
+    artifactsShort: "Artefacts",
     sessionsShort: "Sessions",
     waitingSessions: (n: number) => `${n} t'attend${n > 1 ? "ent" : ""}`,
     unreadInbox: (n: number) => `${n} non lue${n > 1 ? "s" : ""}`,
@@ -339,6 +341,12 @@ function SidebarBody() {
               </SidebarMenuButton>
               {openTasks > 0 && <SidebarMenuBadge aria-label={t.openTasks(openTasks)}>{openTasks}</SidebarMenuBadge>}
             </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton isActive={pathname.startsWith("/artifacts")} render={<Link to="/artifacts" />}>
+                <FileCodeIcon />
+                <span>{t.artifactsShort}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
             {hasSessions && (
               <SidebarMenuItem>
                 <SidebarMenuButton isActive={pathname.startsWith("/sessions")} render={<Link to="/sessions" />}>
@@ -405,6 +413,7 @@ function DesktopSidebar() {
           {/* Inbox, tasks and sessions beside the name, as icons with a dot when something waits. */}
           <ShortcutItem to="/inbox" active={pathname.startsWith("/inbox")} icon={<InboxIcon />} label={t.inboxShort} count={unreadInbox} countLabel={t.unreadInbox(unreadInbox)} tone="bg-brand" />
           <ShortcutItem to="/tasks" active={pathname.startsWith("/tasks")} icon={<TaskListIcon />} label={t.tasksShort} />
+          <ShortcutItem to="/artifacts" active={pathname.startsWith("/artifacts")} icon={<FileCodeIcon />} label={t.artifactsShort} />
           {sessionsPill?.any && (
             <ShortcutItem to="/sessions" active={pathname.startsWith("/sessions")} icon={<TerminalIcon />} label={t.sessionsShort} count={waitingSessions} countLabel={t.waitingSessions(waitingSessions)} tone="bg-warning" />
           )}

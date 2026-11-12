@@ -8,6 +8,7 @@ import { env } from "./env";
 import { version } from "./version";
 import { admin } from "./routes/admin";
 import { agents } from "./routes/agents";
+import { artifacts, sharedArtifacts } from "./routes/artifacts";
 import { attachments } from "./routes/attachments";
 import { conversations, resumeQueues } from "./routes/conversations";
 import { codeSessions, internalCode, mySessions } from "./routes/code-sessions";
@@ -88,6 +89,9 @@ const app = new Hono()
   .on(["GET", "POST"], "/auth/*", (c) => auth.handler(c.req.raw))
   .route("/agents", agents)
   .route("/bot-requests", botRequests)
+  .route("/artifacts", artifacts)
+  // Share links (`/s/<token>`, rewritten by Caddy / Vite): public when the artifact is shared by link.
+  .route("/s", sharedArtifacts)
   .route("/attachments", attachments)
   .route("/conversations", conversations)
   .route("/conversations/:id/code-sessions", codeSessions)

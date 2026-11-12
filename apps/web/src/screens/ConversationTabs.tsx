@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useRouteContext } from "@tanstack/react-router";
 import { ScreenPage } from "@/components/AgentScreen";
 import { CodeSessionPage } from "@/components/CodeSession";
-import { PreviewPage } from "@/components/Preview";
+import { ArtifactPage, PreviewPage } from "@/components/Preview";
 import { conversationTitle } from "@/lib/participants";
 import { conversationQuery } from "@/lib/queries";
 
@@ -38,4 +38,11 @@ export function CodeSessionRoute() {
 export function PreviewRoute() {
   const { conversationId, previewKey } = useParams({ from: "/app/c/$conversationId/preview/$previewKey" });
   return <PreviewPage conversationId={conversationId} previewKey={previewKey} onClose={useBackToThread(conversationId)} />;
+}
+
+/** An artifact on its own, from the Artefacts screen; closing goes back to the list. */
+export function ArtifactRoute() {
+  const { artifactId } = useParams({ from: "/app/artifacts/$artifactId" });
+  const navigate = useNavigate();
+  return <ArtifactPage artifactId={artifactId} onClose={() => navigate({ to: "/artifacts" })} />;
 }

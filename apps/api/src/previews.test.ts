@@ -8,7 +8,7 @@ describe("preview block", () => {
   test("the page leaves the text and keeps its title", () => {
     const r = parseReply(`Voici la maquette.\n\n\`\`\`preview\n${page}\n\`\`\`\n\nDis-moi ce que tu en penses.`);
     expect(r.text).toBe("Voici la maquette.\n\nDis-moi ce que tu en penses.");
-    expect(r.previews).toEqual([{ title: "Accueil & tarifs", html: page, done: true }]);
+    expect(r.previews).toEqual([{ title: "Accueil & tarifs", html: page, done: true, slug: "" }]);
   });
 
   test("backticks inside a line don't end the page", () => {
@@ -17,7 +17,7 @@ describe("preview block", () => {
 
   test("a page being written is read up to where it is, without a fence starting to close it", () => {
     const [live] = readPreviews(`Je la construis.\n\`\`\`preview\n<html><body><h1>Studio</h1>\n\`\``);
-    expect(live).toEqual({ title: "Studio", html: "<html><body><h1>Studio</h1>", done: false });
+    expect(live).toEqual({ title: "Studio", html: "<html><body><h1>Studio</h1>", done: false, slug: "" });
     expect(withoutPreviews(`Je la construis.\n\`\`\`preview\n<html><body>`)).toBe("Je la construis.\n");
   });
 
@@ -30,6 +30,18 @@ describe("preview block", () => {
 
   test("no block, no previews", () => {
     expect(parseReply("Bonjour.").previews).toBeUndefined();
+  });
+
+  test("an artifact block names its slug; the older preview block still reads", () => {
+    const reply = `\`\`\`artifact slug=Ventes-Q3\n<title>Ventes</title>\n\`\`\`\n\`\`\`artifact tableau_bord\n<title>T</title>\n\`\`\`\n\`\`\`preview id="accueil"\n<title>A</title>\n\`\`\``;
+    const r = parseReply(`Voilà.\n${reply}`);
+    expect(r.previews?.map((p) => p.slug)).toEqual(["ventes-q3", "tableau_bord", "accueil"]);
+    expect(r.text).toBe("Voilà.");
+  });
+
+  test("a word that only starts like the block is not one", () => {
+    expect(readPreviews("```previewer\n<title>A</title>\n```")).toEqual([]);
+    expect(readPreviews("```artifacts\n<title>A</title>\n```")).toEqual([]);
   });
 
   test("the title falls back on the first heading", () => {
