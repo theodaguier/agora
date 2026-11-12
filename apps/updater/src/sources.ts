@@ -34,11 +34,16 @@ export async function appVersions(): Promise<string[]> {
   });
   if (!tokenRes.ok) throw new Error(`Registre : jeton refusé (HTTP ${tokenRes.status})`);
   const { token } = (await tokenRes.json()) as { token: string };
-  const res = await fetch(`https://${host}/v2/${repo}/tags/list`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!res.ok) throw new Error(`Registre : HTTP ${res.status}`);
-  const { tags } = (await res.json()) as { tags: string[] | null };
-  return (tags ?? []).map((t) => t.replace(/^v/, "")).filter((t) => parseVersion(t));
+  // The registry answers 100 tags at a time, in name order, and points to the rest with a
+  // `Link: <…>; rel="next"` header: past 100 tags, every new version was on a page never read.
+  const tags: string[] = [];
+  let url: string | null = `https://${host}/v2/${repo}/tags/list?n=1000`;
+  while (url) {
+    const res: Response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(`Registre : HTTP ${res.status}`);
+    tags.push(...(((await res.json()) as { tags: string[] | null }).tags ?? []));
+    const next = res.headers.get("link")?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
+    url = next ? new URL(next, `https://${host}`).href : null;
+  }
+  return tags.map((t) => t.replace(/^v/, "")).filter((t) => parseVersion(t));
 }
