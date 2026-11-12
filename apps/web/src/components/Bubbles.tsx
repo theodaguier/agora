@@ -29,24 +29,43 @@ const messages = defineMessages({
   },
 });
 
-export function BotBubble({
+/**
+ * Who wrote a message and when, at the start of its first line (Figma « Conversation — blocs
+ * riches »: « 13:31 Théo, l'alerte… »); the name only in a group, where it is not in the header.
+ */
+export function Lead({ name, time }: { name?: string; time: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-2">
+      {name && <span className="font-medium text-foreground">{name}</span>}
+      <span className="text-muted-foreground tabular-nums">{time}</span>
+    </span>
+  );
+}
+
+/**
+ * A message's text, flat in its author's column, as in Figma (no bubble around what others write);
+ * `lead` floats at its start so the first line runs on after it.
+ */
+export function FlatText({
   text,
   streaming,
+  plain,
   mentionables,
+  lead,
   className,
 }: {
   text: string;
   streaming?: boolean;
+  plain?: boolean;
   mentionables?: Mentionable[];
+  lead?: React.ReactNode;
   className?: string;
 }) {
   return (
-    <MessageText
-      text={text}
-      streaming={streaming}
-      mentionables={mentionables}
-      className={cn("w-fit min-w-0 max-w-lg rounded-2xl bg-muted px-3 py-2 text-sm", className)}
-    />
+    <div className={cn("flow-root min-w-0 break-words text-sm", className)}>
+      {lead && <span className="float-left mr-2">{lead}</span>}
+      <MessageText text={text} streaming={streaming} plain={plain} mentionables={mentionables} />
+    </div>
   );
 }
 
@@ -64,7 +83,7 @@ export function UserBubble({ text, mentionables, className }: { text: string; me
 
 export function TypingBubble({ label, className }: { label: string; className?: string }) {
   return (
-    <div className={cn("flex w-fit gap-1 rounded-2xl bg-muted p-3", className)} aria-label={label}>
+    <div className={cn("flex h-5 w-fit items-center gap-1", className)} aria-label={label}>
       {[0, 1, 2].map((d) => (
         <span key={d} className="typing-dot size-1.5 rounded-full bg-muted-foreground" style={{ animationDelay: `${d * 150}ms` }} />
       ))}
@@ -165,24 +184,4 @@ export function DateDivider({ label, conversationId }: { label: string; conversa
   );
 }
 
-/** Message from another employee, left-aligned. */
-export function PeerBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
-  return (
-    <MessageText
-      plain
-      text={text}
-      mentionables={mentionables}
-      className={cn("w-fit min-w-0 max-w-lg break-words rounded-2xl bg-muted px-3 py-2 text-sm", className)}
-    />
-  );
-}
 
-/** Author name at the start of a run of messages, in a group. */
-export function AuthorLine({ avatar, name, className }: { avatar: React.ReactNode; name: string; className?: string }) {
-  return (
-    <p className={cn("mt-2 flex items-center gap-1.5 text-xs text-muted-foreground", className)}>
-      {avatar}
-      {name}
-    </p>
-  );
-}

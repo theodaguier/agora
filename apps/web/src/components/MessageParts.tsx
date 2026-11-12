@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { BubbleAttachments, SentAttachments } from "./Attachments";
 import { isImage, isVideo } from "../lib/files";
 import { copyText } from "@/lib/feedback";
-import { PeerBubble, UserBubble } from "./Bubbles";
+import { FlatText, UserBubble } from "./Bubbles";
 import { MessageText } from "./MessageText";
 
 const messages = defineMessages({
@@ -96,11 +96,13 @@ export function QuoteBlock({
 }
 
 /**
- * An employee's message: text, files, reply and forward context in one bubble.
- * Files sent without text stay bare.
+ * An employee's message. Ours: text, files, reply and forward context in one bubble of the bot's
+ * colour. Someone else's (Figma « Groupe et membres »): flat in their column, `lead` (name, time)
+ * at the start of its first line, the files under it. Files sent without text stay bare.
  */
 export function ChatMessage(props: {
   mine: boolean;
+  lead?: ReactNode;
   text: string;
   attachments?: (Attachment & { previewUrl?: string })[];
   invocations?: Invocation[];
@@ -109,8 +111,17 @@ export function ChatMessage(props: {
   mentionables: Mentionable[];
   onQuote?: (id: string) => void;
 }) {
-  const { mine, text, attachments = [], invocations = [], replyTo, forwarded, mentionables, onQuote } = props;
+  const { mine, lead, text, attachments = [], invocations = [], replyTo, forwarded, mentionables, onQuote } = props;
   const t = useT(messages);
+  if (!mine)
+    return (
+      <div className="flex min-w-0 flex-col gap-2">
+        {forwarded && <p className="text-xs text-muted-foreground">{t.forwardedFrom(forwarded.authorName)}</p>}
+        {replyTo && <QuoteBlock quote={replyTo} onClick={onQuote && (() => onQuote(replyTo.id))} />}
+        {text ? <FlatText plain text={text} mentionables={mentionables} lead={lead} /> : lead && <p className="text-sm">{lead}</p>}
+        {attachments.length > 0 && <SentAttachments items={attachments} align="start" />}
+      </div>
+    );
   const framed = !!(text || replyTo || forwarded);
   const rich = !!(attachments.length || replyTo || forwarded);
   return (
@@ -129,7 +140,7 @@ export function ChatMessage(props: {
         </div>
       )}
       {!framed && attachments.length > 0 && <SentAttachments items={attachments} align={mine ? "end" : "start"} />}
-      {framed && !rich && (mine ? <UserBubble text={text} mentionables={mentionables} className="max-w-full" /> : <PeerBubble text={text} mentionables={mentionables} className="max-w-full" />)}
+      {framed && !rich && <UserBubble text={text} mentionables={mentionables} className="max-w-full" />}
       {framed && rich && (
         <div
           className={cn(
