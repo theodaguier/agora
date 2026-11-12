@@ -83,6 +83,10 @@ services:
       UPDATER_URL: http://updater:8787
       UPDATER_TOKEN: ${UPDATER_TOKEN:?UPDATER_TOKEN is missing}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
+      POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+      POSTHOG_HOST: ${POSTHOG_HOST:-https://eu.posthog.com}
+      POSTHOG_PROJECT_ID: ${POSTHOG_PROJECT_ID:-}
+      POSTHOG_LOG_ALERTS_TRIGGER: ${POSTHOG_LOG_ALERTS_TRIGGER:-}
       AGORA_SETUP_TOKEN: ${AGORA_SETUP_TOKEN:-}
       MAIL_FROM: ${MAIL_FROM:-Agora <no-reply@example.com>}
       # Owner of the Claude Code and Codex subscriptions signed in from Settings › Models;

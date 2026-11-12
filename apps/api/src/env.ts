@@ -49,6 +49,14 @@ export const env = z
     CURSOR_AGENT_BIN: z.string().default(""),
     /** Owner of the Cursor login on this machine; empty = CLAUDE_CODE_OWNER_EMAIL's. */
     CURSOR_OWNER_EMAIL: z.string().default(""),
+    /**
+     * PostHog log alerts wired to a trigger (posthog-alert-sync.ts): a personal API key with
+     * logs:read, logs:write and hog_function:read, the project, and the trigger's name. Empty = off.
+     */
+    POSTHOG_API_KEY: z.string().default(""),
+    POSTHOG_HOST: z.string().url().default("https://eu.posthog.com"),
+    POSTHOG_PROJECT_ID: z.string().default(""),
+    POSTHOG_LOG_ALERTS_TRIGGER: z.string().default(""),
     /** Local model runtimes on the host (Settings › Models). */
     OLLAMA_URL: z.string().url().default("http://127.0.0.1:11434"),
     LMSTUDIO_URL: z.string().url().default("http://127.0.0.1:1234"),

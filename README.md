@@ -145,6 +145,7 @@ pnpm --filter @agora/web build
 | `HERMES_API_KEY`, `HERMES_DASHBOARD_TOKEN`, `HERMES_KEY_SECRET` | Authenticate and provision Hermes profiles. |
 | `UPDATER_TOKEN` | Authorizes API requests to the update service. |
 | `RESEND_API_KEY`, `MAIL_FROM` | Optional invitation and password-reset email. |
+| `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PROJECT_ID`, `POSTHOG_LOG_ALERTS_TRIGGER` | Optional: wire every PostHog log alert of a project to a bot trigger, new alerts included. |
 | `HERMES_HOME`, `WIKI_DIR` | Local development paths for Hermes state and the shared wiki. |
 
 Use [`infra/.env.example`](infra/.env.example) for the production template and [`apps/api/.env.example`](apps/api/.env.example) for local development. Keep filled `.env` files and backups out of version control. Optional personal Claude Code and Codex engines are documented in [`docs/claude-code.md`](docs/claude-code.md) and [`docs/codex.md`](docs/codex.md); they require local CLI sign-in and are separate from the default Docker setup.

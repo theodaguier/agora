@@ -48,6 +48,7 @@ import { getOrg, ORG_AVATAR_ID } from "./org";
 import { startUsageCollector } from "./usage";
 import { startServerSampler } from "./server";
 import { startDigest } from "./digest";
+import { startPosthogAlertSync } from "./posthog-alert-sync";
 import { recoverTurns } from "./bot-runner";
 import { startCodeWake } from "./code-wake";
 import { syncSessionSearch } from "./session-search";
@@ -149,6 +150,7 @@ ensureHermesInstance()
 startUsageCollector();
 startServerSampler();
 startDigest();
+startPosthogAlertSync();
 recoverTurns()
   .then(() => resumeQueues())
   .catch((err) => console.error("bot-runner: recovery", err));
