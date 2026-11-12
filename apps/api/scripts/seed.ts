@@ -650,7 +650,7 @@ const revenue = (months: number[], ink = "--chart-2") =>
   <div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Meilleur mois</span><span class="ag-stat-value" id="bestMonth"></span><span class="ag-stat-note" id="bestAmount"></span></div></div>
   <div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Moyenne mensuelle</span><span class="ag-stat-value" id="avg"></span><span class="ag-stat-note">HT</span></div></div>
 </div>
-<div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">Par mois</div><div class="ag-card-description">En euros HT</div><div class="ag-card-action"><span class="ag-badge ag-badge-outline"><span class="ag-dot" style="background:var(--success)"></span>À jour</span></div></div><div><canvas id="chart" height="110"></canvas></div></div>`,
+<div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">Par mois</div><div class="ag-card-description">En euros HT</div><div class="ag-card-action"><span class="ag-badge ag-badge-outline"><span class="ag-dot" style="background:var(--success)"></span>À jour</span></div></div><div style="position:relative;height:240px"><canvas id="chart"></canvas></div></div>`,
     `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script><script>
 const data=${JSON.stringify(months)};const labels=${JSON.stringify(MONTHS)}.slice(0,data.length);
 const eur=n=>n.toLocaleString("fr-FR",{style:"currency",currency:"EUR",maximumFractionDigits:0});
@@ -658,7 +658,7 @@ const best=data.indexOf(Math.max(...data));
 total.textContent=eur(data.reduce((a,b)=>a+b,0));bestMonth.textContent=labels[best];bestAmount.textContent=eur(data[best]);avg.textContent=eur(data.reduce((a,b)=>a+b,0)/data.length);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 Chart.defaults.font.family=getComputedStyle(document.body).fontFamily;Chart.defaults.color=css("--muted-foreground");Chart.defaults.borderColor=css("--border");
-new Chart(chart,{type:"bar",data:{labels,datasets:[{data,backgroundColor:css("${ink}"),borderRadius:4,maxBarThickness:28}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>eur(c.parsed.y)}}},scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>eur(v)}}}}});
+new Chart(chart,{type:"bar",data:{labels,datasets:[{data,backgroundColor:css("${ink}"),borderRadius:4,maxBarThickness:28}]},options:{maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>eur(c.parsed.y)}}},scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>eur(v)}}}}});
 </script>`,
   );
 
