@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.57.0 — 2026-11-12
+
+### Features
+- **web**: conversation à plat comme la maquette
+
 ## v0.56.0 — 2026-11-12
 
 ### Features
