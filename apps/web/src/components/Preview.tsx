@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { previewFileName, readPreviews, SCREEN_DEVICES, type PreviewRef, type ScreenDevice } from "@agora/core";
+import { previewFileName, readPreviews, SCREEN_DEVICES, withArtifactKit, type PreviewRef, type ScreenDevice } from "@agora/core";
+import { useIsDark } from "@/lib/theme";
 import { common } from "@agora/core/i18n";
 import { useWide } from "@/components/CodeSession";
 import { ArtifactShareMenu, ArtifactVersionMenu } from "@/components/ArtifactShare";
@@ -253,8 +254,14 @@ function PreviewView({ source, onClose, onDetach, page }: { source: PreviewSourc
   if (html !== undefined && (kept?.html !== html || kept.title !== source?.title)) setKept({ html, title: source?.title ?? "" });
   const writing = !!source?.writing;
   const title = kept?.title || source?.title || t.untitled;
+  // The page in the app's palette: Agora's kit goes ahead of it, live as once saved.
+  const theme = useIsDark() ? "dark" : "light";
   const frame = (style: CSSProperties) =>
-    artifactId ? <ArtifactFrame src={artifactContentUrl(artifactId, version)} title={title} style={style} /> : kept && <HtmlFrame html={kept.html} done={!writing} style={style} />;
+    artifactId ? (
+      <ArtifactFrame src={artifactContentUrl(artifactId, version, theme)} title={title} style={style} />
+    ) : (
+      kept && <HtmlFrame html={withArtifactKit(kept.html, theme)} done={!writing} style={style} />
+    );
   const ready = !!artifactId || !!kept;
 
   return (
@@ -416,7 +423,7 @@ function HtmlFrame({ html, done, style }: { html: string; done: boolean; style: 
   // Every render: the effect only writes what is new.
   useEffect(write);
 
-  return <iframe ref={frame} title="preview" sandbox="allow-same-origin" onLoad={write} style={style} className="block border-0 bg-white" />;
+  return <iframe ref={frame} title="preview" sandbox="allow-same-origin" onLoad={write} style={style} className="block border-0 bg-background" />;
 }
 
 /**
@@ -424,7 +431,7 @@ function HtmlFrame({ html, done, style }: { html: string; done: boolean; style: 
  * sandbox here and the CSP the API sends with it), so they never reach the app's session.
  */
 function ArtifactFrame({ src, title, style }: { src: string; title: string; style: CSSProperties }) {
-  return <iframe src={src} title={title} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads" style={style} className="block border-0 bg-white" />;
+  return <iframe src={src} title={title} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads" style={style} className="block border-0 bg-background" />;
 }
 
 /** A click on a link to elsewhere does nothing; one to a section of the page scrolls to it. */

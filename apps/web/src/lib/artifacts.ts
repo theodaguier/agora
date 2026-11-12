@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import type { ArtifactDto, ArtifactShareMode, ArtifactSummary } from "@agora/core";
+import type { ArtifactDto, ArtifactShareMode, ArtifactSummary, ArtifactTheme } from "@agora/core";
 import { api } from "./api";
 
 const path = (id: string, rest = "") => `/artifacts/${encodeURIComponent(id)}${rest}`;
@@ -13,7 +13,10 @@ export const artifactQuery = (id: string) => queryOptions({ queryKey: ["artifact
 export const setArtifactShare = (id: string, mode: ArtifactShareMode) => api<ArtifactDto>(path(id, "/share"), { method: "PATCH", body: JSON.stringify({ mode }) });
 
 /** A version's page as the app's frame loads it (the latest without `version`). */
-export const artifactContentUrl = (id: string, version?: number) => `/api${path(id, "/content")}${version ? `?v=${version}` : ""}`;
+export const artifactContentUrl = (id: string, version?: number, theme?: ArtifactTheme) => {
+  const q = new URLSearchParams({ ...(version && { v: String(version) }), ...(theme && { theme }) }).toString();
+  return `/api${path(id, "/content")}${q ? `?${q}` : ""}`;
+};
 
 /** The share link, absolute: what is copied and sent around. */
 export const artifactShareUrl = (artifact: ArtifactDto) => new URL(artifact.sharePath, window.location.origin).toString();

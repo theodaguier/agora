@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { artifactKitCss, withArtifactKit } from "@agora/core";
 import { ARTIFACT_CSP, canOpen } from "./artifacts";
 
 describe("artifact access", () => {
@@ -23,5 +24,20 @@ describe("artifact page headers", () => {
     expect(directives[0]).toContain("allow-scripts");
     expect(directives[0]).not.toContain("allow-same-origin");
     expect(directives).toContain("frame-ancestors 'self'");
+  });
+});
+
+describe("Agora kit", () => {
+  test("goes after <head>, ahead of the page's own styles, never before the doctype", () => {
+    const out = withArtifactKit("<!doctype html><html><head><style>h1{}</style></head></html>", "dark");
+    expect(out.startsWith('<!doctype html><html><head><style id="agora-kit">')).toBe(true);
+    expect(out.indexOf("agora-kit")).toBeLessThan(out.indexOf("h1{}"));
+    expect(withArtifactKit("<!doctype html><p>x</p>").startsWith("<!doctype html><style")).toBe(true);
+  });
+
+  test("one palette when the app gives its theme, the system's otherwise", () => {
+    expect(artifactKitCss("dark")).toContain("--background:#17181a");
+    expect(artifactKitCss("dark")).not.toContain("prefers-color-scheme");
+    expect(artifactKitCss()).toContain("prefers-color-scheme:dark");
   });
 });

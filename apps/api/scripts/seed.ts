@@ -636,26 +636,52 @@ await conv({
 
 // Pages the bots wrote, saved as a real reply would (files of the conversation + versions); one of
 // them rewritten twice, one shared with the organization, one by link (its link is printed at the end).
-const page = (title: string, body: string, script = "") =>
-  `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><style>body{font-family:system-ui,sans-serif;margin:0;padding:32px;background:#fafafa;color:#111}h1{font-size:22px;margin:0 0 4px}p.sub{color:#666;margin:0 0 24px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}.tile{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:16px}.tile b{display:block;font-size:24px;margin-top:6px}button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}input{font:inherit;padding:8px;border-radius:8px;border:1px solid #ddd;width:120px}</style></head><body>${body}${script}</body></html>`;
+// Written as the prompt asks (previews.ts): Agora's kit gives the look, the page's CSS only lays it out.
+const page = (title: string, body: string, script = "", layout = "") =>
+  `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><style>${layout}</style></head><body><main class="ag-page">${body}</main>${script}</body></html>`;
 
-const revenue = (months: number[]) =>
+const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct"];
+const revenue = (months: number[], ink = "--chart-2") =>
   page(
     "Chiffre d'affaires — 2026",
-    `<h1>Chiffre d'affaires 2026</h1><p class="sub">Factures émises, en euros HT</p><div class="grid"><div class="tile">Total<b id="total"></b></div><div class="tile">Meilleur mois<b id="best"></b></div></div><canvas id="chart" height="120" style="margin-top:24px;background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:12px"></canvas>`,
-    `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script><script>const data=${JSON.stringify(months)};const labels=["Jan","Fév","Mar","Avr","Mai","Juin","Juil","Août","Sep","Oct"].slice(0,data.length);document.getElementById("total").textContent=data.reduce((a,b)=>a+b,0).toLocaleString("fr-FR")+" €";document.getElementById("best").textContent=labels[data.indexOf(Math.max(...data))];new Chart(document.getElementById("chart"),{type:"bar",data:{labels,datasets:[{label:"CA HT",data,backgroundColor:"#1fa855"}]},options:{plugins:{legend:{display:false}}}});</script>`,
+    `<header class="ag-header"><h1>Chiffre d'affaires 2026</h1><p>Factures émises, en euros HT, de janvier à ${MONTHS[months.length - 1]!.toLowerCase()}.</p></header>
+<div class="ag-grid">
+  <div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Total</span><span class="ag-stat-value" id="total"></span><span class="ag-stat-note">${months.length} mois</span></div></div>
+  <div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Meilleur mois</span><span class="ag-stat-value" id="bestMonth"></span><span class="ag-stat-note" id="bestAmount"></span></div></div>
+  <div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Moyenne mensuelle</span><span class="ag-stat-value" id="avg"></span><span class="ag-stat-note">HT</span></div></div>
+</div>
+<div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">Par mois</div><div class="ag-card-description">En euros HT</div><div class="ag-card-action"><span class="ag-badge ag-badge-outline"><span class="ag-dot" style="background:var(--success)"></span>À jour</span></div></div><div><canvas id="chart" height="110"></canvas></div></div>`,
+    `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script><script>
+const data=${JSON.stringify(months)};const labels=${JSON.stringify(MONTHS)}.slice(0,data.length);
+const eur=n=>n.toLocaleString("fr-FR",{style:"currency",currency:"EUR",maximumFractionDigits:0});
+const best=data.indexOf(Math.max(...data));
+total.textContent=eur(data.reduce((a,b)=>a+b,0));bestMonth.textContent=labels[best];bestAmount.textContent=eur(data[best]);avg.textContent=eur(data.reduce((a,b)=>a+b,0)/data.length);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+Chart.defaults.font.family=getComputedStyle(document.body).fontFamily;Chart.defaults.color=css("--muted-foreground");Chart.defaults.borderColor=css("--border");
+new Chart(chart,{type:"bar",data:{labels,datasets:[{data,backgroundColor:css("${ink}"),borderRadius:4,maxBarThickness:28}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>eur(c.parsed.y)}}},scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>eur(v)}}}}});
+</script>`,
   );
 
 const contrast = page(
   "Contraste des tuiles — deux variantes",
-  `<h1>Contraste des tuiles en sombre</h1><p class="sub">À gauche la maquette (4,2:1), à droite AA strict (4,6:1)</p><div class="grid"><div class="tile" style="background:#1c1c1e;color:#8e8e93;border-color:#333">Maquette<b style="color:#9a9aa0">38 620 €</b></div><div class="tile" style="background:#1c1c1e;color:#a1a1a6;border-color:#333">AA strict<b style="color:#c7c7cc">38 620 €</b></div></div><p style="margin-top:24px"><button id="swap">Inverser le fond</button></p>`,
-  `<script>document.getElementById("swap").onclick=()=>{document.body.style.background=document.body.style.background==="rgb(0, 0, 0)"?"#fafafa":"#000"}</script>`,
+  `<header class="ag-header"><h1>Contraste des tuiles</h1><p>La même tuile avec la légende de la maquette, puis avec celle qui passe AA.</p></header>
+<div class="ag-grid">
+  <div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">Maquette</div><div class="ag-card-description">Texte tertiaire</div><div class="ag-card-action"><span class="ag-badge ag-badge-outline"><span class="ag-dot" style="background:var(--warning)"></span>Sous AA</span></div></div><div class="ag-stat"><span class="ag-stat-label ag-subtle" style="color:var(--subtle-foreground)">Chiffre d'affaires</span><span class="ag-stat-value">38 620 €</span><span class="ag-stat-note">4,2:1</span></div></div>
+  <div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">AA strict</div><div class="ag-card-description">Texte secondaire</div><div class="ag-card-action"><span class="ag-badge ag-badge-outline"><span class="ag-dot" style="background:var(--success)"></span>AA</span></div></div><div class="ag-stat"><span class="ag-stat-label">Chiffre d'affaires</span><span class="ag-stat-value">38 620 €</span><span class="ag-stat-note">4,6:1</span></div></div>
+</div>
+<div class="ag-row"><div class="ag-tabs" role="tablist"><button aria-selected="true" data-pick="aa">Garder AA</button><button aria-selected="false" data-pick="maquette">Garder la maquette</button></div><span class="ag-muted" id="pick">Choix : AA strict</span></div>`,
+  `<script>document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-pick]").forEach(x=>x.setAttribute("aria-selected",x===b));pick.textContent="Choix : "+(b.dataset.pick==="aa"?"AA strict":"maquette")})</script>`,
 );
 
 const pricing = page(
   "Simulateur de prix",
-  `<h1>Simulateur de prix</h1><p class="sub">Combien coûte Agora pour votre équipe</p><label>Collègues <input id="seats" type="number" value="8" min="1"></label> <label style="margin-left:12px">Bots <input id="bots" type="number" value="4" min="0"></label><div class="grid" style="margin-top:24px"><div class="tile">Par mois<b id="month"></b></div><div class="tile">Par an (−15 %)<b id="year"></b></div></div>`,
-  `<script>const f=n=>n.toLocaleString("fr-FR",{style:"currency",currency:"EUR"});function go(){const m=Number(seats.value)*12+Number(bots.value)*9;month.textContent=f(m);year.textContent=f(m*12*0.85)}seats.oninput=bots.oninput=go;go();</script>`,
+  `<header class="ag-header"><h1>Simulateur de prix</h1><p>Combien coûte Agora pour votre équipe.</p></header>
+<div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">Votre équipe</div><div class="ag-card-description">12 € par collègue, 9 € par bot, chaque mois</div></div>
+  <div class="fields"><label>Collègues<input id="seats" type="number" value="8" min="1"></label><label>Bots<input id="bots" type="number" value="4" min="0"></label><label>Facturation<select id="cycle"><option value="month">Mensuelle</option><option value="year">Annuelle (−15 %)</option></select></label></div>
+  <div class="ag-card-footer"><span class="ag-muted" id="detail"></span><button class="ag-button" id="copy">Copier le devis</button></div></div>
+<div class="ag-grid"><div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Par mois</span><span class="ag-stat-value" id="month"></span></div></div><div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Par an</span><span class="ag-stat-value" id="year"></span><span class="ag-stat-note" id="saving"></span></div></div></div>`,
+  `<script>const f=n=>n.toLocaleString("fr-FR",{style:"currency",currency:"EUR"});function go(){const m=Number(seats.value)*12+Number(bots.value)*9;const yearly=cycle.value==="year";month.textContent=f(yearly?m*0.85:m);year.textContent=f(m*12*(yearly?0.85:1));saving.textContent=yearly?f(m*12*0.15)+" économisés":"Sans engagement";detail.textContent=seats.value+" collègues, "+bots.value+" bots"}seats.oninput=bots.oninput=cycle.onchange=go;go();copy.onclick=()=>{copy.textContent="Copié";setTimeout(()=>copy.textContent="Copier le devis",1200)}</script>`,
+  ".fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}",
 );
 
 async function artifactReply(conversationId: string, bot: BotId, at: number, text: string, slug: string, html: string) {
@@ -682,8 +708,8 @@ await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tr
 await artifactReply("seed-c-tresorerie", "seed-tresorerie", 3 * H - 2, "Voici le tableau de bord, jusqu'à août.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500]));
 await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tresorerie", kind: "user", authorUserId: ME, text: "Ajoute septembre et octobre.", createdAt: ago(90) });
 await artifactReply("seed-c-tresorerie", "seed-tresorerie", 88, "C'est ajouté.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500, 37800, 38620]));
-await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tresorerie", kind: "user", authorUserId: ME, text: "Les barres en vert foncé, c'est plus lisible.", createdAt: ago(20) });
-const ca = await artifactReply("seed-c-tresorerie", "seed-tresorerie", 19, "Voilà, en vert foncé.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500, 37800, 38620]).replace("#1fa855", "#0f6b35"));
+await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tresorerie", kind: "user", authorUserId: ME, text: "Les barres plus foncées, c'est plus lisible.", createdAt: ago(20) });
+const ca = await artifactReply("seed-c-tresorerie", "seed-tresorerie", 19, "Voilà, plus foncées.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500, 37800, 38620], "--chart-4"));
 await db.update(artifact).set({ shareMode: "org", updatedAt: ago(19) }).where(eq(artifact.id, ca));
 
 await artifactReply("seed-g-produit", "seed-atelier", 15, "Les deux variantes côte à côte pour la réunion de demain.", "contraste-tuiles", contrast);

@@ -7,7 +7,7 @@
  * app's frame or as a tab), so it never reads the app's cookies, storage or API.
  */
 import { randomBytes } from "node:crypto";
-import type { ArtifactDto, ArtifactShareMode, ArtifactSummary } from "@agora/core";
+import { withArtifactKit, type ArtifactDto, type ArtifactShareMode, type ArtifactSummary, type ArtifactTheme } from "@agora/core";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 
@@ -134,9 +134,12 @@ export async function setShareMode(row: ArtifactRow, mode: ArtifactShareMode) {
   return updated!;
 }
 
-/** A version's page, with the headers that keep its scripts away from the app. */
-export function artifactResponse(path: string, cache: "private" | "no-store") {
-  return new Response(Bun.file(path), {
+/**
+ * A version's page dressed in Agora's kit (in the app's theme when it says which, else the reader's),
+ * with the headers that keep its scripts away from the app.
+ */
+export async function artifactResponse(path: string, cache: "private" | "no-store", theme?: ArtifactTheme) {
+  return new Response(withArtifactKit(await Bun.file(path).text(), theme), {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Content-Security-Policy": ARTIFACT_CSP,

@@ -1,4 +1,4 @@
-import { ARTIFACT_SHARE_MODES } from "@agora/core";
+import { ARTIFACT_SHARE_MODES, artifactTheme } from "@agora/core";
 import { Hono } from "hono";
 import { z } from "zod";
 import { auth } from "../auth";
@@ -38,7 +38,7 @@ export const artifacts = new Hono<AppEnv>()
     const v = versionParam(c.req.query("v"));
     const file = await versionFile(row.id, v);
     if (!file) return c.json({ error: "not_found" }, 404);
-    return artifactResponse(file.path, v === undefined ? "no-store" : "private");
+    return artifactResponse(file.path, v === undefined ? "no-store" : "private", artifactTheme(c.req.query("theme")));
   });
 
 /**
@@ -54,5 +54,5 @@ export const sharedArtifacts = new Hono().get("/:token", async (c) => {
   if (!(await canOpen(row, session?.user.id ?? null))) return notFound();
   const file = await versionFile(row.id);
   if (!file) return notFound();
-  return artifactResponse(file.path, "no-store");
+  return artifactResponse(file.path, "no-store", artifactTheme(c.req.query("theme")));
 });
