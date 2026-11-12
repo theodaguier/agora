@@ -1,7 +1,7 @@
 import type { StatusTone } from "@agora/core";
 import type { ComponentProps, ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardFooter } from "@/components/ui/card";
+import { Card, CardAction, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { toneDot } from "./tone";
 
@@ -10,7 +10,26 @@ import { toneDot } from "./tone";
  * requests, views): a shadcn Card › CardHeader (title, description, action) › CardContent › CardFooter.
  */
 export function BlockCard({ className, ...props }: ComponentProps<typeof Card>) {
-  return <Card className={cn("w-full max-w-lg", className)} {...props} />;
+  return <Card className={cn("w-full max-w-xl", className)} {...props} />;
+}
+
+/**
+ * Figma « En-tête de bloc »: the icon of what the block is in a tile, its title and a muted line,
+ * its state (or its close button) on the right; a hairline under it.
+ */
+export function BlockHeader({ icon, title, description, action, titleClassName }: { icon?: ReactNode; title: ReactNode; description?: ReactNode; action?: ReactNode; titleClassName?: string }) {
+  return (
+    <CardHeader className="border-b">
+      <div className="flex min-w-0 items-center gap-3">
+        {icon && <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">{icon}</span>}
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <CardTitle className={titleClassName}>{title}</CardTitle>
+          {description && <CardDescription>{description}</CardDescription>}
+        </div>
+      </div>
+      {action && <CardAction>{action}</CardAction>}
+    </CardHeader>
+  );
 }
 
 /** The actions: secondary ones, then the primary one, on the right. */

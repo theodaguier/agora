@@ -7,7 +7,7 @@ import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
 import { BuildingIcon, CalendarIcon, CloseIcon, GlobeIcon, PlaneIcon, PlusIcon, ThermometerIcon, WarningIcon } from "@/components/icons";
 import { OptionSelect, SearchSelect, timeOptions } from "@/components/Pickers";
-import { ErrorText, Loading } from "@/components/admin/ui";
+import { ErrorText, Loading, SettingTile } from "@/components/admin/ui";
 import { Button } from "@/components/ui/button";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -362,6 +362,9 @@ function Absences({ userId, settings }: { userId: string; settings: ScheduleSett
         <ListCardRows>
           {settings.absences.map((a) => (
             <Item size="xs" key={a.id}>
+              <SettingTile>
+                <CalendarIcon />
+              </SettingTile>
               <ItemContent>
                 <ItemTitle>{t.kinds[a.kind]}</ItemTitle>
                 <ItemDescription>

@@ -3,6 +3,7 @@ import { RedoIcon, WarningIcon } from "@/components/icons";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ItemMedia } from "@/components/ui/item";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
@@ -32,12 +33,24 @@ const messages = defineMessages({
   },
 });
 
+/**
+ * Figma « Ligne de liste »: the icon of a settings row in a muted tile, as its ItemMedia. Rows whose
+ * media says more (an avatar, a logo) keep it.
+ */
+export function SettingTile({ children }: { children: ReactNode }) {
+  return (
+    <ItemMedia>
+      <span className="flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground [&_svg:not([class*='size-'])]:size-4">{children}</span>
+    </ItemMedia>
+  );
+}
+
 /** Title of a settings tab, with its intro and main action: the same header on every tab. */
 export function SectionHeader(props: { title: string; text?: ReactNode; action?: string; onAction?: () => void }) {
   return (
-    <div className="mb-2 flex items-center justify-between gap-4">
+    <div className="mb-2 flex items-start justify-between gap-4">
       <div className="flex flex-col gap-1">
-        <h2 className="text-base font-medium">{props.title}</h2>
+        <h2 className="text-xl font-semibold">{props.title}</h2>
         {props.text && <p className="text-sm text-muted-foreground">{props.text}</p>}
       </div>
       {props.action && (

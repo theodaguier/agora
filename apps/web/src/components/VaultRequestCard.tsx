@@ -3,17 +3,17 @@ import { useRouteContext } from "@tanstack/react-router";
 import { useId, useState } from "react";
 import type { StatusTone, VaultRequestDto, VaultRequestStatus } from "@agora/core";
 import { FormLabel } from "@/components/FormLabel";
-import { UserIcon, UsersIcon } from "@/components/icons";
+import { KeyIcon, LockIcon, UserIcon, UsersIcon } from "@/components/icons";
 import { ItemLogo, safeMessages, useVaultName } from "@/components/safe/shared";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BlockCard, BlockFooter, StatusLine } from "@/components/views/block";
+import { BlockCard, BlockFooter, BlockHeader, StatusLine } from "@/components/views/block";
 import { api } from "@/lib/api";
 import { usersQuery, vaultRequestQuery } from "@/lib/queries";
 import { defineMessages, useT } from "@/i18n";
@@ -114,14 +114,11 @@ export function VaultRequestCard({ id }: { id: string }) {
 
   return (
     <BlockCard>
-      <CardHeader>
-        <CardTitle>{mine ? t.mine(req.agentName) : t.theirs(req.agentName, person)}</CardTitle>
-        {(!pending || !mine) && (
-          <CardAction>
-            <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>
-          </CardAction>
-        )}
-      </CardHeader>
+      <BlockHeader
+        icon={<LockIcon className="size-4" />}
+        title={mine ? t.mine(req.agentName) : t.theirs(req.agentName, person)}
+        action={(!pending || !mine) && <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>}
+      />
       <CardContent className="flex flex-col gap-3">
         <Item variant="muted" size="sm">
           <ItemLogo item={{ kind: "login", website: req.item.website, title: req.item.title }} className="size-8" />
@@ -191,14 +188,11 @@ function AskLoginCard({ req, mine, person }: { req: VaultRequestDto; mine: boole
 
   return (
     <BlockCard>
-      <CardHeader>
-        <CardTitle>{mine ? t.askMine(req.agentName, site) : t.askTheirs(req.agentName, site, person)}</CardTitle>
-        {(!pending || !mine) && (
-          <CardAction>
-            <StatusLine tone={STATUS_TONE[req.status]}>{t.askStatus[req.status]}</StatusLine>
-          </CardAction>
-        )}
-      </CardHeader>
+      <BlockHeader
+        icon={<KeyIcon className="size-4" />}
+        title={mine ? t.askMine(req.agentName, site) : t.askTheirs(req.agentName, site, person)}
+        action={(!pending || !mine) && <StatusLine tone={STATUS_TONE[req.status]}>{t.askStatus[req.status]}</StatusLine>}
+      />
       <CardContent className="flex flex-col gap-3">
         <Item variant="muted" size="sm">
           <ItemLogo item={{ kind: "login", website: req.item.website, title: site }} className="size-8" />

@@ -1,9 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ReactElement } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import { useNavigate, useParams, useRouteContext } from "@tanstack/react-router";
 import { KeyboardIcon, TaskListIcon, PlusIcon, SlidersIcon, UserIcon } from "@/components/icons";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
 import { conversationTitle } from "@/lib/participants";
+import { OrgLogo } from "@/components/OrgLogo";
+import { listTime } from "@/lib/dates";
+import { useOrgName } from "@/lib/org";
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
@@ -19,6 +22,12 @@ const messages = defineMessages({
     palette: "Command palette",
     paletteHint: "Search a conversation or an action",
     placeholder: "Search a conversation or an action…",
+    open: "Open",
+    run: "Run",
+    kinds: { bot: "Bot", group: "Group", person: "Colleague" },
+    lastMessage: "Last message",
+    members: "Members",
+    shortcut: "Shortcut",
     noResult: "No results.",
     actions: "Actions",
     conversations: "Conversations",
@@ -44,6 +53,12 @@ const messages = defineMessages({
     palette: "Palette de commandes",
     paletteHint: "Rechercher une conversation ou une action",
     placeholder: "Rechercher une conversation ou une action…",
+    open: "Ouvrir",
+    run: "Lancer",
+    kinds: { bot: "Bot", group: "Groupe", person: "Collègue" },
+    lastMessage: "Dernier message",
+    members: "Membres",
+    shortcut: "Raccourci",
     noResult: "Aucun résultat.",
     actions: "Actions",
     conversations: "Conversations",
@@ -122,59 +137,119 @@ export function ShortcutKeys({ shortcut }: { shortcut: Shortcut }) {
   );
 }
 
+type PaletteAction = { id: string; label: string; icon: ReactNode; shortcut?: Shortcut; onSelect: () => void; keepOpen?: boolean };
+
+/**
+ * ⌘K, as in Raycast (Figma « Palette de commandes »): the results on the left, what the highlighted one
+ * is on the right (a conversation: who, its last message; an action: its shortcut), and at the bottom
+ * the space it acts in and what Enter does.
+ */
 function Palette({ open }: { open: boolean }) {
   const t = useT(messages);
   const navigate = useNavigate();
+  const org = useOrgName();
   const { user } = useRouteContext({ from: "/app" });
   const { data: conversations = [] } = useQuery(conversationsQuery);
+  const [highlighted, setHighlighted] = useState("");
   const run = (action: () => void) => () => {
     setOverlay(null);
     action();
   };
+  const actions: PaletteAction[] = [
+    { id: "new", label: t.newConversation, icon: <PlusIcon />, shortcut: shortcuts.newConversation, onSelect: () => navigate({ to: "/new" }) },
+    { id: "tasks", label: t.tasks, icon: <TaskListIcon />, onSelect: () => navigate({ to: "/tasks" }) },
+    { id: "settings", label: t.settings, icon: <SlidersIcon />, shortcut: shortcuts.settings, onSelect: () => openSettings() },
+    { id: "profile", label: t.profile, icon: <UserIcon />, onSelect: () => openProfile(user.id) },
+    { id: "help", label: t.help, icon: <KeyboardIcon />, shortcut: shortcuts.help, onSelect: () => setOverlay("help"), keepOpen: true },
+  ];
+  // Each item's value ends with its id (cmdk filters on the whole value): the highlighted one is found back from it.
+  const idOf = (value: string) => value.slice(value.lastIndexOf(" ") + 1);
+  const hid = idOf(highlighted.toLowerCase());
+  const action = actions.find((a) => `action:${a.id}` === hid);
+  const conversation = conversations.find((c) => c.id.toLowerCase() === hid);
   return (
-    <CommandDialog open={open} onOpenChange={(o) => setOverlay(o ? "palette" : null)} title={t.palette} description={t.paletteHint}>
-      <Command>
+    <CommandDialog open={open} onOpenChange={(o) => setOverlay(o ? "palette" : null)} title={t.palette} description={t.paletteHint} className="sm:max-w-3xl">
+      <Command value={highlighted} onValueChange={setHighlighted}>
         <CommandInput placeholder={t.placeholder} />
-        <CommandList>
-          <CommandEmpty>{t.noResult}</CommandEmpty>
-          <CommandGroup heading={t.actions}>
-            <CommandItem onSelect={run(() => navigate({ to: "/new" }))}>
-              <PlusIcon /> {t.newConversation}
-              <CommandShortcut><ShortcutKeys shortcut={shortcuts.newConversation} /></CommandShortcut>
-            </CommandItem>
-            <CommandItem onSelect={run(() => navigate({ to: "/tasks" }))}>
-              <TaskListIcon /> {t.tasks}
-            </CommandItem>
-            <CommandItem onSelect={run(() => openSettings())}>
-              <SlidersIcon /> {t.settings}
-              <CommandShortcut><ShortcutKeys shortcut={shortcuts.settings} /></CommandShortcut>
-            </CommandItem>
-            <CommandItem onSelect={run(() => openProfile(user.id))}>
-              <UserIcon /> {t.profile}
-            </CommandItem>
-            <CommandItem onSelect={() => setOverlay("help")}>
-              <KeyboardIcon /> {t.help}
-              <CommandShortcut><ShortcutKeys shortcut={shortcuts.help} /></CommandShortcut>
-            </CommandItem>
-          </CommandGroup>
-          {conversations.length > 0 && (
-            <CommandGroup heading={t.conversations}>
-              {conversations.map((c) => {
-                const name = conversationTitle(c, user.id);
-                return (
-                  <CommandItem
-                    key={c.id}
-                    value={`${name} ${c.id}`}
-                    onSelect={run(() => navigate({ to: "/c/$conversationId", params: { conversationId: c.id } }))}
-                  >
-                    <ConversationAvatar conversation={c} me={user.id} className="size-6" status="ring-popover" />
-                    <span className="truncate">{name}</span>
-                  </CommandItem>
-                );
-              })}
+        <div className="flex min-h-0">
+          <CommandList className="min-w-0 flex-1 sm:max-w-sm sm:border-r">
+            <CommandEmpty>{t.noResult}</CommandEmpty>
+            {conversations.length > 0 && (
+              <CommandGroup heading={t.conversations}>
+                {conversations.map((c) => {
+                  const name = conversationTitle(c, user.id);
+                  return (
+                    <CommandItem key={c.id} value={`${name} ${c.id}`} onSelect={run(() => navigate({ to: "/c/$conversationId", params: { conversationId: c.id } }))}>
+                      <ConversationAvatar conversation={c} me={user.id} className="size-6" status="ring-popover" />
+                      <span className="truncate">{name}</span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            )}
+            <CommandGroup heading={t.actions}>
+              {actions.map((a) => (
+                <CommandItem key={a.id} value={`${a.label} action:${a.id}`} onSelect={a.keepOpen ? a.onSelect : run(a.onSelect)}>
+                  {a.icon} {a.label}
+                  {a.shortcut && (
+                    <CommandShortcut>
+                      <ShortcutKeys shortcut={a.shortcut} />
+                    </CommandShortcut>
+                  )}
+                </CommandItem>
+              ))}
             </CommandGroup>
-          )}
-        </CommandList>
+          </CommandList>
+          {/* What the highlighted result is (large screens only). */}
+          <div className="hidden min-w-0 flex-1 flex-col gap-4 p-5 sm:flex">
+            {conversation ? (
+              <>
+                <div className="flex min-w-0 items-center gap-3">
+                  <ConversationAvatar conversation={conversation} me={user.id} className="size-11" status="ring-popover" />
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{conversationTitle(conversation, user.id)}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {conversation.kind === "group" ? t.kinds.group : conversation.agents.length > 0 ? t.kinds.bot : t.kinds.person}
+                    </p>
+                  </div>
+                </div>
+                {conversation.preview?.text && <p className="line-clamp-4 text-sm text-muted-foreground">{conversation.preview.text}</p>}
+                <dl className="flex flex-col text-sm">
+                  <div className="flex justify-between gap-3 border-b py-2">
+                    <dt className="text-muted-foreground">{t.lastMessage}</dt>
+                    <dd className="tabular-nums">{listTime(new Date(conversation.lastAt))}</dd>
+                  </div>
+                  {conversation.kind === "group" && (
+                    <div className="flex justify-between gap-3 border-b py-2">
+                      <dt className="text-muted-foreground">{t.members}</dt>
+                      <dd className="tabular-nums">{conversation.members.length + conversation.agents.length}</dd>
+                    </div>
+                  )}
+                </dl>
+              </>
+            ) : action ? (
+              <>
+                <span className="flex size-11 items-center justify-center rounded-lg bg-muted text-muted-foreground">{action.icon}</span>
+                <p className="font-medium">{action.label}</p>
+                {action.shortcut && (
+                  <dl className="flex justify-between gap-3 border-b py-2 text-sm">
+                    <dt className="text-muted-foreground">{t.shortcut}</dt>
+                    <dd>
+                      <ShortcutKeys shortcut={action.shortcut} />
+                    </dd>
+                  </dl>
+                )}
+              </>
+            ) : null}
+          </div>
+        </div>
+        {/* The space it acts in, and what Enter does. */}
+        <div className="flex items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
+          <OrgLogo className="size-4" />
+          <span className="min-w-0 flex-1 truncate">{org}</span>
+          <span className="font-medium text-foreground">{action ? t.run : t.open}</span>
+          <Kbd>↵</Kbd>
+        </div>
       </Command>
     </CommandDialog>
   );

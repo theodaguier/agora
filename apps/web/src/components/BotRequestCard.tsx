@@ -3,9 +3,10 @@ import type { StatusTone } from "@agora/core";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { BlockCard, BlockFooter, StatusLine } from "@/components/views/block";
+import { BlockCard, BlockFooter, BlockHeader, StatusLine } from "@/components/views/block";
+import { BotIcon } from "@/components/icons";
 import { api, type BotRequest } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -69,13 +70,12 @@ export function BotRequestCard({ id }: { id: string }) {
 
   return (
     <BlockCard>
-      <CardHeader>
-        <CardTitle>{t.title(req.bots.length)}</CardTitle>
-        {req.reason && <CardDescription>{req.reason}</CardDescription>}
-        <CardAction>
-          <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>
-        </CardAction>
-      </CardHeader>
+      <BlockHeader
+        icon={<BotIcon className="size-4" />}
+        title={t.title(req.bots.length)}
+        description={req.reason || undefined}
+        action={<StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>}
+      />
       <CardContent className="flex flex-col gap-3">
         <ItemGroup>
           {req.bots.map((bot, i) => (

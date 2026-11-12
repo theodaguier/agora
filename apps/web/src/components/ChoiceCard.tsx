@@ -1,10 +1,10 @@
-import { ArrowUpIcon, ChevronRightIcon, CloseIcon } from "@/components/icons";
+import { ArrowUpIcon, ChatQuestionIcon, ChevronRightIcon, CloseIcon } from "@/components/icons";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardFooter } from "@/components/ui/card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
-import { BlockCard } from "@/components/views/block";
+import { BlockCard, BlockHeader } from "@/components/views/block";
 import type { Choices } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 
@@ -41,15 +41,16 @@ export function ChoiceCard(props: { choices: Choices; onAnswer: (text: string) =
 
   return (
     <BlockCard>
-      <CardHeader>
-        <CardTitle>{choices.question}</CardTitle>
-        {choices.hint && <CardDescription>{choices.hint}</CardDescription>}
-        <CardAction>
+      <BlockHeader
+        icon={<ChatQuestionIcon className="size-4" />}
+        title={choices.question}
+        description={choices.hint || undefined}
+        action={
           <Button variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss}>
             <CloseIcon />
           </Button>
-        </CardAction>
-      </CardHeader>
+        }
+      />
       <CardContent>
         <ItemGroup aria-label={t.options}>
           {choices.options.map((o, i) => (

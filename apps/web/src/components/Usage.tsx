@@ -5,7 +5,7 @@ import { useRouteContext } from "@tanstack/react-router";
 import { useId, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { AgentAvatar } from "@/components/AgentAvatar";
-import { type AvatarShape } from "@/lib/agent-avatar";
+import { agentAccent, type AvatarShape } from "@/lib/agent-avatar";
 import { PersonAvatar } from "@/components/ConversationAvatar";
 import { Loading, SectionHeader } from "@/components/admin/ui";
 import {
@@ -71,7 +71,8 @@ type UsageReport = {
   bucket: "hour" | "day" | "week" | "month";
   scope: "all" | "self";
   totals: Summary;
-  series: (Summary & { t: string })[];
+  /** `costByAgent`: the bucket's cost per bot id ("" = no bot). */
+  series: (Summary & { t: string; costByAgent?: Record<string, number> })[];
   byUser: (Summary & { id: string | null; name: string | null; image: string | null })[];
   byAgent: (Summary & { id: string | null; name: string | null; avatarShape: AvatarShape | null; avatarColor: string | null })[];
   byTask: (Summary & { id: string; taskId: string | null; name: string | null; source: Source })[];
@@ -305,10 +306,22 @@ export function Usage() {
             </Empty>
           ) : (
             <div className="flex flex-col gap-1">
-              <p className="text-2xl font-semibold tabular-nums">{f.cost(totals.cost)}</p>
-              <p className="text-sm text-muted-foreground" title={`${f.whole(totals.tokens)} tokens, ${f.whole(totals.apiCalls)}`}>
-                {t.costLine(f.compact(totals.tokens), f.compact(totals.apiCalls))}, {t.ofWhichCache(f.compact(totals.cacheTokens))}
-              </p>
+              {/* Figma « Consommation »: each figure, then what it counts in grey (Linear's agent spend). */}
+              <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
+                <p className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-semibold tabular-nums">{f.cost(totals.cost)}</span>
+                  <span className="text-sm text-muted-foreground">{t.cost.toLowerCase()}</span>
+                </p>
+                <p className="flex items-baseline gap-1.5" title={f.whole(totals.tokens)}>
+                  <span className="text-2xl font-semibold tabular-nums">{f.compact(totals.tokens)}</span>
+                  <span className="text-sm text-muted-foreground">{t.tokens.toLowerCase()}</span>
+                </p>
+                <p className="flex items-baseline gap-1.5" title={f.whole(totals.apiCalls)}>
+                  <span className="text-2xl font-semibold tabular-nums">{f.compact(totals.apiCalls)}</span>
+                  <span className="text-sm text-muted-foreground">{t.calls.toLowerCase()}</span>
+                </p>
+              </div>
+              <p className="text-sm text-muted-foreground">{t.ofWhichCache(f.compact(totals.cacheTokens))}</p>
               {totals.tokens === 0 && (
                 <Empty>
                   <EmptyHeader>
@@ -343,9 +356,17 @@ function Timeline({ report }: { report: UsageReport }) {
   const [metric, setMetric] = useState<"cost" | "tokens">("cost");
   const kinds = ["inputTokens", "outputTokens", "cacheTokens"] as const;
   const kindLabel = { inputTokens: t.kinds.input, outputTokens: t.kinds.output, cacheTokens: t.kinds.cache };
-  const config = Object.fromEntries(
-    Object.entries(chartConfig).map(([k, v]) => [k, { ...v, label: k === "cost" ? t.cost : kindLabel[k as keyof typeof kindLabel] }]),
-  ) as ChartConfig;
+  // Cost, stacked by bot (Figma « Consommation »): each bot in its own colour, « No bot » in grey; biggest at the bottom.
+  const bots = report.byAgent.filter((a) => report.series.some((p) => (p.costByAgent?.[a.id ?? ""] ?? 0) > 0));
+  const botKey = (i: number) => `bot${i}`;
+  const stacked = bots.length > 0 && report.series.some((p) => p.costByAgent);
+  const data = stacked ? report.series.map((p) => ({ ...p, ...Object.fromEntries(bots.map((a, i) => [botKey(i), p.costByAgent?.[a.id ?? ""] ?? 0])) })) : report.series;
+  const config = {
+    ...Object.fromEntries(Object.entries(chartConfig).map(([k, v]) => [k, { ...v, label: k === "cost" ? t.cost : kindLabel[k as keyof typeof kindLabel] }])),
+    ...Object.fromEntries(
+      bots.map((a, i) => [botKey(i), { label: a.id ? (a.name ?? t.deletedAgent) : t.noAgent, color: a.avatarColor ? agentAccent(a.avatarColor) : "var(--muted-foreground)" }]),
+    ),
+  } as ChartConfig;
 
   return (
     <Card>
@@ -360,8 +381,8 @@ function Timeline({ report }: { report: UsageReport }) {
       </CardHeader>
       <CardContent>
         <ChartContainer config={config} className="aspect-auto h-64 w-full">
-          <BarChart data={report.series} margin={{ left: 4, right: 4, top: 8 }} barCategoryGap="20%">
-            <CartesianGrid vertical={false} />
+          <BarChart data={data} margin={{ left: 4, right: 4, top: 8 }} barCategoryGap="20%">
+            <CartesianGrid vertical={false} strokeDasharray="3 4" />
             <XAxis dataKey="t" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} tickFormatter={(v: string) => f.bucket(v, report.bucket)} />
             <YAxis tickLine={false} axisLine={false} width={56} tickFormatter={(v: number) => (metric === "cost" ? f.cost(v) : f.compact(v))} />
             <ChartTooltip
@@ -398,6 +419,22 @@ function Timeline({ report }: { report: UsageReport }) {
                   />
                 ))}
                 <ChartLegend content={<ChartLegendContent />} itemSorter={(item) => kinds.indexOf(item.dataKey as (typeof kinds)[number])} />
+              </>
+            ) : stacked ? (
+              <>
+                {bots.map((_, i) => (
+                  <Bar
+                    key={botKey(i)}
+                    dataKey={botKey(i)}
+                    stackId="cost"
+                    fill={`var(--color-${botKey(i)})`}
+                    stroke="var(--background)"
+                    strokeWidth={1}
+                    maxBarSize={40}
+                    radius={i === bots.length - 1 ? [4, 4, 0, 0] : 0}
+                  />
+                ))}
+                <ChartLegend content={<ChartLegendContent />} />
               </>
             ) : (
               <Bar dataKey="cost" fill="var(--color-cost)" maxBarSize={24} radius={[4, 4, 0, 0]} />

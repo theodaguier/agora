@@ -1,9 +1,9 @@
 import { RequiredMark } from "@/components/FormLabel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { WarningIcon } from "@/components/icons";
+import { PlugIcon, WarningIcon } from "@/components/icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ConnectorField } from "@/components/ConnectorField";
@@ -16,7 +16,7 @@ import { needsOwnClient, oauthClientOf } from "@/lib/oauth-client";
 import { useState, type FormEvent } from "react";
 import { connectors, integrations } from "@agora/core/i18n";
 import type { StatusTone } from "@agora/core";
-import { BlockCard, BlockFooter, MetaList, MetaRow, StatusLine } from "@/components/views/block";
+import { BlockCard, BlockFooter, BlockHeader, MetaList, MetaRow, StatusLine } from "@/components/views/block";
 import { common } from "@agora/core/i18n";
 
 const LIVE = new Set<McpRequest["status"]>(["pending", "approved", "authorizing"]);
@@ -171,13 +171,12 @@ export function McpRequestCard({ id }: { id: string }) {
 
   return (
     <BlockCard>
-      <CardHeader>
-        <CardTitle>{t.connector(req.title)}</CardTitle>
-        {req.description && <CardDescription>{req.description}</CardDescription>}
-        <CardAction>
-          <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>
-        </CardAction>
-      </CardHeader>
+      <BlockHeader
+        icon={<PlugIcon className="size-4" />}
+        title={t.connector(req.title)}
+        description={req.description || undefined}
+        action={<StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>}
+      />
 
       <CardContent className="flex flex-col gap-3">
         <MetaList>

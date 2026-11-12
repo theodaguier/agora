@@ -3,7 +3,7 @@ import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState, type FormEvent } from "react";
 import { FormLabel } from "@/components/FormLabel";
-import { MoreIcon, PencilIcon, TrashIcon } from "@/components/icons";
+import { MoreIcon, PencilIcon, TrashIcon, GlobeIcon } from "@/components/icons";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { Button } from "@/components/ui/button";
 import { CardAction, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,7 @@ import { api, type BotWebhook } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
 import { copyText } from "@/lib/feedback";
 import { dateFormat } from "@/lib/intl";
-import { LoadError, Loading } from "./ui";
+import { LoadError, Loading, SettingTile } from "./ui";
 
 const messages = defineMessages({
   en: {
@@ -140,6 +140,9 @@ export function AgentWebhooks({ agentId }: { agentId: string }) {
         <ListCardRows>
           {data.map((hook) => (
             <Item key={hook.id} size="xs" role="listitem" className="flex-nowrap">
+              <SettingTile>
+                <GlobeIcon />
+              </SettingTile>
               <ItemContent className="min-w-0">
                 <ItemTitle>{hook.name}</ItemTitle>
                 <ItemDescription className="truncate">

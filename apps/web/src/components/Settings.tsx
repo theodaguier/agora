@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext, useRouter } from "@tanstack/react-router";
-import { BotIcon, BuildingIcon, CodeIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, ServerIcon, SlidersIcon, ShieldCheckIcon, SmartphoneIcon, UsersIcon, CloseIcon, SearchIcon, type IconComponent } from "@/components/icons";
+import { BotIcon, BuildingIcon, CodeIcon, CalendarClockIcon, FileTextIcon, CheckCircleIcon, LayersIcon, PaletteIcon, BrainIcon, ChartIcon, KeyIcon, LockIcon, RefreshIcon, PlugIcon, ServerIcon, SlidersIcon, ShieldCheckIcon, SmartphoneIcon, UsersIcon, CloseIcon, SearchIcon, type IconComponent, MailIcon } from "@/components/icons";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useDesktop } from "@/lib/workspace";
@@ -9,7 +9,7 @@ import { AppIntegrations } from "@/components/admin/AppIntegrations";
 import { Agents } from "@/components/admin/Agents";
 import { Models } from "@/components/admin/Models";
 import { OrgSettings } from "@/components/admin/OrgSettings";
-import { Loading, RestartProvider, SectionHeader } from "@/components/admin/ui";
+import { Loading, RestartProvider, SectionHeader, SettingTile } from "@/components/admin/ui";
 import { NewBotsAllTools, RequireTwoFactor } from "@/components/admin/Security";
 import { Status } from "@/components/admin/Status";
 import { Updates } from "@/components/admin/Updates";
@@ -28,7 +28,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { FieldGroup } from "@/components/ui/field";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { api, uploadAvatar, type ProfileInput } from "@/lib/api";
@@ -156,12 +155,12 @@ export function Settings() {
     <Dialog open={tab !== null} onOpenChange={(open) => !open && closeSettings()}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-dvh flex-col overflow-hidden sm:h-180 sm:max-h-dvh sm:max-w-4xl sm:flex-row"
+        className="flex h-dvh flex-col gap-0 overflow-hidden p-0 sm:h-180 sm:max-h-dvh sm:max-w-5xl sm:flex-row"
       >
         <DialogTitle className="sr-only">{t.settings}</DialogTitle>
         <SettingsBody key={opened.n} initial={opened.tab} />
         <DialogClose
-          render={<Button variant="ghost" size="icon-sm" className="absolute top-2 right-2" />}
+          render={<Button variant="ghost" size="icon-sm" className="absolute top-3 right-3" />}
         >
           <CloseIcon />
           <span className="sr-only">{c.close}</span>
@@ -177,11 +176,10 @@ function SettingsBody({ initial }: { initial: SettingsTab }) {
   const [tab, setTab] = useState(visible.some((t) => t.id === initial) ? initial : "general");
   return (
     <>
-      <nav className="flex max-h-60 shrink-0 flex-col pr-10 sm:max-h-none sm:w-52 sm:pr-0">
+      {/* Figma « Réglages »: the navigation on the sidebar's ground, a hairline, then the tab. */}
+      <nav className="flex max-h-60 shrink-0 flex-col border-b bg-sidebar p-3 pr-12 sm:max-h-none sm:w-60 sm:border-r sm:border-b-0 sm:pr-3">
         <SettingsNav tabs={visible} tab={tab} onSelect={setTab} />
       </nav>
-      <Separator className="sm:hidden" />
-      <Separator orientation="vertical" className="hidden sm:block" />
       <SettingsContent tab={tab} />
     </>
   );
@@ -232,7 +230,7 @@ function SettingsNav({ tabs: visible, tab, onSelect }: { tabs: typeof tabs; tab:
 function SettingsContent({ tab }: { tab: SettingsTab }) {
   return (
     <div className={cn("h-full min-h-0 flex-1 overflow-y-auto", tab === "memory" && "flex flex-col")}>
-      <div className={cn("mx-auto px-1 sm:px-6", tab === "memory" ? "flex w-full flex-1 flex-col" : "flex max-w-2xl flex-col gap-4 pb-6")}>
+      <div className={cn("mx-auto px-4 pt-6 sm:px-10 sm:pt-8", tab === "memory" ? "flex w-full flex-1 flex-col" : "flex max-w-2xl flex-col gap-4 pb-8")}>
         <RestartProvider>
           {/* Each tab: its header, then its cards (shadcn Card), one gap between them. */}
           {tab === "general" && <General />}
@@ -283,6 +281,9 @@ function General() {
         </ListCardHeader>
         <ListCardRows>
           <Item size="xs" key="account">
+            <SettingTile>
+              <MailIcon />
+            </SettingTile>
             <ItemContent>
               <ItemTitle>{user.email}</ItemTitle>
               <ItemDescription>{user.role === "admin" ? t.admin : t.member}</ItemDescription>
