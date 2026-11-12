@@ -78,6 +78,9 @@
       /* action/primaire (Neutre); a conversation with a bot sets the bot's colour (Accent du bot). */
       --accent: #161616;
       --accent-foreground: #ffffff;
+      /* Your bubbles: the bot's colour in a conversation with it (set there), the accent elsewhere. */
+      --bot: #161616;
+      --bot-foreground: #ffffff;
 
       /* état/non-lu */
       --brand: #0a84ff;
@@ -123,61 +126,63 @@
     }
 
     @variant dark {
-      --background: #141414;
+      --background: #17181a;
       --foreground: #f2f2f2;
 
-      --surface: #1b1b1b;
+      --surface: #1d1e21;
       --surface-foreground: var(--foreground);
-      --surface-secondary: #262626;
+      --surface-secondary: #27282b;
       --surface-secondary-foreground: var(--foreground);
-      --surface-tertiary: #2e2e2e;
+      --surface-tertiary: #2a2b2f;
       --surface-tertiary-foreground: var(--foreground);
 
-      --overlay: #1b1b1b;
+      --overlay: #1d1e21;
       --overlay-foreground: var(--foreground);
       --backdrop: oklch(0% 0 0 / 50%);
 
-      --muted: #9a9a9a;
-      --subtle: #6e6e6e;
-      --icon: #a0a0a0;
+      --muted: #8b8d93;
+      --subtle: #5f6168;
+      --icon: #9a9ca3;
 
-      --default: #262626;
+      --default: #27282b;
       --default-foreground: #f2f2f2;
 
       --accent: #f2f2f2;
       --accent-foreground: #111111;
+      --bot: #f2f2f2;
+      --bot-foreground: #111111;
 
-      --brand: #3b9bff;
-      --waiting: #fb8a3c;
+      --brand: #7ba1f6;
+      --waiting: #e9a45f;
 
-      --priority-urgent: #f2555a;
-      --priority-high: #ff8b3e;
-      --priority-medium: #f5c33b;
-      --priority-low: #9b9da8;
-      --state-running: #3b9bff;
-      --state-you: #e66bb4;
-      --state-finished: #2cc266;
-      --state-merged: #a875dd;
-      --state-neutral: #7c7c82;
+      --priority-urgent: #e0786f;
+      --priority-high: #e9a45f;
+      --priority-medium: #ecc749;
+      --priority-low: #8b8d93;
+      --state-running: #7ba1f6;
+      --state-you: #e48bbd;
+      --state-finished: #6cbb62;
+      --state-merged: #a98be0;
+      --state-neutral: #6b6d73;
 
-      --field-background: #1b1b1b;
+      --field-background: #1d1e21;
       --field-foreground: var(--foreground);
-      --field-placeholder: #6e6e6e;
-      --field-border: #2c2c2c;
+      --field-placeholder: #5f6168;
+      --field-border: #2a2b2f;
 
-      --success: #2cc266;
+      --success: #6cbb62;
       --success-foreground: #111111;
-      --warning: #fb8a3c;
+      --warning: #e9a45f;
       --warning-foreground: #111111;
-      --danger: #f2555a;
+      --danger: #e0786f;
       --danger-foreground: #ffffff;
 
-      --segment: #141414;
+      --segment: #17181a;
       --segment-foreground: var(--foreground);
 
-      --border: #2c2c2c;
-      --separator: #2c2c2c;
-      --focus: #6e6e6e;
+      --border: #2a2b2f;
+      --separator: #2a2b2f;
+      --focus: #5f6168;
       --link: var(--foreground);
 
       --surface-shadow: 0 0 0 0 transparent inset;
@@ -193,6 +198,8 @@
  * than a 15 % gray wash, the status tints are the web's 12 %.
  */
 @theme inline static {
+  --color-bot: var(--bot);
+  --color-bot-foreground: var(--bot-foreground);
   --color-brand: var(--brand);
   --color-waiting: var(--waiting);
   --color-icon: var(--icon);

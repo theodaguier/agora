@@ -1,11 +1,9 @@
 import type { AgentMascot } from "@agora/core";
-import MaskedView from "@react-native-masked-view/masked-view";
-import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { Button, Surface, Typography } from "heroui-native";
 import type { ReactNode } from "react";
 import { View } from "react-native";
-import { mascotOf } from "@/components/agent-avatar";
+import { AgentOrb } from "@/components/agent-orb";
+import { AGENT_COLORS, AGENT_MASCOTS } from "@agora/core";
 import type { IconComponent } from "@/components/icons";
 import { withTap } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
@@ -18,7 +16,6 @@ import { cn } from "@/lib/utils";
  */
 
 /** The 7:5 frame of the cut-out figurines (public/mascots/*-solo.webp). */
-const FIGURE = { width: 224, height: 160 };
 
 export function EmptyState({
   mascot,
@@ -44,12 +41,9 @@ export function EmptyState({
   return (
     <View className={cn("items-center px-8", large ? "gap-1.5 py-10" : "gap-1 py-8", className)}>
       {mascot ? (
-        <MaskedView
-          style={{ ...FIGURE, marginBottom: 4 }}
-          maskElement={<LinearGradient colors={["black", "black", "transparent"]} locations={[0, 0.8, 1]} style={FIGURE} />}
-        >
-          <Image source={mascotOf(mascot).solo} style={FIGURE} contentFit="contain" accessibilityIgnoresInvertColors />
-        </MaskedView>
+        <View style={{ marginBottom: 8 }}>
+          <AgentOrb color={AGENT_COLORS[AGENT_MASCOTS.indexOf(mascot)]!} size={88} />
+        </View>
       ) : (
         (Icon || media) && (
           <Surface variant="secondary" className="mb-2 size-11 items-center justify-center p-0">

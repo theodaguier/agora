@@ -17,10 +17,10 @@ export function MarketSection({ title, description, action, children }: { title:
   );
 }
 
-/** Entries two by two, each an outlined Item. */
+/** Entries in a grid (two, three on a wide dialog), each an outlined Item. */
 export function Tiles({ children, busy }: { children: ReactNode; busy?: boolean }) {
   return (
-    <ItemGroup aria-busy={busy || undefined} className="grid gap-3 sm:grid-cols-2">
+    <ItemGroup aria-busy={busy || undefined} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {children}
     </ItemGroup>
   );

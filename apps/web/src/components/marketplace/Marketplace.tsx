@@ -151,7 +151,7 @@ export function Marketplace({ onClose }: { onClose: () => void }) {
         else onClose();
       }}
     >
-      <DialogContent showCloseButton={false} className="flex h-4/5 flex-col sm:max-w-3xl">
+      <DialogContent showCloseButton={false} className="flex h-4/5 flex-col sm:max-w-5xl">
         {/* The title (back first, deeper in), the installed apps, close. */}
         <DialogHeader className="flex-row items-center">
           {history.length > 1 && (
@@ -159,7 +159,7 @@ export function Marketplace({ onClose }: { onClose: () => void }) {
               <ChevronLeftIcon />
             </Button>
           )}
-          <DialogTitle>{t.title}</DialogTitle>
+          <DialogTitle className="text-xl font-semibold">{t.title}</DialogTitle>
           <span className="flex-1" />
           {view.kind !== "installed" && <InstalledButton onClick={() => push({ kind: "installed" })} />}
           <DialogClose render={<Button variant="ghost" size="icon-sm" aria-label={c.close} />}>

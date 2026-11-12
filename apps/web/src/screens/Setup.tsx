@@ -192,7 +192,7 @@ export function Setup() {
   const [agentId, setAgentId] = useState<string | null>(null);
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+    <div className="flex min-h-svh w-full items-start justify-center p-6 md:p-10 md:pt-28">
       <Card className="w-full max-w-md">
         {step !== "done" && (
           <CardContent>

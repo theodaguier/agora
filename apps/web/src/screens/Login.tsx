@@ -30,7 +30,7 @@ export function Login() {
   if (twoFactor) return <TwoFactorStep onBack={() => setTwoFactor(false)} onDone={() => navigate({ to: "/" })} />;
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+    <div className="flex min-h-svh w-full items-start justify-center p-6 md:p-10 md:pt-28">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <OrgLogo className="size-9" />
@@ -103,7 +103,7 @@ function TwoFactorStep({ onBack, onDone }: { onBack: () => void; onDone: () => v
   const [pending, setPending] = useState(false);
 
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
+    <div className="flex min-h-svh w-full items-start justify-center p-6 md:p-10 md:pt-28">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <OrgLogo className="size-9" />

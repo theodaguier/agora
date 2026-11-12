@@ -2,9 +2,10 @@ import type { Drafts, DraftType, MailItem, ViewAction, ViewActionKind, ViewBlock
 import { lazy, Suspense } from "react";
 import { integrations } from "@agora/core/i18n";
 import { Badge } from "@/components/ui/badge";
-import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
+import { ChartIcon, IntegrationIcon } from "@/components/icons";
 import { defineMessages, useT } from "@/i18n";
-import { BlockCard } from "./block";
+import { BlockCard, BlockHeader } from "./block";
 import { DraftCard } from "./DraftCard";
 import { draftLabel } from "./format";
 import { displayName } from "./format";
@@ -87,18 +88,14 @@ export function ViewCard(props: {
 
   return (
     <BlockCard>
-      <CardHeader>
-        {/* A chart's title is its conclusion, a sentence: it wraps rather than being cut. */}
-        <CardTitle className={view.kind === "chart" || view.kind === "stats" ? "line-clamp-2" : "truncate"}>
-          {view.title || t.types[view.type]}
-        </CardTitle>
-        {subtitle && <CardDescription>{subtitle}</CardDescription>}
-        {count ? (
-          <CardAction>
-            <Badge variant="secondary">{count}</Badge>
-          </CardAction>
-        ) : null}
-      </CardHeader>
+      {/* A chart's title is its conclusion, a sentence: it wraps rather than being cut. Its icon: what kind of data, or a chart. */}
+      <BlockHeader
+        icon={view.kind === "chart" || view.kind === "stats" ? <ChartIcon className="size-4" /> : <IntegrationIcon type={view.type} className="size-4" />}
+        title={view.title || t.types[view.type]}
+        titleClassName={view.kind === "chart" || view.kind === "stats" ? "line-clamp-2" : "truncate"}
+        description={subtitle || undefined}
+        action={count ? <Badge variant="secondary">{count}</Badge> : undefined}
+      />
       {view.kind === "draft" ? body() : <CardContent>{body()}</CardContent>}
     </BlockCard>
   );

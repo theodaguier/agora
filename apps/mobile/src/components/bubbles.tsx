@@ -37,7 +37,7 @@ const messages = defineMessages({
 /** A bubble: HeroUI's Surface, `secondary` grey for everyone else's, the accent for yours, Figma's 14 px corners. */
 export function Bubble({ mine, className, children }: { mine?: boolean; className?: string; children: ReactNode }) {
   return (
-    <Surface variant="secondary" className={cn("min-w-0 rounded-[14px]", mine ? "self-end bg-accent" : "self-start", className)}>
+    <Surface variant="secondary" className={cn("min-w-0 rounded-[14px]", mine ? "self-end bg-bot" : "self-start", className)}>
       {children}
     </Surface>
   );
@@ -54,7 +54,7 @@ export function BotBubble({ text, streaming, mentionables, className }: { text: 
 export function UserBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
   return (
     <Bubble mine className={cn("px-3 py-2", className)}>
-      <MessageText plain onAccent text={text} mentionables={mentionables} className="min-w-0" textClassName="text-accent-foreground" />
+      <MessageText plain onAccent text={text} mentionables={mentionables} className="min-w-0" textClassName="text-bot-foreground" />
     </Bubble>
   );
 }

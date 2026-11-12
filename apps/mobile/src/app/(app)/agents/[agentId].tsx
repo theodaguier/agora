@@ -6,8 +6,7 @@ import { Button, SkeletonGroup, Typography, useToast } from "heroui-native";
 import { ScrollView, View } from "react-native";
 import { AgentActivity, ConversationRoutines } from "@/components/agents/agent-activity";
 import { AgentScreen } from "@/components/agents/agent-screen";
-import { Image } from "expo-image";
-import { mascotOf } from "@/components/agent-avatar";
+import { AgentOrb } from "@/components/agent-orb";
 import { headerIcon } from "@/components/header-button";
 import { TaskSection } from "@/components/people/task-section";
 import { useMe } from "@/components/server-scope";
@@ -76,9 +75,9 @@ export default function BotProfile() {
           </SkeletonGroup>
         ) : (
           <>
-            {/* Figma « Fiche de l'agent »: its clay portrait, its name, its actions as grey pills. */}
+            {/* Figma « Fiche de l'agent »: its orb, its name, its actions as grey pills. */}
             <View className="flex-row items-center gap-4 pt-2">
-              <Image source={mascotOf(agent.avatar.color).figure} contentFit="cover" className="size-[104px] rounded-2xl" accessibilityIgnoresInvertColors />
+              <AgentOrb color={agent.avatar.color} size={88} />
               <View className="min-w-0 flex-1 gap-2">
                 <View className="gap-0.5">
                   <Typography.Heading type="h4" numberOfLines={1}>
