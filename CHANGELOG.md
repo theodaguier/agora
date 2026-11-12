@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.58.0 — 2026-11-12
+
+### Features
+- **api**: brancher toutes les alertes de logs PostHog sur un déclencheur
+
+### Fixes
+- **updater**: lire toutes les pages de tags du registre
+
 ## v0.57.0 — 2026-11-12
 
 ### Features
