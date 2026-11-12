@@ -22,6 +22,9 @@ const messages = defineMessages({
   },
 });
 
+/** "11:06": when a message was written, at the start of its first line. */
+export const clockTime = (date: Date) => dateFormat({ hour: "2-digit", minute: "2-digit" }).format(date);
+
 /** "Today 11:06", "Yesterday 17:42", "Sep 12 09:15", in the interface language. */
 export function dividerLabel(date: Date) {
   const time = dateFormat({ hour: "2-digit", minute: "2-digit" });

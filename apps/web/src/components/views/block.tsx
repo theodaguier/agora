@@ -10,7 +10,7 @@ import { toneDot } from "./tone";
  * requests, views): a shadcn Card › CardHeader (title, description, action) › CardContent › CardFooter.
  */
 export function BlockCard({ className, ...props }: ComponentProps<typeof Card>) {
-  return <Card className={cn("w-full max-w-xl", className)} {...props} />;
+  return <Card className={cn("w-full", className)} {...props} />;
 }
 
 /**
