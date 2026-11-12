@@ -5,9 +5,10 @@ import { common } from "@agora/core/i18n";
 import { invalidateSessions } from "@/components/github/PullRequestLinks";
 import { PullRequestItem, pullRequestMessages } from "@/components/github/PullRequestCard";
 import { Button } from "@/components/ui/button";
-import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BlockCard, BlockFooter, StatusLine } from "@/components/views/block";
+import { BlockCard, BlockFooter, BlockHeader, StatusLine } from "@/components/views/block";
+import { MergeIcon } from "@/components/icons";
 import { api } from "@/lib/api";
 import { githubMergeRequestQuery, githubPullQuery, usersQuery } from "@/lib/queries";
 import { defineMessages, useT } from "@/i18n";
@@ -95,15 +96,12 @@ export function GitHubMergeCard({ id, bot, repo, number }: { id: string; bot: st
 
   return (
     <BlockCard>
-      <CardHeader>
-        <CardTitle>{t.title(req.agentName || bot, req.number)}</CardTitle>
-        <CardDescription>{t.method(tp.methods[req.method as CodeMergeMethod] ?? req.method)}</CardDescription>
-        {(!pending || !mine) && (
-          <CardAction>
-            <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>
-          </CardAction>
-        )}
-      </CardHeader>
+      <BlockHeader
+        icon={<MergeIcon className="size-4" />}
+        title={t.title(req.agentName || bot, req.number)}
+        description={t.method(tp.methods[req.method as CodeMergeMethod] ?? req.method)}
+        action={(!pending || !mine) && <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>}
+      />
       <CardContent className="flex flex-col gap-3">
         <PullRequestItem pr={shown} repo={req.repo} variant="muted" />
         {req.reason && <p className="text-sm">{req.reason}</p>}

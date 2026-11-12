@@ -1,8 +1,8 @@
 import { RequiredMark } from "@/components/FormLabel";
-import { CloseIcon } from "@/components/icons";
+import { ChatQuestionIcon, CloseIcon } from "@/components/icons";
 import { type ReactNode, useState } from "react";
-import { CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BlockCard, BlockFooter } from "@/components/views/block";
+import { CardContent } from "@/components/ui/card";
+import { BlockCard, BlockFooter, BlockHeader } from "@/components/views/block";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
@@ -68,14 +68,15 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
       }}
     >
       <BlockCard className="max-w-full">
-        <CardHeader>
-          <CardTitle>{questions.title ?? t.title}</CardTitle>
-          <CardAction>
+        <BlockHeader
+          icon={<ChatQuestionIcon className="size-4" />}
+          title={questions.title ?? t.title}
+          action={
             <Button type="button" variant="ghost" size="icon-sm" aria-label={t.dismiss} onClick={onDismiss}>
               <CloseIcon />
             </Button>
-          </CardAction>
-        </CardHeader>
+          }
+        />
 
         <CardContent>
           <FieldGroup>

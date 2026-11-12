@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { MoreIcon, RefreshIcon } from "@/components/icons";
+import { MoreIcon, RefreshIcon, ServerIcon } from "@/components/icons";
 import { confirmAction } from "@/lib/confirm";
-import { LoadError, LoadFailed, Loading, SectionHeader } from "@/components/admin/ui";
+import { LoadError, LoadFailed, Loading, SectionHeader, SettingTile } from "@/components/admin/ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -169,6 +169,9 @@ export function Status() {
         <ListCardRows>
           {data.checks.map((check) => (
             <Item size="xs" key={check.id} role="listitem">
+              <SettingTile>
+                <ServerIcon />
+              </SettingTile>
               <ItemContent>
                 <ItemTitle>{t.names[check.id] ?? check.id}</ItemTitle>
                 {/* Server-written: an error message can be long or technical, the whole of it stays in the tooltip. */}

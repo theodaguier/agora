@@ -4,11 +4,10 @@ import { useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { PersonAvatar } from "@/components/ConversationAvatar";
 import { conversationTitle } from "@/lib/participants";
-import { CheckIcon, ChevronLeftIcon, MailIcon, MoreIcon, WarningIcon } from "@/components/icons";
+import { AtIcon, CheckCircleIcon, CheckIcon, ChevronLeftIcon, InboxIcon, MailIcon, MoreIcon, ReplyIcon, TaskListIcon, WarningIcon } from "@/components/icons";
+import { useWide } from "@/components/CodeSession";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
-import { CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { EmptyFigure } from "@/components/EmptyFigure";
@@ -54,6 +53,9 @@ const messages = defineMessages({
     emptyUnread: "You're all caught up",
     errorTitle: "Inbox unavailable",
     error: "Your inbox can't be reached right now.",
+    openConversation: "Open the conversation",
+    openTasks: "Open my tasks",
+    pick: "Pick an item to see it here.",
   },
   fr: {
     title: "Boîte de réception",
@@ -81,6 +83,9 @@ const messages = defineMessages({
     emptyUnread: "Tout est lu",
     errorTitle: "Boîte indisponible",
     error: "Ta boîte de réception est injoignable pour le moment.",
+    openConversation: "Ouvrir la conversation",
+    openTasks: "Ouvrir les tâches",
+    pick: "Choisis un élément pour le voir ici.",
   },
 });
 
@@ -102,40 +107,40 @@ export function Inbox() {
     meta: { success: t.allMarkedRead, error: t.markFailed },
   });
 
+  // Large screens: the list on the left, the picked item on the right (Linear's inbox); smaller ones open it directly.
+  const wide = useWide();
+  const [picked, setPicked] = useState<string | null>(null);
+  const items = data?.items ?? [];
+  const selected = items.find((i) => i.id === picked) ?? (wide ? items[0] : undefined);
+
   return (
-    <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-2xl flex-col px-4 pt-6 pb-12 md:pt-10">
-          <Button
-            variant="ghost"
-            size="icon"
-            nativeButton={false}
-            render={<Link to="/" aria-label={t.back} />}
-            className="-ml-2 mb-2 md:hidden"
-          >
+    <section className="flex h-full min-w-0 flex-1 bg-background">
+      <div className={cn("flex min-h-0 min-w-0 flex-col", wide ? "w-md shrink-0 border-r" : "flex-1")}>
+        <header className="flex items-center gap-2 border-b px-4 py-3">
+          <Button variant="ghost" size="icon-sm" nativeButton={false} render={<Link to="/" aria-label={t.back} />} className="md:hidden">
             <ChevronLeftIcon />
           </Button>
-          <header className="flex items-start gap-3">
-            <h1 className="min-w-0 flex-1 text-xl font-medium">{t.title}</h1>
-            <Button variant="secondary" disabled={!unread || markAll.isPending} onClick={() => markAll.mutate()}>
-              {t.markAllRead}
-            </Button>
-          </header>
-          <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="mt-4">
+          <h1 className="min-w-0 flex-1 truncate text-base font-medium">{t.title}</h1>
+          <Button variant="ghost" size="sm" disabled={!unread || markAll.isPending} onClick={() => markAll.mutate()}>
+            {t.markAllRead}
+          </Button>
+        </header>
+        <div className="px-3 pt-3">
+          <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
             <TabsList>
-              <TabsTrigger value="all">
-                {t.all}
-              </TabsTrigger>
+              <TabsTrigger value="all">{t.all}</TabsTrigger>
               <TabsTrigger value="unread">
                 {t.unread}
                 {unread > 0 && <Badge variant="secondary">{unread}</Badge>}
               </TabsTrigger>
             </TabsList>
           </Tabs>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-2 pb-6">
           {isPending ? (
-            <div className="mt-6 flex flex-col gap-2">
+            <div className="flex flex-col gap-2 px-2">
               {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-16 w-full" />
+                <Skeleton key={i} className="h-14 w-full" />
               ))}
             </div>
           ) : isError ? (
@@ -153,7 +158,7 @@ export function Inbox() {
                 </Button>
               </EmptyContent>
             </Empty>
-          ) : !data?.items.length ? (
+          ) : !items.length ? (
             <Empty className="mt-8">
               <EmptyHeader>
                 <EmptyFigure mascot="teal" />
@@ -162,21 +167,18 @@ export function Inbox() {
               </EmptyHeader>
             </Empty>
           ) : (
-            byDay(data.items).map(([day, items]) => (
-              <ListCard key={day} size="sm" className="mt-6">
-                <ListCardHeader>
-                  <CardTitle>{day}</CardTitle>
-                </ListCardHeader>
-                <ListCardRows>
-                  {items.map((n) => (
-                    <InboxRow key={n.id} item={n} />
-                  ))}
-                </ListCardRows>
-              </ListCard>
+            byDay(items).map(([day, dayItems]) => (
+              <div key={day} role="list" aria-label={day} className="flex flex-col gap-0.5 pt-3">
+                <p className="px-3 pb-1 text-xs text-muted-foreground">{day}</p>
+                {dayItems.map((n) => (
+                  <InboxRow key={n.id} item={n} selected={wide && selected?.id === n.id} onPick={wide ? () => setPicked(n.id) : undefined} />
+                ))}
+              </div>
             ))
           )}
         </div>
       </div>
+      {wide && <InboxPreview item={selected} />}
     </section>
   );
 }
@@ -191,46 +193,73 @@ function byDay(items: InboxItem[]) {
   return [...groups];
 }
 
-function InboxRow({ item }: { item: InboxItem }) {
+const KIND_ICON: Record<InboxKind, typeof AtIcon> = { mention: AtIcon, reply: ReplyIcon, "task.assigned": TaskListIcon, "task.done": CheckCircleIcon };
+
+/** What an item is about and where it leads: its text, its place, and opening it (read on the way). */
+function useInboxItem(item: InboxItem) {
   const t = useT(messages);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { user } = useRouteContext({ from: "/app" });
   const { data: conversations } = useQuery(conversationsQuery);
-  const mentionables = useMentionables(noAgents);
   const conv = item.conversationId ? conversations?.find((c) => c.id === item.conversationId) : undefined;
-  const where = onTaskKind(item.kind) ? t.tasks : conv ? conversationTitle(conv, user.id) : null;
-  const onTask = item.kind === "task.assigned" || item.kind === "task.done";
+  const onTask = onTaskKind(item.kind);
+  const where = onTask ? t.tasks : conv ? conversationTitle(conv, user.id) : null;
   const body = onTask ? (item.task?.title ?? item.text) : item.text;
-
   // From the menu: said with a toast (the row may leave the "Unread" list meanwhile); opening the item says nothing.
   const setRead = useMutation({
     mutationFn: ({ read }: { read: boolean; menu?: boolean }) => api("/inbox/read", { method: "POST", body: JSON.stringify({ ids: [item.id], read }) }),
     onSettled: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
     meta: { success: (_: unknown, v: { read: boolean; menu?: boolean }) => (v.menu ? (v.read ? t.markedRead : t.markedUnread) : undefined), error: t.markFailed },
   });
-
   const open = () => {
     if (!item.read) setRead.mutate({ read: true });
     if (onTask) navigate({ to: "/tasks" });
     else if (item.conversationId)
       navigate({ to: "/c/$conversationId", params: { conversationId: item.conversationId }, search: item.messageId ? { m: item.messageId } : {} });
   };
+  return { onTask, where, body, setRead, open };
+}
 
+/** Who did it, with what they did as a small mark on their avatar. */
+function ActorAvatar({ item, className }: { item: InboxItem; className: string }) {
+  const Mark = KIND_ICON[item.kind];
   return (
-    <Item size="sm" role="listitem" className="flex-nowrap items-start">
+    <span className="relative shrink-0">
+      {item.actor?.kind === "agent" ? (
+        <AgentAvatar agent={item.actor} className={className} />
+      ) : item.actor ? (
+        <PersonAvatar person={item.actor} className={className} />
+      ) : (
+        <Avatar size="lg">
+          <AvatarFallback />
+        </Avatar>
+      )}
+      <span className="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full bg-muted ring-2 ring-background">
+        <Mark className="size-2.5" />
+      </span>
+    </span>
+  );
+}
+
+/** A row: who and what, its text, then when; read ones fade. `onPick`: shown in the preview instead of opened. */
+function InboxRow({ item, selected, onPick }: { item: InboxItem; selected?: boolean; onPick?: () => void }) {
+  const t = useT(messages);
+  const mentionables = useMentionables(noAgents);
+  const { where, body, setRead, open } = useInboxItem(item);
+  return (
+    <Item size="sm" role="listitem" className={cn("flex-nowrap items-start rounded-lg", selected && "bg-muted", item.read && !selected && "opacity-60")}>
       <ItemMedia>
-        {item.actor?.kind === "agent" ? (
-          <AgentAvatar agent={item.actor} className="size-9" />
-        ) : item.actor ? (
-          <PersonAvatar person={item.actor} className="size-9" />
-        ) : (
-          <Avatar size="lg">
-            <AvatarFallback />
-          </Avatar>
-        )}
+        <ActorAvatar item={item} className="size-8" />
       </ItemMedia>
-      <ItemContent className="min-w-0 cursor-pointer" onClick={open}>
+      <ItemContent
+        className="min-w-0 cursor-pointer"
+        onClick={() => {
+          if (!onPick) return open();
+          onPick();
+          if (!item.read) setRead.mutate({ read: true });
+        }}
+      >
         <ItemTitle className="w-full min-w-0">
           <span className="min-w-0 truncate">
             <span className="font-medium">{item.actor?.name ?? t.someone}</span> {t.kind[item.kind]}
@@ -238,7 +267,7 @@ function InboxRow({ item }: { item: InboxItem }) {
           <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground tabular-nums">{dateFormat({ hour: "2-digit", minute: "2-digit" }).format(new Date(item.createdAt))}</span>
         </ItemTitle>
         {body && (
-          <ItemDescription>
+          <ItemDescription className="line-clamp-1">
             <MentionText text={body} mentionables={mentionables} />
           </ItemDescription>
         )}
@@ -260,6 +289,56 @@ function InboxRow({ item }: { item: InboxItem }) {
         </DropdownMenu>
       </ItemActions>
     </Item>
+  );
+}
+
+/** The picked item, whole: who, where and when, its text, then the way to it. */
+function InboxPreview({ item }: { item?: InboxItem }) {
+  const t = useT(messages);
+  if (!item) {
+    return (
+      <Empty className="flex-1">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <InboxIcon />
+          </EmptyMedia>
+          <EmptyDescription>{t.pick}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
+  return <InboxItemView key={item.id} item={item} />;
+}
+
+function InboxItemView({ item }: { item: InboxItem }) {
+  const t = useT(messages);
+  const mentionables = useMentionables(noAgents);
+  const { onTask, where, body, setRead, open } = useInboxItem(item);
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-5 overflow-y-auto px-10 py-8">
+      <div className="flex items-center gap-3">
+        <ActorAvatar item={item} className="size-9" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm">
+            <span className="font-medium">{item.actor?.name ?? t.someone}</span> {t.kind[item.kind]}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {[where, dateFormat({ dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))].filter(Boolean).join(", ")}
+          </p>
+        </div>
+      </div>
+      {body && (
+        <div className="rounded-lg border bg-card px-4 py-3 text-sm leading-relaxed">
+          <MentionText text={body} mentionables={mentionables} />
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={open}>{onTask ? t.openTasks : t.openConversation}</Button>
+        <Button variant="outline" onClick={() => setRead.mutate({ read: !item.read, menu: true })}>
+          {item.read ? t.markUnread : t.markRead}
+        </Button>
+      </div>
+    </div>
   );
 }
 

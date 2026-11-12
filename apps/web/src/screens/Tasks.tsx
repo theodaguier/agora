@@ -51,7 +51,7 @@ export function Tasks() {
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-2xl flex-col px-4 pt-6 pb-12 md:pt-10">
+        <div className="mx-auto flex w-full max-w-5xl flex-col px-4 pt-6 pb-12 md:pt-10">
           <Button
             variant="ghost"
             size="icon"
@@ -85,7 +85,7 @@ export function Tasks() {
             </div>
           )}
           <div className="mt-5">
-            <TaskList userId={user.id} empty={t.noTasks} emptyTitle={t.noTasksTitle} />
+            <TaskList userId={user.id} empty={t.noTasks} emptyTitle={t.noTasksTitle} table />
           </div>
         </div>
       </div>

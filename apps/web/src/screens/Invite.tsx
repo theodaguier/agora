@@ -198,5 +198,5 @@ function isDefinitive(err: unknown) {
 }
 
 function AuthPage({ children }: { children: React.ReactNode }) {
-  return <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">{children}</div>;
+  return <div className="flex min-h-svh w-full items-start justify-center p-6 md:p-10 md:pt-28">{children}</div>;
 }

@@ -336,7 +336,7 @@ export function Conversation({ conversationId, focus }: { conversationId: string
   const mine = turns.filter((turn) => turn.requestedBy === user.id);
   const placeholder = directBot ? t.messageTo(directBot.name) : group ? t.writeGroup : t.messageTo(title);
 
-  // Figma « Agora · Accent du bot »: a conversation with a bot is dressed in its colour (your bubbles, send, primary buttons).
+  // Figma « Agora · Accent du bot »: a conversation with a bot dresses your bubbles in its colour (never a button).
   const accent = accentVariables(directBot?.avatar.color);
 
   return (
@@ -552,7 +552,7 @@ function accentVariables(color: string | undefined) {
   if (!color) return NO_ACCENT;
   const accent = agentAccentColor(color);
   let vars = accents.get(accent);
-  if (!vars) accents.set(accent, (vars = { "--accent": accent, "--accent-foreground": "#ffffff" }));
+  if (!vars) accents.set(accent, (vars = { "--bot": accent, "--bot-foreground": "#ffffff" }));
   return vars;
 }
 

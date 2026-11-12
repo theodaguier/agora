@@ -3,8 +3,9 @@ import { useState } from "react";
 import type { StatusTone } from "@agora/core";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BlockCard, BlockFooter, MetaList, MetaRow, StatusLine } from "@/components/views/block";
+import { CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { BlockCard, BlockFooter, BlockHeader, MetaList, MetaRow, StatusLine } from "@/components/views/block";
+import { SparklesIcon } from "@/components/icons";
 import { SkillCreateDialog } from "@/components/SkillCreateDialog";
 import { api, type SkillRequest } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
@@ -82,14 +83,12 @@ export function SkillRequestCard({ id }: { id: string }) {
 
   return (
     <BlockCard>
-      <CardHeader>
-        <CardTitle>{t.skill(req.name)}</CardTitle>
-        {req.kind === "create" && req.description && <CardDescription>{req.description}</CardDescription>}
-        {req.reason && <CardDescription>{req.reason}</CardDescription>}
-        <CardAction>
-          <StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>
-        </CardAction>
-      </CardHeader>
+      <BlockHeader
+        icon={<SparklesIcon className="size-4" />}
+        title={t.skill(req.name)}
+        description={[req.kind === "create" ? req.description : null, req.reason].filter(Boolean).join(" ") || undefined}
+        action={<StatusLine tone={STATUS_TONE[req.status]}>{t.status[req.status]}</StatusLine>}
+      />
       <CardContent className="flex flex-col gap-3">
         <MetaList>
           {req.kind === "create" ? (

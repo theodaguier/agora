@@ -1,3 +1,5 @@
+import { SettingTile } from "@/components/admin/ui";
+import { SmartphoneIcon } from "@/components/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
@@ -107,6 +109,9 @@ export function MobileApp() {
             const name = d.name || t.unnamed;
             return (
               <Item key={d.id}>
+                <SettingTile>
+                  <SmartphoneIcon />
+                </SettingTile>
                 <ItemContent>
                   <ItemTitle>{name}</ItemTitle>
                   <ItemDescription>{t.paired(dividerLabel(new Date(d.pairedAt)))}</ItemDescription>

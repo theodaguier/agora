@@ -1,11 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
-import { ChatIntegrationIcon, CheckIcon, ChevronDownIcon, CloseIcon, ShieldCheckIcon } from "@/components/icons";
+import { ChatIntegrationIcon, CheckIcon, ChevronDownIcon, CloseIcon, ShieldCheckIcon, TerminalIcon } from "@/components/icons";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { BlockCard, BlockFooter } from "@/components/views/block";
+import { BlockCard, BlockFooter, BlockHeader } from "@/components/views/block";
 import { api, conversationPath, type AgentSummary, type PendingApproval } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -81,10 +81,11 @@ export function ApprovalCard(props: { conversationId: string; turnId: string; bo
 
   return (
     <BlockCard aria-label={t.requestedBy(botName)} role="region">
-      <CardHeader>
-        <CardTitle>{approval.command ? t.wantsToRun(botName) : t.asks(botName)}</CardTitle>
-        {!canAnswer && <CardDescription>{t.waiting}</CardDescription>}
-      </CardHeader>
+      <BlockHeader
+        icon={approval.command ? <TerminalIcon className="size-4" /> : <ShieldCheckIcon className="size-4" />}
+        title={approval.command ? t.wantsToRun(botName) : t.asks(botName)}
+        description={!canAnswer ? t.waiting : approval.description || undefined}
+      />
       {(approval.command || answer.error) && (
         <CardContent className="flex flex-col gap-2">
           {approval.command && (

@@ -72,6 +72,7 @@ const messages = defineMessages({
     noneWithStatusTitle: "Nothing here",
     errorTitle: "Tasks unavailable",
     error: "Tasks can't be reached right now.",
+    columns: { task: "Task", who: "Who", due: "Due" },
   },
   fr: {
     deleteTitle: (title: string) => `Supprimer « ${title} » ?`,
@@ -101,6 +102,7 @@ const messages = defineMessages({
     noneWithStatusTitle: "Rien ici",
     errorTitle: "Tâches indisponibles",
     error: "Les tâches sont injoignables pour le moment.",
+    columns: { task: "Tâche", who: "Qui", due: "Échéance" },
   },
 });
 
@@ -110,8 +112,20 @@ type Filter = "all" | TaskStatus;
  * Tasks assigned to someone (`userId`) or created by a bot (`agentId`), filtered
  * by status in tabs; "all" = open ones first, then the done ones.
  */
-export function TaskList({ userId, agentId, empty, emptyTitle }: ({ userId: string; agentId?: never } | { agentId: string; userId?: never }) & { empty: string; emptyTitle?: string }) {
+export function TaskList({
+  userId,
+  agentId,
+  empty,
+  emptyTitle,
+  table,
+}: ({ userId: string; agentId?: never } | { agentId: string; userId?: never }) & {
+  empty: string;
+  emptyTitle?: string;
+  /** Figma « Mes tâches »: as a table (priority, who, due date in columns), groups without frames, as in Linear. */
+  table?: boolean;
+}) {
   const t = useT(messages);
+  const p = useT(priorityMessages);
   const [filter, setFilter] = useState<Filter>("all");
   const c = useT(common);
   const { data: tasks, isPending, isError, error, refetch } = useQuery(agentId ? agentTasksQuery(agentId) : tasksQuery(userId!));
@@ -164,15 +178,37 @@ export function TaskList({ userId, agentId, empty, emptyTitle }: ({ userId: stri
 
   const inProgress = open.filter((x) => x.status === "in_progress");
   const todo = open.filter((x) => x.status === "todo");
-  const rows = (items: Task[]) => (
-    <ListCardRows>
-      {items.map((task) => (
-        <TaskRow key={task.id} task={task} owner={userId ?? null} />
-      ))}
-    </ListCardRows>
-  );
-  // A group without a title of its own: a card of rows.
-  const card = (items: Task[]) => <ListCard size="sm">{rows(items)}</ListCard>;
+  const rows = (items: Task[]) =>
+    table ? (
+      <div role="list" className="flex flex-col">
+        {items.map((task) => (
+          <TaskRow key={task.id} task={task} owner={userId ?? null} table />
+        ))}
+      </div>
+    ) : (
+      <ListCardRows>
+        {items.map((task) => (
+          <TaskRow key={task.id} task={task} owner={userId ?? null} />
+        ))}
+      </ListCardRows>
+    );
+  // A group without a title of its own: a card of rows (the table has no frames).
+  const card = (items: Task[]) => (table ? rows(items) : <ListCard size="sm">{rows(items)}</ListCard>);
+  const group = (status: TaskStatus, items: Task[]) =>
+    table ? (
+      <section aria-label={t.group[status]} className="flex flex-col gap-1">
+        <h2 className="flex items-center gap-2 px-3 text-sm font-medium">
+          <TaskStatusMark status={status} />
+          {t.group[status]}
+          <span className="font-normal text-muted-foreground tabular-nums">{items.length}</span>
+        </h2>
+        {rows(items)}
+      </section>
+    ) : (
+      <TaskGroup title={t.group[status]} count={items.length}>
+        {rows(items)}
+      </TaskGroup>
+    );
 
   return (
     <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)} className="gap-6">
@@ -183,10 +219,20 @@ export function TaskList({ userId, agentId, empty, emptyTitle }: ({ userId: stri
           </TabsTrigger>
         ))}
       </TabsList>
+      {/* The table's columns, over every group (from md up: smaller screens keep one line per task). */}
+      {table && (
+        <div aria-hidden className="hidden items-center gap-3 border-b px-3 pb-2 text-xs text-muted-foreground md:flex">
+          <span className="flex-1 pl-11">{t.columns.task}</span>
+          <span className="w-28">{p.priority}</span>
+          <span className="w-24">{t.columns.who}</span>
+          <span className="w-32">{t.columns.due}</span>
+          <span className="w-7" />
+        </div>
+      )}
       {filter === "all" ? (
         <>
-          {inProgress.length > 0 && <TaskGroup title={t.group.in_progress} count={inProgress.length}>{rows(inProgress)}</TaskGroup>}
-          {todo.length > 0 && <TaskGroup title={t.group.todo} count={todo.length}>{rows(todo)}</TaskGroup>}
+          {inProgress.length > 0 && group("in_progress", inProgress)}
+          {todo.length > 0 && group("todo", todo)}
           {done.length > 0 && (
             <Collapsible className="flex flex-col gap-2">
               <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="group/done self-start" />}>
@@ -217,6 +263,12 @@ export function TaskList({ userId, agentId, empty, emptyTitle }: ({ userId: stri
   );
 }
 
+/** A task's state as a mark: an empty ring, a turning one in progress, a check once done. */
+function TaskStatusMark({ status, className }: { status: TaskStatus; className?: string }) {
+  const Mark = status === "done" ? CheckCircleIcon : status === "in_progress" ? LoaderIcon : CircleIcon;
+  return <Mark className={cn("size-4 shrink-0", status === "in_progress" ? "animate-spin text-brand" : status === "done" ? "text-success" : "text-muted-foreground", className)} />;
+}
+
 /** A group: a card with its title and count, then its rows. */
 function TaskGroup({ title, count, children }: { title: string; count: number; children: ReactNode }) {
   return (
@@ -242,7 +294,7 @@ const priorityBadge: Record<Exclude<TaskPriority, "normal">, "destructive" | "se
 };
 
 /** `owner`: whose list it is (their own face is not repeated on each row). */
-function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
+function TaskRow({ task, owner, table }: { task: Task; owner: string | null; table?: boolean }) {
   const { user } = useRouteContext({ from: "/app" });
   const work = useWorkingOn();
   const mine = task.assignees.find((a) => a.id === user.id);
@@ -277,7 +329,7 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
   const StatusIcon = done ? CheckCircleIcon : task.status === "in_progress" ? LoaderIcon : CircleIcon;
 
   return (
-    <Item size="sm" role="listitem" className="flex-nowrap">
+    <Item size="sm" role="listitem" className={cn("flex-nowrap", table && "rounded-lg hover:bg-muted/50", table && done && "opacity-60")}>
       <ItemMedia>
         <Button
           variant="ghost"
@@ -295,26 +347,39 @@ function TaskRow({ task, owner }: { task: Task; owner: string | null }) {
           <span className={cn(done && "text-muted-foreground")}>
             <MentionText text={task.title} mentionables={mentions} />
           </span>
-          {task.priority !== "normal" && !done && <Badge variant={priorityBadge[task.priority]}>{p.label[task.priority]}</Badge>}
+          {task.priority !== "normal" && !done && <Badge variant={priorityBadge[task.priority]} className={cn(table && "md:hidden")}>{p.label[task.priority]}</Badge>}
         </ItemTitle>
         {task.description && (
-          <ItemDescription className="whitespace-pre-line">
+          <ItemDescription className={table ? "line-clamp-1" : "whitespace-pre-line"}>
             <MentionText text={task.description} mentionables={mentions} />
           </ItemDescription>
         )}
         {(from || task.dueOn) && (
           <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
             {from && <span className="truncate">{from}</span>}
-            {task.dueOn && <span className={cn("shrink-0", overdue && "text-destructive")}>{t.due(formatDueDate(task.dueOn))}</span>}
+            {task.dueOn && <span className={cn("shrink-0", overdue && "text-destructive", table && "md:hidden")}>{t.due(formatDueDate(task.dueOn))}</span>}
           </p>
         )}
       </ItemContent>
+      {/* The table's cells: priority, who, due date (its state is the mark at the start of the row). */}
+      {table && (
+        <>
+          <span className="hidden w-28 shrink-0 items-center gap-1.5 text-sm text-muted-foreground md:flex">
+            <CodePriorityIcon priority={taskPriorityMark[task.priority]} />
+            {task.priority !== "normal" && p.label[task.priority]}
+          </span>
+          <span className="hidden w-24 shrink-0 md:flex">
+            <Participants task={task} />
+          </span>
+          <span className={cn("hidden w-32 shrink-0 text-sm md:block", overdue ? "text-destructive" : "text-muted-foreground")}>{task.dueOn ? formatDueDate(task.dueOn) : ""}</span>
+        </>
+      )}
       {workingNow.length > 0 && !done && (
         <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{t.working(workingNow.map((a) => a.name).join(", "))}</span>
       )}
       <ItemActions className="gap-1">
         {/* On your own list, your face on every row says nothing: only shared tasks show who's on them. */}
-        {!(task.assignees.length === 1 && task.assignees[0]!.id === owner) && <Participants task={task} />}
+        {!table && !(task.assignees.length === 1 && task.assignees[0]!.id === owner) && <Participants task={task} />}
         {(task.canEdit || task.canDelete) && (
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t.actions} />}>

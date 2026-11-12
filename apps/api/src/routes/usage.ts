@@ -114,6 +114,8 @@ export const usage = new Hono<AppEnv>()
 
     const totals = zero();
     const series = new Map(buckets.map((b) => [b.t, zero()]));
+    // Each bucket's cost per bot ("" = no bot): the chart stacks them, one colour per bot.
+    const seriesAgents = new Map<string, Map<string, number>>();
     const byUser = new Map<string, Totals>();
     const byAgent = new Map<string, Totals>();
     const byTask = new Map<string, Totals & { source: string; name: string | null }>();
@@ -128,7 +130,12 @@ export const usage = new Hono<AppEnv>()
       const row: Totals = { ...r, cost: estimateCost(p.price, r, r.reported) };
       add(totals, row);
       const point = series.get(r.t);
-      if (point) add(point, row);
+      if (point) {
+        add(point, row);
+        const perAgent = seriesAgents.get(r.t) ?? new Map<string, number>();
+        perAgent.set(r.agentId ?? "", (perAgent.get(r.agentId ?? "") ?? 0) + row.cost);
+        seriesAgents.set(r.t, perAgent);
+      }
       bump(byUser, r.userId ?? "", zero, row);
       bump(byAgent, r.agentId ?? "", zero, row);
       const task = r.source === "chat" ? "chat" : `${r.source}:${r.taskId ?? ""}`;
@@ -151,7 +158,7 @@ export const usage = new Hono<AppEnv>()
       timezone: tz,
       scope: isAdmin ? ("all" as const) : ("self" as const),
       totals: summary(totals),
-      series: [...series.entries()].map(([t, v]) => ({ t, ...summary(v) })),
+      series: [...series.entries()].map(([t, v]) => ({ t, ...summary(v), costByAgent: Object.fromEntries(seriesAgents.get(t) ?? []) })),
       byUser: isAdmin
         ? sorted(byUser).map(([id, v]) => {
             const u = users.find((x) => x.id === id);

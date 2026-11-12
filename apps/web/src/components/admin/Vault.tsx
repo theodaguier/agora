@@ -3,7 +3,7 @@ import { useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
-import { LockIcon, MoreIcon, TrashIcon } from "@/components/icons";
+import { LockIcon, MoreIcon, TrashIcon, KeyIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,7 @@ import { api, type AdminAgent } from "@/lib/api";
 import { adminAgentsQuery } from "@/lib/queries";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
-import { ErrorText, LoadError, Loading, SectionHeader, useRestartNeeded } from "./ui";
+import { ErrorText, LoadError, Loading, SectionHeader, useRestartNeeded, SettingTile } from "./ui";
 
 type Secret = { key: string; preview: string | null; description: string; instance: boolean; agents: string[] };
 
@@ -173,6 +173,9 @@ export function Vault() {
               <ListCardRows>
                 {secrets.map((s) => (
                   <Item size="xs" key={s.key}>
+                    <SettingTile>
+                      <KeyIcon />
+                    </SettingTile>
                     <ItemContent className="min-w-0">
                       <ItemTitle>{s.key}</ItemTitle>
                       <ItemDescription className="truncate">{[s.preview, summary(s)].filter(Boolean).join(", ")}</ItemDescription>

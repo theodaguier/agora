@@ -1,6 +1,7 @@
 import { Image } from "expo-image";
 import { Avatar } from "heroui-native";
-import { AgentAvatar, mascotOf, useSize } from "@/components/agent-avatar";
+import { AgentAvatar, useSize } from "@/components/agent-avatar";
+import { AgentOrb } from "@/components/agent-orb";
 import { cn } from "@/lib/utils";
 
 const MARK = { avatar: { shape: "bean", color: "#9a6a4b" } } as const;
@@ -15,7 +16,7 @@ export function OrgLogo({ server, image, className }: { server?: string; image?:
         <Image style={{ width: "100%", height: "100%" }} contentFit="cover" />
       </Avatar.Image>
       <Avatar.Fallback animation="disabled">
-        <Image source={mascotOf(MARK.avatar.color).head} style={{ width: size, height: size }} contentFit="cover" />
+        <AgentOrb color={MARK.avatar.color} size={size} />
       </Avatar.Fallback>
     </Avatar>
   );
