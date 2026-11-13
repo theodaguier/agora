@@ -16,7 +16,7 @@ import { useDictation } from "@/components/composer/dictation";
 import { confirmAction } from "@/components/confirm-action";
 import { ContextDialog } from "@/components/context-dialog";
 import { PersonAvatar } from "@/components/conversation-avatar";
-import { ArrowUpIcon, ClockIcon, CloseIcon, MicIcon, PackageIcon, PlugIcon } from "@/components/icons";
+import { ArrowUpIcon, ClockIcon, CloseIcon, MicIcon, PackageIcon, PlugIcon, StopIcon } from "@/components/icons";
 import { MentionText } from "@/components/mention";
 import { ModelMenu } from "@/components/model-picker";
 import { useMe } from "@/components/server-scope";
@@ -30,10 +30,10 @@ import { scheduleLabel } from "@/lib/routines";
 import { invocationKey, type AgentSummary, type Attachment, type Invocation, type ReplyTo } from "@/lib/types";
 
 /*
- * apps/web/src/components/Composer.tsx, shaped like ChatGPT's: one card with the message being answered,
- * the pending files and a field that grows up to six lines, over a toolbar: "+" (menu: photo library,
- * camera, Files), the invocation chips, the model for a bot, the microphone (dictation), the send arrow.
- * Return adds a line, the arrow sends.
+ * apps/web/src/components/Composer.tsx: one card with the message being answered, the pending files and
+ * the invocation chips, a field that grows up to six lines, over a toolbar: "+" (menu: photo library,
+ * camera, Files) on the left, the microphone (dictation) and the send arrow (stop while a bot replies to
+ * you) on the right. The model is chosen from the "/" menu. Return adds a line, the arrow sends.
  */
 
 const messages = defineMessages({
@@ -109,6 +109,9 @@ type Props = {
   onCancelReply: () => void;
   /** The colleague of a direct conversation: warned about if they can't be disturbed, like mentioned ones. */
   recipientId?: string;
+  /** A bot replies to you: with nothing to send, the send button stops it (web: onStop). */
+  onStop?: () => void;
+  stopLabel?: string;
   ref?: Ref<ComposerHandle>;
 };
 
@@ -127,7 +130,7 @@ function currentToken(text: string, caret: number, withSlash: boolean, withMenti
   return null;
 }
 
-export function Composer({ conversationId, placeholder, botTools, mentionables = [], onSend, onTyping, replyTo, onCancelReply, recipientId, ref }: Props) {
+export function Composer({ conversationId, placeholder, botTools, mentionables = [], onSend, onTyping, replyTo, onCancelReply, recipientId, onStop, stopLabel, ref }: Props) {
   const [text, setText] = useState("");
   const [attachOpen, setAttachOpen] = useState(false);
   const [invocations, setInvocations] = useState<Invocation[]>([]);
@@ -329,11 +332,11 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
         </View>
       )}
       {/*
-       * Figma « Composer » (mobile): a 48 pt white pill with a hairline: "+", the field, the microphone and the
-       * send button in the accent (the bot's colour); the model is chosen from the "/" menu, as on the web.
-       * The quote, the files and the skills/connectors/routines called with the message stack above the line.
+       * Web « Composer »: a card (the field's white, a hairline) with the message being answered, the pending
+       * files and the skills/connectors/routines called with it on top, the field across its width, then its
+       * toolbar: attach on the left; dictation and send (or stop, while a bot replies to you) on the right.
        */}
-      <Surface variant="transparent" className="rounded-[24px] border border-border bg-background p-0" style={{ borderCurve: "continuous" }}>
+      <Surface variant="transparent" className="rounded-xl border border-field-border bg-field p-0" style={{ borderCurve: "continuous" }}>
         {(replyTo || files.length > 0 || invocations.length > 0) && (
           <View className="gap-1 px-1.5 pt-1.5">
             {replyTo && <ReplyStrip quote={replyTo} onCancel={onCancelReply} />}
@@ -352,37 +355,36 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             )}
           </View>
         )}
-        {/* 40 pt buttons 3 pt inside the hairline (48 pt in all); as the field grows, they stay on its last line. */}
-        <View className="flex-row items-end px-1 py-[3px]">
+        {/*
+         * The web lays a colored copy under a transparent field; a native field takes styled
+         * text as children instead (no `value`), so mentions are colored in the field itself.
+         */}
+        <Input
+          ref={area}
+          multiline
+          placeholder={placeholder}
+          aria-expanded={!!menu}
+          onChangeText={(value) => {
+            if (value.length > text.length) onTyping();
+            // Typing takes over from dictation (the text it writes itself is not an edit).
+            if (dictation.listening && value !== text) dictation.stop();
+            // Typing goes back to the message: the model palette gives way.
+            setModelOpen(false);
+            setText(value);
+          }}
+          onSelectionChange={(e) => setCaret(e.nativeEvent.selection.start)}
+          onKeyPress={(e) => {
+            if (e.nativeEvent.key === "Backspace" && text === "" && invocations.length) setInvocations((xs) => xs.slice(0, -1));
+          }}
+          // Part of the card rather than a field inside it: no fill, no border, no shadow, no focus outline (it is
+          // always the one being typed in). At the messages' size, six lines, then it scrolls.
+          className="max-h-[152px] min-h-11 border-transparent bg-transparent px-3.5 pt-3 pb-1 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
+        >
+          <MentionText text={text} mentionables={colored} flat />
+        </Input>
+        <View className="flex-row items-center gap-1 px-1.5 pb-1.5">
           <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
-          {/*
-           * The web lays a colored copy under a transparent field; a native field takes styled
-           * text as children instead (no `value`), so mentions are colored in the field itself.
-           */}
-          <Input
-            ref={area}
-            multiline
-            placeholder={placeholder}
-            aria-expanded={!!menu}
-            onChangeText={(value) => {
-              if (value.length > text.length) onTyping();
-              // Typing takes over from dictation (the text it writes itself is not an edit).
-              if (dictation.listening && value !== text) dictation.stop();
-              // Typing goes back to the message: the model palette gives way.
-              setModelOpen(false);
-              setText(value);
-            }}
-            onSelectionChange={(e) => setCaret(e.nativeEvent.selection.start)}
-            onKeyPress={(e) => {
-              if (e.nativeEvent.key === "Backspace" && text === "" && invocations.length) setInvocations((xs) => xs.slice(0, -1));
-            }}
-            // Part of the pill rather than a field inside it: no fill, no border, no shadow, no focus outline (it is
-            // always the one being typed in). One 22 pt line centred on the buttons' 40 pt, at the messages' size
-            // (text-body), placeholder included. Six lines, then it scrolls.
-            className="max-h-[152px] min-h-10 min-w-0 flex-1 border-transparent bg-transparent px-1 py-[9px] text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
-          >
-            <MentionText text={text} mentionables={colored} flat />
-          </Input>
+          <View className="flex-1" />
           <Button
             isIconOnly
             size="sm"
@@ -392,9 +394,15 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           >
             <MicIcon size={20} className={dictation.listening ? "text-danger" : "text-icon"} />
           </Button>
-          <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.send} isDisabled={!canSend} onPress={send}>
-            <ArrowUpIcon className="size-[18px] text-accent-foreground" strokeWidth={2.25} />
-          </Button>
+          {onStop && !canSend ? (
+            <Button isIconOnly size="sm" variant="primary" accessibilityLabel={stopLabel} onPress={withTap(onStop)}>
+              <StopIcon className="size-4 text-accent-foreground" />
+            </Button>
+          ) : (
+            <Button isIconOnly size="sm" variant={canSend ? "primary" : "secondary"} accessibilityLabel={t.send} accessibilityState={{ disabled: !canSend }} onPress={send}>
+              <ArrowUpIcon className={canSend ? "size-[18px] text-accent-foreground" : "size-[18px] text-subtle"} strokeWidth={2.25} />
+            </Button>
+          )}
         </View>
       </Surface>
       {botTools && <ContextDialog conversationId={conversationId} open={contextOpen} onOpenChange={setContextOpen} />}

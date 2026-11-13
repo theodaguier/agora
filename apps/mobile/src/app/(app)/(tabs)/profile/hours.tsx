@@ -2,13 +2,12 @@ import { DEFAULT_HOURS, type TimeRange, type WeeklyHours } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { Button, ControlField, ListGroup, SkeletonGroup, Typography } from "heroui-native";
+import { Button, ControlField, ListGroup, Typography } from "heroui-native";
 import { useMemo, useState } from "react";
 import { View } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { CheckIcon, CloseIcon, PlusIcon } from "@/components/icons";
+import { CloseIcon, GlobeIcon, PlusIcon } from "@/components/icons";
 import { MenuPicker } from "@/components/profile/native-pickers";
-import { LinkRow, Section, ToggleRow, useFeedback } from "@/components/profile/settings";
+import { LinkRow, LoadingRows, Section, SettingsScroll, SwitchRow, useAdminToast } from "@/components/admin/ui";
 import { ORG_TIMEZONE, zoneLabel } from "@/components/profile/timezone";
 import { TimeZoneSheet } from "@/components/time-zone-sheet";
 import { useMe } from "@/components/server-scope";
@@ -65,12 +64,9 @@ export default function Hours() {
       {data ? (
         <HoursForm key={JSON.stringify([data.timezone, data.hours])} userId={userId} self={userId === me.id} settings={data} />
       ) : (
-        <KeyboardAwareScrollView bottomOffset={24} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="gap-4 px-4 pt-4">
-          <SkeletonGroup isLoading className="gap-4">
-            <SkeletonGroup.Item className="h-14" />
-            <SkeletonGroup.Item className="h-96" />
-          </SkeletonGroup>
-        </KeyboardAwareScrollView>
+        <SettingsScroll>
+          <LoadingRows avatar={false} />
+        </SettingsScroll>
       )}
     </>
   );
@@ -79,7 +75,7 @@ export default function Hours() {
 function HoursForm({ userId, self, settings }: { userId: string; self: boolean; settings: ScheduleSettings }) {
   const t = { ...messages, ...tr(common) };
   const qc = useQueryClient();
-  const feedback = useFeedback();
+  const toast = useAdminToast();
   // Capitalized here: "lundi" → "Lundi".
   const days = useMemo(() => weekdayNames().map((d) => d.charAt(0).toLocaleUpperCase() + d.slice(1)), []);
   const [enabled, setEnabled] = useState(settings.hours !== null);
@@ -96,10 +92,10 @@ function HoursForm({ userId, self, settings }: { userId: string; self: boolean; 
     onSuccess: async () => {
       qc.invalidateQueries({ queryKey: presenceQuery.queryKey });
       await qc.invalidateQueries({ queryKey: scheduleSettingsQuery(userId).queryKey });
-      feedback.saved();
+      toast.success();
       router.back();
     },
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
   });
   const dirty = JSON.stringify([zone === ORG_TIMEZONE ? null : zone, enabled ? hours : null]) !== JSON.stringify([settings.timezone, settings.hours]);
   const setDay = (day: number, ranges: TimeRange[]) => setHours((h) => h.map((r, i) => (i === day ? ranges : r)));
@@ -109,13 +105,13 @@ function HoursForm({ userId, self, settings }: { userId: string; self: boolean; 
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={save.isPending ? t.saving : t.save} disabled={!dirty || save.isPending} variant="prominent" onPress={withTap(() => save.mutate())} />
       </Stack.Toolbar>
-      <KeyboardAwareScrollView bottomOffset={24} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="gap-8 px-4 pb-12 pt-4">
+      <SettingsScroll>
         <Section footer={self ? t.setHoursHelp : t.setHoursHelpOther}>
-          <ToggleRow title={t.setHours} value={enabled} onChange={setEnabled} />
+          <SwitchRow title={t.setHours} value={enabled} onChange={setEnabled} />
         </Section>
 
         {enabled && (
-          <Section header={t.days}>
+          <Section title={t.days}>
             {hours.map((ranges, day) => (
               <View key={day} className="gap-2 pb-3">
                 {/* The day's switch: a ControlField the whole line toggles, as HeroUI's ListGroup example. */}
@@ -156,7 +152,7 @@ function HoursForm({ userId, self, settings }: { userId: string; self: boolean; 
                         isDisabled={ranges.length >= 4}
                         onPress={withTap(() => setDay(day, [...ranges, nextRange(ranges)]))}
                       >
-                        <PlusIcon className="size-5 text-accent" />
+                        <PlusIcon className="size-5 text-foreground" />
                       </Button>
                     ) : (
                       <Button isIconOnly size="sm" variant="ghost" accessibilityLabel={t.removeRange} onPress={withTap(() => setDay(day, ranges.filter((_, j) => j !== i)))}>
@@ -171,9 +167,9 @@ function HoursForm({ userId, self, settings }: { userId: string; self: boolean; 
         )}
 
         <Section>
-          <LinkRow title={t.timezone} value={zone === ORG_TIMEZONE ? orgZone.label : zoneLabel(zone)} onPress={() => setPicking(true)} />
+          <LinkRow icon={GlobeIcon} title={t.timezone} value={zone === ORG_TIMEZONE ? orgZone.label : zoneLabel(zone)} onPress={() => setPicking(true)} />
         </Section>
-      </KeyboardAwareScrollView>
+      </SettingsScroll>
       <TimeZoneSheet isOpen={picking} onOpenChange={setPicking} value={zone} onChange={setZone} first={orgZone} title={t.timezone} placeholder={t.searchTimezone} />
     </>
   );

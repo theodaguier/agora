@@ -10,8 +10,8 @@ import { cn } from "@/lib/utils";
  * are PressableFeedback, bars and segments are Surfaces colored with theme tokens.
  */
 
-/** `className`: the segment's background token (bg-accent, bg-warning, bg-success…). */
-export type BarSegment = { value: number; className: string };
+/** `className`: the segment's background token (bg-accent, bg-warning, bg-success…); `color`: a colour of its own (a bot's). */
+export type BarSegment = { value: number; className?: string; color?: string };
 
 export function Bars<T>({
   data,
@@ -62,7 +62,7 @@ export function Bars<T>({
                 .slice()
                 .reverse()
                 .map((s, j) => (
-                  <Surface key={j} className={cn("rounded-none p-0 shadow-none", s.className)} style={{ flex: s.value }} />
+                  <Surface key={j} className={cn("rounded-none p-0 shadow-none", s.className)} style={{ flex: s.value, ...(s.color && { backgroundColor: s.color }) }} />
                 ))}
             </Surface>
           </PressableFeedback>

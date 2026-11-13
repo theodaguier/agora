@@ -1,4 +1,4 @@
-import type { ServerHistoryRange, ServerReport } from "@agora/core";
+import type { ServerHistoryRange, ServerReport, SshHostDto, SshLogEntry } from "@agora/core";
 import { queryOptions } from "@tanstack/react-query";
 import { ApiError, api, apiUrl, authHeaders } from "./api";
 import { readLocalFile } from "./files";
@@ -265,3 +265,7 @@ const FALLBACK_ZONES = [
   "America/Anchorage",
   "Pacific/Honolulu",
 ];
+
+/** Settings › SSH machines (apps/web/src/components/admin/Machines.tsx, apps/api ssh.ts). */
+export const sshHostsQuery = queryOptions({ queryKey: ["admin", "ssh"], queryFn: () => api<SshHostDto[]>("/admin/ssh") });
+export const sshLogQuery = (id: string) => queryOptions({ queryKey: ["admin", "ssh", id, "log"], queryFn: () => api<SshLogEntry[]>(`/admin/ssh/${id}/log`) });

@@ -12,10 +12,8 @@ export const rowMessages = defineMessages({
     reopen: "Move back to to-do",
     complete: "Mark as done",
     failed: "Couldn't update the task.",
-    now: "Working on it now",
     workOn: "I'm working on it",
     stopWorking: "I'm no longer working on it",
-    overdue: "Overdue",
   },
   fr: {
     deleteTitle: (title: string) => `Supprimer « ${title} » ?`,
@@ -27,10 +25,8 @@ export const rowMessages = defineMessages({
     reopen: "Remettre à faire",
     complete: "Marquer comme terminée",
     failed: "Modification impossible.",
-    now: "En ce moment",
     workOn: "Je travaille dessus",
     stopWorking: "Je ne travaille plus dessus",
-    overdue: "En retard",
   },
 });
 

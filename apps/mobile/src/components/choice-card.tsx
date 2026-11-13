@@ -38,7 +38,7 @@ export function ChoiceCard(props: { choices: Choices; onAnswer: (text: string) =
 
   return (
     <Card className={cn(blockCard, "gap-2 overflow-hidden px-0 pb-0")}>
-      <View className="px-[18px]">
+      <View className="px-3">
         <BlockHeader title={choices.question} description={choices.hint} onClose={onDismiss} closeLabel={t.dismiss} />
       </View>
 
@@ -46,13 +46,13 @@ export function ChoiceCard(props: { choices: Choices; onAnswer: (text: string) =
         <ListGroup variant="transparent" accessibilityRole="radiogroup" accessibilityLabel={t.options}>
           {choices.options.map((o, i) => (
             <Fragment key={o.label}>
-              {i > 0 && <Separator className="ml-[58px]" />}
+              {i > 0 && <Separator className="ml-[52px]" />}
               <ListGroup.Item
                 onPress={() => pick(o.label)}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: picked === o.label }}
                 accessibilityLabel={o.label}
-                className="px-[18px] py-2.5"
+                className="px-3 py-2.5"
               >
                 <ListGroup.ItemPrefix>
                   <Avatar alt={letters[i]!} variant="soft" color="default" className="size-7">
@@ -105,7 +105,7 @@ export function ChoiceCard(props: { choices: Choices; onAnswer: (text: string) =
               </TextField>
             </View>
           ) : (
-            <ListGroup.Item onPress={withTap(() => setWriting(true))} accessibilityRole="button" accessibilityLabel={t.own} className="px-[18px] py-3.5">
+            <ListGroup.Item onPress={withTap(() => setWriting(true))} accessibilityRole="button" accessibilityLabel={t.own} className="px-3 py-3">
               <ListGroup.ItemPrefix>
                 <ReplyIcon size={18} className="text-muted" />
               </ListGroup.ItemPrefix>

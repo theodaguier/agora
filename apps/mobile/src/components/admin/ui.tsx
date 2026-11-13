@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   InputGroup,
+  Label,
   ListGroup,
   Popover,
   PressableFeedback,
@@ -11,21 +12,23 @@ import {
   Separator,
   SkeletonGroup,
   Spinner,
+  Surface,
   Switch,
+  TextField,
   Typography,
   useToast,
 } from "heroui-native";
-import { Children, forwardRef, Fragment, useMemo, useState, type ComponentProps, type ElementRef, type ReactElement, type ReactNode } from "react";
+import { Children, forwardRef, Fragment, useEffect, useMemo, useState, type ComponentProps, type ElementRef, type ReactElement, type ReactNode } from "react";
 import { RefreshControl, View, type AccessibilityActionEvent, type AccessibilityActionInfo } from "react-native";
 import { Circle, Path } from "react-native-svg";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { createIcon, EyeIcon } from "@/components/icons";
+import { createIcon, EyeIcon, type IconComponent } from "@/components/icons";
 import { circle, Hole } from "@/components/icons/create-icon";
 import { haptic, withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
 import { useAdminAccess } from "@/lib/agents-admin";
 import { LongPressMenu, TapMenu, type MenuEntry, type SFSymbol } from "@/components/menus";
-import { rowKey } from "@/lib/utils";
+import { cn, rowKey } from "@/lib/utils";
 
 /* apps/web/src/components/admin/ui.tsx, as iOS grouped settings built from the HeroUI Native parts. */
 
@@ -95,19 +98,19 @@ export function SettingsScroll({ children, onRefresh }: { children: ReactNode; o
   );
 }
 
-/** Intro under the large title, like the web's section header text. */
+/** Intro of a screen, the web's SectionHeader text (its title is the header's). */
 export function Intro({ children }: { children: ReactNode }) {
   return (
-    <Typography.Paragraph type="body-sm" color="muted" className="px-4">
+    <Typography.Paragraph type="body-sm" color="muted" className="px-1">
       {children}
     </Typography.Paragraph>
   );
 }
 
-/** Header of a grouped section (the list-group example's muted label above the group). */
+/** Name of a grouped section, as the web's SettingsGroup title: medium weight, above the group's edge. */
 export function SectionTitle({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <Typography.Paragraph type="body-sm" color="muted" className={className ?? "px-4"}>
+    <Typography.Paragraph type="body-sm" weight="medium" className={className ?? "px-1"}>
       {children}
     </Typography.Paragraph>
   );
@@ -167,7 +170,7 @@ export function Section({
   return (
     <View className="gap-2">
       {(title || action || help) && (
-        <View className="min-h-8 flex-row items-center justify-between gap-3 px-4">
+        <View className="min-h-8 flex-row items-center justify-between gap-3 px-1">
           <View className="flex-1 flex-row items-center gap-1">
             {!!title && <SectionTitle className="shrink">{title}</SectionTitle>}
             {!!help && <InfoPopover title={title ?? ""} description={help} />}
@@ -221,6 +224,91 @@ export const PressableRow = forwardRef<ElementRef<typeof PressableFeedback>, Pre
     </PressableFeedback>
   );
 });
+
+const tones = { success: "text-success", warning: "text-warning", danger: "text-danger" };
+
+/**
+ * The web's SettingTile: a settings row's icon in a muted tile, as its ListGroup.ItemPrefix. Rows whose
+ * media says more (an avatar, a logo) keep it. `tone`: a state the icon shows (do not disturb on…).
+ */
+export function SettingTile({ icon: Icon, tone }: { icon: IconComponent; tone?: "success" | "warning" | "danger" }) {
+  return (
+    <ListGroup.ItemPrefix>
+      <Surface variant="secondary" className="size-8 items-center justify-center rounded-lg p-0 shadow-none">
+        <Icon size={16} className={tone ? tones[tone] : "text-muted"} />
+      </Surface>
+    </ListGroup.ItemPrefix>
+  );
+}
+
+/**
+ * A row that opens something, as an entry of the web's settings navigation: its tile, title, an
+ * optional value and the chevron. Takes the Pressable props, so a Link `asChild` or a TapMenu drives it.
+ */
+export const LinkRow = forwardRef<
+  ElementRef<typeof PressableFeedback>,
+  Omit<PressableRowProps, "children"> & {
+    icon?: IconComponent;
+    tone?: "success" | "warning" | "danger";
+    title: string;
+    description?: string | null;
+    value?: string | null;
+    /** A status on the right ("New"…). */
+    badge?: ReactNode;
+    destructive?: boolean;
+    chevron?: boolean;
+  }
+>(function LinkRow({ icon, tone, title, description, value, badge, destructive, chevron = true, ...props }, ref) {
+  return (
+    <PressableRow ref={ref} accessibilityLabel={[title, description, value].filter(Boolean).join(", ")} {...props}>
+      {icon && <SettingTile icon={icon} tone={tone} />}
+      <ListGroup.ItemContent>
+        <ListGroup.ItemTitle numberOfLines={1} className={destructive ? "text-danger" : undefined}>
+          {title}
+        </ListGroup.ItemTitle>
+        {!!description && <ListGroup.ItemDescription numberOfLines={2}>{description}</ListGroup.ItemDescription>}
+      </ListGroup.ItemContent>
+      {!!value && (
+        <Typography.Paragraph type="body-sm" color="muted" numberOfLines={1} className="max-w-44 shrink">
+          {value}
+        </Typography.Paragraph>
+      )}
+      {badge}
+      {chevron && <ListGroup.ItemSuffix />}
+    </PressableRow>
+  );
+});
+
+/** The web's SettingsRow: what it is on the left (a hint under it), its value or control on the right. */
+export function SettingsRow({ label, hint, value, children }: { label: string; hint?: string | null; value?: string | null; children?: ReactNode }) {
+  return (
+    <ListGroup.Item disabled>
+      <ListGroup.ItemContent>
+        <ListGroup.ItemTitle>{label}</ListGroup.ItemTitle>
+        {!!hint && <ListGroup.ItemDescription numberOfLines={2}>{hint}</ListGroup.ItemDescription>}
+      </ListGroup.ItemContent>
+      {!!value && (
+        <Typography.Paragraph type="body-sm" color="muted" numberOfLines={1} selectable className="max-w-52 shrink">
+          {value}
+        </Typography.Paragraph>
+      )}
+      {children}
+    </ListGroup.Item>
+  );
+}
+
+/**
+ * A form field as a row of a group (the web's ProfileFields `rows`): its label on the left, the
+ * field on the right; `top` aligns the label with the first line of a multi-line field.
+ */
+export function FieldRow({ label, required, invalid, top, children }: { label: string; required?: boolean; invalid?: boolean; top?: boolean; children: ReactNode }) {
+  return (
+    <TextField isRequired={required} isInvalid={invalid} className={cn("flex-row gap-4 px-4 py-2.5", top ? "items-start" : "items-center")}>
+      <Label className={cn("w-24", top && "pt-2.5")}>{label}</Label>
+      <View className="flex-1 gap-1">{children}</View>
+    </TextField>
+  );
+}
 
 /** Props RowMenu hands to its row, so a long press (or a VoiceOver action) opens the menu. */
 export type RowMenuTargetProps = {
@@ -332,8 +420,14 @@ export function SearchBox({ value, onChange, placeholder }: { value: string; onC
   );
 }
 
-/** Placeholder rows while a list loads (the skeleton example's list rows). */
+/** Placeholder rows while a list loads (the skeleton example's list rows); nothing for a quick answer, as the web's Loading. */
 export function LoadingRows({ rows = 3, avatar = true }: { rows?: number; avatar?: boolean }) {
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setLate(true), 300);
+    return () => clearTimeout(id);
+  }, []);
+  if (!late) return null;
   return (
     <ListGroup>
       {Array.from({ length: rows }, (_, i) => (

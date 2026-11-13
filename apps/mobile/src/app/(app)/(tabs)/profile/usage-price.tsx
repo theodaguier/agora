@@ -1,17 +1,14 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, Button, Description, FieldError, Input, Label, Spinner, TextField, Typography } from "heroui-native";
+import { Button, FieldError, Input } from "heroui-native";
 import { useState } from "react";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { AdminGate } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FieldRow, Intro, LoadingRows, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
-import { useFeedback } from "@/components/profile/settings";
 import { providerName } from "@/components/profile/usage-format";
 import { PRICE_FIELDS, pricesMessages, pricesQuery, type ModelPriceRow, type Price } from "@/components/profile/usage-prices";
 import { api } from "@/lib/api";
 import { tr } from "@/lib/i18n";
-import { CheckIcon, CloseIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 
@@ -28,15 +25,8 @@ export default function UsagePrice() {
       <AdminGate>
         {row ? (
           <PriceForm key={`${row.provider}::${row.model}::${row.source}`} row={row} />
-        ) : error ? (
-          <Alert status="danger" className="m-4">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>{error.message}</Alert.Title>
-            </Alert.Content>
-          </Alert>
         ) : (
-          <Spinner className="mt-24 self-center" />
+          <SettingsScroll>{error ? <ErrorAlert error={error} /> : <LoadingRows avatar={false} rows={4} />}</SettingsScroll>
         )}
       </AdminGate>
     </>
@@ -48,7 +38,7 @@ function PriceForm({ row }: { row: ModelPriceRow }) {
   const c = tr(common);
   const qc = useQueryClient();
   const router = useRouter();
-  const feedback = useFeedback();
+  const toast = useAdminToast();
   const initial = Object.fromEntries(PRICE_FIELDS.map((k) => [k, row.price ? String(row.price[k]) : ""])) as Record<(typeof PRICE_FIELDS)[number], string>;
   const [draft, setDraft] = useState(initial);
   const dirty = PRICE_FIELDS.some((k) => draft[k] !== initial[k]);
@@ -64,14 +54,14 @@ function PriceForm({ row }: { row: ModelPriceRow }) {
     mutationFn: () => api("/usage/prices", { method: "PUT", body: JSON.stringify({ provider: row.provider, model: row.model, ...parsed }) }),
     // Toasts show once the sheet is closed; a failure stays inline, in the sheet.
     onSuccess: () => {
-      feedback.saved();
+      toast.success();
       return done();
     },
   });
   const reset = useMutation({
     mutationFn: () => api(`/usage/prices?${new URLSearchParams({ provider: row.provider, model: row.model })}`, { method: "DELETE" }),
     onSuccess: () => {
-      feedback.saved(t.resetDone);
+      toast.success(t.resetDone);
       return done();
     },
   });
@@ -85,29 +75,21 @@ function PriceForm({ row }: { row: ModelPriceRow }) {
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={save.isPending ? t.saving : t.save} disabled={!dirty || !valid || save.isPending} variant="prominent" onPress={withTap(() => save.mutate())} />
       </Stack.Toolbar>
-      <KeyboardAwareScrollView bottomOffset={24}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        className="bg-background"
-        contentContainerClassName="gap-6 p-4 pb-12"
-      >
-        <Typography.Paragraph type="body-sm" color="muted" className="px-4">
-          {`${providerName(row.provider)} · ${t.priceSource[row.source]}`}
-          {"\n"}
-          {t.pricesIntro}
-        </Typography.Paragraph>
-        {PRICE_FIELDS.map((k) => (
-          <TextField key={k} isInvalid={invalid(k)}>
-            <Label>{t[k]}</Label>
-            <Input
-              value={draft[k]}
-              onChangeText={(v) => setDraft((d) => ({ ...d, [k]: v }))}
-              placeholder={row.catalogue ? String(row.catalogue[k]) : "0"}
-              keyboardType="decimal-pad"
-            />
-          </TextField>
-        ))}
-        {row.source === "engine" && <Description className="px-4">{t.engineNote}</Description>}
+      <SettingsScroll>
+        <Intro>{`${providerName(row.provider)} · ${t.priceSource[row.source]}\n${t.pricesIntro}`}</Intro>
+        <Section footer={row.source === "engine" ? t.engineNote : undefined}>
+          {PRICE_FIELDS.map((k) => (
+            <FieldRow key={k} label={t[k]} invalid={invalid(k)}>
+              <Input
+                variant="secondary"
+                value={draft[k]}
+                onChangeText={(v) => setDraft((d) => ({ ...d, [k]: v }))}
+                placeholder={row.catalogue ? String(row.catalogue[k]) : "0"}
+                keyboardType="decimal-pad"
+              />
+            </FieldRow>
+          ))}
+        </Section>
         <FieldError isInvalid={!!error}>{error?.message}</FieldError>
         {row.source === "admin" && !dirty && (
           <Button
@@ -119,7 +101,7 @@ function PriceForm({ row }: { row: ModelPriceRow }) {
             {t.reset}
           </Button>
         )}
-      </KeyboardAwareScrollView>
+      </SettingsScroll>
     </>
   );
 }

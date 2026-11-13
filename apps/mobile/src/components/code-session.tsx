@@ -1,15 +1,17 @@
-import { byCodePriority, CODE_PRIORITIES, codeDetailLine, codeSessionState, codeStatusText, placeCodeSessions, type CodePriority, type CodeSession, type CodeSessionRef, type CodeSessionStatus } from "@agora/core";
+import { byCodePriority, CODE_ENGINE_NAMES, CODE_PRIORITIES, codeDetailLine, codeSessionState, codeStatusText, placeCodeSessions, type CodePriority, type CodeSession, type CodeSessionRef, type CodeSessionStatus } from "@agora/core";
 import { codeSessions } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, type Href } from "expo-router";
-import { Button, Card, ListGroup, Separator, Surface, Typography } from "heroui-native";
+import { Card, ListGroup, PressableFeedback, Separator, Surface, Typography } from "heroui-native";
 import { Fragment, useEffect, type ReactNode } from "react";
 import { View } from "react-native";
 import { useAdminToast } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { CodePriorityIcon, CodeStateIcon, IssueIcon } from "@/components/code-session-marks";
-import { CodeIcon, PlusIcon } from "@/components/icons";
+import { CodePriorityIcon, CodeStateIcon, codeStateTone, IssueIcon } from "@/components/code-session-marks";
+import { ChevronRightIcon, PlusIcon } from "@/components/icons";
+import { ModelLogo } from "@/components/model-logo";
+import { Shimmer } from "@/components/shimmer";
 import { LongPressMenu, type MenuEntry } from "@/components/menus";
 import { useMe } from "@/components/server-scope";
 import { applyCodeSession, codeModelsQuery, codeSessionsQuery, deleteCodeSession, dropCodeSession, refreshCodeSessionGit, setCodeSessionPriority } from "@/lib/code-sessions";
@@ -17,6 +19,7 @@ import { listTime } from "@/lib/dates";
 import { conversationQuery } from "@/lib/queries";
 import { withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 /*
  * apps/web/src/components/CodeSession.tsx, in the thread: a session's card where the bot started it,
@@ -49,42 +52,122 @@ export function priorityEntries(session: Pick<CodeSession, "priority">, set: (p:
   return [{ title: t.priority, actions: CODE_PRIORITIES.map((p) => ({ label: t.priorities[p], mark: <CodePriorityIcon priority={p} />, checked: session.priority === p, onPress: () => p !== session.priority && set(p) })) }];
 }
 
-/** Card of a Claude Code session, where it was started in the conversation: where it stands, and the way into its steps. */
+/** The session card's frame (web: Card size sm): white, a hairline, its parts edge to edge. */
+const sessionCard = "w-full gap-0 overflow-hidden rounded-xl border border-border bg-background p-0";
+
+/** Card of a code session, where it was started in the conversation: it fetches the session, then shows it live. */
 export function CodeSessionCard({ conversationId, sessionId, title }: { conversationId: string; sessionId: string; title: string }) {
   const t = tr(codeSessions);
   const { data } = useQuery(codeSessionsQuery(conversationId));
   const session = data?.find((s) => s.id === sessionId);
   // Deleted by its owner: the card stays, without the way into it.
-  const gone = !!data && !session;
-  const status = session?.status ?? "running";
-  const detail = session && codeDetailLine(session);
+  if (!session) {
+    return (
+      <Card className={sessionCard}>
+        <Card.Body className="gap-0.5 px-3.5 py-3">
+          <Card.Title numberOfLines={1} className="text-subheadline font-medium">
+            {title}
+          </Card.Title>
+          <Card.Description className="text-footnote">{data ? t.gone : t.status.running}</Card.Description>
+        </Card.Body>
+      </Card>
+    );
+  }
+  return <LiveSessionCard session={session} onOpen={() => router.push(codeSessionHref(conversationId, sessionId))} />;
+}
+
+/**
+ * Figma « Carte de session vivante » (web: LiveSessionCard): one line that opens the session (who codes,
+ * its title over its repository, its state); under a hairline, what it waits for, what it does now and
+ * its tasks, its pull request, or its answer.
+ */
+export function LiveSessionCard({ session, onOpen }: { session: CodeSession; onOpen: () => void }) {
+  const t = tr(codeSessions);
+  const state = codeSessionState(session);
+  const waiting = !!(session.approval || session.question);
+  const running = session.status === "running" && !waiting;
+  const done = session.todos.filter((x) => x.status === "completed").length;
+  const tone = codeStateTone(state);
   return (
-    <Card className="w-full flex-row items-center gap-3 self-start rounded-[14px] border border-border bg-background p-3">
-      <Surface variant="secondary" className="size-9 items-center justify-center rounded-[10px] p-0 shadow-none">
-        <CodeIcon size={18} className="text-foreground" />
-      </Surface>
-      <Card.Body className="min-w-0 gap-0.5">
-        <Card.Title numberOfLines={1} className="text-sm font-semibold">
-          {session?.title ?? title}
-        </Card.Title>
-        <View className="flex-row items-center gap-1.5">
-          {session && <CodeStateIcon state={codeSessionState(session)} size={12} />}
-          <Card.Description numberOfLines={1} className="shrink-0 text-footnote">
-            {session ? codeStatusText(t, session) : gone ? t.gone : t.status[status]}
-          </Card.Description>
-          {!!detail && (
-            <Typography type="body-xs" numberOfLines={1} className="ml-1 min-w-0 shrink text-subtle">
-              {detail}
+    <Card className={sessionCard}>
+      <PressableFeedback onPress={withTap(onOpen)} accessibilityRole="button" accessibilityLabel={session.title} className="flex-row items-center gap-3 px-3.5 py-3">
+        <PressableFeedback.Highlight />
+        {/* Who codes: Claude Code or Codex, by its logo; its name for VoiceOver. */}
+        <Surface variant="secondary" accessibilityLabel={CODE_ENGINE_NAMES[session.engine]} className="size-7 items-center justify-center rounded-md p-0 shadow-none">
+          <ModelLogo provider={ENGINE_PROVIDER[session.engine]} model={session.engine === "cursor" ? undefined : session.engine} size={16} />
+        </Surface>
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Typography type="body-sm" weight="medium" numberOfLines={1}>
+            {session.title}
+          </Typography>
+          {!!session.repo && (
+            <Typography type="body-xs" numberOfLines={1} className="font-mono text-subtle">
+              {session.repo}
             </Typography>
           )}
         </View>
-      </Card.Body>
-      {!gone && (
-        <Button size="sm" variant="secondary" onPress={withTap(() => router.push(codeSessionHref(conversationId, sessionId)))}>
-          {isActive(status) ? t.follow : t.open}
-        </Button>
-      )}
+        <View className="max-w-[40%] shrink-0 flex-row items-center gap-1.5">
+          <CodeStateIcon state={state} size={12} />
+          <Typography type="body-xs" color="muted" numberOfLines={1} className={cn("shrink", tone)}>
+            {codeStatusText(t, session)}
+          </Typography>
+          <ChevronRightIcon size={12} className="text-subtle" />
+        </View>
+      </PressableFeedback>
+      {waiting ? (
+        <SessionSection>
+          {/* What it waits for; its decision is taken in the session (a tap on the line above). */}
+          <Typography type="body-sm" numberOfLines={3} className="text-state-you">
+            {codeDetailLine(session)}
+          </Typography>
+        </SessionSection>
+      ) : running ? (
+        <SessionSection className="flex-row items-center gap-2">
+          <View className="min-w-0 flex-1">
+            <Shimmer numberOfLines={1}>{session.activity || t.status.running}</Shimmer>
+          </View>
+          {session.todos.length > 0 && (
+            <Typography type="body-sm" color="muted" className="shrink-0 tabular-nums">
+              {t.view.tasksCount(done, session.todos.length)}
+            </Typography>
+          )}
+        </SessionSection>
+      ) : session.git?.pr ? (
+        <SessionSection className="flex-row items-center gap-2">
+          <Typography type="body-sm" weight="medium" className="shrink-0">
+            {t.git.pr(session.git.pr.number)}
+          </Typography>
+          <Typography type="body-sm" color="muted" numberOfLines={1} className="min-w-0 shrink">
+            {session.git.pr.title}
+          </Typography>
+          <Typography type="body-sm" className={cn("shrink-0", PR_TONE[session.git.pr.state])}>
+            {t.git.prState[session.git.pr.state]}
+          </Typography>
+        </SessionSection>
+      ) : session.result ? (
+        <SessionSection>
+          <Typography type="body-sm" color="muted" numberOfLines={2}>
+            {session.result}
+          </Typography>
+        </SessionSection>
+      ) : null}
     </Card>
+  );
+}
+
+/** Who codes, as LobeHub names its vendor (web: ModelLogo provider={engine}). */
+export const ENGINE_PROVIDER: Record<CodeSession["engine"], string> = { claude: "anthropic", codex: "openai", cursor: "cursor" };
+
+/** A pull request's state in GitHub's colours: open running, merged violet, closed neutral. */
+const PR_TONE = { open: "text-state-running", merged: "text-state-merged", closed: "text-state-neutral" } as const;
+
+/** A part of the session card under its line, past a hairline. */
+function SessionSection({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <>
+      <Separator />
+      <View className={cn("px-3.5 py-3", className)}>{children}</View>
+    </>
   );
 }
 

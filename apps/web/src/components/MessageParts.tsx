@@ -145,17 +145,16 @@ export function ChatMessage(props: {
         <div
           className={cn(
             "flex w-fit min-w-0 max-w-full flex-col gap-1 overflow-hidden rounded-2xl p-1",
-            mine ? "bubble-mine bg-bot text-bot-foreground" : "bg-muted",
+            mine ? "bubble-mine bg-accent text-foreground" : "bg-muted",
             attachments.some((a) => isImage(a.mime) || isVideo(a.mime)) ? "w-80" : "max-w-sm",
             replyTo && "min-w-56",
           )}
         >
-          {forwarded && <p className={cn("px-2 pt-1 text-xs", mine ? "text-primary-foreground/75" : "text-muted-foreground")}>{t.forwardedFrom(forwarded.authorName)}</p>}
+          {forwarded && <p className="px-2 pt-1 text-xs text-muted-foreground">{t.forwardedFrom(forwarded.authorName)}</p>}
           {replyTo && (
             <QuoteBlock
               quote={replyTo}
               onClick={onQuote && (() => onQuote(replyTo.id))}
-              className={mine ? "bg-primary-foreground/15 **:text-primary-foreground" : undefined}
             />
           )}
           {attachments.length > 0 && <BubbleAttachments items={attachments} />}

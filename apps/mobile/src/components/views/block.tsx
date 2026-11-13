@@ -7,15 +7,15 @@ import { usePopoverInsets } from "@/lib/popover-insets";
 import { cn } from "@/lib/utils";
 
 /*
- * The anatomy shared by every block a bot sends in a conversation (the Figma « Blocs IA — v2 »):
- * one white card, a header (the title as its only strong element, a muted line, an optional
- * status dot), one grouped zone, then the actions.
+ * apps/web/src/components/views/block.tsx: the anatomy shared by every block a bot sends in a
+ * conversation (choices, questions, requests, views). One white card at the Geist density (12 pt
+ * around and between its parts), a header on one line over a hairline, one grouped zone, the actions.
  */
 
-/** The block's Card, as Figma « Carte d'autorisation » and « Carte de PR »: white, a 1px border, radius 14. */
-export const blockCard = "w-full gap-3 rounded-[14px] border border-border bg-background px-4 py-3.5";
+/** The block's Card (web: Card size sm): white, a 1 pt border, 12 pt inside. */
+export const blockCard = "w-full gap-3 rounded-xl border border-border bg-background px-3 py-3";
 
-/** A status tone as the color of its dot (`info`: in progress, the brand blue). */
+/** A status tone as the color of its dot and its words (`info`: in progress, the brand blue). */
 const DOT: Record<StatusTone, string> = {
   warning: "bg-warning",
   success: "bg-success",
@@ -23,8 +23,19 @@ const DOT: Record<StatusTone, string> = {
   info: "bg-brand",
   neutral: "bg-muted",
 };
+const TONE_TEXT: Record<StatusTone, string> = {
+  warning: "text-warning",
+  success: "text-success",
+  danger: "text-danger",
+  info: "text-brand",
+  neutral: "text-muted",
+};
 
-/** Header of a block: optional `icon` inline before the title, the muted line, the status, the close button. */
+/**
+ * A block's header on one line, as Linear's (web: BlockHeader): what it is (its icon, its title),
+ * where it comes from in grey beside it, its state or the close button on the right; a hairline under
+ * it, edge to edge. A long title wraps and sends the grey line under it.
+ */
 export function BlockHeader(props: {
   title: ReactNode;
   description?: ReactNode;
@@ -35,29 +46,34 @@ export function BlockHeader(props: {
   closeLabel?: string;
 }) {
   return (
-    <Card.Header className="flex-row items-start gap-3">
-      <View className="min-w-0 flex-1 gap-1">
-        <View className="flex-row items-start gap-2">
-          {!!props.icon && <View className="pt-0.5">{props.icon}</View>}
-          <Card.Title numberOfLines={props.titleLines} className="min-w-0 flex-1 text-headline font-semibold">
+    <Card.Header className="gap-3">
+      <View className="flex-row items-center gap-2">
+        {!!props.icon && <View className="shrink-0">{props.icon}</View>}
+        <View className="min-w-0 flex-1 flex-row flex-wrap items-center gap-x-2 gap-y-0.5">
+          <Card.Title numberOfLines={props.titleLines} className="shrink text-subheadline font-medium">
             {props.title}
           </Card.Title>
+          {!!props.description && (
+            <Card.Description numberOfLines={1} className="shrink text-footnote text-subtle">
+              {props.description}
+            </Card.Description>
+          )}
         </View>
-        {!!props.description && <Card.Description className="text-subheadline">{props.description}</Card.Description>}
-        {props.status}
+        {!!props.status && <View className="shrink-0">{props.status}</View>}
+        {!!props.onClose && <CloseButton accessibilityLabel={props.closeLabel} onPress={withTap(props.onClose)} className="-my-1 -mr-1" />}
       </View>
-      {!!props.onClose && <CloseButton accessibilityLabel={props.closeLabel} onPress={withTap(props.onClose)} className="-mr-1" />}
+      <Separator className="-mx-3" />
     </Card.Header>
   );
 }
 
-/** A small colored dot and a muted label; a tap explains the status when `help` is given. */
+/** A status: a small dot and its words, both in its tone; a tap explains it when `help` is given. */
 export function StatusLine({ tone, label, help }: { tone: StatusTone; label: string; help?: string }) {
   const insets = usePopoverInsets();
   const line = (
     <View className="flex-row items-center gap-1.5">
-      <View className={cn("size-[7px] rounded-full", DOT[tone])} />
-      <Typography type="body-sm" color="muted">
+      <View className={cn("size-1.5 rounded-full", DOT[tone])} />
+      <Typography type="body-xs" className={TONE_TEXT[tone]}>
         {label}
       </Typography>
     </View>

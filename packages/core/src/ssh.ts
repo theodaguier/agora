@@ -39,3 +39,10 @@ export type SshLogEntry = {
   exitCode: number | null;
   at: string;
 };
+
+/** Where a machine is reached, as a list says it: user@host, the port only when it isn't 22. */
+export const sshAddress = (h: Pick<SshHostDto, "username" | "host" | "port">) => `${h.username}@${h.host}${h.port !== 22 ? `:${h.port}` : ""}`;
+
+/** The command that adds a machine's key to its authorized_keys, run on the machine. */
+export const sshAuthorizeCommand = (publicKey: string) =>
+  `mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '${publicKey}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`;

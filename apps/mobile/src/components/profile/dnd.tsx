@@ -2,7 +2,7 @@ import { availability } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import type { MenuEntry } from "@/components/menus";
-import { useFeedback } from "@/components/profile/settings";
+import { useAdminToast } from "@/components/admin/ui";
 import { availabilityLabel, dndPresets, scheduleSettingsQuery, setDnd, useAvailability } from "@/lib/availability";
 import { defineMessages } from "@/lib/i18n";
 import { presenceQuery, useMinuteTick } from "@/lib/presence";
@@ -19,7 +19,7 @@ export const dndMessages = messages;
 /** Your "do not disturb": its state, and the menu that turns it on for a while or off (`actions`: the HeroUI Menu to put on its row). */
 export function useDnd(userId: string) {
   const qc = useQueryClient();
-  const feedback = useFeedback();
+  const toast = useAdminToast();
   const status = useAvailability(userId);
   const now = useMinuteTick();
   const presence = useQuery({ ...presenceQuery, select: (s) => s.schedules?.[userId] }).data;
@@ -37,7 +37,7 @@ export function useDnd(userId: string) {
     mutationFn: (until: string | null) => setDnd(userId, until),
     onSuccess: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
     // A failure is a HeroUI Toast: the row itself shows the state.
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: presenceQuery.queryKey });
       qc.invalidateQueries({ queryKey: scheduleSettingsQuery(userId).queryKey });
