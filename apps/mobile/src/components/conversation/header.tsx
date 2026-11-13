@@ -7,15 +7,16 @@ import { ConversationAvatar, ParticipantAvatar, useStatus } from "@/components/c
 import { infoHref } from "@/components/conversation/info-href";
 import { othersOf, type Participant } from "@/components/participants";
 import { Shimmer } from "@/components/shimmer";
+import { useHeaderTitleWidth } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
 import type { ConversationDetail } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /*
- * The title of the conversation's native header (web: the 46 px header of screens/Conversation.tsx,
- * Figma « Conversation · Dev »): the face and the name on one line, what they are doing after it in its
- * colour; a group's members as a small pile. A tap opens the info screen (members of a group, the
+ * The title of the conversation's native header, as iOS draws a title with its subtitle: the face and
+ * the name, centred; under them, what they are doing in its colour, a group's members as a small pile.
+ * Held to the room between the back button and the two glass buttons. A tap opens the info screen (members of a group, the
  * colleague's profile, the bot's page). The code sessions started here follow as their count in grey,
  * which opens their list.
  */
@@ -50,22 +51,25 @@ export function HeaderTitle({
   const other = conv && !group ? othersOf(conv, me)[0] : undefined;
   const everyone = conv && group ? othersOf(conv, "") : [];
   const href = conv ? infoHref(conv, me) : null;
+  const width = useHeaderTitleWidth(2);
   return (
-    <View className="max-w-72 flex-row items-center gap-2">
+    <View style={{ maxWidth: width }} className="items-center">
       <PressableFeedback
         isDisabled={!href}
         onPress={withTap(() => href && router.push(href))}
         accessibilityRole="button"
         accessibilityLabel={label}
-        className="min-w-0 shrink flex-row items-center gap-2"
+        className="max-w-full flex-row items-center gap-1.5"
       >
-        {/* A group's members are the pile after its name: no tile repeating them. */}
+        {/* A group's members are the pile under its name: no tile repeating them. */}
         {conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-5" />}
-        <Typography weight="medium" numberOfLines={1} className="shrink">
+        <Typography type="body-sm" weight="semibold" numberOfLines={1} className="shrink">
           {title}
         </Typography>
+      </PressableFeedback>
+      <View className="max-w-full flex-row items-center gap-3">
         {waiting ? (
-          <Typography numberOfLines={1} className="shrink text-warning">
+          <Typography type="body-xs" numberOfLines={1} className="shrink text-warning">
             {t.waitingYou}
           </Typography>
         ) : (
@@ -75,7 +79,7 @@ export function HeaderTitle({
           <View className="flex-row items-center">
             {everyone.slice(0, FACEPILE).map((p, i) => (
               <View key={p.kind === "agent" ? `a:${p.agent.id}` : `u:${p.person.id}`} className={cn(i > 0 && "-ml-1")}>
-                <ParticipantAvatar p={p} size={18} />
+                <ParticipantAvatar p={p} size={14} />
               </View>
             ))}
             {everyone.length > FACEPILE && (
@@ -85,8 +89,8 @@ export function HeaderTitle({
             )}
           </View>
         )}
-      </PressableFeedback>
-      {conv && onSessions && <SessionsCount conversationId={conv.id} onPress={onSessions} />}
+        {conv && onSessions && <SessionsCount conversationId={conv.id} onPress={onSessions} />}
+      </View>
     </View>
   );
 }
@@ -96,7 +100,7 @@ function HeaderStatus({ p }: { p: Participant }) {
   const status = useStatus(p);
   if (!status) return null;
   return (
-    <Typography numberOfLines={1} className={cn("shrink", { online: "text-success", working: "text-brand", dnd: "text-danger", away: "text-subtle" }[status.tone])}>
+    <Typography type="body-xs" numberOfLines={1} className={cn("shrink", { online: "text-success", working: "text-brand", dnd: "text-danger", away: "text-subtle" }[status.tone])}>
       {status.label}
     </Typography>
   );
@@ -112,9 +116,9 @@ function SessionsCount({ conversationId, onPress }: { conversationId: string; on
   return (
     <PressableFeedback onPress={withTap(onPress)} accessibilityRole="button" accessibilityLabel={working ? t.sessionsWorking : t.sessions} className="shrink-0">
       {working ? (
-        <Shimmer type="body">{count}</Shimmer>
+        <Shimmer type="body-xs">{count}</Shimmer>
       ) : (
-        <Typography numberOfLines={1} className="text-subtle">
+        <Typography type="body-xs" numberOfLines={1} className="text-subtle">
           {count}
         </Typography>
       )}

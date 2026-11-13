@@ -19,7 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { Stack, router, useFocusEffect, type Href } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { Accordion, Alert, Button, Card, Description, Input, LinkButton, ListGroup, PressableFeedback, Separator, Spinner, Surface, TextArea, TextField, Typography } from "heroui-native";
+import { Accordion, Alert, Button, Card, Description, Input, LinkButton, ListGroup, Separator, Spinner, Surface, TextArea, TextField, Typography } from "heroui-native";
 import { Fragment, useCallback, useLayoutEffect, useRef, useState, type ComponentRef } from "react";
 import { AppState, View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
@@ -35,7 +35,7 @@ import { CodeBlock, SessionDecision } from "@/components/code-session-decision";
 import { CodeStateIcon, codeStateTone, IssueIcon, ProgressMark, TaskStatusIcon } from "@/components/code-session-marks";
 import { Shimmer } from "@/components/shimmer";
 import { confirmAction } from "@/components/confirm-action";
-import { ArrowUpIcon, BranchIcon, CheckCircleIcon, ChevronDownIcon, CloseCircleIcon, BanIcon, SparklesIcon, StopIcon, TerminalIcon, ToolIcon } from "@/components/icons";
+import { ArrowUpIcon, BranchIcon, CheckCircleIcon, ChevronDownIcon, CloseCircleIcon, BanIcon, SparklesIcon, StopIcon, ToolIcon } from "@/components/icons";
 import { MenuButton, TapMenu, type MenuEntry } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
@@ -66,15 +66,15 @@ import {
   writeCommitMessage,
   type CodeGitRequest,
 } from "@/lib/code-sessions";
+import { useHeaderTitleWidth } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, locale, tr } from "@/lib/i18n";
 import { dateFormat } from "@/lib/intl";
 import { cn } from "@/lib/utils";
 
 /*
- * apps/web/src/components/CodeSessionView as a screen pushed over the conversation. Its header is the
- * web's PaneHeader: the engine's tile and the title, then one line, who then where then what (the
- * engine, its branch, its issue, its state, a menu for its owner); its « … » holds the details, the
+ * apps/web/src/components/CodeSessionView as a screen pushed over the conversation. Its header is
+ * its title over its state and its issue; its « … » holds the details (the engine first), the
  * priority and the project's secrets. Its stream is the web's Avancement: the branch and its pull
  * request, its tasks, every step live, what waits for an answer, the worktree once done. Only the field
  * (with what waits in its queue) rides on the keyboard. The pull request's form is a form sheet
@@ -208,52 +208,23 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
 
 /* ---------- header ---------- */
 
-/** A session's tile: its engine's logo (Claude Code, Codex), as on its card in the thread; its name for VoiceOver. */
-function EngineTile({ engine }: { engine?: CodeSession["engine"] }) {
-  return (
-    <Surface variant="tertiary" accessibilityLabel={engine ? CODE_ENGINE_NAMES[engine] : undefined} className="size-6 items-center justify-center rounded-md p-0 shadow-none">
-      {engine ? <ModelLogo provider={ENGINE_PROVIDER[engine]} model={engine === "cursor" ? undefined : engine} size={14} /> : <TerminalIcon size={14} className="text-muted" />}
-    </Surface>
-  );
-}
-
 /**
- * The header's title (web PaneHeader): the engine's tile and the title; under it, one line, who then
- * where then what: the engine, its branch (opens on GitHub), its issue, then its state (a menu for its
- * owner). Spaced, each with its mark, no separators.
+ * The header's title, as iOS draws a title with its subtitle: the title on its line, centred; under it,
+ * its state (a menu for its owner) and its issue. Held to the room between the glass buttons. The
+ * engine is in the « … », the branch heads the stream.
  */
 function SessionTitle({ conversationId, session, owner }: { conversationId: string; session?: CodeSession; owner: boolean }) {
   const t = tr(codeSessions);
-  const branch = session?.git?.branch ?? session?.worktree?.branch;
+  const width = useHeaderTitleWidth(1);
   return (
-    <View className="max-w-72 items-center gap-0.5">
-      <View className="min-w-0 flex-row items-center gap-2">
-        <EngineTile engine={session?.engine} />
-        <Typography weight="medium" numberOfLines={1} className="shrink">
-          {session?.title ?? t.codeSession}
-        </Typography>
-      </View>
+    <View style={{ maxWidth: width }} className="items-center">
+      <Typography type="body-sm" weight="semibold" numberOfLines={1} className="text-center">
+        {session?.title ?? t.codeSession}
+      </Typography>
       {session && (
-        <View className="min-w-0 flex-row items-center gap-3">
-          <Typography type="body-xs" color="muted" className="shrink-0">
-            {CODE_ENGINE_NAMES[session.engine]}
-          </Typography>
-          {!!branch && (
-            <PressableFeedback
-              isDisabled={!session.repo}
-              onPress={withTap(() => session.repo && void Linking.openURL(`https://github.com/${session.repo}/tree/${encodeURI(branch)}`))}
-              accessibilityRole="link"
-              accessibilityLabel={[session.repo, branch].filter(Boolean).join(", ")}
-              className="min-w-0 shrink flex-row items-center gap-1"
-            >
-              <BranchIcon size={12} className="text-muted" />
-              <Typography type="body-xs" color="muted" numberOfLines={1} className="min-w-0 shrink">
-                {branch}
-              </Typography>
-            </PressableFeedback>
-          )}
-          {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
+        <View className="flex-row items-center gap-3">
           <StatusMenu session={session} owner={owner} />
+          {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
         </View>
       )}
     </View>
@@ -374,6 +345,7 @@ function DetailsMenu({ conversationId, session, owner }: { conversationId: strin
   const set = useSetCodePriority();
   const u = session.usage;
   const lines = [
+    { label: t.engine, value: CODE_ENGINE_NAMES[session.engine], icon: "terminal" },
     !owner && session.model ? { label: t.model, value: modelName(session.model), icon: "cpu" } : null,
     owner && session.account?.email ? { label: t.account, value: session.account.email, icon: "person" } : null,
     u ? { label: t.usage, value: `${t.estimated(format.cost(u.costUsd))}, ${usageTime(u)}`, icon: "chart.bar" } : null,
