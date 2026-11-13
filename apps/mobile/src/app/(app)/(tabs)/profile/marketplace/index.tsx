@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import { Card, LinkButton, PressableFeedback, SearchField, Spinner, Tabs, Typography } from "heroui-native";
+import { Button, LinkButton, ListGroup, SearchField, Spinner, Tabs, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { AdminGate, ErrorAlert, LoadingRows, Section as ListSection, SectionTitle, SettingsScroll } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, LoadingRows, PressableRow, Section as ListSection, SectionTitle, SettingsScroll } from "@/components/admin/ui";
 import { ItemRow } from "@/components/marketplace/item-row";
 import { RestartBanner } from "@/components/marketplace/restart-banner";
 import { sectionTitles, useMarket, type Section } from "@/components/marketplace/use-market";
@@ -39,7 +39,7 @@ const t = defineMessages<{
   nothingFound: (q: string) => string;
   nothingHere: string;
   opening: string;
-  profile: (name: string) => string;
+  open: string;
   custom: string;
   more: string;
   showAll: (n: number) => string;
@@ -52,7 +52,7 @@ const t = defineMessages<{
     nothingFound: (q) => `Nothing found for “${q}”.`,
     nothingHere: "Nothing in this tab. Results in:",
     opening: "Opening…",
-    profile: (name) => `Profile ${name}`,
+    open: "Open",
     custom: "Custom connector",
     more: "More",
     showAll: (n) => `Show all (${n})`,
@@ -65,7 +65,7 @@ const t = defineMessages<{
     nothingFound: (q) => `Rien trouvé pour « ${q} ».`,
     nothingHere: "Rien dans cet onglet. Résultats dans :",
     opening: "Ouverture…",
-    profile: (name) => `Profil ${name}`,
+    open: "Ouvrir",
     custom: "Connecteur personnalisé",
     more: "Plus",
     showAll: (n) => `Tout voir (${n})`,
@@ -92,7 +92,7 @@ function Marketplace() {
   const [segment, setSegment] = useState<Segment>("connectors");
   const market = useMarket(query);
   const searching = query.trim().length > 0;
-  // While searching, each tab shows how many results it holds: the search spans every tab.
+  // The search spans every tab: an empty one points to those holding results (counts stay out of the four tab labels, which must fit a phone).
   const counts: Record<Segment, number> = {
     connectors: SECTIONS.connectors.reduce((n, s) => n + market.items[s].length, 0),
     skills: SECTIONS.skills.reduce((n, s) => n + market.items[s].length, 0),
@@ -151,7 +151,7 @@ function Marketplace() {
               <Tabs.Indicator />
               {SEGMENTS.map((s) => (
                 <Tabs.Trigger key={s} value={s}>
-                  <Tabs.Label>{searching && !market.searching ? `${t.segments[s]} ${counts[s]}` : t.segments[s]}</Tabs.Label>
+                  <Tabs.Label numberOfLines={1}>{t.segments[s]}</Tabs.Label>
                 </Tabs.Trigger>
               ))}
             </Tabs.List>
@@ -229,31 +229,31 @@ function BotCards({ agents }: { agents: (AdminAgent & { description: string })[]
     return go().finally(() => setOpening(null));
   };
 
+  // The web's bot rows: avatar, name, what it does, then « Open ».
   return (
-    <View className="flex-row flex-wrap justify-between gap-y-3">
+    <ListSection>
       {agents.map((a) => (
-        // A pressable Card, as HeroUI's PressableFeedback "card" examples: a light scale and a highlight.
-        <PressableFeedback
+        <PressableRow
           key={a.id}
-          className="w-[48%]"
-          animation={{ scale: { value: 0.98 } }}
           isDisabled={!!opening}
-          accessibilityRole="button"
-          accessibilityLabel={`${a.name}, ${opening === a.id ? t.opening : t.profile(a.hermesProfile)}`}
-          onPress={withTap(() => void open(a))}
+          accessibilityLabel={[a.name, a.description, opening === a.id ? t.opening : t.open].filter(Boolean).join(", ")}
+          onPress={() => void open(a)}
         >
-          <Card className="items-center">
-            <Card.Header>
-              <AgentAvatar agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }} size={72} />
-            </Card.Header>
-            <Card.Body className="items-center">
-              <Card.Title numberOfLines={1}>{a.name}</Card.Title>
-              <Card.Description numberOfLines={1}>{opening === a.id ? t.opening : t.profile(a.hermesProfile)}</Card.Description>
-            </Card.Body>
-          </Card>
-          <PressableFeedback.Highlight />
-        </PressableFeedback>
+          <ListGroup.ItemPrefix>
+            <AgentAvatar agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }} size={32} />
+          </ListGroup.ItemPrefix>
+          <ListGroup.ItemContent>
+            <ListGroup.ItemTitle numberOfLines={1}>{a.name}</ListGroup.ItemTitle>
+            {!!a.description && <ListGroup.ItemDescription numberOfLines={2}>{a.description}</ListGroup.ItemDescription>}
+          </ListGroup.ItemContent>
+          <ListGroup.ItemSuffix>
+            {/* The row's press opens it: the button shows it. */}
+            <Button size="sm" variant="secondary" pointerEvents="none" accessible={false}>
+              {opening === a.id ? t.opening : t.open}
+            </Button>
+          </ListGroup.ItemSuffix>
+        </PressableRow>
       ))}
-    </View>
+    </ListSection>
   );
 }

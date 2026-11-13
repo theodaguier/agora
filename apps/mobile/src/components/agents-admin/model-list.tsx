@@ -1,3 +1,4 @@
+import { modelName } from "@agora/core";
 import * as Haptics from "expo-haptics";
 import { ListGroup, Separator } from "heroui-native";
 import { Fragment } from "react";
@@ -26,7 +27,7 @@ export function ModelList(props: { models: { id: string; reasoning: boolean }[];
               }}
  >
               <ListGroup.ItemContent>
-                <ListGroup.ItemTitle numberOfLines={1}>{m.id}</ListGroup.ItemTitle>
+                <ListGroup.ItemTitle numberOfLines={1}>{modelName(m.id)}</ListGroup.ItemTitle>
                 {m.reasoning && <ListGroup.ItemDescription>{t.reasoning}</ListGroup.ItemDescription>}
               </ListGroup.ItemContent>
               <ListGroup.ItemSuffix>{on ? <CheckIcon className="size-5 text-accent" /> : null}</ListGroup.ItemSuffix>

@@ -122,7 +122,7 @@ export default function AgentSkillsScreen() {
               {list.map((s) => {
                 const row = (
                   <SwitchRow
-                    title={s.category ? `${s.name} · ${s.category}` : s.name}
+                    title={s.name}
                     description={s.description}
                     value={s.enabled}
                     onChange={(enabled) => toggle.mutate({ name: s.name, enabled })}

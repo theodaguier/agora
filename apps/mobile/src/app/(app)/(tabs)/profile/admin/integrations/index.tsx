@@ -35,7 +35,6 @@ function IntegrationList() {
           <Section>
             {data.map((i) => {
               const spec = SPECS[i.id];
-              const details = spec.fields.map((f) => i.values[f.name]).filter(Boolean);
               const open = () => {
                 Haptics.selectionAsync();
                 router.push(integrationHref(i.id));
@@ -55,7 +54,6 @@ function IntegrationList() {
                     <ListGroup.ItemContent>
                       <ListGroup.ItemTitle numberOfLines={1}>{spec.name}</ListGroup.ItemTitle>
                       <ListGroup.ItemDescription numberOfLines={2}>{t.purpose[i.id]}</ListGroup.ItemDescription>
-                      {details.length > 0 && <ListGroup.ItemDescription numberOfLines={1}>{details.join(" · ")}</ListGroup.ItemDescription>}
                     </ListGroup.ItemContent>
                     {!!i.source && (
                       <Chip size="sm" variant="soft" color={i.source === "app" ? "success" : "default"}>

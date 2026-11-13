@@ -18,7 +18,7 @@ import { withTap } from "@/lib/haptics";
 const t = defineMessages({
   en: {
     title: "Personality",
-    soulIntro: "The agent's identity, role and tone (the SOUL.md file of its Hermes profile). Applied from the next message.",
+    soulIntro: "The agent's identity, role and tone, written in its Hermes profile. Applied from the next message.",
     replaceConfirm: "Replace the current text with the template?",
     replaceBody: "What you wrote will be lost unless you copy it first.",
     replaceAction: "Replace",
@@ -27,7 +27,7 @@ const t = defineMessages({
   },
   fr: {
     title: "Personnalité",
-    soulIntro: "Identité, rôle et ton de l'agent (fichier SOUL.md de son profil Hermes). Pris en compte dès le message suivant.",
+    soulIntro: "Identité, rôle et ton de l'agent, écrits dans son profil Hermes. Pris en compte dès le message suivant.",
     replaceConfirm: "Remplacer le texte actuel par le modèle ?",
     replaceBody: "Ce que tu as écrit sera perdu, sauf si tu le copies avant.",
     replaceAction: "Remplacer",
@@ -94,7 +94,7 @@ function SoulEditor({ agent, saved }: { agent: AdminAgent; saved: string }) {
       <SettingsScroll>
         <Intro>{t.soulIntro}</Intro>
         <TextField>
-          <Label>SOUL.md</Label>
+          <Label>{t.title}</Label>
           <TextArea
             value={value}
             onChangeText={setDraft}

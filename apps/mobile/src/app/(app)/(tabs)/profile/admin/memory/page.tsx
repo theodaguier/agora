@@ -34,7 +34,7 @@ export default function WikiPageScreen() {
               <NodeDot type={type} />
               <Typography.Paragraph type="body-sm" color="muted">
                 {m.type[type]}
-                {typeof meta.updated === "string" && ` ${m.updated(meta.updated)}`}
+                {typeof meta.updated === "string" && m.updated(meta.updated)}
               </Typography.Paragraph>
             </View>
             <Typography.Heading type="h3">{title}</Typography.Heading>

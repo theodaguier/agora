@@ -221,7 +221,7 @@ function Report({ report, range, onRange }: { report: ServerReport; range: Serve
               { value: p.user, className: "bg-accent" },
               { value: p.bot, className: "bg-warning" },
             ]}
-            detail={(p) => `${t.kinds.user} ${f.whole(p.user)} · ${t.kinds.bot} ${f.whole(p.bot)}`}
+            detail={(p) => `${t.kinds.user} ${f.whole(p.user)}, ${t.kinds.bot} ${f.whole(p.bot)}`}
             height={140}
           />
           <View className="flex-row flex-wrap gap-2">
@@ -247,7 +247,7 @@ function Report({ report, range, onRange }: { report: ServerReport; range: Serve
         <Fact label={t.totals.conversations} value={f.whole(activity.totals.conversations)} />
         <Fact label={t.totals.messages} value={f.whole(activity.totals.messages)} />
         <Fact label={t.totals.tasks} value={f.whole(activity.totals.tasks)} />
-        <Fact label={t.totals.files} value={`${f.whole(activity.totals.files)} · ${f.bytes(activity.totals.filesBytes)}`} />
+        <Fact label={t.totals.files} value={`${f.whole(activity.totals.files)}, ${f.bytes(activity.totals.filesBytes)}`} />
       </Section>
 
       <Database report={report} />
@@ -255,9 +255,9 @@ function Report({ report, range, onRange }: { report: ServerReport; range: Serve
       <Section title={t.machine}>
         <Fact label={t.host} value={host.hostname} />
         <Fact label={t.system} value={`${host.platform} ${host.release}`} />
-        <Fact label={t.cpu} value={`${host.cpuModel ?? "—"} · ${t.cores(host.cpuCount)}`} />
+        <Fact label={t.cpu} value={`${host.cpuModel ?? "—"}, ${t.cores(host.cpuCount)}`} />
         <Fact label={t.runtime} value={process.runtime} />
-        <Fact label={t.version} value={[`Agora ${process.app}`, `Hermes ${process.hermes}`].join(" · ")} />
+        <Fact label={t.version} value={[`Agora ${process.app}`, `Hermes ${process.hermes}`].join(", ")} />
         <Fact label={t.appMemory} value={f.bytes(process.rss)} />
       </Section>
     </>
@@ -330,7 +330,7 @@ function LoadHistory({ report, range, onRange }: { report: ServerReport; range: 
                   { value: p.memUsed / total, className: "bg-warning" },
                   { value: 1 - p.memUsed / total, className: "bg-transparent" },
                 ]}
-                detail={(p) => `${f.percent(p.memUsed / total)} · ${f.bytes(p.memUsed)}`}
+                detail={(p) => `${f.percent(p.memUsed / total)}, ${f.bytes(p.memUsed)}`}
                 height={80}
               />
             </View>
@@ -348,7 +348,7 @@ function Database({ report }: { report: ServerReport }) {
       title={t.database}
       footer={[database.version && `PostgreSQL ${database.version}`, f.bytes(database.bytes), t.connections(database.connections.active, database.connections.total)]
         .filter(Boolean)
-        .join(" · ")}
+        .join(", ")}
     >
       {database.tables.map((table) => {
         const share = database.bytes ? table.bytes / database.bytes : 0;

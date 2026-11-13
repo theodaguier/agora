@@ -121,10 +121,12 @@ function UserRow({ user: u }: { user: AdminUser }) {
         </ListGroup.ItemPrefix>
         <ListGroup.ItemContent>
           <ListGroup.ItemTitle numberOfLines={1}>{u.id === me ? `${u.name} (${t.you})` : u.name}</ListGroup.ItemTitle>
-          <ListGroup.ItemDescription numberOfLines={1}>{[u.title, u.username ? `@${u.username}` : null, u.email].filter(Boolean).join(" · ")}</ListGroup.ItemDescription>
+          {/* The web's row: their role under the name, then the handle and email (each line its own, not one truncated run). */}
+          {!!u.title && <ListGroup.ItemDescription numberOfLines={1}>{u.title}</ListGroup.ItemDescription>}
+          <ListGroup.ItemDescription numberOfLines={1}>{u.username ? `@${u.username}, ${u.email}` : u.email}</ListGroup.ItemDescription>
         </ListGroup.ItemContent>
         {admin && (
-          <Chip size="sm" variant="soft" color="accent">
+          <Chip size="sm" variant="secondary" color="default">
             <Chip.Label>{t.admin}</Chip.Label>
           </Chip>
         )}
@@ -179,7 +181,7 @@ function PendingInvitation({ invitation: inv, onSent, onChange }: { invitation: 
           <ListGroup.ItemTitle numberOfLines={1}>{inv.email}</ListGroup.ItemTitle>
           <ListGroup.ItemDescription numberOfLines={1}>
             {inv.role === "admin" ? t.admin : t.member}
-            {expired ? "" : ` · ${t.invitedOn(new Date(inv.createdAt).toLocaleDateString(locale, { day: "numeric", month: "short" }))}`}
+            {expired ? "" : `, ${t.invitedOn(new Date(inv.createdAt).toLocaleDateString(locale, { day: "numeric", month: "short" }))}`}
           </ListGroup.ItemDescription>
         </ListGroup.ItemContent>
         {expired && (

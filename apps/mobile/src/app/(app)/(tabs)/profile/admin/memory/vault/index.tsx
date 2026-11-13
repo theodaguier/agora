@@ -125,7 +125,7 @@ function Vault() {
               <PressableRow onPress={() => router.push(secretHref(s.key))}>
                 <ListGroup.ItemContent>
                   <ListGroup.ItemTitle numberOfLines={1}>{s.key}</ListGroup.ItemTitle>
-                  <ListGroup.ItemDescription numberOfLines={1}>{[s.preview, summary(s)].filter(Boolean).join(" · ")}</ListGroup.ItemDescription>
+                  <ListGroup.ItemDescription numberOfLines={1}>{[s.preview, summary(s)].filter(Boolean).join(", ")}</ListGroup.ItemDescription>
                 </ListGroup.ItemContent>
                 <ListGroup.ItemSuffix />
               </PressableRow>

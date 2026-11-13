@@ -10,10 +10,10 @@ import { AgentOrb } from "@/components/agent-orb";
 import { headerIcon } from "@/components/header-button";
 import { TaskSection } from "@/components/people/task-section";
 import { useMe } from "@/components/server-scope";
+import { useStatus } from "@/components/conversation-avatar";
 import { agentHref } from "@/lib/agents-admin";
 import { defineMessages, locale, tr } from "@/lib/i18n";
 import { agentProfileQuery, useOpenDirect, type AgentProfile } from "@/lib/profile";
-import { useStatus } from "@/components/conversation-avatar";
 import { withTap } from "@/lib/haptics";
 import { dateFormat } from "@/lib/intl";
 import { EmptyState } from "@/components/empty-state";
@@ -45,17 +45,6 @@ const messages = defineMessages({
     edit: "Modifier",
   },
 });
-
-/** Since when it exists, then what it is doing (web: the bot sheet's description), on two lines at most. */
-function BotSubtitle({ agent }: { agent: AgentProfile }) {
-  const status = useStatus({ kind: "agent", agent })?.label;
-  const since = messages.botSince(dateFormat(locale, { month: "long", year: "numeric" }).format(new Date(agent.createdAt)));
-  return (
-    <Typography type="body-sm" color="muted" numberOfLines={2}>
-      {[since, status].filter(Boolean).join(", ")}
-    </Typography>
-  );
-}
 
 export default function BotProfile() {
   const { agentId, conversationId } = useLocalSearchParams<{ agentId: string; conversationId?: string }>();
@@ -95,7 +84,9 @@ export default function BotProfile() {
                   <Typography.Heading type="h4" numberOfLines={1}>
                     {agent.name}
                   </Typography.Heading>
-                  <BotSubtitle agent={agent} />
+                  <Typography type="body-sm" color="muted" numberOfLines={1}>
+                    <BotSince agent={agent} />
+                  </Typography>
                 </View>
                 <View className="flex-row flex-wrap gap-2">
                   {/* You may write to it, once it's configured; not from its own conversation. */}
@@ -139,4 +130,10 @@ export default function BotProfile() {
       </ScrollView>
     </>
   );
+}
+
+/** Since when the bot exists and, while it works, that it does (the web's BotHeader description). */
+function BotSince({ agent }: { agent: AgentProfile }) {
+  const status = useStatus({ kind: "agent", agent });
+  return <>{[messages.botSince(dateFormat(locale, { month: "long", year: "numeric" }).format(new Date(agent.createdAt))), status?.label].filter(Boolean).join(", ")}</>;
 }

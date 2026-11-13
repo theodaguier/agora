@@ -106,11 +106,11 @@ function UserDetail({ user: u }: { user: AdminUser }) {
     <SettingsScroll>
       <View className="items-center gap-1">
         <PersonAvatar person={u} className="size-20" />
-        <Typography.Heading type="h3" className="mt-2">
+        <Typography.Heading type="h3" align="center" className="mt-2">
           {u.name}
         </Typography.Heading>
-        <Typography.Paragraph type="body-sm" color="muted" selectable>
-          {[u.username ? `@${u.username}` : null, u.email].filter(Boolean).join(" · ")}
+        <Typography.Paragraph type="body-sm" color="muted" align="center" selectable>
+          {[u.username ? `@${u.username}` : null, u.email].filter(Boolean).join(", ")}
         </Typography.Paragraph>
       </View>
 
