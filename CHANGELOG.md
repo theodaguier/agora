@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.61.0 — 2026-11-13
+
+### Features
+- mobile Geist, statut des machines SSH, retour depuis une session de code
+
 ## v0.60.0 — 2026-11-13
 
 ### Features
