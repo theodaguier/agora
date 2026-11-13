@@ -106,6 +106,9 @@ export const codeSessions = defineMessages({
       title: (bot: string) => `The session asks ${bot}`,
       help: (bot: string) => `Your next message answers it, in place of ${bot}. Without an answer within 15 minutes, it goes on with its best judgment.`,
       pick: (bot: string, first: string) => `For ${bot}. Without an answer within 15 minutes, it goes with “${first}”.`,
+      header: (bot: string) => `Question for ${bot}`,
+      fallback: (first: string) => `Without an answer within 15 minutes: “${first}”.`,
+      key: (n: number) => `Key ${n}`,
       waiting: (bot: string) => `Waiting for ${bot}'s answer, or the answer of the person who started it.`,
     },
     plan: {
@@ -380,6 +383,9 @@ export const codeSessions = defineMessages({
       title: (bot: string) => `La session demande à ${bot}`,
       help: (bot: string) => `Ton prochain message y répond, à la place de ${bot}. Sans réponse dans les 15 minutes, il continue avec son meilleur jugement.`,
       pick: (bot: string, first: string) => `Pour ${bot}. Sans réponse dans les 15 minutes, il retient « ${first} ».`,
+      header: (bot: string) => `Question pour ${bot}`,
+      fallback: (first: string) => `Sans réponse dans les 15 minutes : « ${first} ».`,
+      key: (n: number) => `Touche ${n}`,
       waiting: (bot: string) => `En attente de la réponse de ${bot}, ou de la personne qui l'a lancée.`,
     },
     plan: {

@@ -67,6 +67,7 @@ import {
   ToolIcon,
   TrashIcon,
   WarningIcon,
+  ChatQuestionIcon,
 } from "@/components/icons";
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
 import { BesideButton, besideMessages } from "@/components/BesideButton";
@@ -92,6 +93,8 @@ import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { QueueList } from "@/components/QueueList";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Kbd } from "@/components/ui/kbd";
+import { BlockCard, BlockHeader } from "@/components/views/block";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -1276,7 +1279,7 @@ function CodeSessionView({
 
   const owner = !!session && session.requestedBy === user.id;
   const approval = session?.approval;
-  // What it waits for: pinned above the field, where you answer, never lost in its stream.
+  // What it waits for: at the end of its stream, right above the field where you answer.
   const pending = session && (approval || session.question) ? <SessionDecision conversationId={conversationId} session={session} canAnswer={owner} /> : null;
   // A tab of its own on a large screen: its progress (tasks, branch and pull request) in a rail beside the stream.
   const wide = useWide();
@@ -1418,7 +1421,7 @@ function CodeSessionView({
               className="relative h-full overflow-y-auto px-5 pt-2 pb-4"
             >
               <div ref={content} className="flex min-h-full flex-col">
-                <Overview conversationId={conversationId} session={session} owner={owner} waiting={!!pending} rail={rail} />
+                <Overview conversationId={conversationId} session={session} owner={owner} decision={pending} rail={rail} />
               </div>
             </div>
             {!atBottom && (
@@ -1437,7 +1440,6 @@ function CodeSessionView({
           </div>
 
           <div className="flex shrink-0 flex-col gap-3 px-4 pt-2 pb-4">
-            {pending}
             {owner ? <SessionComposer ref={composer} conversationId={conversationId} session={session} /> : <p className="text-sm text-muted-foreground">{t.readOnly}</p>}
           </div>
           </div>
@@ -1520,20 +1522,23 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
 function Overview({
   session,
   owner,
-  waiting,
   rail,
   conversationId,
+  decision,
 }: {
   conversationId: string;
   session: CodeSessionDetail;
   owner: boolean;
-  /** It waits for an answer: the decision is pinned above the field, not in the stream. */
-  waiting: boolean;
+  /** What it waits for an answer to: at the end of its stream, scrolled with it (never a card that scrolls inside). */
+  decision: ReactNode;
   /** Its progress is in the rail beside the stream: the stream holds its steps only. */
   rail: boolean;
 }) {
   const t = useT(messages);
   const running = session.status === "running";
+  const waiting = !!decision;
+  // Its question to its bot is the decision below: its own step would say the same thing just above it.
+  const steps = session.question ? session.steps.filter((s) => !(s.kind === "tool" && s.name === "mcp__agora__ask_bot" && s.status === "running")) : session.steps;
   // What it does, as it does it: instructions, its words streaming, its actions; what it waits for at the end.
   return (
     <div className="flex flex-1 flex-col gap-6">
@@ -1552,13 +1557,14 @@ function Overview({
         </Empty>
       ) : (
         <div className="flex flex-col gap-4">
-          <Timeline steps={session.steps} running={running} />
+          <Timeline steps={steps} running={running} />
           {/* While it works and waits for nobody: what it does now, a light passing over the words. */}
           {running && !waiting && (
             <Shimmer as="p" className="text-ui">
               {session.activity || t.status.running}
             </Shimmer>
           )}
+          {decision}
         </div>
       )}
       {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
@@ -2355,9 +2361,9 @@ function DecisionShell({ inline, label, title, description, children, footer }: 
     );
   }
   return (
-    // One white card: its actions end it on the same surface, never in a grey band of their own. Pinned
-    // above the field, a long one scrolls inside its own border rather than being cut by the pane.
-    <Card size="sm" role="region" aria-label={label} className="max-h-[50vh] overflow-y-auto">
+    // One white card, whole: its actions end it on the same surface, never in a grey band of their own.
+    // It sits at the end of the stream and scrolls with it, never inside itself.
+    <Card size="sm" role="region" aria-label={label}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
@@ -2431,22 +2437,44 @@ function BotQuestionBlock({ conversationId, session, question, canAnswer, inline
     meta: { success: t.question.answered },
   });
   const options = question.options ?? [];
-  const help = !canAnswer ? t.botQuestion.waiting(question.bot) : options.length ? t.botQuestion.pick(question.bot, options[0]!.label) : t.botQuestion.help(question.bot);
-  // The question is the title; who it's for and what happens without an answer, one grey line. Each
-  // option is one row that answers on click: no radio, no « Autre » (the field below answers otherwise).
-  return (
-    <DecisionShell inline={inline} label={question.text} title={<MessageText text={question.text} />} description={help}>
-      {question.context && <MessageText text={question.context} className="text-sm text-muted-foreground" />}
+  const q = t.botQuestion;
+  const ready = canAnswer && !answer.isPending;
+
+  // 1, 2, 3… pick an option, as long as nobody types elsewhere (the session's pane only: one listener).
+  useEffect(() => {
+    if (inline || !ready || !options.length) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (e.metaKey || e.ctrlKey || e.altKey || target.closest("input, textarea, [contenteditable]")) return;
+      const option = options[Number(e.key) - 1];
+      if (!option) return;
+      e.preventDefault();
+      answer.mutate(option.label);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [inline, ready, options, answer]);
+
+  // As the bot's question in the thread (ChoiceCard): who it's for, the question alone (its context goes to the bot, not here),
+  // then numbered rows that answer on click or with their key. The field below answers otherwise.
+  const body = (
+    <>
+      <div className="flex flex-col gap-1.5">
+        <MessageText text={question.text} className="text-sm font-medium" />
+        {!canAnswer && <p className="text-xs text-muted-foreground">{q.waiting(question.bot)}</p>}
+      </div>
       {options.length > 0 && (
-        // Plain rows (no box inside the box), grey under the pointer, inset from the card's border.
-        <ItemGroup className="-mx-1.5 w-auto gap-0.5">
-          {options.map((o) => (
+        <ItemGroup className="-mx-1.5 w-auto gap-0.5 has-data-[size=sm]:gap-0.5">
+          {options.map((o, i) => (
             <Item
               key={o.label}
               size="sm"
               className="px-1.5 py-2 text-left hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
-              render={<button type="button" disabled={!canAnswer || answer.isPending} onClick={() => answer.mutate(o.label)} />}
+              render={<button type="button" title={q.key(i + 1)} aria-keyshortcuts={String(i + 1)} disabled={!ready} onClick={() => answer.mutate(o.label)} />}
             >
+              <ItemMedia className="self-start">
+                <Kbd>{i + 1}</Kbd>
+              </ItemMedia>
               <ItemContent>
                 <ItemTitle>{o.label}</ItemTitle>
                 {o.description && <ItemDescription>{o.description}</ItemDescription>}
@@ -2455,7 +2483,21 @@ function BotQuestionBlock({ conversationId, session, question, canAnswer, inline
           ))}
         </ItemGroup>
       )}
-    </DecisionShell>
+    </>
+  );
+  const fallback = canAnswer && options.length ? q.fallback(options[0]!.label) : undefined;
+  if (inline) {
+    return (
+      <div role="region" aria-label={question.text} className="flex flex-col gap-3">
+        {body}
+      </div>
+    );
+  }
+  return (
+    <BlockCard role="region" aria-label={question.text}>
+      <BlockHeader icon={<ChatQuestionIcon />} title={q.header(question.bot)} description={fallback} />
+      <CardContent className="flex flex-col gap-3">{body}</CardContent>
+    </BlockCard>
   );
 }
 
