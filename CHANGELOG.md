@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.63.1 — 2026-11-13
+
+### Fixes
+- **mobile**: en-tête de conversation lisible sur deux lignes
+
 ## v0.63.0 — 2026-11-13
 
 ### Features
