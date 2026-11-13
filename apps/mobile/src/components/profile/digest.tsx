@@ -9,7 +9,7 @@ import { PersonAvatar } from "@/components/conversation-avatar";
 import { MentionText } from "@/components/mention";
 import { Bars, ShareBar } from "@/components/profile/bars";
 import { Segmented } from "@/components/profile/native-pickers";
-import { Section } from "@/components/profile/settings";
+import { Section } from "@/components/admin/ui";
 import { format as f } from "@/components/profile/usage-format";
 import { fromDay } from "@/lib/availability";
 import { digestQuery, markDigestSeen, type Digest, type DigestStats } from "@/lib/digest";
@@ -332,7 +332,7 @@ function UsageBlock({ usage, you }: { usage: NonNullable<DigestStats["usage"]>; 
 function People({ people }: { people: NonNullable<DigestStats["people"]> }) {
   const t = messages;
   return (
-    <Section header={t.people} inset="none">
+    <Section title={t.people}>
       {people.map((p) => (
         <ListGroup.Item key={p.id} disabled>
           <ListGroup.ItemPrefix>

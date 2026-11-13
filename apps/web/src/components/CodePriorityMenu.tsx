@@ -3,9 +3,25 @@ import { CODE_PRIORITIES, CODE_PRIORITY_KEYS, codeSessionState, type CodePriorit
 import { codeSessions } from "@agora/core/i18n";
 import type { ReactElement } from "react";
 import { CodePriorityIcon, CodeStateIcon } from "@/components/CodeSessionMarks";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MoreIcon, TrashIcon } from "@/components/icons";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useT } from "@/i18n";
-import { applyCodeSession, setCodeSessionParked, setCodeSessionPriority } from "@/lib/code-sessions";
+import { confirmAction } from "@/lib/confirm";
+import { applyCodeSession, deleteCodeSession, dropCodeSession, setCodeSessionParked, setCodeSessionPriority, stopCodeSession } from "@/lib/code-sessions";
 
 /** Sets any session's priority (a row dropped into a priority group); the list, its tab and its panel follow. */
 export function useSetCodePriorityOf() {
@@ -92,6 +108,68 @@ export function CodePriorityMenu({ session, trigger, align = "end", park: withPa
             </DropdownMenuItem>
           </>
         )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * A session's « … » in the Sessions list, for its owner: its priority, set it aside or bring it back,
+ * stop it while it works, delete it (after confirming).
+ */
+export function CodeSessionActionsMenu({ session }: { session: CodeSession }) {
+  const t = useT(codeSessions);
+  const qc = useQueryClient();
+  const park = useSetCodeParked();
+  const stop = useMutation({
+    mutationFn: () => stopCodeSession(session.conversationId, session.id),
+    onSuccess: (s) => applyCodeSession(qc, s),
+    meta: { loading: t.stopping },
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteCodeSession(session.conversationId, session.id),
+    onSuccess: () => dropCodeSession(qc, session.conversationId, session.id),
+    meta: { loading: t.deleting, success: t.deleted },
+  });
+  const state = codeSessionState(session);
+  const working = state === "running" || state === "waiting";
+  const confirmDelete = async () => {
+    if (await confirmAction({ title: t.deleteTitle(session.title), description: t.deleteHelp, action: t.deleteSession })) remove.mutate();
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="-mx-1" aria-label={t.actions} />}>
+        <MoreIcon />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuGroup>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <CodePriorityIcon priority={session.priority} showNone />
+              {t.priority}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-56">
+              <CodePriorityItems session={session} />
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          {!working && (
+            <DropdownMenuItem onClick={() => park.mutate({ conversationId: session.conversationId, id: session.id, parked: !session.parked })}>
+              <CodeStateIcon state={session.parked ? "idle" : "parked"} />
+              {session.parked ? t.unpark : t.park}
+            </DropdownMenuItem>
+          )}
+          {working && (
+            <DropdownMenuItem disabled={stop.isPending} onClick={() => stop.mutate()}>
+              <CodeStateIcon state="stopped" />
+              {stop.isPending ? t.stopping : t.stop}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" disabled={remove.isPending} onClick={() => void confirmDelete()}>
+          <TrashIcon />
+          {t.deleteSession}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

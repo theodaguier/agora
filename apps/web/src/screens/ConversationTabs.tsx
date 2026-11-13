@@ -22,6 +22,7 @@ export function ScreenRoute() {
   return <ScreenPage conversationId={conversationId} title={conv ? conversationTitle(conv, user.id) : ""} onClose={useBackToThread(conversationId)} />;
 }
 
+/** Left by its back button (CodeSessionPage), to where it was opened from. */
 export function CodeSessionRoute() {
   const { conversationId, sessionId } = useParams({ from: "/app/c/$conversationId/code/$sessionId" });
   const navigate = useNavigate();
@@ -29,7 +30,6 @@ export function CodeSessionRoute() {
     <CodeSessionPage
       conversationId={conversationId}
       sessionId={sessionId}
-      onClose={useBackToThread(conversationId)}
       onStarted={(id) => navigate({ to: "/c/$conversationId/code/$sessionId", params: { conversationId, sessionId: id }, replace: true })}
     />
   );

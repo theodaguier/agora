@@ -25,6 +25,7 @@ const messages = defineMessages({
       send_message: "Message", mixture_of_agents: "Several models", skill: "Skill", thinking: "Thinking",
     } as Record<string, string>,
     and: "and",
+    denied: (n: number) => `${n} command${n > 1 ? "s" : ""} denied`,
     usingTool: (name: string) => `${name} is using`,
     typing: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
   },
@@ -39,6 +40,7 @@ const messages = defineMessages({
       send_message: "Message", mixture_of_agents: "Plusieurs modèles", skill: "Compétence", thinking: "Réflexion",
     } as Record<string, string>,
     and: "et",
+    denied: (n: number) => `${n} commande${n > 1 ? "s" : ""} refusée${n > 1 ? "s" : ""}`,
     usingTool: (name: string) => `${name} utilise`,
     typing: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
   },
@@ -157,12 +159,26 @@ function useToolWords() {
 /**
  * Tools used by the agent during a reply (hermes.tool.progress events): one quiet line, « A utilisé
  * Recherche web · Lecture de page », a connector with its logo. Code sessions are told by their card.
+ * The commands it was allowed to run are that same Terminal, not a second line: their text in its
+ * tooltip, only a denial said out loud.
  */
-export function ToolLine({ tools, running, className }: { tools: { name: string; status: string }[]; running?: boolean; className?: string }) {
+export function ToolLine({
+  tools,
+  approvals = [],
+  running,
+  className,
+}: {
+  tools: { name: string; status: string }[];
+  approvals?: { command: string; choice: string }[];
+  running?: boolean;
+  className?: string;
+}) {
   const t = useT(messages);
   const words = useToolWords();
   const seen = new Map<string, ReturnType<typeof words>>();
-  for (const tool of tools) {
+  const terminal = words("terminal");
+  const denied = approvals.filter((a) => a.choice === "deny").length;
+  for (const tool of [...tools, ...(approvals.length ? [{ name: "terminal", status: "" }] : [])]) {
     // Its reasoning isn't a tool it used.
     if (tool.name.startsWith("claude_code_") || tool.name === "code_session" || /^(thinking|réflexion)$/i.test(tool.name)) continue;
     const w = words(tool.name);
@@ -177,7 +193,8 @@ export function ToolLine({ tools, running, className }: { tools: { name: string;
         <Fragment key={w.key}>
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             {w.server && <BrandLogo server={w.server} fallback={null} className="size-3 rounded-sm" />}
-            {w.label}
+            <span title={w.key === terminal.key && approvals.length ? approvals.map((a) => a.command).join("\n") : undefined}>{w.label}</span>
+            {w.key === terminal.key && denied > 0 && <span>({t.denied(denied)})</span>}
             {i < seen.size - 1 && ","}
           </span>
         </Fragment>

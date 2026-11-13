@@ -6,13 +6,12 @@ import { Button, LinkButton, ListGroup, Switch, Typography } from "heroui-native
 import { useState } from "react";
 import { View } from "react-native";
 import { confirmAction } from "@/components/confirm-action";
-import { AdminGate, SettingsScroll, LoadingRows, RowMenu, Section } from "@/components/admin/ui";
+import { AdminGate, SettingsScroll, LoadingRows, RowMenu, Section, SwitchRow, useAdminToast } from "@/components/admin/ui";
 import { InitialTile, IntegrationTile } from "@/components/marketplace/integration-type";
 import { integrationTypeSubmenu } from "@/components/marketplace/integration-type-menu";
 import { RestartBanner } from "@/components/marketplace/restart-banner";
 import { useSkillOwners } from "@/components/marketplace/use-market";
 import { SkillCreateSheet } from "@/components/skill-create-sheet";
-import { ToggleRow, useFeedback } from "@/components/profile/settings";
 import { agentsHref } from "@/lib/agents-admin";
 import { api } from "@/lib/api";
 import { haptic, withTap } from "@/lib/haptics";
@@ -91,8 +90,8 @@ function Installed() {
   const router = useRouter();
   const qc = useQueryClient();
   // Outcomes and failures are HeroUI Toasts.
-  const feedback = useFeedback();
-  const decided = (_: unknown, { approve }: { approve: boolean }) => feedback.saved(approve ? t.approved : t.declined);
+  const toast = useAdminToast();
+  const decided = (_: unknown, { approve }: { approve: boolean }) => toast.success(approve ? t.approved : t.declined);
   const servers = useQuery(mcpServersQuery);
   const plugins = useQuery(pluginsQuery);
   const skills = useSkillOwners();
@@ -105,7 +104,7 @@ function Installed() {
   const decideSkill = useMutation({
     mutationFn: ({ id, approve }: { id: string; approve: boolean }) => api(`/skill-requests/${id}/${approve ? "approve" : "reject"}`, { method: "POST" }),
     onSuccess: decided,
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["skill-requests"] });
       qc.invalidateQueries({ queryKey: ["skill-request"] });
@@ -114,7 +113,7 @@ function Installed() {
   const decide = useMutation({
     mutationFn: ({ id, approve }: { id: string; approve: boolean }) => api(`/mcp-requests/${id}/${approve ? "approve" : "reject"}`, { method: "POST" }),
     onSuccess: decided,
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["mcp-requests"] });
       qc.invalidateQueries({ queryKey: ["mcp-request"] });
@@ -129,27 +128,27 @@ function Installed() {
     mutationFn: ({ name, enabled }: { name: string; enabled: boolean }) =>
       api(`/admin/hermes/mcp/servers/${name}/enabled`, { method: "PUT", body: JSON.stringify({ enabled }) }),
     onSuccess: changed,
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
   });
   const removeMcp = useMutation({
     mutationFn: (name: string) => api(`/admin/hermes/mcp/servers/${name}`, { method: "DELETE" }),
     onSuccess: (_, name) => {
       changed();
-      feedback.saved(t.removed(name));
+      toast.success(t.removed(name));
     },
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
   });
   const setType = useMutation({
     mutationFn: ({ name, type }: { name: string; type: IntegrationType }) =>
       api(`/admin/hermes/mcp/servers/${name}/type`, { method: "PUT", body: JSON.stringify({ type }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["hermes", "mcp"] }),
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
   });
   const togglePlugin = useMutation({
     mutationFn: ({ name, enable }: { name: string; enable: boolean }) =>
       api(`/admin/hermes/plugins/${encodeURIComponent(name)}/${enable ? "enable" : "disable"}`, { method: "POST" }),
     onSuccess: changed,
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
   });
 
   const enabledPlugins = (plugins.data ?? []).filter((p) => /^enabled/i.test(p.status));
@@ -294,11 +293,11 @@ function Installed() {
             </ListGroup.Item>
           )}
           {enabledPlugins.map((p) => (
-            <ToggleRow
+            <SwitchRow
               key={p.name}
               prefix={<InitialTile name={p.name} />}
               title={p.name}
-              description={p.description}
+              description={p.description ?? undefined}
               value
               disabled={togglePlugin.isPending}
               onChange={(enable) => togglePlugin.mutate({ name: p.name, enable })}

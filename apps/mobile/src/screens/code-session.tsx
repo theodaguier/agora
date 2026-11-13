@@ -13,7 +13,6 @@ import {
   type CodeQuestion,
   type CodeSession,
   type CodeStep,
-  type CodeTodo,
   toolLabel,
 } from "@agora/core";
 import { codeSessions, common } from "@agora/core/i18n";
@@ -56,10 +55,11 @@ import { SentAttachments } from "@/components/attachments";
 import { AttachMenu } from "@/components/composer/attach-menu";
 import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
 import { UserBubble } from "@/components/bubbles";
-import { isActive, priorityEntries, useSetCodePriority } from "@/components/code-session";
-import { CodePriorityIcon, CodeStateIcon, codeStateTone, IssueIcon } from "@/components/code-session-marks";
+import { ENGINE_PROVIDER, isActive, priorityEntries, useSetCodePriority } from "@/components/code-session";
+import { CodePriorityIcon, CodeStateIcon, codeStateTone, IssueIcon, ProgressMark, TaskStatusIcon } from "@/components/code-session-marks";
+import { Shimmer } from "@/components/shimmer";
 import { confirmAction } from "@/components/confirm-action";
-import { ArrowUpIcon, BranchIcon, ChartIcon, CheckCircleIcon, CircleIcon, CloseCircleIcon, ExternalLinkIcon, KeyIcon, StopIcon, ToolIcon, UserIcon } from "@/components/icons";
+import { ArrowUpIcon, BranchIcon, ChartIcon, CloseCircleIcon, ExternalLinkIcon, KeyIcon, StopIcon, ToolIcon, UserIcon } from "@/components/icons";
 import { MenuButton, MenuContent, TapMenu } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
@@ -219,7 +219,11 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                   <Spinner />
                 </View>
               ) : (
-                <Timeline steps={session.steps} running={session.status === "running"} />
+                <View className="gap-4">
+                  <Timeline steps={session.steps} running={session.status === "running"} />
+                  {/* While it works and waits for nobody: what it does now, a light passing over the words. */}
+                  {session.status === "running" && !session.approval && !session.question && <Shimmer>{session.activity || t.status.running}</Shimmer>}
+                </View>
               )}
               {/* What waits for an answer ends the stream, where the run stopped. */}
               {pending}
@@ -275,25 +279,34 @@ function HeaderLine({ conversationId, session, owner }: { conversationId: string
   const tone = codeStateTone(state);
   const branch = session.git?.branch ?? session.worktree?.branch;
   return (
-    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
+    <View className="flex-row flex-wrap items-center gap-x-3.5 gap-y-1">
+      <View className="flex-row items-center gap-1.5">
+        <ModelLogo provider={ENGINE_PROVIDER[session.engine]} model={session.engine === "cursor" ? undefined : session.engine} size={14} />
+        <Typography type="body-sm" color="muted">
+          {CODE_ENGINE_NAMES[session.engine]}
+        </Typography>
+      </View>
+      {!!branch && (
+        <PressableFeedback
+          isDisabled={!session.repo}
+          onPress={() => session.repo && void Linking.openURL(`https://github.com/${session.repo}/tree/${encodeURI(branch)}`)}
+          accessibilityRole="link"
+          accessibilityLabel={[session.repo, branch].filter(Boolean).join(" · ")}
+          className="min-w-0 shrink flex-row items-center gap-1"
+        >
+          <BranchIcon size={14} className="text-muted" />
+          <Typography type="body-sm" color="muted" numberOfLines={1} className="min-w-0 shrink">
+            {branch}
+          </Typography>
+        </PressableFeedback>
+      )}
+      {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
       <View className="flex-row items-center gap-1.5">
         <CodeStateIcon state={state} size={14} />
         <Typography type="body-sm" color={tone ? "default" : "muted"} className={tone}>
           {codeStatusText(t, session)}
         </Typography>
       </View>
-      <Typography type="body-sm" color="muted">
-        {CODE_ENGINE_NAMES[session.engine]}
-      </Typography>
-      {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
-      {!!branch && (
-        <View className="min-w-0 shrink flex-row items-center gap-1">
-          <BranchIcon size={14} className="text-muted" />
-          <Typography type="body-sm" color="muted" numberOfLines={1} className="min-w-0 shrink">
-            {branch}
-          </Typography>
-        </View>
-      )}
     </View>
   );
 }
@@ -350,22 +363,52 @@ function PriorityButton({ session }: { session: CodeSession }) {
   );
 }
 
-/** Its task list, at the top of the stream: its title and the count in a lighter grey. */
+/**
+ * Its shared task list (web SessionTodos), at the top of the stream: « Tâches » and done over total in a
+ * lighter grey, a thin bar of what is done, then each task with its state's mark; the one under way
+ * shimmers while it runs.
+ */
 function TodoSection({ session }: { session: CodeSession }) {
   const v = tr(codeSessions).view;
   if (!session.todos.length) return null;
+  const running = session.status === "running";
   const done = session.todos.filter((x) => x.status === "completed").length;
+  const total = session.todos.length;
   return (
-    <View className="gap-2">
-      <View className="flex-row items-baseline gap-2">
-        <Typography type="body-sm" color="muted">
-          {v.tasks}
-        </Typography>
-        <Typography type="body-sm" className="text-subtle">
-          {v.tasksCount(done, session.todos.length)}
-        </Typography>
+    <View className="gap-2.5">
+      <View className="gap-2">
+        <View className="flex-row items-baseline gap-2">
+          <Typography type="body-xs" weight="medium" color="muted">
+            {v.tasks}
+          </Typography>
+          <Typography type="body-xs" className="text-subtle">
+            {`${done}/${total}`}
+          </Typography>
+        </View>
+        <ProgressMark value={done} total={total} />
       </View>
-      <TodoList todos={session.todos} running={session.status === "running"} />
+      <View>
+        {session.todos.map((todo) => {
+          const now = todo.status === "in_progress" && running;
+          const text = now && todo.activeForm ? todo.activeForm : todo.content;
+          return (
+            <View key={todo.id} className="flex-row items-start gap-2.5 py-1.5">
+              <View className="pt-0.5">
+                <TaskStatusIcon status={todo.status === "completed" ? "done" : todo.status === "in_progress" ? "in_progress" : "todo"} />
+              </View>
+              <View className="min-w-0 flex-1">
+                {now ? (
+                  <Shimmer>{text}</Shimmer>
+                ) : (
+                  <Typography type="body-sm" color={todo.status === "completed" ? "muted" : "default"}>
+                    {text}
+                  </Typography>
+                )}
+              </View>
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -913,12 +956,11 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
   }
 }
 
-/** A finished call shows nothing, as in an IDE: only work in progress and failures stand out. */
-function ToolStatus({ status }: { status: ToolStepT["status"] }) {
-  if (status === "running") return <Spinner size="sm" />;
-  if (status === "done") return null;
-  return <CloseCircleIcon size={14} className="text-danger" />;
-}
+/** A path reads as its file name; the folders it sits in on the server say nothing. */
+const shortTitle = (title: string) => title.replace(/\S*\/([^\s/]+)/g, "$1");
+
+/** Tools whose target is code (a command, a file, a pattern): it reads in code type; the others' in words. */
+const CODE_ARGS = new Set(["Bash", "BashOutput", "Grep", "Glob", "Read", "Edit", "MultiEdit", "Write", "NotebookEdit"]);
 
 /** One tool call; unfolds to its input and result, and to its subagent's steps for a Task call. */
 function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
@@ -927,16 +969,25 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const expandable = !!(step.input || step.output || nested);
   // Its name as people read it (the connector of an MCP tool, what a built-in one does), never mcp__x__y.
   const label = toolLabel(step.name, t.toolNames);
+  const detail = step.title && step.title !== step.name ? shortTitle(step.title) : (label.action ?? "");
+  // One quiet line (web ToolRow): the tool's mark, what it does (shimmering while it does it), on what,
+  // in code type for a command or a file; a finished call shows nothing more, a failed one its cross.
   const row = (
     <View className="min-w-0 flex-1 flex-row items-center gap-2">
-      <ToolIcon name={step.name} className="size-3.5 text-muted" />
-      <Typography type="body-sm" color="muted">
-        {label.name}
-      </Typography>
-      <Typography type="body-xs" numberOfLines={1} className={cn("min-w-0 flex-1", step.title !== step.name && "font-mono")}>
-        {step.title !== step.name ? step.title : (label.action ?? "")}
-      </Typography>
-      <ToolStatus status={step.status} />
+      <ToolIcon name={step.name} size={14} className="text-subtle" />
+      {step.status === "running" ? (
+        <Shimmer>{label.name}</Shimmer>
+      ) : (
+        <Typography type="body-sm" color="muted">
+          {label.name}
+        </Typography>
+      )}
+      {!!detail && (
+        <Typography type={CODE_ARGS.has(step.name) ? "body-xs" : "body-sm"} numberOfLines={1} className={cn("min-w-0 flex-1 text-subtle", CODE_ARGS.has(step.name) && "font-mono")}>
+          {detail}
+        </Typography>
+      )}
+      {step.status !== "running" && step.status !== "done" && <CloseCircleIcon size={14} className="ml-auto text-danger" />}
     </View>
   );
   return (
@@ -1023,35 +1074,6 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conve
       </View>
     </Card>
   );
-}
-
-/** Every task of its list. */
-function TodoList({ todos, running }: { todos: CodeTodo[]; running: boolean }) {
-  return (
-    <ListGroup>
-      {todos.map((todo, i) => (
-        <Fragment key={todo.id}>
-          {i > 0 && <Separator className="mx-4" />}
-          <ListGroup.Item>
-            <ListGroup.ItemPrefix>
-              <TodoMark status={todo.status} running={running} />
-            </ListGroup.ItemPrefix>
-            <ListGroup.ItemContent>
-              <ListGroup.ItemTitle>
-                {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
-              </ListGroup.ItemTitle>
-            </ListGroup.ItemContent>
-          </ListGroup.Item>
-        </Fragment>
-      ))}
-    </ListGroup>
-  );
-}
-
-function TodoMark({ status, running }: { status: CodeTodo["status"]; running: boolean }) {
-  if (status === "completed") return <CheckCircleIcon size={20} className="text-success" />;
-  if (status === "in_progress" && running) return <Spinner size="sm" />;
-  return <CircleIcon size={20} className={status === "in_progress" ? "text-foreground" : "text-muted"} />;
 }
 
 /**

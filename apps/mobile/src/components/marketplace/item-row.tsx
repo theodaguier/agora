@@ -3,7 +3,7 @@ import { guessIntegrationType } from "@agora/core";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { Button, Chip, ListGroup } from "heroui-native";
-import { PressableRow } from "@/components/profile/settings";
+import { PressableRow } from "@/components/admin/ui";
 import { defineMessages, tr } from "@/lib/i18n";
 import { addHref, type Item } from "@/lib/marketplace";
 import { InitialTile, IntegrationTile } from "./integration-type";
@@ -39,29 +39,27 @@ export function ItemRow({ item }: { item: Item }) {
   // What's already done, as a HeroUI Chip.
   const installed = item.installed ? (item.kind === "plugin" ? t.enabled : t.added) : null;
   return (
-    <PressableRow onPress={open} disabled={!addable && !url} accessibilityRole={!addable && url ? "link" : "button"} accessibilityLabel={[item.name, KIND_LABEL[item.kind], item.description, installed].filter(Boolean).join(", ")}>
-      <ListGroup.Item>
-        <ListGroup.ItemPrefix>
-          <ItemTile item={item} />
-        </ListGroup.ItemPrefix>
-        <ListGroup.ItemContent>
-          {/* The section already says the kind: only the reader hears it. */}
-          <ListGroup.ItemTitle numberOfLines={1}>{item.name}</ListGroup.ItemTitle>
-          {!!item.description && <ListGroup.ItemDescription numberOfLines={2}>{item.description}</ListGroup.ItemDescription>}
-        </ListGroup.ItemContent>
-        <ListGroup.ItemSuffix>
-          {installed ? (
-            <Chip size="sm" variant="soft" color="success">
-              {installed}
-            </Chip>
-          ) : (
-            // The row's press adds: the button shows it.
-            <Button size="sm" variant="secondary">
-              {tr(common).add}
-            </Button>
-          )}
-        </ListGroup.ItemSuffix>
-      </ListGroup.Item>
+    <PressableRow onPress={open} isDisabled={!addable && !url} accessibilityRole={!addable && url ? "link" : "button"} accessibilityLabel={[item.name, KIND_LABEL[item.kind], item.description, installed].filter(Boolean).join(", ")}>
+      <ListGroup.ItemPrefix>
+        <ItemTile item={item} />
+      </ListGroup.ItemPrefix>
+      <ListGroup.ItemContent>
+        {/* The section already says the kind: only the reader hears it. */}
+        <ListGroup.ItemTitle numberOfLines={1}>{item.name}</ListGroup.ItemTitle>
+        {!!item.description && <ListGroup.ItemDescription numberOfLines={2}>{item.description}</ListGroup.ItemDescription>}
+      </ListGroup.ItemContent>
+      <ListGroup.ItemSuffix>
+        {installed ? (
+          <Chip size="sm" variant="soft" color="success">
+            {installed}
+          </Chip>
+        ) : (
+          // The row's press adds: the button shows it.
+          <Button size="sm" variant="secondary" pointerEvents="none" accessible={false}>
+            {tr(common).add}
+          </Button>
+        )}
+      </ListGroup.ItemSuffix>
     </PressableRow>
   );
 }

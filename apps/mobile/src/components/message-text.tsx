@@ -3,14 +3,14 @@ import type { Blockquote, Code, Heading, List, ListItem, Nodes, PhrasingContent,
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
-import { Button, Chip, Separator, Surface, Typography, useToast } from "heroui-native";
+import { Button, Separator, Surface, Typography, useToast } from "heroui-native";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { ScrollView, Share, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import remend from "remend";
-import { CopyIcon, DownloadIcon, type IconComponent } from "@/components/icons";
+import { CopyIcon, type IconComponent } from "@/components/icons";
 import { MentionText } from "@/components/mention";
 import { FileChip, InlineBox, PathChip, PortChip, RepoChip, Swatch, Text, TextLink, TextStyle, useEm } from "@/components/text-entities";
-import { boxText, cx, LinkClassContext, OnAccentContext } from "@/components/text-style";
+import { cx, LinkClassContext, OnAccentContext } from "@/components/text-style";
 import { CHAT_LINE, prepareMarkdown, remarkChat, signedQuote } from "@/lib/chat-markdown";
 import { haptic } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
@@ -326,12 +326,12 @@ function Quote({ node, className }: { node: Blockquote; className?: string }) {
 }
 
 /** Streamdown's labels (English only on the web too: no translations are passed to it). */
-const streamdownLabels = { copyCode: "Copy Code", downloadFile: "Download file", copyTable: "Copy table", downloadTable: "Download table" };
+const streamdownLabels = { copyCode: "Copy Code" };
 
 /** What a toast says once a code block or a table is copied (the web's check for 2s). */
 const copiedMessages = defineMessages({
-  en: { code: "Code copied", table: "Table copied" },
-  fr: { code: "Code copié", table: "Tableau copié" },
+  en: { code: "Code copied" },
+  fr: { code: "Code copié" },
 });
 
 /** An icon button of a code block or a table (44pt tap target); `copied`: the toast shown once done. Disabled while the reply streams. */
@@ -354,34 +354,26 @@ function ActionButton({ icon: Icon, label, copied, onPress }: { icon: IconCompon
 }
 
 /**
- * A fenced code block, as Streamdown draws it without a highlighter (the web passes no code plugin,
- * so no colors): a header with the language and the download and copy buttons, then the code with
- * its line numbers, scrolling sideways, 400px high at most.
+ * A fenced code block, one box and not a box in a box (web: Linear, GitHub's comments): its language and
+ * copy on a thin bar over a hairline, then the code on the same ground, monospace, no line numbers,
+ * scrolling sideways, 400 pt high at most.
  */
 function CodeBlock({ node, className }: { node: Code; className?: string }) {
   const code = node.value.replace(/\n+$/, "");
-  const lines = code.split("\n");
   const lang = node.lang ?? "";
   return (
-    <Surface variant="secondary" className={cx("w-full flex-col p-0", className)}>
-      <View className="h-10 flex-row items-center justify-between pl-3 pr-1">
-        <Typography type="code" color="muted">
+    <Surface variant="transparent" className={cx("w-full flex-col overflow-hidden rounded-lg border border-border bg-field p-0", className)}>
+      <View className="h-9 flex-row items-center justify-between pl-3 pr-1">
+        <Typography type="body-xs" className="font-mono text-subtle">
           {lang.toLowerCase()}
         </Typography>
-        <View className="flex-row items-center">
-          <ActionButton icon={DownloadIcon} label={streamdownLabels.downloadFile} onPress={() => Share.share({ message: code })} />
-          <ActionButton icon={CopyIcon} label={streamdownLabels.copyCode} copied={copiedMessages.code} onPress={() => Clipboard.setStringAsync(code)} />
-        </View>
+        <ActionButton icon={CopyIcon} label={streamdownLabels.copyCode} copied={copiedMessages.code} onPress={() => Clipboard.setStringAsync(code)} />
       </View>
+      <Separator />
       <View className="max-h-[400px]">
         <ScrollView nestedScrollEnabled>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="px-3 pb-3">
-            <View className="flex-row">
-              <Typography type="code" color="muted" align="end" className="mr-3 w-6">
-                {lines.map((_, i) => i + 1).join("\n")}
-              </Typography>
-              <Typography type="code">{code}</Typography>
-            </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="px-3 py-2.5">
+            <Typography className="font-mono text-footnote">{code}</Typography>
           </ScrollView>
         </ScrollView>
       </View>
@@ -389,58 +381,60 @@ function CodeBlock({ node, className }: { node: Code; className?: string }) {
   );
 }
 
-/** Rows of a table as text, for its copy (markdown) and download (CSV) buttons. */
-const tableCells = (node: Table) => node.children.map((row) => row.children.map((cell) => textOf(cell).trim()));
-const tableMarkdown = (rows: string[][]) =>
-  rows.map((r, i) => [`| ${r.join(" | ")} |`, ...(i ? [] : [`| ${r.map(() => "---").join(" | ")} |`])].join("\n")).join("\n");
-const tableCsv = (rows: string[][]) => rows.map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\n");
-
 const ALIGN = { left: "start", center: "center", right: "end" } as const;
 
+/** A figure: digits with their separators and units (7,1:1, 12 %, -3.5, 1 200 €), as the web's rehypeNumericColumns. */
+const NUMERIC = /^[-+−]?[\d\s.,:/]*\d[\d\s.,:/]*\s?(%|€|\$|ms|s|px|k|M|Go|Mo|x|×)?$/;
+
+/** Inside a column of figures: the figure the author set in bold stands out in the waiting colour, not in weight. */
+const NumericContext = createContext(false);
+
 /**
- * A table, as Streamdown draws it: in a frame with its buttons, the header on a neutral fill, rows
- * divided by a line, scrolling sideways, 300px high at most. Laid out by columns so that they line
- * up; a cell stays on one line (the web wraps a cell when the table is wider than the bubble).
+ * A table as the web draws it (shadcn's Table, Figma « Atelier · Théo »): read, not a tool (no frame,
+ * no buttons), a quiet header in small grey words, rows divided by a hairline, columns of figures
+ * right-aligned in monospace. Laid out by columns so that they line up, scrolling sideways when wider
+ * than the message; a cell stays on one line.
  */
 function MarkdownTable({ node, className }: { node: Table; className?: string }) {
   const columns = node.children[0]?.children.map((_, c) => c) ?? [];
+  const body = node.children.slice(1);
+  const numeric = columns.map((c) => {
+    if (c === 0) return false;
+    const values = body.map((row) => textOf(row.children[c] ?? { type: "text", value: "" }).trim()).filter(Boolean);
+    return values.length > 0 && values.every((v) => NUMERIC.test(v));
+  });
   return (
-    <Surface variant="secondary" className={cx("flex-col p-0", className)}>
-      <View className="h-10 flex-row items-center justify-end pr-1">
-        <ActionButton icon={CopyIcon} label={streamdownLabels.copyTable} copied={copiedMessages.table} onPress={() => Clipboard.setStringAsync(tableMarkdown(tableCells(node)))} />
-        <ActionButton icon={DownloadIcon} label={streamdownLabels.downloadTable} onPress={() => Share.share({ message: tableCsv(tableCells(node)) })} />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} className={className} contentContainerClassName="min-w-full">
+      <View className="min-w-full flex-row">
+        {columns.map((c) => (
+          <View key={c} className={cx("grow", c > 0 && "pl-4")}>
+            {node.children.map((row, r) => {
+              const align = numeric[c] ? "end" : ALIGN[node.align?.[c] ?? "left"];
+              const cells = row.children[c]?.children ?? [];
+              // The header in small grey words over its hairline; the rows below divided by one.
+              return r ? (
+                <View key={r}>
+                  <Separator />
+                  <NumericContext.Provider value={!!numeric[c]}>
+                    <TextStyle className={cx("text-subheadline", numeric[c] && "font-mono")}>
+                      <Text numberOfLines={1} align={align} className="py-2">
+                        <Inlines nodes={cells} />
+                      </Text>
+                    </TextStyle>
+                  </NumericContext.Provider>
+                </View>
+              ) : (
+                <TextStyle key={r} className={cx("text-footnote text-muted", !numeric[c] && c === 0 && "font-medium")}>
+                  <Text numberOfLines={1} align={align} className="pt-1 pb-2">
+                    <Inlines nodes={cells} />
+                  </Text>
+                </TextStyle>
+              );
+            })}
+          </View>
+        ))}
       </View>
-      <Surface className="mx-2 mb-2 max-h-[300px] p-0">
-        <ScrollView nestedScrollEnabled>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="min-w-full">
-            <View className="min-w-full flex-row">
-                {columns.map((c) => (
-                  <View key={c} className="grow">
-                    {node.children.map((row, r) => {
-                      const cell = (
-                        <Text numberOfLines={1} align={ALIGN[node.align?.[c] ?? "left"]} weight={r ? undefined : "semibold"}>
-                          <Inlines nodes={row.children[c]?.children ?? []} />
-                        </Text>
-                      );
-                      // The header on a neutral fill, the rows below divided by a line.
-                      return r ? (
-                        <View key={r}>
-                          <Separator />
-                          <View className="px-3 py-2">{cell}</View>
-                        </View>
-                      ) : (
-                        <Surface key={r} variant="secondary" className="px-3 py-2">
-                          {cell}
-                        </Surface>
-                      );
-                    })}
-                  </View>
-                ))}
-            </View>
-          </ScrollView>
-        </ScrollView>
-      </Surface>
-    </Surface>
+    </ScrollView>
   );
 }
 
@@ -456,13 +450,14 @@ const collapse = (text: string) => text.replace(/[ \t]*\n[ \t]*/g, " ").replace(
 
 function Inline({ node, link }: { node: PhrasingContent; link?: boolean }): ReactNode {
   const { mentionables, definitions } = useContext(MarkdownContext);
+  const numeric = useContext(NumericContext);
   switch (node.type) {
     case "text":
       // Links, paths, colors, tasks and mentions in the text (the web's rehypeLinks, rehypeTaskRefs, rehypeMentions).
       return link ? collapse(node.value) : <MentionText text={collapse(node.value)} mentionables={mentionables} />;
     case "strong":
       return (
-        <Span className="font-semibold">
+        <Span className={numeric ? "text-warning" : "font-semibold"}>
           <Inlines nodes={node.children} link={link} />
         </Span>
       );
@@ -541,24 +536,16 @@ function InlineCode({ text }: { text: string }) {
   if (!more.length && only && typeof only !== "string" && only.kind === "port" && only.text.includes(":")) return <PortChip url={only.url}>{text}</PortChip>;
   if (!more.length && only && typeof only !== "string" && only.kind === "repo") return <RepoChip url={only.url} repo={only} label={only.text.startsWith("git@") ? only.text : undefined} />;
   const color = /^#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3})$/i.test(text.trim()) ? text.trim() : null;
-  // A neutral chip in monospace at 0.88em (the web's inline code). A box can't break across
-  // lines in React Native: long code is drawn as code text instead, which can.
-  if (text.length > 40) {
-    return (
-      <Text type="code" style={{ fontSize: em(0.88) }}>
-        {text}
-      </Text>
-    );
-  }
+  // The web's inline code: monospace, a step smaller, grey, no box (it breaks across lines with the text).
   return (
-    <InlineBox>
-      <Chip size="sm" variant="secondary" color="default">
-        {color && <Swatch color={color} />}
-        <Typography type="code" className="shrink" style={boxText(em, 0.88)}>
-          {text}
-        </Typography>
-      </Chip>
-    </InlineBox>
+    <Text className="font-mono text-muted" style={{ fontSize: em(0.88) }}>
+      {color && (
+        <InlineBox drop={0.08}>
+          <Swatch color={color} />
+        </InlineBox>
+      )}
+      {text}
+    </Text>
   );
 }
 

@@ -186,7 +186,7 @@ export function AvatarField({
           pick(e.dataTransfer.files[0]);
         }}
         className={cn(
-          "group/photo relative size-12 shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "relative size-12 shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
           over && "ring-3 ring-ring/60 ring-offset-2 ring-offset-background",
         )}
       >
@@ -200,15 +200,6 @@ export function AvatarField({
             </AvatarFallback>
           </Avatar>
         )}
-        <span
-          aria-hidden
-          className={cn(
-            "absolute inset-0 grid place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover/photo:opacity-100 group-focus-visible/photo:opacity-100",
-            over && "opacity-100",
-          )}
-        >
-          <CameraIcon />
-        </span>
       </button>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="text-ui font-medium">{label ?? t.photo}</span>

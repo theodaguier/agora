@@ -72,7 +72,6 @@ const messages = defineMessages({
     editParticipants: (names: string) => `Working on it: ${names}. Change`,
     searchPeople: "Search a colleague…",
     noMatch: "No one matches.",
-    noneWithStatusTitle: "Nothing here",
     errorTitle: "Tasks unavailable",
     error: "Tasks can't be reached right now.",
     columns: { task: "Task", who: "Who", due: "Due" },
@@ -103,7 +102,6 @@ const messages = defineMessages({
     editParticipants: (names: string) => `Sur la tâche : ${names}. Modifier`,
     searchPeople: "Chercher un collègue…",
     noMatch: "Personne ne correspond.",
-    noneWithStatusTitle: "Rien ici",
     errorTitle: "Tâches indisponibles",
     error: "Les tâches sont injoignables pour le moment.",
     columns: { task: "Tâche", who: "Qui", due: "Échéance" },
@@ -167,21 +165,18 @@ export function TaskList({
     );
   // My tasks: only the ones given to me (the ones I gave others are theirs).
   const all = (tasks ?? []).filter((x) => !table || !userId || x.assignees.some((a) => a.id === userId));
+  // A page (its title): the full empty state. A section of a profile: one grey line, as its neighbours.
   if (!all.length)
-    return (
+    return emptyTitle ? (
       <Empty>
         <EmptyHeader>
-          {emptyTitle ? (
-            <EmptyFigure mascot="green" />
-          ) : (
-            <EmptyMedia variant="icon">
-              <TaskListIcon />
-            </EmptyMedia>
-          )}
-          {emptyTitle && <EmptyTitle>{emptyTitle}</EmptyTitle>}
+          <EmptyFigure mascot="green" />
+          <EmptyTitle>{emptyTitle}</EmptyTitle>
           <EmptyDescription>{empty}</EmptyDescription>
         </EmptyHeader>
       </Empty>
+    ) : (
+      <p className="text-sm text-muted-foreground">{empty}</p>
     );
   const count = (f: Filter) => (f === "all" ? all.length : all.filter((x) => x.status === f).length);
   const open = all.filter((x) => x.status !== "done");
@@ -295,15 +290,7 @@ export function TaskList({
       ) : shown.length ? (
         card(shown)
       ) : (
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <TaskListIcon />
-            </EmptyMedia>
-            <EmptyTitle>{t.noneWithStatusTitle}</EmptyTitle>
-            <EmptyDescription>{t.noneWithStatus}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+        <p className="py-2 text-sm text-muted-foreground">{t.noneWithStatus}</p>
       )}
     </Tabs>
   );

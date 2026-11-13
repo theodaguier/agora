@@ -317,6 +317,20 @@ export const LockIcon = createIcon("lock", {
   line: <Path d="M7.5 9.5V7.5a4.5 4.5 0 0 1 9 0v2" />,
 });
 
+export const PaperclipIcon = createIcon("paperclip", {
+  line: <Path d="m16 6-8.4 8.6a2 2 0 0 0 2.8 2.8l8.5-8.6a4 4 0 0 0-5.7-5.6l-8.4 8.6a6 6 0 0 0 8.5 8.4L21 13" />,
+});
+
+export const MonitorIcon = createIcon("monitor", {
+  fill: <Rect x="2" y="3" width="20" height="14" rx="4" />,
+  line: <Path d="M12 17v4M8 21h8" />,
+});
+
+export const InboxIcon = createIcon("inbox", {
+  fill: <Rect x="2.5" y="3.5" width="19" height="17" rx="4.5" />,
+  cut: <Path d="M2.5 13.5h4.2a1.3 1.3 0 0 1 1.2.8l.3.8a2 2 0 0 0 1.9 1.4h3.8a2 2 0 0 0 1.9-1.4l.3-.8a1.3 1.3 0 0 1 1.2-.8h4.2" />,
+});
+
 export const MailIcon = createIcon("mail", {
   fill: <Rect x="2" y="4" width="20" height="16" rx="4.5" />,
   cut: <Path d="M6.5 9l4.2 2.8a2.3 2.3 0 0 0 2.6 0L17.5 9" />,

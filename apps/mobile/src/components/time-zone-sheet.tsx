@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { View } from "react-native";
 import { CheckIcon } from "@/components/icons";
 import { timeZones } from "@/lib/admin";
-import { PressableRow } from "@/components/profile/settings";
+import { PressableRow } from "@/components/admin/ui";
 import { zoneLabel } from "@/components/profile/timezone";
 
 /**
@@ -53,17 +53,16 @@ export function TimeZoneSheet(props: {
                 }}
                 accessibilityLabel={label(item)}
                 accessibilityState={{ selected: item === props.value }}
+                itemClassName="px-0"
               >
-                <ListGroup.Item className="px-0">
-                  <ListGroup.ItemContent>
-                    <ListGroup.ItemTitle>{label(item)}</ListGroup.ItemTitle>
-                  </ListGroup.ItemContent>
-                  {item === props.value && (
-                    <ListGroup.ItemSuffix>
-                      <CheckIcon size={20} className="text-accent" />
-                    </ListGroup.ItemSuffix>
-                  )}
-                </ListGroup.Item>
+                <ListGroup.ItemContent>
+                  <ListGroup.ItemTitle>{label(item)}</ListGroup.ItemTitle>
+                </ListGroup.ItemContent>
+                {item === props.value && (
+                  <ListGroup.ItemSuffix>
+                    <CheckIcon size={20} className="text-accent" />
+                  </ListGroup.ItemSuffix>
+                )}
               </PressableRow>
             )}
           />

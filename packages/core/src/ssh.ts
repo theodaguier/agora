@@ -28,6 +28,12 @@ export type SshHostDto = {
 
 export type SshTestResult = { ok: true; fingerprint: string } | { ok: false; error: string };
 
+/**
+ * Whether the server answers on its address, without Agora's key: a TCP connection and the SSH banner
+ * it sends (SSH-2.0-OpenSSH_9.6…). Says the machine is up, not that Agora may log in (that is the test).
+ */
+export type SshProbe = { online: true; banner: string; latencyMs: number } | { online: false; error: string };
+
 export type SshLogEntry = {
   id: string;
   agentId: string | null;
@@ -39,3 +45,10 @@ export type SshLogEntry = {
   exitCode: number | null;
   at: string;
 };
+
+/** Where a machine is reached, as a list says it: user@host, the port only when it isn't 22. */
+export const sshAddress = (h: Pick<SshHostDto, "username" | "host" | "port">) => `${h.username}@${h.host}${h.port !== 22 ? `:${h.port}` : ""}`;
+
+/** The command that adds a machine's key to its authorized_keys, run on the machine. */
+export const sshAuthorizeCommand = (publicKey: string) =>
+  `mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '${publicKey}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`;

@@ -1,74 +1,100 @@
+import { connectorName } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
-import { Chip, Spinner, Surface, Typography } from "heroui-native";
-import { Fragment, useEffect, type ReactNode } from "react";
+import { Separator, Spinner, Surface, Typography } from "heroui-native";
+import { useEffect, type ReactNode } from "react";
 import { View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { BrandLogo } from "@/components/brand-logo";
 import { brandsQuery, toolServer } from "@/components/brand-logos";
-import { CheckIcon, ClockIcon, ToolIcon } from "@/components/icons";
+import { CheckIcon } from "@/components/icons";
 import { MessageText } from "@/components/message-text";
 import { defineMessages } from "@/lib/i18n";
 import type { Mentionable } from "@/lib/mentions";
 import { cn } from "@/lib/utils";
 
 /*
- * apps/web/src/components/Bubbles.tsx, Figma « Bulle »: HeroUI surfaces as bubbles — everyone else's
- * (colleagues and bots) grey on the left, yours on the right in the accent: the bot's colour in a
- * conversation with it (ScopedVariables in screens/conversation.tsx), ink elsewhere.
+ * apps/web/src/components/Bubbles.tsx and the thread's parts of screens/Conversation.tsx (Figma
+ * « Conversation · Dev »): what others write is flat in their column, under their name; only your
+ * messages are bubbles, grey on the right (the bot's colour stays out of them).
  */
 
 const messages = defineMessages({
   en: {
     using: "Using",
     used: "Used",
-    and: "and",
-    usingTool: (name: string) => `${name} is using`,
+    tools: {
+      terminal: "Terminal", execute_code: "Code", read_file: "File read", write_file: "File edit", patch: "File edit",
+      search_files: "File search", web_search: "Web search", web_extract: "Web page", web_fetch: "Web page", browser: "Browser",
+      vision_analyze: "Image analysis", image_generate: "Image generation", text_to_speech: "Voice", memory: "Memory",
+      session_search: "History", todo: "Tasks", clarify: "Question", delegate_task: "Sub-agent", cronjob: "Routine",
+      send_message: "Message", mixture_of_agents: "Several models", skill: "Skill", thinking: "Thinking",
+    } as Record<string, string>,
     typing: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
   },
   fr: {
     using: "Utilise",
     used: "A utilisé",
-    and: "et",
-    usingTool: (name: string) => `${name} utilise`,
+    tools: {
+      terminal: "Terminal", execute_code: "Code", read_file: "Lecture de fichier", write_file: "Modification de fichier", patch: "Modification de fichier",
+      search_files: "Recherche de fichiers", web_search: "Recherche web", web_extract: "Lecture de page", web_fetch: "Lecture de page", browser: "Navigateur",
+      vision_analyze: "Analyse d'image", image_generate: "Génération d'image", text_to_speech: "Voix", memory: "Mémoire",
+      session_search: "Historique", todo: "Tâches", clarify: "Question", delegate_task: "Sous-agent", cronjob: "Routine",
+      send_message: "Message", mixture_of_agents: "Plusieurs modèles", skill: "Compétence", thinking: "Réflexion",
+    } as Record<string, string>,
     typing: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
   },
 });
 
-/** A bubble: HeroUI's Surface, `secondary` grey for everyone else's, the accent for yours, Figma's 14 px corners. */
-export function Bubble({ mine, className, children }: { mine?: boolean; className?: string; children: ReactNode }) {
+/** Who opens a run of messages: their face, their name, the time. */
+export type PostHead = { avatar: ReactNode; name: string; time: string };
+
+/**
+ * A message from a bot or a colleague, flat (web: Post). The first of a run opens on its author
+ * (20 pt face, name, time); its parts run under it, 28 pt in, 12 pt apart.
+ */
+export function Post({ head, className, children }: { head?: PostHead; className?: string; children: ReactNode }) {
   return (
-    <Surface variant="secondary" className={cn("min-w-0 rounded-[14px]", mine ? "self-end bg-bot" : "self-start", className)}>
+    <View className={cn("min-w-0 gap-2.5", className)}>
+      {head && (
+        <View className="flex-row items-center gap-2">
+          {head.avatar}
+          <Typography type="body-sm" weight="medium" numberOfLines={1} className="shrink">
+            {head.name}
+          </Typography>
+          <Typography type="body-xs" className="text-subtle tabular-nums">
+            {head.time}
+          </Typography>
+        </View>
+      )}
+      <View className="min-w-0 gap-3 pl-7">{children}</View>
+    </View>
+  );
+}
+
+/** A message's text, flat in its author's column: no bubble around what others write. */
+export function FlatText({ text, streaming, plain, mentionables }: { text: string; streaming?: boolean; plain?: boolean; mentionables?: Mentionable[] }) {
+  return <MessageText text={text} streaming={streaming} plain={plain} mentionables={mentionables} className="min-w-0" />;
+}
+
+/** A bubble of yours (HeroUI's `secondary` surface, the web's grey), the frame of your text, quote and files. */
+export function Bubble({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <Surface variant="secondary" className={cn("min-w-0 self-end rounded-2xl", className)}>
       {children}
     </Surface>
   );
 }
 
-export function BotBubble({ text, streaming, mentionables, className }: { text: string; streaming?: boolean; mentionables?: Mentionable[]; className?: string }) {
-  return (
-    <Bubble className={cn("px-3 py-2", className)}>
-      <MessageText text={text} streaming={streaming} mentionables={mentionables} className="min-w-0" />
-    </Bubble>
-  );
-}
-
+/** Your message: a grey bubble on the right, the conversation's colours aside. */
 export function UserBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
   return (
-    <Bubble mine className={cn("px-3 py-2", className)}>
-      <MessageText plain onAccent text={text} mentionables={mentionables} className="min-w-0" textClassName="text-bot-foreground" />
-    </Bubble>
-  );
-}
-
-/** Message from another employee, left-aligned. */
-export function PeerBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
-  return (
-    <Bubble className={cn("px-3 py-2", className)}>
+    <Bubble className={cn("px-3.5 py-2", className)}>
       <MessageText plain text={text} mentionables={mentionables} className="min-w-0" />
     </Bubble>
   );
 }
 
-/** One dot of the typing indicator (6 px, muted, as on the web), each one 120 ms after the previous. */
+/** One dot of the typing indicator (6 pt, muted, as on the web), each one 150 ms after the previous. */
 function BounceDot({ delay }: { delay: number }) {
   const y = useSharedValue(0);
   useEffect(() => {
@@ -82,101 +108,71 @@ function BounceDot({ delay }: { delay: number }) {
   );
 }
 
+/** A bot writing its reply: three dots in its column, no bubble. */
 export function TypingBubble({ label }: { label: string }) {
   return (
-    <Bubble className="px-4 py-3.5">
-      <View accessibilityLabel={label} className="flex-row gap-1">
-        {[0, 1, 2].map((d) => (
-          <BounceDot key={d} delay={d * 120} />
-        ))}
-      </View>
-    </Bubble>
+    <View accessibilityLabel={label} className="h-5 flex-row items-center gap-1 self-start">
+      {[0, 1, 2].map((d) => (
+        <BounceDot key={d} delay={d * 150} />
+      ))}
+    </View>
   );
+}
+
+/** Colleagues writing, on one quiet line under the thread (the bots say it in their own column). */
+export function TypingLine({ entries }: { entries: { key: string; name: string }[] }) {
+  const t = messages;
+  if (!entries.length) return null;
+  return (
+    <Typography accessibilityLiveRegion="polite" type="body-xs" color="muted" className="mt-2">
+      {t.typing(entries.map((e) => e.name).join(", "), entries.length)}
+    </Typography>
+  );
+}
+
+/** A tool in words: a connector by its name and logo, the others by what they do (never `web_search`). */
+function useToolWords() {
+  const t = messages;
+  const { data: brands } = useQuery(brandsQuery);
+  const servers = Object.keys(brands?.servers ?? {});
+  return (name: string): { key: string; label: string; server: string | null } => {
+    const server = toolServer(name, servers);
+    if (server) return { key: `mcp:${server}`, label: connectorName(server), server };
+    const id = name.toLowerCase();
+    const known = id.startsWith("browser_") ? "browser" : id.startsWith("skill") ? "skill" : id === "process" || id === "bash" ? "terminal" : id;
+    const label = t.tools[known] ?? id.replace(/^mcp_+/, "").replace(/_+/g, " ").replace(/^./, (c) => c.toUpperCase());
+    return { key: label, label, server: null };
+  };
 }
 
 /**
- * Who is writing, on one line as in a messaging app (web: TypingLine): the bots before their reply,
- * with the tool they use, and people.
+ * Tools used by the agent during a reply (hermes.tool.progress events): one quiet line, « A utilisé
+ * Recherche web, Lecture de page », a connector with its logo. Code sessions are told by their card.
  */
-export function TypingLine({ entries }: { entries: { key: string; name: string; avatar?: ReactNode; tool?: string }[] }) {
-  const t = messages;
-  const writers = entries.filter((e) => !e.tool);
-  const users = entries.filter((e) => e.tool);
-  const avatars = (list: typeof entries) =>
-    list.some((e) => e.avatar) && <View className="flex-row -space-x-1">{list.map((e) => e.avatar && <Fragment key={e.key}>{e.avatar}</Fragment>)}</View>;
-  if (!entries.length) return null;
-  return (
-    <View accessibilityLiveRegion="polite" className="mt-1 flex-row flex-wrap items-center gap-x-1.5 gap-y-1 self-start">
-      <View className="flex-row gap-1">
-        {[0, 1, 2].map((d) => (
-          <BounceDot key={d} delay={d * 120} />
-        ))}
-      </View>
-      {users.map((e, i) => (
-        <Fragment key={e.key}>
-          {i > 0 && <Typography color="muted">·</Typography>}
-          {avatars([e])}
-          <Typography color="muted">{t.usingTool(e.name)}</Typography>
-          <ToolChip name={e.tool!} />
-        </Fragment>
-      ))}
-      {writers.length > 0 && (
-        <>
-          {users.length > 0 && <Typography color="muted">·</Typography>}
-          {avatars(writers)}
-          <Typography color="muted">{t.typing(writers.map((e) => e.name).join(", "), writers.length)}</Typography>
-        </>
-      )}
-    </View>
-  );
-}
-
-function ToolChip({ name }: { name: string }) {
-  const { data: brands } = useQuery(brandsQuery);
-  const servers = Object.keys(brands?.servers ?? {});
-  return (
-    <Chip size="sm" variant="secondary" color="default">
-      <BrandLogo server={toolServer(name, servers)} fallback={<ToolIcon name={name} className="size-3.5 text-muted" />} className="size-3.5 rounded-[3px]" />
-      <Chip.Label>{name}</Chip.Label>
-    </Chip>
-  );
-}
-
-/** Tools used by the agent during a reply (hermes.tool.progress events). */
 export function ToolLine({ tools, running }: { tools: { name: string; status: string }[]; running?: boolean }) {
   const t = messages;
-  const names = [...new Set(tools.map((tool) => tool.name))];
-  if (!names.length) return null;
+  const words = useToolWords();
+  const seen = new Map<string, ReturnType<typeof words>>();
+  for (const tool of tools) {
+    // Its reasoning isn't a tool it used.
+    if (tool.name.startsWith("claude_code_") || tool.name === "code_session" || /^(thinking|réflexion)$/i.test(tool.name)) continue;
+    const w = words(tool.name);
+    if (!seen.has(w.key)) seen.set(w.key, w);
+  }
+  if (!seen.size) return null;
+  const list = [...seen.values()];
   return (
-    <View className="my-0.5 flex-row flex-wrap items-center gap-x-1.5 gap-y-1 self-start">
-      {running ? <Spinner size="sm" /> : <CheckIcon className="size-4 text-muted" />}
-      <Typography color="muted">
+    <View className="flex-row flex-wrap items-center gap-x-1.5 gap-y-1">
+      {running ? <Spinner size="sm" /> : <CheckIcon size={12} className="text-subtle" />}
+      <Typography type="body-xs" className="text-subtle">
         {running ? t.using : t.used}
       </Typography>
-      {names.map((n) => (
-        <ToolChip key={n} name={n} />
-      ))}
-    </View>
-  );
-}
-
-export function EventLine({ label, routines }: { label: string; routines: string[] }) {
-  const t = messages;
-  return (
-    <View className="my-2 flex-row flex-wrap items-center justify-center gap-x-1.5 gap-y-1 px-6">
-      <Typography color="muted" align="center" >
-        {label}
-      </Typography>
-      {routines.map((r, i) => (
-        <View key={r} className="flex-row items-center gap-1.5">
-          {i > 0 && (
-            <Typography color="muted">
-              {t.and}
-            </Typography>
-          )}
-          <ClockIcon className="size-3.5 text-muted" />
-          <Typography weight="medium">
-            {r}
+      {list.map((w, i) => (
+        <View key={w.key} className="flex-row items-center gap-1">
+          {w.server && <BrandLogo server={w.server} fallback={null} className="size-3 rounded-[3px]" />}
+          <Typography type="body-xs" color="muted">
+            {w.label}
+            {i < list.length - 1 && ","}
           </Typography>
         </View>
       ))}
@@ -184,32 +180,24 @@ export function EventLine({ label, routines }: { label: string; routines: string
   );
 }
 
-/** "Today 11:45" between two runs of messages, as iOS Messages centers it. */
-export function DateDivider({ label }: { label: string }) {
+/** The day between two hairlines, once per day; the times are on the messages. */
+export function DayDivider({ label }: { label: string }) {
   return (
-    <Typography color="muted" align="center" weight="medium" className="mt-4 mb-1">
-      {label}
-    </Typography>
-  );
-}
-
-/** Something that happened in the conversation (joined, renamed…): centered, small, muted. */
-export function SystemEvent({ label }: { label: string }) {
-  return (
-    <Typography color="muted" align="center" className="my-2 px-8">
-      {label}
-    </Typography>
-  );
-}
-
-/** Author at the start of a run of messages, in a group: above the bubble, like iOS Messages. */
-export function AuthorLine({ avatar, name }: { avatar: ReactNode; name: string }) {
-  return (
-    <View className="mt-3 flex-row items-center gap-1.5 pl-1">
-      {avatar}
-      <Typography color="muted">
-        {name}
+    <View className="my-1 flex-row items-center gap-3">
+      <Separator className="flex-1" />
+      <Typography type="body-xs" className="text-subtle">
+        {label}
       </Typography>
+      <Separator className="flex-1" />
     </View>
+  );
+}
+
+/** What happened in the conversation (joined, renamed…): in the thread's flow on the left, in grey, no centred banner. */
+export function ThreadEvent({ label, className }: { label: string; className?: string }) {
+  return (
+    <Typography type="body-xs" className={cn("mt-3 pl-7 text-subtle", className)}>
+      {label}
+    </Typography>
   );
 }

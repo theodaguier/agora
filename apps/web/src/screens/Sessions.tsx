@@ -17,7 +17,7 @@ import { AgentAvatar } from "@/components/AgentAvatar";
 import { BrandLogo } from "@/components/BrandLogo";
 import { CodePriorityIcon, CodeStateIcon } from "@/components/CodeSessionMarks";
 import { PriorityIcon } from "@/components/Marks";
-import { CodePriorityMenu, priorityOfKey, useSetCodePriority, useSetCodePriorityOf } from "@/components/CodePriorityMenu";
+import { CodeSessionActionsMenu, CodePriorityMenu, priorityOfKey, useSetCodePriority, useSetCodePriorityOf } from "@/components/CodePriorityMenu";
 import { EmptyFigure } from "@/components/EmptyFigure";
 import { LiveSessionCard } from "@/components/CodeSession";
 import { CodeEnginesLogo, ModelLogo } from "@/components/ProviderLogo";
@@ -308,7 +308,7 @@ function useDropPriority(priority: CodePriority | null) {
 /**
  * Figma « Sessions de code · 1440 »: one 40 px line per session: its priority (a menu, for its owner),
  * its state (unless the group says it), the title, where its work is (repository · branch, in mono),
- * the agent that started it, the engine, when. The line opens it beside its conversation.
+ * the agent that started it, the engine, when, then its « … » (its owner's actions). The line opens it beside its conversation.
  */
 function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: CodeSessionGrouping }) {
   const t = useT(codeSessions);
@@ -391,6 +391,11 @@ function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: 
         <ModelLogo provider={s.engine} className="size-3.5" />
       </span>
       <span className="w-12 shrink-0 text-right text-xs text-subtle-foreground tabular-nums">{listTime(new Date(s.updatedAt))}</span>
+      {owner && (
+        <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} className="flex shrink-0">
+          <CodeSessionActionsMenu session={s} />
+        </span>
+      )}
     </div>
   );
 }

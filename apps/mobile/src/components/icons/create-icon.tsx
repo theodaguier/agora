@@ -1,6 +1,14 @@
 import { useId, type ReactNode } from "react";
 import Svg, { Circle, G, Mask, Path, Rect, type PathProps } from "react-native-svg";
 import { useResolveClassNames } from "uniwind";
+import { HugeiconsIcon } from "@hugeicons/react-native";
+import { HUGEICONS } from "@agora/core/hugeicons";
+
+/**
+ * Which drawings the app uses, as on the web (apps/web/src/components/icons/create-icon.tsx): the house
+ * ones (below), or Hugeicons' under the same names (@agora/core/hugeicons, shared with the web).
+ */
+const ICON_SET: "house" | "hugeicons" = "hugeicons";
 
 /*
  * apps/web/src/components/icons/create-icon.tsx for React Native: same layers and paths.
@@ -28,6 +36,15 @@ export type IconLayers = { fill?: ReactNode; cut?: ReactNode; solid?: ReactNode;
 
 /** The house icon style: solid and rounded, 24px grid, `currentColor` = the text color of `className`. */
 export function createIcon(name: string, { fill, cut, solid, line }: IconLayers): IconComponent {
+  const Huge = ICON_SET === "hugeicons" ? HUGEICONS[name] : undefined;
+  if (Huge) {
+    const Hugeicon = ({ className, size = 24, color, strokeWidth = 1.5 }: IconProps) => {
+      const style = useResolveClassNames(className ?? "") as { width?: number; color?: string };
+      return <HugeiconsIcon icon={Huge} size={typeof style.width === "number" ? style.width : size} color={color ?? style.color ?? "#000"} strokeWidth={strokeWidth} />;
+    };
+    Hugeicon.displayName = `${name.replace(/(^|-)(\w)/g, (_, _d, c: string) => c.toUpperCase())}Icon`;
+    return Hugeicon;
+  }
   function Icon({ className, size = 24, color, strokeWidth = 1.75 }: IconProps) {
     const style = useResolveClassNames(className ?? "") as { width?: number; color?: string };
     const px = typeof style.width === "number" ? style.width : size;

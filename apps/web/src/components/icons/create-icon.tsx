@@ -1,13 +1,13 @@
 import { Children, Fragment, isValidElement, useId, type ReactElement, type ReactNode, type SVGProps } from "react";
 import { LUCIDE } from "./lucide";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { HUGEICONS } from "./hugeicons";
+import { HUGEICONS } from "@agora/core/hugeicons";
 import { FILLED, MIRRORED, PHOSPHOR } from "./phosphor";
 import { Hole } from "./shapes";
 
 /**
  * Which drawings the app uses: the house ones (below), or Lucide's / Phosphor's / Hugeicons' under
- * the same names (lucide.tsx, phosphor.tsx, hugeicons.tsx). Switch back to "house" to return to the house style.
+ * the same names (lucide.tsx, phosphor.tsx, @agora/core/hugeicons). Switch back to "house" to return to the house style.
  */
 const ICON_SET: "house" | "lucide" | "phosphor" | "hugeicons" = "hugeicons";
 

@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./i18n": "./src/i18n/index.ts"
+    "./i18n": "./src/i18n/index.ts",
+    "./hugeicons": "./src/hugeicons.ts"
   },
   "scripts": {
     "typecheck": "tsc -p ."
@@ -13,5 +14,8 @@
   "devDependencies": {
     "typescript": "^7.0.2"
   },
-  "license": "AGPL-3.0-only"
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@hugeicons/core-free-icons": "^4.4.0"
+  }
 }
