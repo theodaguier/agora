@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.61.3 — 2026-11-13
+
+### Fixes
+- **web**: l'état des sessions de code dans leurs onglets
+
 ## v0.61.2 — 2026-11-13
 
 ### Fixes
