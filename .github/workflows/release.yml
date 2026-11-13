@@ -57,6 +57,8 @@ jobs:
     needs: version
     if: needs.version.outputs.tag != ''
     runs-on: ubuntu-latest
+    # A hung build fails fast instead of blocking every later release for hours.
+    timeout-minutes: 30
     strategy:
       matrix:
         include:
