@@ -194,7 +194,7 @@ export function PullRequestCard({
                   {methods.length > 1 && !reason && !merging && (
                     <TapMenu
                       accessibilityLabel={t.method}
-                      actions={[{ title: t.method, actions: methods.map((m) => ({ label: t.methods[m], icon: METHOD_ICONS[m], checked: m === method, onPress: () => setPicked(m) })) }]}
+                      actions={[{ title: t.method, actions: methods.map((m) => ({ label: t.methods[m], icon: METHOD_ICONS[m], description: t.methodHelp[m], checked: m === method, onPress: () => setPicked(m) })) }]}
                     >
                       <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.method}>
                         <ChevronDownIcon size={16} className="text-accent-foreground" />
