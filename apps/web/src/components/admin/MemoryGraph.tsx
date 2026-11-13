@@ -12,7 +12,7 @@ import {
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useIsDark } from "@/lib/theme";
 import { defineMessages, useT } from "@/i18n";
-import { nodeColor, type WikiEdge, type WikiNode, type WikiNodeType } from "@/lib/wiki-graph";
+import { type WikiEdge, type WikiNode, type WikiNodeType } from "@/lib/wiki-graph";
 
 const messages = defineMessages({
   en: { label: "Company memory graph: wiki pages and the links between them" },
@@ -20,13 +20,17 @@ const messages = defineMessages({
 });
 
 type SimNode = SimulationNodeDatum & WikiNode & { degree: number; r: number };
-type SimLink = SimulationLinkDatum<SimNode>;
+type SimLink = SimulationLinkDatum<SimNode> & { authored: boolean };
 
 const INK = {
-  dark: { edge: "rgba(255,255,255,0.09)", edgeFocus: "rgba(255,255,255,0.42)", ring: "#ffffff", label: "#e6e6e6" },
-  light: { edge: "rgba(0,0,0,0.1)", edgeFocus: "rgba(0,0,0,0.45)", ring: "#171717", label: "#262626" },
+  dark: { node: "#8a8a8a", nodeFocus: "#ededed", edge: "rgba(255,255,255,0.09)", authored: "rgba(255,255,255,0.035)", edgeFocus: "rgba(255,255,255,0.42)", ring: "#ffffff", label: "#e6e6e6" },
+  light: { node: "#a3a3a3", nodeFocus: "#262626", edge: "rgba(0,0,0,0.1)", authored: "rgba(0,0,0,0.035)", edgeFocus: "rgba(0,0,0,0.45)", ring: "#171717", label: "#262626" },
 };
 const LABEL_SIZE = 12;
+
+/** Drawn radius, in graph units: a dot grows with the zoom up to its own size, never past it, so a small
+ * vault fitted to a large pane stays a constellation of points instead of big discs. */
+const radius = (n: SimNode, k: number) => (n.r * Math.min(k, 1)) / k;
 
 /**
  * Memory graph, in the style of Obsidian's graph view: force simulation
@@ -36,7 +40,7 @@ const LABEL_SIZE = 12;
 /** Draws the graph: edges, nodes, then labels; the hovered or selected node's neighborhood stands out. */
 function paint(
   ctx: CanvasRenderingContext2D,
-  s: { nodes: SimNode[]; links: SimLink[]; neighbors: Map<string, Set<string>>; view: { x: number; y: number; k: number }; hover: SimNode | null },
+  s: { nodes: SimNode[]; links: SimLink[]; neighbors: Map<string, Set<string>>; view: { x: number; y: number; k: number }; fitK: number; hover: SimNode | null },
   { width, height, selected, highlight, dark }: { width: number; height: number; selected: string | null; highlight: Set<string> | null; dark: boolean },
 ) {
   const { view, hover } = s;
@@ -48,20 +52,24 @@ function paint(
   ctx.scale(view.k, view.k);
 
   const focusId = hover?.id ?? selected;
+  const rad = (n: SimNode) => radius(n, view.k);
   const focus = focusId ? new Set([focusId, ...(s.neighbors.get(focusId) ?? [])]) : null;
   const lit = (id: string) => (focus ? focus.has(id) : highlight ? highlight.has(id) : true);
 
   ctx.lineWidth = 0.7 / view.k;
-  ctx.strokeStyle = ink.edge;
-  ctx.beginPath();
-  for (const l of s.links) {
-    const a = l.source as SimNode;
-    const b = l.target as SimNode;
-    if (focus && (a.id === focusId || b.id === focusId)) continue;
-    ctx.moveTo(a.x!, a.y!);
-    ctx.lineTo(b.x!, b.y!);
+  // Authorship links fainter than page links: an agent that wrote every page would veil the graph.
+  for (const authored of [true, false]) {
+    ctx.strokeStyle = authored ? ink.authored : ink.edge;
+    ctx.beginPath();
+    for (const l of s.links) {
+      const a = l.source as SimNode;
+      const b = l.target as SimNode;
+      if (l.authored !== authored || (focus && (a.id === focusId || b.id === focusId))) continue;
+      ctx.moveTo(a.x!, a.y!);
+      ctx.lineTo(b.x!, b.y!);
+    }
+    ctx.stroke();
   }
-  ctx.stroke();
   if (focus) {
     ctx.strokeStyle = ink.edgeFocus;
     ctx.lineWidth = 1 / view.k;
@@ -76,33 +84,35 @@ function paint(
     ctx.stroke();
   }
 
+  // One grey for every node, as in Obsidian: the kind is in the filter menu and the page panel, the
+  // focused node and its neighbors turn dark, a link that leads nowhere stays faint.
   for (const n of s.nodes) {
-    ctx.globalAlpha = lit(n.id) ? 1 : 0.14;
-    ctx.fillStyle = nodeColor(n.type, dark);
+    ctx.globalAlpha = (lit(n.id) ? 1 : 0.14) * (n.type === "ghost" ? 0.5 : 1);
+    ctx.fillStyle = focus?.has(n.id) || highlight?.has(n.id) ? ink.nodeFocus : ink.node;
     ctx.beginPath();
-    ctx.arc(n.x!, n.y!, n.r, 0, Math.PI * 2);
+    ctx.arc(n.x!, n.y!, rad(n), 0, Math.PI * 2);
     ctx.fill();
     if (n.id === selected) {
       ctx.strokeStyle = ink.ring;
       ctx.lineWidth = 1.5 / view.k;
       ctx.beginPath();
-      ctx.arc(n.x!, n.y!, n.r + 3 / view.k, 0, Math.PI * 2);
+      ctx.arc(n.x!, n.y!, rad(n) + 3 / view.k, 0, Math.PI * 2);
       ctx.stroke();
     }
   }
 
-  // Labels: when zoomed in, on the hovered neighborhood, and always for large nodes. They are placed by
-  // priority (focus, search matches, agents, then the most linked pages) and a label that would overlap
-  // one already drawn is skipped, as in Obsidian: zooming in spreads the nodes and reveals the rest.
-  const rank = (n: SimNode) => (n.id === focusId ? 0 : n.id === selected ? 1 : highlight?.has(n.id) ? 2 : n.type === "agent" ? 3 : 4);
+  // No label at rest, as in Obsidian: the hovered or opened node and its neighbors, the search matches,
+  // or everything once zoomed well past the fitted view. They are placed by priority and a label that
+  // would overlap one already drawn is skipped: zooming in spreads the nodes and reveals the rest.
+  const rank = (n: SimNode) => (n.id === focusId ? 0 : n.id === selected ? 1 : highlight?.has(n.id) ? 2 : 3);
   const candidates = s.nodes
-    .filter((n) => (focus ? focus.has(n.id) : view.k > 1.6 || n.degree >= 2 || n.type === "agent" || !!highlight?.has(n.id)))
+    .filter((n) => (focus ? focus.has(n.id) : highlight ? highlight.has(n.id) : view.k > s.fitK * 2))
     .sort((a, b) => rank(a) - rank(b) || b.degree - a.degree);
   ctx.font = `${LABEL_SIZE / view.k}px ${getComputedStyle(ctx.canvas).fontFamily}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   // Every node is taken first, so a label never covers a node.
-  const screen = (n: SimNode) => [width / 2 + view.x + n.x! * view.k, height / 2 + view.y + n.y! * view.k, n.r * view.k + 2] as const;
+  const screen = (n: SimNode) => [width / 2 + view.x + n.x! * view.k, height / 2 + view.y + n.y! * view.k, rad(n) * view.k + 2] as const;
   const placed: [number, number, number, number, string?][] = s.nodes.map((n) => {
     const [x, y, r] = screen(n);
     return [x - r, y - r, x + r, y + r, n.id];
@@ -111,14 +121,14 @@ function paint(
     const label = n.label.length > 30 ? `${n.label.slice(0, 29)}…` : n.label;
     const w = ctx.measureText(label).width * view.k;
     const x = width / 2 + view.x + n.x! * view.k;
-    const y = height / 2 + view.y + (n.y! + n.r) * view.k + 3;
+    const y = height / 2 + view.y + (n.y! + rad(n)) * view.k + 3;
     const box: [number, number, number, number] = [x - w / 2 - 3, y - 1, x + w / 2 + 3, y + LABEL_SIZE + 3];
     if (box[2] < 0 || box[0] > width || box[3] < 0 || box[1] > height) continue;
     if (n.id !== focusId && placed.some((p) => p[4] !== n.id && box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) continue;
     placed.push(box);
     ctx.globalAlpha = focus && n.id !== focusId ? 0.8 : lit(n.id) ? 0.95 : 0.3;
     ctx.fillStyle = ink.label;
-    ctx.fillText(label, n.x!, n.y! + n.r + 3 / view.k);
+    ctx.fillText(label, n.x!, n.y! + rad(n) + 3 / view.k);
   }
   ctx.globalAlpha = 1;
 }
@@ -139,6 +149,8 @@ export function MemoryGraph(props: {
     links: [] as SimLink[],
     neighbors: new Map<string, Set<string>>(),
     view: { x: 0, y: 0, k: 1 },
+    // Zoom of the fitted view: labels show for every node only once zoomed well past it.
+    fitK: 1,
     hover: null as SimNode | null,
     sim: null as Simulation<SimNode, SimLink> | null,
     frame: 0,
@@ -163,9 +175,10 @@ export function MemoryGraph(props: {
       x1 = Math.max(x1, n.x! + n.r);
       y1 = Math.max(y1, n.y! + n.r);
     }
-    // The graph fills its pane (a margin for the labels), rather than a small knot in the middle.
-    const k = Math.min(3, Math.max(0.2, Math.min((width - 160) / (x1 - x0 || 1), (height - 96) / (y1 - y0 || 1))));
+    // The graph fills its pane, with a small margin (no label at rest), rather than a small knot in the middle.
+    const k = Math.min(6, Math.max(0.2, Math.min((width - 64) / (x1 - x0 || 1), (height - 64) / (y1 - y0 || 1))));
     s.view = { k, x: (-(x0 + x1) / 2) * k, y: (-(y0 + y1) / 2) * k };
+    s.fitK = k;
     s.draw();
   };
 
@@ -193,30 +206,38 @@ export function MemoryGraph(props: {
       return {
         ...n,
         degree: d,
-        r: (n.type === "agent" ? 4 : 2.2) + Math.sqrt(d) * (n.type === "agent" ? 1.1 : 0.8),
+        // A little bigger the more it's linked, bounded: an agent's links can be every page.
+        r: 2.5 + Math.min(Math.sqrt(d) * 0.6, 3.5),
         x: old?.x ?? (Math.random() - 0.5) * 400,
         y: old?.y ?? (Math.random() - 0.5) * 400,
         vx: old?.vx,
         vy: old?.vy,
       };
     });
-    s.links = edges.map((e) => ({ source: e.source, target: e.target }));
+    const agents = new Set(visible.filter((n) => n.type === "agent").map((n) => n.id));
+    s.links = edges.map((e) => ({ source: e.source, target: e.target, authored: agents.has(e.source) || agents.has(e.target) }));
 
     s.sim?.stop();
+    // Laid out as Obsidian's graph: the page links make the clusters. A link weighs less the more links
+    // its ends have (d3's default), so a hub doesn't pull the whole vault into one ball. Authorship links
+    // weigh by the agent's own count, so one that wrote every page doesn't crush everything around it;
+    // it sits in the middle instead, and an agent that wrote a few pages among them.
+    const deg = (n: SimNode | string | number) => (n as SimNode).degree || 1;
+    // Linked to nothing, a node is held close: pushed far, it would make the fitted view shrink the rest.
+    const center = (d: SimNode) => (d.degree === 0 ? 0.2 : d.type === "agent" ?0.06 + 0.4 * Math.min(1, d.degree / (s.nodes.length * 0.3)) : 0.06);
     const sim = forceSimulation<SimNode, SimLink>(s.nodes)
       .force(
         "link",
         forceLink<SimNode, SimLink>(s.links)
           .id((d) => d.id)
-          .distance((l) => ((l.source as SimNode).type === "agent" || (l.target as SimNode).type === "agent" ? 110 : 70))
-          .strength(0.35),
+          .distance(30)
+          .strength((l) => (l.authored ? 1 / Math.max(deg(l.source), deg(l.target)) : 0.7 / Math.min(deg(l.source), deg(l.target)))),
       )
-      .force("charge", forceManyBody<SimNode>().strength((d) => (d.degree === 0 ? -30 : d.type === "agent" ? -260 : -140)).distanceMax(360))
-      .force("collide", forceCollide<SimNode>((d) => d.r + 10))
-      // A pull toward the center keeps isolated pages in orbit, like in Obsidian.
-      // Pages linked to nothing are held close: pushed far, they'd make the fitted view shrink the rest.
-      .force("x", forceX<SimNode>(0).strength((d) => (d.degree === 0 ? 0.3 : 0.035)))
-      .force("y", forceY<SimNode>(0).strength((d) => (d.degree === 0 ? 0.3 : 0.035)))
+      .force("charge", forceManyBody<SimNode>().strength((d) => (d.degree === 0 ? -15 : d.type === "agent" ? -60 : -40 - 12 * Math.sqrt(d.degree))).distanceMax(400))
+      .force("collide", forceCollide<SimNode>((d) => d.r + 2.5))
+      // A pull toward the center keeps isolated pages in orbit around the rest, as in Obsidian.
+      .force("x", forceX<SimNode>(0).strength(center))
+      .force("y", forceY<SimNode>(0).strength(center))
       .alpha(previous.size ? 0.4 : 1)
       // Until the user zooms or pans, the view follows the layout so nothing drifts out of the frame.
       .on("tick", () => (s.touched ? s.draw() : fit()))
@@ -280,7 +301,7 @@ export function MemoryGraph(props: {
       let bestD = Infinity;
       for (const n of s.nodes) {
         const d = Math.hypot(n.x! - p.x, n.y! - p.y);
-        if (d < Math.max(n.r + 4 / s.view.k, 7 / s.view.k) && d < bestD) {
+        if (d < Math.max(radius(n, s.view.k) + 4 / s.view.k, 7 / s.view.k) && d < bestD) {
           best = n;
           bestD = d;
         }

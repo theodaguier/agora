@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -19,9 +19,8 @@ import {
 import { api } from "@/lib/api";
 import { adminAgentsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import { useIsDark } from "@/lib/theme";
 import { MemoryGraph } from "./MemoryGraph";
-import { nodeColor, type WikiEdge, type WikiNode, type WikiNodeType } from "@/lib/wiki-graph";
+import { type WikiEdge, type WikiNode, type WikiNodeType } from "@/lib/wiki-graph";
 import { defineMessages, useT } from "@/i18n";
 import { LoadError, LoadFailed, Loading } from "./ui";
 
@@ -210,52 +209,48 @@ export function WikiMemory({ standalone = false, inTab = false }: { standalone?:
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      {/* One line, as the other tabs' headers: the title, then find a page, which kinds are shown, and
-          where to open it (an icon: not in its own tab, where the graph is the page). */}
-      <div className="mb-4 flex items-center gap-2">
-        {!inTab && <h2 className="text-title font-medium">{t.title}</h2>}
+      {/* The title where every settings tab has it (in their column, the same top space); the graph then
+          takes the whole width and height left, out of the column. */}
+      <div className={cn("flex items-center gap-2", inTab ? "px-6 pt-5 pb-2" : "mx-auto w-full max-w-2xl px-4 pt-6 pb-2 sm:px-10 sm:pt-16")}>
+        <h2 className="text-title font-medium">{t.title}</h2>
         <span className="flex-1" />
         {graph.data && (
           <>
-            <div className="relative w-56">
-              <InputGroup className="h-8 bg-transparent text-ui dark:bg-transparent">
-                <InputGroupAddon>
-                  <SearchIcon />
-                </InputGroupAddon>
-                <InputGroupInput aria-label={t.searchLabel} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.searchPlaceholder} />
-              </InputGroup>
-              <Popover open={!!matches} onOpenChange={(open) => !open && setQuery("")}>
-                <PopoverTrigger nativeButton={false} tabIndex={-1} render={<div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0" />} />
-                <PopoverContent align="start" sideOffset={6} initialFocus={false} finalFocus={false} className="w-(--anchor-width) p-1">
-                  <ItemGroup className="max-h-64 gap-0 overflow-y-auto has-data-[size=xs]:gap-0">
-                    {matches?.slice(0, 12).map((n) => (
-                      <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted" render={<button type="button" onClick={() => select(n.id)} />}>
-                        <ItemMedia>
-                          <Dot type={n.type} />
-                        </ItemMedia>
-                        <ItemContent>
-                          <ItemTitle className="text-ui">{n.label}</ItemTitle>
-                        </ItemContent>
-                      </Item>
-                    ))}
-                    {matches && !matches.length && <p className="px-2.5 py-2 text-xs text-subtle-foreground">{t.noPage}</p>}
-                  </ItemGroup>
-                </PopoverContent>
-              </Popover>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.shown} className="text-muted-foreground" />}>
-                <SlidersIcon />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {LEGEND.filter((type) => counts[type]).map((type) => (
-                  <DropdownMenuCheckboxItem key={type} checked={!hidden.has(type)} onCheckedChange={() => toggle(type)} closeOnClick={false}>
-                    <Dot type={type} />
-                    {t.legend[type]}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div className="relative w-56">
+            <InputGroup className="h-8 bg-transparent text-ui dark:bg-transparent">
+              <InputGroupAddon>
+                <SearchIcon />
+              </InputGroupAddon>
+              <InputGroupInput aria-label={t.searchLabel} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.searchPlaceholder} />
+            </InputGroup>
+            <Popover open={!!matches} onOpenChange={(open) => !open && setQuery("")}>
+              <PopoverTrigger nativeButton={false} tabIndex={-1} render={<div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0" />} />
+              <PopoverContent align="start" sideOffset={6} initialFocus={false} finalFocus={false} className="w-(--anchor-width) p-1">
+                <ItemGroup className="max-h-64 gap-0 overflow-y-auto has-data-[size=xs]:gap-0">
+                  {matches?.slice(0, 12).map((n) => (
+                    <Item key={n.id} size="xs" role="listitem" className="text-left hover:bg-muted" render={<button type="button" onClick={() => select(n.id)} />}>
+                      <ItemContent>
+                        <ItemTitle className="text-ui">{n.label}</ItemTitle>
+                      </ItemContent>
+                    </Item>
+                  ))}
+                  {matches && !matches.length && <p className="px-2.5 py-2 text-xs text-subtle-foreground">{t.noPage}</p>}
+                </ItemGroup>
+              </PopoverContent>
+            </Popover>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.shown} className="text-muted-foreground" />}>
+              <SlidersIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {LEGEND.filter((type) => counts[type]).map((type) => (
+                <DropdownMenuCheckboxItem key={type} checked={!hidden.has(type)} onCheckedChange={() => toggle(type)} closeOnClick={false}>
+                  {t.legend[type]}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           </>
         )}
         {!inTab && (
@@ -272,46 +267,36 @@ export function WikiMemory({ standalone = false, inTab = false }: { standalone?:
         )}
       </div>
 
-      {graph.isPending && <Loading />}
-      {!graph.data && graph.isError && <LoadFailed error={graph.error} onRetry={() => void graph.refetch()} />}
-
-      {graph.data && (
-        <div className="flex min-h-0 flex-1 flex-col">
-
-          <div className="relative min-h-96 flex-1">
-            {nodes.length ? (
-              <MemoryGraph nodes={nodes} edges={edges} hidden={hidden} selected={selected} highlight={highlight} onSelect={select} />
-            ) : (
-              <Empty>
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <BrainIcon />
-                  </EmptyMedia>
-                  <EmptyTitle>{t.empty}</EmptyTitle>
-                  <EmptyDescription>{t.emptyHint}</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-            {selected && (
-              <PagePanel
-                id={selected}
-                node={nodes.find((n) => n.id === selected)}
-                nodes={nodes}
-                edges={edges}
-                onSelect={select}
-                onClose={() => setSelected(null)}
-              />
-            )}
-          </div>
-        </div>
-      )}
+      <div className="relative min-h-0 flex-1">
+        {graph.isPending && <Loading />}
+        {!graph.data && graph.isError && <LoadFailed error={graph.error} onRetry={() => void graph.refetch()} />}
+        {graph.data &&
+          (nodes.length ? (
+            <MemoryGraph nodes={nodes} edges={edges} hidden={hidden} selected={selected} highlight={highlight} onSelect={select} />
+          ) : (
+            <Empty className="h-full">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <BrainIcon />
+                </EmptyMedia>
+                <EmptyTitle>{t.empty}</EmptyTitle>
+                <EmptyDescription>{t.emptyHint}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ))}
+        {graph.data && selected && (
+          <PagePanel
+            id={selected}
+            node={nodes.find((n) => n.id === selected)}
+            nodes={nodes}
+            edges={edges}
+            onSelect={select}
+            onClose={() => setSelected(null)}
+          />
+        )}
+      </div>
     </section>
   );
-}
-
-function Dot({ type }: { type: WikiNodeType }) {
-  const dark = useIsDark();
-  return <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: nodeColor(type, dark) }} />;
 }
 
 /** Obsidian [[links]] become clickable internal links. */
@@ -359,7 +344,6 @@ function PagePanel(props: {
     <Card role="complementary" aria-label={title} className="absolute inset-y-3 right-3 left-3 sm:left-auto sm:w-96">
       <CardHeader className="border-b">
         <CardDescription className="flex items-center gap-2">
-          <Dot type={type} />
           <span>
             {t.type[type]}
             {typeof meta.updated === "string" && t.updated(meta.updated)}
@@ -431,7 +415,7 @@ function PagePanel(props: {
           <div className="flex flex-col gap-2">
             <Separator />
             <h4 className="text-xs font-medium text-muted-foreground">{t.linked(linked.length)}</h4>
-            {/* Tight rows, as the sidebar's: the kind's dot, the page's name (a raw source without its bot id). */}
+            {/* Tight rows, as the sidebar's: the page's name (a raw source without its bot id). */}
             <ul className="-mx-2 flex flex-col">
               {linked.map((n) => (
                 <li key={n.id}>
@@ -440,7 +424,6 @@ function PagePanel(props: {
                     onClick={() => props.onSelect(n.id)}
                     className="flex h-7 w-full min-w-0 items-center gap-2.5 rounded-md px-2 text-left text-ui outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
-                    <Dot type={n.type} />
                     <span className="truncate">{n.label.replace(/^bot-[0-9a-f]+ · /, "")}</span>
                   </button>
                 </li>

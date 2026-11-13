@@ -1,17 +1,18 @@
 import { PanelBar } from "@/components/PaneHeader";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
-import { CloseIcon } from "@/components/icons";
+import { CloseIcon, LogOutIcon, MoreIcon } from "@/components/icons";
 import { useRef, useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { confirmAction } from "@/lib/confirm";
 import { useCurrentTaskTitle } from "@/components/WorkingOn";
-import { PersonAvatar, StatusAvatar, useStatusLabel } from "@/components/ConversationAvatar";
+import { ConversationAvatar, PersonAvatar, StatusAvatar } from "@/components/ConversationAvatar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { conversationTitle, type Participant } from "@/lib/participants";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
-import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemGroup } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import { api, conversationPath, type AgentSummary, type ConversationDetail, type Person } from "@/lib/api";
@@ -27,10 +28,10 @@ const messages = defineMessages({
     hidePanel: "Hide panel",
     groupName: "Group name",
     untitled: "Untitled group",
-    members: (n: number) => `Members (${n})`,
-    bot: "Bot",
-    me: (name: string) => `${name} (you)`,
-    creator: "Created the group",
+    members: "Members",
+    count: (n: number) => `${n} member${n > 1 ? "s" : ""}`,
+    you: "you",
+    more: "More actions",
     leave: "Leave group",
     actionFailed: "Couldn't do that.",
     left: (title: string) => `You left “${title}”.`,
@@ -57,10 +58,10 @@ const messages = defineMessages({
     hidePanel: "Masquer le panneau",
     groupName: "Nom du groupe",
     untitled: "Groupe sans nom",
-    members: (n: number) => `Membres (${n})`,
-    bot: "Bot",
-    me: (name: string) => `${name} (toi)`,
-    creator: "A créé le groupe",
+    members: "Membres",
+    count: (n: number) => `${n} membre${n > 1 ? "s" : ""}`,
+    you: "toi",
+    more: "Plus d'actions",
     leave: "Quitter le groupe",
     actionFailed: "Action impossible.",
     left: (title: string) => `Tu as quitté « ${title} ».`,
@@ -140,119 +141,140 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
     },
   });
 
+  const leave = async () =>
+    (await confirmAction({
+      title: t.leaveTitle(conversationTitle(conv, user.id)),
+      description: conv.members.length <= 1 ? t.leaveLastBody : t.leaveBody,
+      action: t.leaveAction,
+    })) && remove.mutate({ kind: "user", id: user.id });
+
+  // As a colleague's panel: who it is first (faces, name, count), then its members, one line each.
+  // Leaving is a menu action, not a button left at the bottom.
   return (
     <aside className="flex h-full w-full flex-col bg-background">
-      <PanelBar title={t.group} closeLabel={t.hidePanel} onClose={onClose} />
+      <PanelBar
+        closeLabel={t.hidePanel}
+        onClose={onClose}
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.more} />}>
+              <MoreIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem variant="destructive" onClick={leave}>
+                <LogOutIcon />
+                {t.leave}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
-        {editing ? (
-          // Inline editing in the title's exact spot: Enter or clicking away saves, Escape cancels.
-          <Input
-            autoFocus
-            value={title}
-            maxLength={80}
-            disabled={rename.isPending}
-            onChange={(e) => setTitle(e.target.value)}
-            onFocus={(e) => e.currentTarget.select()}
-            onBlur={save}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-              if (e.key === "Escape") cancel();
-            }}
-            placeholder={t.groupName}
-            aria-label={t.groupName}
-          />
-        ) : (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              cancelled.current = false;
-              setTitle(conv.title ?? "");
-              setEditing(true);
-            }}
-            className="w-full justify-start"
-          >
-            <span className="truncate">{conv.title || t.untitled}</span>
-          </Button>
-        )}
-
-        <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm text-muted-foreground">{t.members(conv.members.length + conv.agents.length)}</h2>
-          <AddMembers conversation={conv} />
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 pb-5">
+        <div className="flex flex-col items-start gap-1">
+          <ConversationAvatar conversation={conv} me={user.id} className="mb-2 size-16" />
+          {editing ? (
+            // Inline editing in the name's exact spot: Enter or clicking away saves, Escape cancels.
+            <Input
+              autoFocus
+              value={title}
+              maxLength={80}
+              disabled={rename.isPending}
+              onChange={(e) => setTitle(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onBlur={save}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") cancel();
+              }}
+              placeholder={t.groupName}
+              aria-label={t.groupName}
+            />
+          ) : (
+            <button
+              type="button"
+              title={t.groupName}
+              onClick={() => {
+                cancelled.current = false;
+                setTitle(conv.title ?? "");
+                setEditing(true);
+              }}
+              className="max-w-full truncate rounded-md text-left text-xl font-medium outline-none hover:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              {conv.title || t.untitled}
+            </button>
+          )}
         </div>
 
-        <ItemGroup className="gap-1">
-          {conv.agents.map((a) => (
-            <Row
-              key={a.id}
-              p={{ kind: "agent", agent: a }}
-              name={a.name}
-              hint={t.bot}
-              onOpen={() => openAgentProfile(a.id)}
-              onRemove={
-                canRemove
-                  ? async () =>
-                      (await confirmAction({ title: t.removeTitle(a.name), description: t.removeBotBody, action: t.removeAction })) &&
-                      remove.mutate({ kind: "agent", id: a.id })
-                  : undefined
-              }
-            />
-          ))}
-          {conv.members.map((m) => (
-            <Row
-              key={m.id}
-              p={{ kind: "user", person: m }}
-              name={m.id === user.id ? t.me(m.name) : m.name}
-              hint={m.id === conv.createdBy ? t.creator : undefined}
-              onOpen={() => openProfile(m.id)}
-              onRemove={
-                canRemove && m.id !== user.id
-                  ? async () =>
-                      (await confirmAction({ title: t.removeTitle(m.name), description: t.removeBody, action: t.removeAction })) &&
-                      remove.mutate({ kind: "user", id: m.id })
-                  : undefined
-              }
-            />
-          ))}
-        </ItemGroup>
-        </div>
-
-        <Button
-          variant="destructive"
-          onClick={async () =>
-            (await confirmAction({
-              title: t.leaveTitle(conversationTitle(conv, user.id)),
-              description: conv.members.length <= 1 ? t.leaveLastBody : t.leaveBody,
-              action: t.leaveAction,
-            })) && remove.mutate({ kind: "user", id: user.id })
-          }
-          className="w-full"
-        >
-          {t.leave}
-        </Button>
+        {/* Its count once, as the list's heading, with the way to add someone beside it. */}
+        <section className="flex flex-col gap-1" aria-label={t.members}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm text-muted-foreground">{t.count(conv.members.length + conv.agents.length)}</h3>
+            <AddMembers conversation={conv} />
+          </div>
+          <ItemGroup className="-mx-2 w-auto gap-0 has-data-[size=xs]:gap-0">
+            {conv.agents.map((a) => (
+              <Row
+                key={a.id}
+                p={{ kind: "agent", agent: a }}
+                name={a.name}
+                onOpen={() => openAgentProfile(a.id)}
+                onRemove={
+                  canRemove
+                    ? async () =>
+                        (await confirmAction({ title: t.removeTitle(a.name), description: t.removeBotBody, action: t.removeAction })) &&
+                        remove.mutate({ kind: "agent", id: a.id })
+                    : undefined
+                }
+              />
+            ))}
+            {conv.members.map((m) => (
+              <Row
+                key={m.id}
+                p={{ kind: "user", person: m }}
+                name={m.name}
+                me={m.id === user.id}
+                onOpen={() => openProfile(m.id)}
+                onRemove={
+                  canRemove && m.id !== user.id
+                    ? async () =>
+                        (await confirmAction({ title: t.removeTitle(m.name), description: t.removeBody, action: t.removeAction })) &&
+                        remove.mutate({ kind: "user", id: m.id })
+                    : undefined
+                }
+              />
+            ))}
+          </ItemGroup>
+        </section>
       </div>
     </aside>
   );
 }
 
-function Row(props: { p: Participant; name: string; hint?: string; onOpen?: () => void; onRemove?: () => void }) {
+/** One member on one line, all the same height: face, name, then in grey their role (or « toi »). */
+function Row(props: { p: Participant; name: string; me?: boolean; onOpen?: () => void; onRemove?: () => void }) {
   const t = useT(messages);
   const personId = props.p.kind === "user" ? props.p.person.id : null;
   const working = useCurrentTaskTitle(personId);
   const { data: people = [] } = useQuery(usersQuery);
-  /** Their role (developer, spouse…), as set on their profile. */
   const role = personId ? people.find((u) => u.id === personId)?.title : undefined;
-  const hint = [props.hint, role, useStatusLabel(props.p), working].filter(Boolean).join(", ");
+  const detail = props.me ? t.you : working || role;
+  const body = (
+    <>
+      <StatusAvatar p={props.p} className="size-6" />
+      <span className="truncate font-medium">{props.name}</span>
+      {detail && <span className="min-w-0 truncate text-muted-foreground">{detail}</span>}
+    </>
+  );
   return (
-    <div role="listitem" className="group flex items-center gap-1">
+    <div role="listitem" className="group flex items-center">
       {props.onOpen ? (
-        <Item size="sm" className="min-w-0 flex-1" render={<button type="button" onClick={props.onOpen} aria-label={t.openProfile(props.name)} />}>
-          <RowBody {...props} hint={hint} />
+        <Item size="xs" className="min-w-0 flex-1 flex-nowrap px-2 text-left hover:bg-muted" render={<button type="button" onClick={props.onOpen} aria-label={t.openProfile(props.name)} />}>
+          {body}
         </Item>
       ) : (
-        <Item size="sm" className="min-w-0 flex-1">
-          <RowBody {...props} hint={hint} />
+        <Item size="xs" className="min-w-0 flex-1 flex-nowrap px-2">
+          {body}
         </Item>
       )}
       {props.onRemove && (
@@ -267,20 +289,6 @@ function Row(props: { p: Participant; name: string; hint?: string; onOpen?: () =
         </Button>
       )}
     </div>
-  );
-}
-
-function RowBody(props: { p: Participant; name: string; hint?: string }) {
-  return (
-    <>
-      <ItemMedia>
-        <StatusAvatar p={props.p} className="size-8" />
-      </ItemMedia>
-      <ItemContent className="min-w-0">
-        <ItemTitle>{props.name}</ItemTitle>
-        {props.hint && <ItemDescription title={props.hint}>{props.hint}</ItemDescription>}
-      </ItemContent>
-    </>
   );
 }
 

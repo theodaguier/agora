@@ -98,8 +98,8 @@ async function fetchModels(): Promise<ModelInfo[]> {
   return (await newestFirst([...models.values()], (m) => m.released)).map(({ released: _, ...m }) => m);
 }
 
-/** "Claude Opus 5.5" + "[1m]" → "Opus 5.5 · 1M". */
-const label = (id: string, name: string) => `${name.replace(/^Claude\s+/i, "")}${id.endsWith(ONE_M) ? " · 1M" : ""}`;
+/** "Claude Opus 5.5" + "[1m]" → "Opus 5.5, 1M". */
+const label = (id: string, name: string) => `${name.replace(/^Claude\s+/i, "")}${id.endsWith(ONE_M) ? ", 1M" : ""}`;
 
 /** The `/model` menu of the Claude Code signed in on this machine. */
 async function menuModels(): Promise<MenuModel[]> {

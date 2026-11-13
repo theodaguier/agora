@@ -32,14 +32,12 @@ const statusQuery = { queryKey: ["admin", "ssh", "status"], queryFn: () => api<R
 const messages = defineMessages({
   en: {
     title: "SSH machines",
-    text: "Remote machines every bot and code session can reach over SSH. Agora makes a key for each one: add its public key to the machine, then test the connection.",
+    text: "Remote machines every bot and code session can reach over SSH. Agora makes a key for each one: run its command on the machine, then test the connection.",
     listTitle: "Machines",
     add: "Add",
     empty: "No machines yet. Add one so agents can work on it.",
     untested: "Not tested",
-    verified: "Fingerprint pinned",
     usedAgo: (age: string) => `used ${age} ago`,
-    allBots: "all bots",
     someBots: (n: number) => `${n} bot${n > 1 ? "s" : ""} left out`,
     edit: "Edit",
     more: (name: string) => `More actions for ${name}`,
@@ -53,12 +51,11 @@ const messages = defineMessages({
     removeText: "Its key is deleted with it: agents can no longer reach the machine. Remove the key from its authorized_keys too.",
     newTitle: "New machine",
     editTitle: (name: string) => `Edit ${name}`,
-    dialogText: "Agents call it by its name: ssh <name>.",
+    dialogText: "Agents reach it by its name.",
     name: "Name",
     nameHelp: "Lowercase letters, digits and dashes, e.g. prod-web.",
     nameInvalid: "Lowercase letters, digits and dashes only, starting with a letter or digit.",
     host: "Address",
-    hostHelp: "Host name or IP address.",
     port: "Port",
     username: "User",
     description: "Purpose",
@@ -66,11 +63,13 @@ const messages = defineMessages({
     bots: "Bots",
     botsHelp: "Unchecked bots can't reach it. Code sessions follow the bot that started them.",
     created: "Machine added.",
-    keyTitle: "Public key",
-    keyHelp: "Add this line to ~/.ssh/authorized_keys of the user on the machine, or run the command below there.",
+    keyTitle: "Access key",
+    keyHelp: "Run this command on the machine, logged in as its user, then test the connection.",
     copy: "Copy",
     command: "Command",
-    testOk: (fp: string) => `Connected. Host key fingerprint: ${fp}`,
+    testOk: "Connected.",
+    connected: "Connection verified",
+    failed: (code: number) => `failed (code ${code})`,
     online: "Online",
     offline: "Offline",
     checking: "Checking…",
@@ -92,14 +91,12 @@ const messages = defineMessages({
   },
   fr: {
     title: "Machines SSH",
-    text: "Les machines distantes que tous les bots et toutes les sessions de code peuvent joindre en SSH. Agora crée une clé pour chacune : ajoute sa clé publique sur la machine, puis teste la connexion.",
+    text: "Les machines distantes que tous les bots et toutes les sessions de code peuvent joindre en SSH. Agora crée une clé pour chacune : lance sa commande sur la machine, puis teste la connexion.",
     listTitle: "Machines",
     add: "Ajouter",
     empty: "Aucune machine pour l'instant. Ajoute-en une pour que les agents puissent y travailler.",
     untested: "Pas encore testée",
-    verified: "Empreinte épinglée",
     usedAgo: (age: string) => `utilisée il y a ${age}`,
-    allBots: "tous les bots",
     someBots: (n: number) => `${n} bot${n > 1 ? "s" : ""} exclu${n > 1 ? "s" : ""}`,
     edit: "Modifier",
     more: (name: string) => `Plus d'actions pour ${name}`,
@@ -113,12 +110,11 @@ const messages = defineMessages({
     removeText: "Sa clé est supprimée avec elle : les agents ne peuvent plus joindre la machine. Retire aussi la clé de son authorized_keys.",
     newTitle: "Nouvelle machine",
     editTitle: (name: string) => `Modifier ${name}`,
-    dialogText: "Les agents l'appellent par son nom : ssh <nom>.",
+    dialogText: "Les agents la joignent par son nom.",
     name: "Nom",
     nameHelp: "Minuscules, chiffres et tirets, par exemple prod-web.",
     nameInvalid: "Minuscules, chiffres et tirets uniquement, en commençant par une lettre ou un chiffre.",
     host: "Adresse",
-    hostHelp: "Nom d'hôte ou adresse IP.",
     port: "Port",
     username: "Utilisateur",
     description: "Usage",
@@ -126,11 +122,13 @@ const messages = defineMessages({
     bots: "Bots",
     botsHelp: "Les bots décochés ne peuvent pas la joindre. Une session de code suit le bot qui l'a lancée.",
     created: "Machine ajoutée.",
-    keyTitle: "Clé publique",
-    keyHelp: "Ajoute cette ligne au ~/.ssh/authorized_keys de l'utilisateur sur la machine, ou lance la commande ci-dessous sur la machine.",
+    keyTitle: "Clé d'accès",
+    keyHelp: "Lance cette commande sur la machine, connecté en tant que son utilisateur, puis teste la connexion.",
     copy: "Copier",
     command: "Commande",
-    testOk: (fp: string) => `Connexion réussie. Empreinte de la machine : ${fp}`,
+    testOk: "Connexion réussie.",
+    connected: "Connexion vérifiée",
+    failed: (code: number) => `échec (code ${code})`,
     online: "En ligne",
     offline: "Hors ligne",
     checking: "Vérification…",
@@ -176,15 +174,13 @@ export function Machines() {
   const test = useTest();
   const { data: status } = useQuery({ ...statusQuery, enabled: !!hosts?.length });
 
-  const summary = (h: SshHostDto) =>
+  // Each fact on its own, spaced (never joined with « · »); only what differs from the default.
+  const facts = (h: SshHostDto) =>
     [
       address(h),
-      h.hostKeyFingerprint ? t.verified : t.untested,
-      h.excludedAgentIds.length ? t.someBots(h.excludedAgentIds.length) : t.allBots,
-      h.lastUsedAt && t.usedAgo(ageLabel(new Date(h.lastUsedAt))),
-    ]
-      .filter(Boolean)
-      .join(" · ");
+      h.excludedAgentIds.length ? t.someBots(h.excludedAgentIds.length) : null,
+      h.lastUsedAt ? t.usedAgo(ageLabel(new Date(h.lastUsedAt))) : null,
+    ].filter((f): f is string => !!f);
 
   return (
     <>
@@ -215,9 +211,13 @@ export function Machines() {
                 </SettingTile>
                 <ItemContent className="min-w-0">
                   <ItemTitle>{h.name}</ItemTitle>
-                  <ItemDescription className="flex min-w-0 items-center gap-1.5">
-                    <ServerStatus probe={status?.[h.id]} />
-                    <span className="truncate">· {summary(h)}</span>
+                  <ItemDescription className="flex min-w-0 items-center gap-3">
+                    {h.hostKeyFingerprint ? <ServerStatus probe={status?.[h.id]} /> : <span className={cn("shrink-0", toneText.warning)}>{t.untested}</span>}
+                    {facts(h).map((f) => (
+                      <span key={f} className="truncate">
+                        {f}
+                      </span>
+                    ))}
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
@@ -286,7 +286,7 @@ function useTest() {
       return r;
     },
     onSettled: () => qc.invalidateQueries({ queryKey: hostsQuery.queryKey }),
-    meta: { loading: t.testing, success: (r: SshTestResult) => (r.ok ? t.testOk(r.fingerprint) : undefined) },
+    meta: { loading: t.testing, success: (r: SshTestResult) => (r.ok ? t.testOk : undefined) },
   });
 }
 
@@ -354,7 +354,8 @@ function MachineDialog({ host, onCreated, onClose }: { host?: SshHostDto; onCrea
         }}
       >
         <FieldGroup>
-          {host && <PublicKey host={host} />}
+          {/* Not yet reached: putting its key on the machine is the next step, first. */}
+          {host && !host.hostKeyFingerprint && <PublicKey host={host} />}
           <Field data-invalid={!!nameError}>
             <FormLabel htmlFor="ssh-name" required>
               {t.name}
@@ -385,7 +386,11 @@ function MachineDialog({ host, onCreated, onClose }: { host?: SshHostDto; onCrea
                   probe.reset();
                 }}
               />
-              <FieldDescription>{probed ? <ServerStatus probe={shown} detailed /> : t.hostHelp}</FieldDescription>
+              {probed && (
+                <FieldDescription>
+                  <ServerStatus probe={shown} detailed />
+                </FieldDescription>
+              )}
             </Field>
             <Field>
               <FormLabel htmlFor="ssh-port" required>
@@ -414,22 +419,26 @@ function MachineDialog({ host, onCreated, onClose }: { host?: SshHostDto; onCrea
             <FieldDescription>{t.descriptionHelp}</FieldDescription>
           </Field>
           {agents.length > 0 && <AgentTargets legend={t.bots} hint={t.botsHelp} value={allowed} onChange={(ids) => setExcluded(agents.filter((a) => !ids.includes(a.id)).map((a) => a.id))} />}
+          {host?.hostKeyFingerprint && <PublicKey host={host} />}
           {host && <UsageLog host={host} />}
           <ErrorText error={probe.error} />
           <ErrorText error={save.error} />
         </FieldGroup>
       </form>
       <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          className="sm:mr-auto"
-          title={t.probeHelp}
-          disabled={!hostname.trim() || !portValid || probe.isPending}
-          onClick={() => probe.mutate()}
-        >
-          {probe.isPending ? t.testing : t.probe}
-        </Button>
+        {/* Before it exists, check the address answers; once saved, its own test (with its key) does it. */}
+        {!host && (
+          <Button
+            type="button"
+            variant="outline"
+            className="sm:mr-auto"
+            title={t.probeHelp}
+            disabled={!hostname.trim() || !portValid || probe.isPending}
+            onClick={() => probe.mutate()}
+          >
+            {probe.isPending ? t.testing : t.probe}
+          </Button>
+        )}
         <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
         <Button type="submit" form="ssh-machine" disabled={!valid || save.isPending}>
           {save.isPending ? c.saving : host ? c.save : c.create}
@@ -439,25 +448,25 @@ function MachineDialog({ host, onCreated, onClose }: { host?: SshHostDto; onCrea
   );
 }
 
-/** The key to add on the machine, and the test that pins its fingerprint. */
+/** The command that puts its key on the machine, and the test that pins the machine's identity. */
 function PublicKey({ host }: { host: SshHostDto }) {
   const t = useT(messages);
   const test = useTest();
   const command = `mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '${host.publicKey}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`;
   return (
-    <FieldSet>
+    // min-w-0: a fieldset is as wide as its content by default, and the command would push the dialog open.
+    <FieldSet className="min-w-0">
       <FieldLegend variant="label">{t.keyTitle}</FieldLegend>
       <FieldDescription>{t.keyHelp}</FieldDescription>
       <InputGroup>
-        <InputGroupInput readOnly aria-label={t.keyTitle} value={host.publicKey} className="font-mono text-xs" />
-        <InputGroupAddon align="inline-end">
-          <InputGroupButton size="sm" onClick={() => copyText(host.publicKey)}>
-            {t.copy}
-          </InputGroupButton>
-        </InputGroupAddon>
-      </InputGroup>
-      <InputGroup>
-        <InputGroupInput readOnly aria-label={t.command} value={command} className="font-mono text-xs" />
+        <InputGroupInput
+          readOnly
+          aria-label={t.command}
+          value={command}
+          // Focused when the dialog opens: show its start, not its end.
+          onFocus={(e) => e.currentTarget.setSelectionRange(0, 0)}
+          className="font-mono text-xs"
+        />
         <InputGroupAddon align="inline-end">
           <InputGroupButton size="sm" onClick={() => copyText(command)}>
             {t.copy}
@@ -468,7 +477,7 @@ function PublicKey({ host }: { host: SshHostDto }) {
         <Button type="button" variant="outline" size="sm" disabled={test.isPending} onClick={() => test.mutate(host.id)}>
           {test.isPending ? t.testing : t.test}
         </Button>
-        {host.hostKeyFingerprint && <span className="truncate font-mono text-xs text-muted-foreground">{host.hostKeyFingerprint}</span>}
+        {host.hostKeyFingerprint && <span className={cn("text-sm", toneText.success)}>{t.connected}</span>}
       </div>
     </FieldSet>
   );
@@ -478,13 +487,14 @@ function PublicKey({ host }: { host: SshHostDto }) {
 function ServerStatus({ probe, detailed }: { probe?: SshProbe; detailed?: boolean }) {
   const t = useT(messages);
   const tone = !probe ? "neutral" : probe.online ? "success" : "danger";
-  const label = !probe ? t.checking : probe.online ? `${t.online} · ${t.latency(probe.latencyMs)}` : t.offline;
-  const detail = detailed && probe && (probe.online ? probe.banner : (t.errors[probe.error] ?? probe.error));
+  const label = !probe ? t.checking : probe.online ? t.online : t.offline;
+  const detail = detailed && probe && !probe.online && (t.errors[probe.error] ?? probe.error);
   return (
     <span className="inline-flex min-w-0 shrink-0 items-center gap-1.5" title={probe && !probe.online ? (t.errors[probe.error] ?? probe.error) : undefined}>
       <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", toneDot[tone])} />
       <span className={toneText[tone]}>{label}</span>
-      {detail && <span className="truncate">· {detail}</span>}
+      {probe?.online && <span className="text-subtle-foreground">{t.latency(probe.latencyMs)}</span>}
+      {detail && <span className="ml-1.5 truncate">{detail}</span>}
     </span>
   );
 }
@@ -505,8 +515,13 @@ function UsageLog({ host }: { host: SshHostDto }) {
             <Item size="xs" key={e.id} className="px-0">
               <ItemContent className="min-w-0">
                 <ItemTitle className="w-full truncate font-mono text-xs">{e.command ?? t.session}</ItemTitle>
-                <ItemDescription className="truncate">
-                  {[e.agentName, e.userName, ageLabel(new Date(e.at)), e.exitCode !== null && e.exitCode !== 0 && `exit ${e.exitCode}`].filter(Boolean).join(" · ")}
+                <ItemDescription className="flex min-w-0 items-center gap-3">
+                  {[e.agentName, e.userName, ageLabel(new Date(e.at))].filter(Boolean).map((f, i) => (
+                    <span key={i} className="truncate">
+                      {f}
+                    </span>
+                  ))}
+                  {e.exitCode !== null && e.exitCode !== 0 && <span className={toneText.danger}>{t.failed(e.exitCode)}</span>}
                 </ItemDescription>
               </ItemContent>
             </Item>

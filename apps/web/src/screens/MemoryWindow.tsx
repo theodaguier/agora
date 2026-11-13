@@ -11,7 +11,7 @@ const messages = defineMessages({
 export function MemoryWindow() {
   useOrgTitle(useT(messages).title);
   return (
-    <main className="flex h-dvh flex-col bg-background p-4">
+    <main className="flex h-dvh flex-col bg-background">
       <WikiMemory inTab />
     </main>
   );
