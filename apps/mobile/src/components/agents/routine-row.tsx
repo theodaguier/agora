@@ -98,7 +98,7 @@ export function RoutineRow({
         <ListGroup.ItemTitle numberOfLines={2}>
           {routine.name}
         </ListGroup.ItemTitle>
-        <ListGroup.ItemDescription>{[scheduleLabel(routine), when].filter(Boolean).join(" · ")}</ListGroup.ItemDescription>
+        <ListGroup.ItemDescription>{[scheduleLabel(routine), when].filter(Boolean).join(", ")}</ListGroup.ItemDescription>
         {!!conversation && (
           <ListGroup.ItemDescription numberOfLines={1}>
             {conversation}

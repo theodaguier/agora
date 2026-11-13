@@ -16,7 +16,7 @@ import { SearchIcon } from "@/components/icons";
 /** Under a model's name: its id when it has a label, and whether it reasons. */
 function modelDescription(m: { id: string; label?: string | null; reasoning?: boolean }, reasoning: string) {
   const parts = [m.label ? m.id : null, m.reasoning ? reasoning : null].filter(Boolean);
-  return parts.length ? parts.join(" · ") : undefined;
+  return parts.length ? parts.join(", ") : undefined;
 }
 
 export default function UserModels() {

@@ -50,7 +50,7 @@ export function Organizations() {
       {servers.map((s) => (
         <TapMenu
           key={s.url}
-          actions={[{ title: `${s.user.email} · ${host(s.url)}`, actions: actions(s) }]}
+          actions={[{ title: `${s.user.email}, ${host(s.url)}`, actions: actions(s) }]}
           accessibilityLabel={[s.orgName, s.user.email, s.url === current?.url ? t.current : null].filter(Boolean).join(", ")}
         >
           {/* The TapMenu's PressableFeedback takes the touch: the row itself takes none. */}
@@ -61,12 +61,12 @@ export function Organizations() {
             <ListGroup.ItemContent>
               <ListGroup.ItemTitle numberOfLines={1}>{s.orgName}</ListGroup.ItemTitle>
               <ListGroup.ItemDescription numberOfLines={1}>
-                {s.user.email} · {host(s.url)}
+                {s.user.email}, {host(s.url)}
               </ListGroup.ItemDescription>
             </ListGroup.ItemContent>
             {s.url === current?.url && (
               <ListGroup.ItemSuffix>
-                <Chip size="sm" variant="soft" color="accent">
+                <Chip size="sm" variant="secondary" color="default">
                   {t.current}
                 </Chip>
               </ListGroup.ItemSuffix>

@@ -1,3 +1,4 @@
+import { modelName } from "@agora/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -212,7 +213,7 @@ function StatChips({ stats, you }: { stats: DigestStats; you: boolean }) {
     { key: "agents", label: t.agents(stats.agents), color: "default" as const, show: stats.agents > 0 },
     {
       key: "usage",
-      label: stats.usage?.tokens ? `${t.tokens(f.compact(stats.usage.tokens))} · ${f.cost(stats.usage.cost)}` : "",
+      label: stats.usage?.tokens ? `${t.tokens(f.compact(stats.usage.tokens))}, ${f.cost(stats.usage.cost)}` : "",
       color: "default" as const,
       show: !!stats.usage?.tokens,
     },
@@ -266,7 +267,7 @@ function Activity({ stats, byDay }: { stats: DigestStats; byDay: boolean }) {
             p.tasksDone > 0 ? `${t.done} ${t.tasksDoneShort(p.tasksDone)}` : null,
           ]
             .filter(Boolean)
-            .join(" · ")
+            .join(", ")
         }
       />
     </Card>
@@ -302,7 +303,7 @@ function UsageBlock({ usage, you }: { usage: NonNullable<DigestStats["usage"]>; 
                   {a.name}
                 </Typography.Paragraph>
                 <Typography.Paragraph type="body-sm" color="muted" className="tabular-nums">
-                  {f.compact(a.tokens)} · {f.cost(a.cost)}
+                  {f.compact(a.tokens)}, {f.cost(a.cost)}
                 </Typography.Paragraph>
               </View>
               <ShareBar share={a.tokens / top} />
@@ -318,7 +319,7 @@ function UsageBlock({ usage, you }: { usage: NonNullable<DigestStats["usage"]>; 
           <View className="flex-row flex-wrap gap-1.5">
             {usage.byModel.map((m) => (
               <Chip key={`${m.provider}:${m.model}`} variant="secondary" color="default">
-                {`${m.model} · ${f.compact(m.tokens)}`}
+                {`${modelName(m.model)} ${f.compact(m.tokens)}`}
               </Chip>
             ))}
           </View>
@@ -343,7 +344,7 @@ function People({ people }: { people: NonNullable<DigestStats["people"]> }) {
           </ListGroup.ItemContent>
           <ListGroup.ItemSuffix>
             <Typography.Paragraph type="body-sm" color="muted" className="tabular-nums">
-              {[p.tasksDone > 0 ? t.tasksDoneShort(p.tasksDone) : null, p.messages > 0 ? t.messages(p.messages) : null].filter(Boolean).join(" · ")}
+              {[p.tasksDone > 0 ? t.tasksDoneShort(p.tasksDone) : null, p.messages > 0 ? t.messages(p.messages) : null].filter(Boolean).join(", ")}
             </Typography.Paragraph>
           </ListGroup.ItemSuffix>
         </ListGroup.Item>

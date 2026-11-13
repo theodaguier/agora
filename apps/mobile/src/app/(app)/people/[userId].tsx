@@ -3,14 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { Button, ListGroup, SkeletonGroup, Typography, useToast } from "heroui-native";
-import { Linking, ScrollView, View } from "react-native";
+import { Linking, ScrollView } from "react-native";
 import { CommonConversations } from "@/components/people/common-conversations";
 import { ProfileHeader } from "@/components/people/profile-header";
 import { PressableItem, Section } from "@/components/people/section";
 import { TaskSection } from "@/components/people/task-section";
 import { WorkingOn } from "@/components/people/working-on";
 import { useMe } from "@/components/server-scope";
-import { withTap } from "@/lib/haptics";
 import { defineMessages, locale, tr } from "@/lib/i18n";
 import { useOpenDirect } from "@/lib/profile";
 import { userProfileQuery } from "@/lib/queries";
@@ -72,25 +71,21 @@ export default function PersonProfile() {
             <ProfileHeader
               p={{ kind: "user", person }}
               name={person.name}
-              subtitle={[person.title, person.username && `@${person.username}`].filter(Boolean).join(" · ")}
+              subtitle={[person.title, person.username && `@${person.username}`].filter(Boolean).join(", ")}
             >
-              {/* The contact card's actions: write to them, email them. */}
+              {/* Write to them; their email is the row below, said once. */}
               {!self && (
-                <View className="mt-4 w-full flex-row gap-2">
-                  <Button
-                    className="flex-1"
-                    isDisabled={open.isPending}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      open.mutate({ userId: person.id }, { onError: () => toast.show({ variant: "danger", label: t.openFailed }) });
-                    }}
-                  >
-                    {t.message}
-                  </Button>
-                  <Button className="flex-1" variant="secondary" onPress={withTap(() => Linking.openURL(`mailto:${person.email}`))}>
-                    {t.email}
-                  </Button>
-                </View>
+                <Button
+                  className="mt-4 w-full"
+                  variant="secondary"
+                  isDisabled={open.isPending}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    open.mutate({ userId: person.id }, { onError: () => toast.show({ variant: "danger", label: t.openFailed }) });
+                  }}
+                >
+                  {t.message}
+                </Button>
               )}
             </ProfileHeader>
 

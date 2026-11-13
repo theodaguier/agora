@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, Stack, type Href } from "expo-router";
 import { Chip, ListGroup } from "heroui-native";
-import { AdminGate, SettingsScroll, Intro, PressableRow, Section } from "@/components/admin/ui";
+import { AdminGate, SettingsScroll, Intro, PressableRow, Section, SettingTile } from "@/components/admin/ui";
 import { BrainIcon, FileTextIcon, LockIcon, type IconComponent } from "@/components/icons";
 import { defineMessages } from "@/lib/i18n";
 import { companyMemoryHref, companyMemoryQuery, vaultHref, vaultQuery, wikiGraphQuery, wikiHref } from "@/lib/memory";
@@ -63,9 +63,7 @@ function MemoryHub() {
   const row = (href: Href, Icon: IconComponent, title: string, detail: string, badge?: string) => (
     <Link href={href} asChild>
       <PressableRow>
-        <ListGroup.ItemPrefix>
-          <Icon className="size-6 text-accent" />
-        </ListGroup.ItemPrefix>
+        <SettingTile icon={Icon} />
         <ListGroup.ItemContent>
           <ListGroup.ItemTitle>{title}</ListGroup.ItemTitle>
           <ListGroup.ItemDescription numberOfLines={1}>{detail}</ListGroup.ItemDescription>

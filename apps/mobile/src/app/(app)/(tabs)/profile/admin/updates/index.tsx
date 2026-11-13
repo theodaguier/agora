@@ -189,8 +189,8 @@ function VersionRow(props: {
           {props.title} {props.current}
         </ListGroup.ItemTitle>
         <ListGroup.ItemDescription>
-          {latest ? `${t.available}${latest}${rejected ? ` · ${t.rejected}` : ""}` : t.upToDate}
-          {props.detail ? ` · ${props.detail}` : ""}
+          {latest ? `${t.available}${latest}${rejected ? `, ${t.rejected}` : ""}` : t.upToDate}
+          {props.detail ? `, ${props.detail}` : ""}
         </ListGroup.ItemDescription>
       </ListGroup.ItemContent>
       {latest && (
@@ -232,7 +232,7 @@ function RunRow({ run }: { run: UpdateRun }) {
             {run.target === "hermes" ? "Hermes" : "Agora"} {run.from} → {run.to}
           </ListGroup.ItemTitle>
           <ListGroup.ItemDescription>
-            {t.trigger[run.trigger]} · {time.format(new Date(run.startedAt))}
+            {t.trigger[run.trigger]}, {time.format(new Date(run.startedAt))}
           </ListGroup.ItemDescription>
         </ListGroup.ItemContent>
         <RunStatusChip status={run.status} />

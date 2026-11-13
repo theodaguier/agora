@@ -1,3 +1,4 @@
+import { modelName } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -5,6 +6,7 @@ import { ModelList } from "@/components/agents-admin/model-list";
 import { AdminGate, ErrorAlert, SettingsScroll, LoadingRows, Section, useAdminToast } from "@/components/admin/ui";
 import { agentModelQuery, type AgentModelOptions } from "@/lib/agents-admin";
 import { api } from "@/lib/api";
+import { providerName } from "@/lib/admin";
 import { defineMessages, tr } from "@/lib/i18n";
 
 /* ModelSection of apps/web/src/components/admin/AgentDetail.tsx */
@@ -34,7 +36,7 @@ export default function AgentModelScreen() {
     mutationFn: (model: string) => api(`/admin/hermes/agents/${agentId}/model`, { method: "PUT", body: JSON.stringify({ model }) }),
     // Checked right away; the list is reread either way.
     onMutate: (model) => qc.setQueryData<AgentModelOptions>(query.queryKey, (d) => d && { ...d, defaultModel: model }),
-    onSuccess: (_, model) => toast.success(tr(common).saved, model),
+    onSuccess: (_, model) => toast.success(tr(common).saved, modelName(model)),
     onError: (e) => toast.failed(e),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: query.queryKey });
@@ -52,7 +54,7 @@ export default function AgentModelScreen() {
             <LoadingRows rows={4} avatar={false} />
           ) : (
             data && (
-              <Section bare title={t.defaultModel} footer={`${t.modelIntro} ${t.modelList} ${data.provider}.`}>
+              <Section bare title={t.defaultModel} footer={`${t.modelIntro} ${t.modelList} ${providerName(data.provider)}.`}>
                 <ModelList models={data.models} value={data.defaultModel} onChange={(id) => save.mutate(id)} disabled={save.isPending} />
               </Section>
             )

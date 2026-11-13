@@ -39,7 +39,7 @@ export function Bars<T>({
   return (
     <View className="gap-2">
       <Typography.Paragraph type="body-sm" color="muted" className="tabular-nums" numberOfLines={1}>
-        {shown ? `${label(shown)} · ${detail(shown)}` : " "}
+        {shown ? `${label(shown)}, ${detail(shown)}` : " "}
       </Typography.Paragraph>
       <View className="flex-row items-end gap-0.5" style={{ height }}>
         {data.map((point, i) => (

@@ -1,4 +1,4 @@
-import { guessIntegrationType } from "@agora/core";
+import { connectorName, guessIntegrationType } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { ListGroup } from "heroui-native";
@@ -27,8 +27,8 @@ const t = defineMessages({
   en: {
     title: "Tools",
     toolsIntro: "Tools the agent can use in the app. Applied from the next message.",
-    needsConfig: " · needs configuring in Hermes",
-    riskyNote: " · gives access to the server",
+    needsConfig: "Needs configuring in Hermes.",
+    riskyNote: "Gives access to the server.",
     riskyTitle: (tool: string) => `Turn on "${tool}" for this agent?`,
     riskyBody:
       "This tool gives the agent, and anyone who writes to it, direct access to the server: commands, files, the other agents' keys. Text planted in a web page or an attached file is enough to hijack it. Only turn it on for an agent reserved for people you trust.",
@@ -37,14 +37,14 @@ const t = defineMessages({
     mcpDefault: "The default profile uses all of the instance's active MCP servers.",
     mcpIntro: "The instance's MCP servers this agent can use. Applied from the next message.",
     mcpEmpty: "No MCP servers installed.",
-    mcpInstanceOff: " · turned off for the whole instance",
+    mcpInstanceOff: "Turned off for the whole instance.",
     addMore: "Add connectors from the Marketplace",
   },
   fr: {
     title: "Outils",
     toolsIntro: "Outils que l'agent peut utiliser dans l'app. Pris en compte dès le message suivant.",
-    needsConfig: " · configuration requise côté Hermes",
-    riskyNote: " · donne accès au serveur",
+    needsConfig: "Configuration requise côté Hermes.",
+    riskyNote: "Donne accès au serveur.",
     riskyTitle: (tool: string) => `Activer « ${tool} » pour cet agent ?`,
     riskyBody:
       "Cet outil donne à l'agent, et à toute personne qui lui écrit, un accès direct au serveur : commandes, fichiers, clés des autres agents. Un texte piégé dans une page web ou un fichier joint suffit à le détourner. À n'activer que pour un agent réservé à des personnes de confiance.",
@@ -53,7 +53,7 @@ const t = defineMessages({
     mcpDefault: "Le profil par défaut utilise tous les serveurs MCP actifs de l'instance.",
     mcpIntro: "Serveurs MCP de l'instance que cet agent peut utiliser. Pris en compte dès le message suivant.",
     mcpEmpty: "Aucun serveur MCP installé.",
-    mcpInstanceOff: " · coupé pour toute l'instance",
+    mcpInstanceOff: "Coupé pour toute l'instance.",
     addMore: "Ajouter des connecteurs depuis le Marketplace",
   },
 });
@@ -114,8 +114,8 @@ export default function AgentToolsScreen() {
                   mcp.data.map((m) => (
                     <SwitchRow
                       key={m.name}
-                      title={m.name}
-                      description={`${m.url ?? m.command ?? ""}${m.instanceEnabled ? "" : t.mcpInstanceOff}`}
+                      title={connectorName(m.name)}
+                      description={m.instanceEnabled ? undefined : t.mcpInstanceOff}
                       prefix={<IntegrationTile type={types?.[m.name] ?? guessIntegrationType(m.name)} size="sm" />}
                       value={m.enabled}
                       disabled={locked || !m.instanceEnabled}
@@ -136,7 +136,7 @@ export default function AgentToolsScreen() {
                   <SwitchRow
                     key={x.name}
                     title={withoutEmoji(x.label)}
-                    description={`${x.description}${x.configured ? "" : t.needsConfig}${x.risky ? t.riskyNote : ""}`}
+                    description={[x.description, !x.configured && t.needsConfig, x.risky && t.riskyNote].filter(Boolean).join(" ")}
                     value={x.enabled}
                     onChange={async (enabled) => {
                       if (enabled && x.risky && !(await confirmAction({ title: t.riskyTitle(withoutEmoji(x.label)), description: t.riskyBody, action: t.riskyAction })))

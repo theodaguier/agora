@@ -27,7 +27,7 @@ export function LocalModels() {
             <ListGroup.ItemContent>
               <ListGroup.ItemTitle>{providerName(r.id)}</ListGroup.ItemTitle>
               <ListGroup.ItemDescription numberOfLines={1}>
-                {!r.running ? t.notDetected(r.url) : r.models.length ? t.count(r.models.length) : t.noModels}
+                {!r.running ? t.notDetected : r.models.length ? t.count(r.models.length) : t.noModels}
               </ListGroup.ItemDescription>
             </ListGroup.ItemContent>
           </ListGroup.Item>
@@ -36,12 +36,12 @@ export function LocalModels() {
               <ListGroup.ItemContent>
                 <ListGroup.ItemTitle numberOfLines={1}>{m.id}</ListGroup.ItemTitle>
                 <ListGroup.ItemDescription numberOfLines={1}>
-                  {[m.parameters, m.quantization, m.size ? `${gb.format(m.size / 1e9)} GB` : undefined].filter(Boolean).join(" · ")}
+                  {[m.parameters, m.quantization, m.size ? `${gb.format(m.size / 1e9)} GB` : undefined].filter(Boolean).join(", ")}
                 </ListGroup.ItemDescription>
               </ListGroup.ItemContent>
               {m.loaded && (
                 <ListGroup.ItemSuffix>
-                  <Chip size="sm" variant="soft" color="accent">
+                  <Chip size="sm" variant="soft" color="success">
                     <Chip.Label>{t.loaded}</Chip.Label>
                   </Chip>
                 </ListGroup.ItemSuffix>
@@ -134,7 +134,7 @@ function CliRow({ cli, onUpdate }: { cli: HostCli; onUpdate: () => void }) {
         <ListGroup.ItemTitle>{cli.name}</ListGroup.ItemTitle>
         {(!!cli.version || !!detail) && (
           <ListGroup.ItemDescription selectable={failed} numberOfLines={failed ? 4 : 2}>
-            {[cli.version, detail].filter(Boolean).join(" · ")}
+            {[cli.version, detail].filter(Boolean).join(", ")}
           </ListGroup.ItemDescription>
         )}
       </ListGroup.ItemContent>
@@ -201,12 +201,12 @@ export function SubscriptionAccountsSection({ engine }: { engine: SubscriptionEn
     {
       id: null,
       title: t.machine,
-      description: machine.loggedIn ? [machine.email, machine.plan && capitalize(machine.plan)].filter(Boolean).join(" · ") || t.signedIn : t.notSignedIn,
+      description: machine.loggedIn ? [machine.email, machine.plan && capitalize(machine.plan)].filter(Boolean).join(", ") || t.signedIn : t.notSignedIn,
     },
     ...data.accounts.map((a) => ({
       id: a.id,
       title: a.email,
-      description: a.loggedIn ? [a.plan && capitalize(a.plan), t.added(day.format(new Date(a.addedAt)))].filter(Boolean).join(" · ") : t.signedOut,
+      description: a.loggedIn ? [a.plan && capitalize(a.plan), t.added(day.format(new Date(a.addedAt)))].filter(Boolean).join(", ") : t.signedOut,
     })),
   ];
 

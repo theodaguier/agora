@@ -1,4 +1,4 @@
-import type { IntegrationType } from "@agora/core";
+import { connectorName, type IntegrationType } from "@agora/core";
 import { common, connectors, integrations } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Stack, useRouter } from "expo-router";
@@ -176,7 +176,7 @@ function Installed() {
           {pendingSkills.map((r) => (
             <ListGroup.Item key={r.id} className="items-start">
               <ListGroup.ItemPrefix>
-                <InitialTile name={r.name} />
+                <InitialTile kind="skill" />
               </ListGroup.ItemPrefix>
               <ListGroup.ItemContent className="gap-0.5">
                 <ListGroup.ItemTitle>{r.name}</ListGroup.ItemTitle>
@@ -266,11 +266,9 @@ function Installed() {
                   <IntegrationTile type={s.type} server={s.name} />
                 </ListGroup.ItemPrefix>
                 <ListGroup.ItemContent>
-                  <ListGroup.ItemTitle numberOfLines={1}>{s.name}</ListGroup.ItemTitle>
+                  <ListGroup.ItemTitle numberOfLines={1}>{connectorName(s.name)}</ListGroup.ItemTitle>
+                  {/* Its address stays out of the row (the web shows it on hover only). */}
                   <ListGroup.ItemDescription numberOfLines={1}>{types[s.type]}</ListGroup.ItemDescription>
-                  <Typography.Code color="muted" truncate>
-                    {s.url ?? s.command}
-                  </Typography.Code>
                 </ListGroup.ItemContent>
                 <ListGroup.ItemSuffix>
                   <Switch isSelected={s.enabled !== false} onSelectedChange={(enabled) => (haptic.select(), toggleMcp.mutate({ name: s.name, enabled }))} />
@@ -295,7 +293,7 @@ function Installed() {
           {enabledPlugins.map((p) => (
             <SwitchRow
               key={p.name}
-              prefix={<InitialTile name={p.name} />}
+              prefix={<InitialTile kind="plugin" />}
               title={p.name}
               description={p.description ?? undefined}
               value
@@ -329,7 +327,7 @@ function Installed() {
           {skills.installed.map((s) => (
             <ListGroup.Item key={s.name} disabled>
               <ListGroup.ItemPrefix>
-                <InitialTile name={s.name} />
+                <InitialTile kind="skill" />
               </ListGroup.ItemPrefix>
               <ListGroup.ItemContent>
                 <ListGroup.ItemTitle numberOfLines={1}>{s.name}</ListGroup.ItemTitle>

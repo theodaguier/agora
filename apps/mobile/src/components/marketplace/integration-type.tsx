@@ -4,40 +4,16 @@ import { Image } from "expo-image";
 import { Avatar, Label, ListGroup } from "heroui-native";
 import { Section } from "@/components/admin/ui";
 import { useBrandLogo } from "@/components/brand-logo";
-import { IntegrationIcon } from "@/components/icons";
+import { IntegrationIcon, PackageIcon, PuzzleIcon } from "@/components/icons";
 import { authHeaders } from "@/lib/api";
 import { tr } from "@/lib/i18n";
 import { OptionPicker } from "@/components/menus";
 
 /* apps/web/src/components/marketplace/IntegrationType.tsx */
 
-type Tint = "accent" | "danger" | "success" | "warning" | "default";
-
-/** Tint of each integration type (HeroUI Avatar colors), so a connector's kind of data reads at a glance. */
-const TYPE_TINT: Record<IntegrationType, Tint> = {
-  mail: "accent",
-  calendar: "danger",
-  chat: "accent",
-  tasks: "success",
-  files: "warning",
-  contacts: "success",
-  finance: "success",
-  code: "default",
-  database: "warning",
-  other: "default",
-};
-
-const ICON_COLOR: Record<Tint, string> = {
-  accent: "text-accent",
-  danger: "text-danger",
-  success: "text-success",
-  warning: "text-warning",
-  default: "text-foreground",
-};
-
 /**
- * Icon tile of a connector (a HeroUI Avatar), tinted by its integration type; the brand's logo
- * instead when `server` (or `domain`) names one logo.dev knows. The icon shows while it loads or fails.
+ * Icon tile of a connector (a HeroUI Avatar on a neutral fill, as the web's): its integration type's icon;
+ * the brand's logo instead when `server` (or `domain`) names one logo.dev knows. The icon shows while it loads or fails.
  */
 export function IntegrationTile({
   type,
@@ -50,11 +26,10 @@ export function IntegrationTile({
   server?: string | null;
   domain?: string | null;
 }) {
-  const tint = TYPE_TINT[type ?? "other"];
   const logo = useBrandLogo({ domain, server: server ?? null });
   const src = server || domain ? logo : null;
   return (
-    <Avatar alt={type ?? "other"} size={size} variant="soft" color={tint}>
+    <Avatar alt={type ?? "other"} size={size} variant="soft" color="default">
       {/* The logo route needs the session, and expo-image keeps it on disk: a list asks once. */}
       {!!src && (
         <Avatar.Image source={{ uri: src, headers: authHeaders() }} asChild>
@@ -62,17 +37,20 @@ export function IntegrationTile({
         </Avatar.Image>
       )}
       <Avatar.Fallback>
-        <IntegrationIcon type={type} size={size === "sm" ? 16 : size === "md" ? 20 : 24} className={ICON_COLOR[tint]} />
+        <IntegrationIcon type={type} size={size === "sm" ? 16 : size === "md" ? 20 : 24} className="text-muted" />
       </Avatar.Fallback>
     </Avatar>
   );
 }
 
-/** Tile of a skill or a plugin: its initial, on a neutral fill (a HeroUI Avatar). */
-export function InitialTile({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
+/** Tile of a skill or a plugin: its kind's icon (never a letter), on a neutral fill (a HeroUI Avatar). */
+export function InitialTile({ kind, size = "md" }: { kind: "skill" | "plugin"; size?: "md" | "lg" }) {
+  const Icon = kind === "plugin" ? PuzzleIcon : PackageIcon;
   return (
-    <Avatar alt={name} size={size} variant="soft" color="default">
-      <Avatar.Fallback>{name.replace(/^[^a-z0-9]+/i, "").charAt(0).toUpperCase()}</Avatar.Fallback>
+    <Avatar alt={kind} size={size} variant="soft" color="default">
+      <Avatar.Fallback>
+        <Icon size={size === "md" ? 20 : 24} className="text-muted" />
+      </Avatar.Fallback>
     </Avatar>
   );
 }
