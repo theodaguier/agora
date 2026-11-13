@@ -217,7 +217,7 @@ export type McpRequest = {
 
 /** One of the app's own integrations (Settings › Integrations); secret values come redacted. */
 export type AppIntegration = {
-  id: "resend" | "logodev";
+  id: "resend" | "logodev" | "googlemaps";
   source: "app" | "env" | null;
   values: Record<string, string>;
 };
@@ -226,6 +226,8 @@ export type AppIntegration = {
 export type Brands = {
   /** logo.dev is set up: logos are served by the API (/integrations/logo). */
   logos: boolean;
+  /** Google Maps is set up: maps of places are served by the API (/integrations/map). */
+  maps?: boolean;
   /** Known MCP servers, with the brand's domain when their URL gives it. */
   servers: Record<string, string | null>;
 };

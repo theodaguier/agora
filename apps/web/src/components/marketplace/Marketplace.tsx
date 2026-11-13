@@ -1,19 +1,18 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, PackageIcon, PuzzleIcon, SearchIcon, CloseIcon } from "@/components/icons";
+import { CheckIcon, ChevronLeftIcon, PackageIcon, PuzzleIcon, SearchIcon, CloseIcon } from "@/components/icons";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { RestartProvider } from "@/components/admin/ui";
+import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/AgentAvatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Item as ItemRow, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item as ItemRow, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, type AdminAgent } from "@/lib/api";
 import { adminAgentsQuery, adminUsersQuery, agentsQuery } from "@/lib/queries";
 import { AddSheet } from "./AddSheet";
@@ -72,7 +71,7 @@ const messages = defineMessages<{
   filters: Record<Filter, string>;
 }>({
   en: {
-    titles: { bots: "Team bots", mcp: "Connectors", registry: "MCP registry", skill: "Skills", skillsSh: "skills.sh", plugin: "Hermes plugins" },
+    titles: { bots: "Team bots", mcp: "Connectors", registry: "MCP registry", skill: "Skills", skillsSh: "Community skills", plugin: "Hermes plugins" },
     title: "Marketplace",
     installed: "Installed",
     searchPlaceholder: "Search connectors, skills, plugins and bots",
@@ -102,7 +101,7 @@ const messages = defineMessages<{
     filters: { all: "All", mcp: "Connectors", skill: "Skills", plugin: "Plugins", bots: "Bots" },
   },
   fr: {
-    titles: { bots: "Bots de l'équipe", mcp: "Connecteurs", registry: "Registre MCP", skill: "Skills", skillsSh: "skills.sh", plugin: "Plugins Hermes" },
+    titles: { bots: "Bots de l'équipe", mcp: "Connecteurs", registry: "Registre MCP", skill: "Skills", skillsSh: "Skills de la communauté", plugin: "Plugins Hermes" },
     title: "Marketplace",
     installed: "Installés",
     searchPlaceholder: "Rechercher des connecteurs, skills, plugins et bots",
@@ -151,22 +150,22 @@ export function Marketplace({ onClose }: { onClose: () => void }) {
         else onClose();
       }}
     >
-      <DialogContent showCloseButton={false} className="flex h-4/5 flex-col sm:max-w-5xl">
-        {/* The title (back first, deeper in), the installed apps, close. */}
-        <DialogHeader className="flex-row items-center">
+      <DialogContent showCloseButton={false} className="flex h-4/5 flex-col gap-0 p-0 sm:max-w-4xl">
+        {/* Figma « S1 · Marketplace »: the title (back first, deeper in), the installed apps, close. */}
+        <DialogHeader className="flex-row items-center gap-1 px-6 pt-5 pb-4">
           {history.length > 1 && (
             <Button variant="ghost" size="icon-sm" aria-label={c.back} onClick={back}>
               <ChevronLeftIcon />
             </Button>
           )}
-          <DialogTitle className="text-xl font-semibold">{t.title}</DialogTitle>
+          <DialogTitle className="text-title font-medium">{t.title}</DialogTitle>
           <span className="flex-1" />
           {view.kind !== "installed" && <InstalledButton onClick={() => push({ kind: "installed" })} />}
           <DialogClose render={<Button variant="ghost" size="icon-sm" aria-label={c.close} />}>
             <CloseIcon />
           </DialogClose>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
           <RestartProvider>
             {view.kind === "home" && <Home push={push} onClose={onClose} />}
             {view.kind === "all" && <AllOf section={view.section} query={view.query} push={push} onClose={onClose} />}
@@ -248,7 +247,7 @@ function Home({ push, onClose }: { push: (v: View) => void; onClose: () => void 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
-      <InputGroup>
+      <InputGroup className="h-8 bg-transparent text-ui dark:bg-transparent">
         <InputGroupAddon>
           <SearchIcon />
         </InputGroupAddon>
@@ -265,16 +264,30 @@ function Home({ push, onClose }: { push: (v: View) => void; onClose: () => void 
         )}
       </InputGroup>
 
-      {/* Which kinds the page shows. */}
-      <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
-        <TabsList aria-label={t.filterKinds}>
-          {FILTERS.map((f) => (
-            <TabsTrigger key={f} value={f}>
+      {/* Which kinds the page shows, each with how many there are; a connector of one's own on the right. */}
+      <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label={t.filterKinds}>
+        {FILTERS.map((f) => {
+          const count = f === "all" ? null : f === "skill" ? market.skill.length + market.skillsSh.length : market[f].length;
+          return (
+            <Button
+              key={f}
+              role="tab"
+              aria-selected={filter === f}
+              variant="outline"
+              size="sm"
+              onClick={() => setFilter(f)}
+              className={cn("h-7 gap-1.5 rounded-full px-3 text-ui font-normal", filter === f ? "bg-accent text-foreground" : "bg-transparent text-muted-foreground")}
+            >
               {t.filters[f]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+              {!!count && <span className="text-subtle-foreground tabular-nums">{count}</span>}
+            </Button>
+          );
+        })}
+        <span className="flex-1" />
+        <Button size="sm" onClick={() => push({ kind: "custom" })}>
+          {t.custom}
+        </Button>
+      </div>
       </div>
 
       {show("bots") && (market.bots.length > 0 || (filter === "bots" && !searching)) && (
@@ -284,7 +297,7 @@ function Home({ push, onClose }: { push: (v: View) => void; onClose: () => void 
           ) : market.pending.bots ? (
             <SkeletonTiles />
           ) : (
-            <p className="text-sm text-muted-foreground">{market.failed.bots ? t.unavailable : t.emptySection.bots}</p>
+            <p className="text-xs text-subtle-foreground">{market.failed.bots ? t.unavailable : t.emptySection.bots}</p>
           )}
         </Block>
       )}
@@ -295,11 +308,6 @@ function Home({ push, onClose }: { push: (v: View) => void; onClose: () => void 
         items={searching ? market.mcp : firstUninstalled(market.mcp)}
         push={push}
         query={query}
-        action={
-          <Button variant="ghost" size="sm" onClick={() => push({ kind: "custom" })}>
-            {t.custom}
-          </Button>
-        }
       />}
       {show("mcp") && searching && <ItemBlock section="registry" items={market.registry} push={push} query={query} />}
       {show("skill") && <ItemBlock section="skill" loading={market.pending.skill}
@@ -340,12 +348,12 @@ function AllOf({ section, query = "", push, onClose }: { section: Section; query
       {!market[section].length && market.pending[section] ? (
         <SkeletonTiles />
       ) : !market[section].length ? (
-        <p className="text-sm text-muted-foreground">{market.failed[section] ? t.unavailable : t.emptySection[section]}</p>
+        <p className="text-xs text-subtle-foreground">{market.failed[section] ? t.unavailable : t.emptySection[section]}</p>
       ) : section === "bots" ? (
         market.bots.some((a) => matches(a, filter)) ? (
           <BotCards agents={market.bots.filter((a) => matches(a, filter))} onClose={onClose} />
         ) : (
-          <p className="text-sm text-muted-foreground">{t.noMatch}</p>
+          <p className="text-xs text-subtle-foreground">{t.noMatch}</p>
         )
       ) : market[section].some((i) => matches(i, filter)) ? (
         <Tiles>
@@ -356,7 +364,7 @@ function AllOf({ section, query = "", push, onClose }: { section: Section; query
             ))}
         </Tiles>
       ) : (
-        <p className="text-sm text-muted-foreground">{t.noMatch}</p>
+        <p className="text-xs text-subtle-foreground">{t.noMatch}</p>
       )}
     </div>
   );
@@ -392,7 +400,7 @@ function ItemBlock(props: { section: Exclude<Section, "bots">; items: Item[]; lo
   if (!items.length && props.failed) {
     return (
       <Block title={t.titles[section]} action={action}>
-        <p className="text-sm text-muted-foreground">{t.unavailable}</p>
+        <p className="text-xs text-subtle-foreground">{t.unavailable}</p>
       </Block>
     );
   }
@@ -408,7 +416,7 @@ function ItemBlock(props: { section: Exclude<Section, "bots">; items: Item[]; lo
   if (!items.length) {
     return (
       <Block title={t.titles[section]} action={action}>
-        <p className="text-sm text-muted-foreground">{t.emptySection[section]}</p>
+        <p className="text-xs text-subtle-foreground">{t.emptySection[section]}</p>
       </Block>
     );
   }
@@ -423,19 +431,19 @@ function ItemBlock(props: { section: Exclude<Section, "bots">; items: Item[]; lo
   );
 }
 
-/** One entry: the logo, the name and one line, then « Ajouter » or « Ajouté ». */
+/** One entry (Figma « S1 »): its logo in a tile, its name over one line of what it does, « Ajouter » or « Ajouté » on the right. */
 function Row({ item, onAdd }: { item: Item; onAdd: () => void }) {
   const t = useT(messages);
   const c = useT(common);
   return (
-    <ItemRow variant="outline" role="listitem" className="items-start">
+    <ItemRow variant="outline" role="listitem" className="flex-nowrap gap-3 bg-card px-3 py-2.5">
       {item.kind === "mcp" || item.kind === "registry" ? (
-        <IntegrationTile type={item.type ?? guessIntegrationType(item.name, item.description)} server={item.name} />
+        <IntegrationTile type={item.type ?? guessIntegrationType(item.name, item.description)} server={item.name} className="size-8 rounded-md bg-accent" />
       ) : (
-        <InitialTile icon={item.kind === "plugin" ? <PuzzleIcon /> : <PackageIcon />} />
+        <InitialTile icon={item.kind === "plugin" ? <PuzzleIcon /> : <PackageIcon />} className="size-8 rounded-md bg-accent text-muted-foreground" />
       )}
-      <ItemContent className="min-w-0">
-        <ItemTitle>
+      <ItemContent className="min-w-0 gap-0.5">
+        <ItemTitle className="w-full truncate text-ui">
           {(item.kind === "skill" || item.kind === "registry") && item.url ? (
             <a href={item.url} target="_blank" rel="noreferrer" className="hover:underline">
               {item.name}
@@ -444,26 +452,26 @@ function Row({ item, onAdd }: { item: Item; onAdd: () => void }) {
             item.name
           )}
         </ItemTitle>
-        {item.description && <ItemDescription>{item.description}</ItemDescription>}
+        {item.description && <ItemDescription className="line-clamp-1 text-xs">{item.description}</ItemDescription>}
       </ItemContent>
-      <ItemFooter className="justify-end">
+      <ItemActions>
         {item.installed && item.kind === "skill" ? (
           // Skills are per bot: the sheet shows which ones have it and adds it to others.
-          <Button variant="ghost" size="sm" onClick={onAdd}>
+          <Button variant="ghost" size="xs" onClick={onAdd} className="text-state-finished">
             <CheckIcon data-icon="inline-start" />
             {t.added}
           </Button>
         ) : item.installed ? (
-          <Badge variant="secondary">
-            <CheckIcon data-icon="inline-start" />
+          <span className="flex items-center gap-1 text-xs text-state-finished">
+            <CheckIcon className="size-3.5" />
             {item.kind === "plugin" ? t.enabled : t.added}
-          </Badge>
+          </span>
         ) : (
-          <Button variant="outline" size="sm" onClick={onAdd}>
+          <Button variant="secondary" size="xs" onClick={onAdd}>
             {c.add}
           </Button>
         )}
-      </ItemFooter>
+      </ItemActions>
     </ItemRow>
   );
 }
@@ -473,10 +481,9 @@ function InstalledButton({ onClick }: { onClick: () => void }) {
   const t = useT(messages);
   const market = useMarket("");
   return (
-    <Button variant="ghost" size="sm" onClick={onClick}>
+    <Button variant="secondary" size="sm" onClick={onClick}>
       {t.installed}
-      <Badge variant="secondary">{market.installedCount}</Badge>
-      <ChevronRightIcon data-icon="inline-end" />
+      <span className="text-muted-foreground tabular-nums">{market.installedCount}</span>
     </Button>
   );
 }
@@ -533,16 +540,16 @@ function BotCards({ agents, onClose }: { agents: (AdminAgent & { description: st
   return (
     <Tiles>
       {agents.map((a) => (
-        <ItemRow key={a.id} variant="outline" role="listitem">
+        <ItemRow key={a.id} variant="outline" role="listitem" className="flex-nowrap gap-3 bg-card px-3 py-2.5">
           <ItemMedia>
-            <AgentAvatar agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }} className="size-10" />
+            <AgentAvatar agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }} className="size-8" />
           </ItemMedia>
-          <ItemContent className="min-w-0">
-            <ItemTitle>{a.name}</ItemTitle>
-            {a.description && <ItemDescription>{a.description}</ItemDescription>}
+          <ItemContent className="min-w-0 gap-0.5">
+            <ItemTitle className="w-full truncate text-ui">{a.name}</ItemTitle>
+            {a.description && <ItemDescription className="line-clamp-1 text-xs">{a.description}</ItemDescription>}
           </ItemContent>
           <ItemActions>
-            <Button variant="outline" size="sm" onClick={() => open(a)} disabled={opening === a.id}>
+            <Button variant="ghost" size="xs" onClick={() => open(a)} disabled={opening === a.id}>
               {opening === a.id ? t.opening : t.open}
             </Button>
           </ItemActions>

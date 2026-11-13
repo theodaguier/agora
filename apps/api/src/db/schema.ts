@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, BotWebhookStatus, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodeMergeMethod, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, GitHubMergeRequestStatus, IntegrationType, McpEnvField, VaultItemKind, VaultKind, VaultRequestKind, VaultRequestStatus, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, ArtifactShareMode, BotWebhookStatus, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodeMergeMethod, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, GitHubMergeRequestStatus, IntegrationType, McpEnvField, VaultItemKind, VaultKind, VaultRequestKind, VaultRequestStatus, WeeklyHours } from "@agora/core";
 import type { ImplicitCall } from "../group";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
@@ -497,6 +497,46 @@ export const attachment = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [index("attachment_conversation_idx").on(t.conversationId)],
+);
+
+/**
+ * A page a bot wrote (```artifact block) and keeps rewriting: one per slug and conversation, each
+ * rewrite a version. Its share link (`/s/<shareToken>`) shows the latest version, to whoever
+ * `shareMode` lets in; leaving "link" draws a new token, so the old link stops working.
+ */
+export const artifact = pgTable(
+  "artifact",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    shareMode: text("share_mode").$type<ArtifactShareMode>().default("private").notNull(),
+    shareToken: text("share_token").notNull().unique(),
+    /** Number of the last version written: a deleted version's number is never reused. */
+    lastVersion: integer("last_version").default(0).notNull(),
+    ...timestamps,
+  },
+  (t) => [unique("artifact_conversation_slug").on(t.conversationId, t.slug)],
+);
+
+/** A version of an artifact: the HTML file of the conversation its reply saved (deleted with it). */
+export const artifactVersion = pgTable(
+  "artifact_version",
+  {
+    id: text("id").primaryKey(),
+    artifactId: text("artifact_id")
+      .notNull()
+      .references(() => artifact.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    attachmentId: text("attachment_id")
+      .notNull()
+      .references(() => attachment.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [unique("artifact_version_number").on(t.artifactId, t.version)],
 );
 
 /**
@@ -1023,4 +1063,46 @@ export const githubMergeRequest = pgTable(
     ...timestamps,
   },
   (t) => [index("github_merge_request_conversation_idx").on(t.conversationId)],
+);
+
+/* ---------- Machines SSH (ssh.ts) ---------- */
+
+/**
+ * A remote machine every bot and code session may reach, except the bots in `excludedAgentIds`.
+ * `privateKey`: the sealed OpenSSH private key Agora made for it (sealed.ts); `hostKeys`: the machine's
+ * known_hosts lines, pinned at the first successful test, under the alias `agora-<id>`.
+ */
+export const sshHost = pgTable("ssh_host", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  host: text("host").notNull(),
+  port: integer("port").default(22).notNull(),
+  username: text("username").notNull(),
+  description: text("description").default("").notNull(),
+  publicKey: text("public_key").notNull(),
+  privateKey: text("private_key").notNull(),
+  hostKeys: text("host_keys"),
+  hostKeyFingerprint: text("host_key_fingerprint"),
+  excludedAgentIds: jsonb("excluded_agent_ids").$type<string[]>().default([]).notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps,
+});
+
+/** Each use of a machine: a command a bot ran, or a run that could reach it (a code session's). */
+export const sshLog = pgTable(
+  "ssh_log",
+  {
+    id: text("id").primaryKey(),
+    hostId: text("host_id")
+      .notNull()
+      .references(() => sshHost.id, { onDelete: "cascade" }),
+    agentId: text("agent_id").references(() => agent.id, { onDelete: "set null" }),
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    conversationId: text("conversation_id").references(() => conversation.id, { onDelete: "set null" }),
+    command: text("command"),
+    exitCode: integer("exit_code"),
+    at: timestamp("at").defaultNow().notNull(),
+  },
+  (t) => [index("ssh_log_host_idx").on(t.hostId, t.at)],
 );

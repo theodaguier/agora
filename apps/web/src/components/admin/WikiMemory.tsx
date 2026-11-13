@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { BrainIcon, SearchIcon, CloseIcon } from "@/components/icons";
+import { BrainIcon, SearchIcon, CloseIcon, ExternalLinkIcon, MaximizeIcon, SlidersIcon } from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import { Badge } from "@/components/ui/badge";
@@ -210,21 +210,15 @@ export function WikiMemory({ standalone = false, inTab = false }: { standalone?:
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      {/* The title and where to open it (not in its own tab, where the graph is the page), then find a
-          page and pick which kinds of pages are shown, side by side. */}
-      {!inTab && (
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="text-base font-medium">{t.title}</h2>
-          <Button variant="outline" onClick={standalone ? toggleFullScreen : openBrainTab}>
-            {standalone ? (fullScreen ? t.exitFullScreen : t.fullScreen) : t.openWindow}
-          </Button>
-        </div>
-      )}
-      <div className="mb-3">
+      {/* One line, as the other tabs' headers: the title, then find a page, which kinds are shown, and
+          where to open it (an icon: not in its own tab, where the graph is the page). */}
+      <div className="mb-4 flex items-center gap-2">
+        {!inTab && <h2 className="text-title font-medium">{t.title}</h2>}
+        <span className="flex-1" />
         {graph.data && (
-          <div className="flex items-center gap-2">
+          <>
             <div className="relative w-56">
-              <InputGroup>
+              <InputGroup className="h-8 bg-transparent text-ui dark:bg-transparent">
                 <InputGroupAddon>
                   <SearchIcon />
                 </InputGroupAddon>
@@ -240,17 +234,19 @@ export function WikiMemory({ standalone = false, inTab = false }: { standalone?:
                           <Dot type={n.type} />
                         </ItemMedia>
                         <ItemContent>
-                          <ItemTitle>{n.label}</ItemTitle>
+                          <ItemTitle className="text-ui">{n.label}</ItemTitle>
                         </ItemContent>
                       </Item>
                     ))}
-                    {matches && !matches.length && <p className="px-2.5 py-2 text-sm text-muted-foreground">{t.noPage}</p>}
+                    {matches && !matches.length && <p className="px-2.5 py-2 text-xs text-subtle-foreground">{t.noPage}</p>}
                   </ItemGroup>
                 </PopoverContent>
               </Popover>
             </div>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" />}>{t.shown}</DropdownMenuTrigger>
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.shown} className="text-muted-foreground" />}>
+                <SlidersIcon />
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 {LEGEND.filter((type) => counts[type]).map((type) => (
                   <DropdownMenuCheckboxItem key={type} checked={!hidden.has(type)} onCheckedChange={() => toggle(type)} closeOnClick={false}>
@@ -260,7 +256,19 @@ export function WikiMemory({ standalone = false, inTab = false }: { standalone?:
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
+          </>
+        )}
+        {!inTab && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={standalone ? (fullScreen ? t.exitFullScreen : t.fullScreen) : t.openWindow}
+            title={standalone ? (fullScreen ? t.exitFullScreen : t.fullScreen) : t.openWindow}
+            onClick={standalone ? toggleFullScreen : openBrainTab}
+            className="text-muted-foreground"
+          >
+            {standalone ? <MaximizeIcon /> : <ExternalLinkIcon />}
+          </Button>
         )}
       </div>
 
@@ -423,18 +431,21 @@ function PagePanel(props: {
           <div className="flex flex-col gap-2">
             <Separator />
             <h4 className="text-xs font-medium text-muted-foreground">{t.linked(linked.length)}</h4>
-            <ItemGroup>
+            {/* Tight rows, as the sidebar's: the kind's dot, the page's name (a raw source without its bot id). */}
+            <ul className="-mx-2 flex flex-col">
               {linked.map((n) => (
-                <Item key={n.id} size="xs" role="listitem" render={<button type="button" onClick={() => props.onSelect(n.id)} />}>
-                  <ItemMedia>
+                <li key={n.id}>
+                  <button
+                    type="button"
+                    onClick={() => props.onSelect(n.id)}
+                    className="flex h-7 w-full min-w-0 items-center gap-2.5 rounded-md px-2 text-left text-ui outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50"
+                  >
                     <Dot type={n.type} />
-                  </ItemMedia>
-                  <ItemContent>
-                    <ItemTitle>{n.label}</ItemTitle>
-                  </ItemContent>
-                </Item>
+                    <span className="truncate">{n.label.replace(/^bot-[0-9a-f]+ · /, "")}</span>
+                  </button>
+                </li>
               ))}
-            </ItemGroup>
+            </ul>
           </div>
         )}
       </CardContent>

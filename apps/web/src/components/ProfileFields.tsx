@@ -27,7 +27,7 @@ const messages = defineMessages({
     photo: "Profile photo",
     changePhoto: "Change photo",
     addPhoto: "Add a photo",
-    pickHint: "Click the picture or drop an image on it. JPEG, PNG or WebP.",
+    pickHint: "JPEG, PNG or WebP.",
     unreadable: "This image couldn't be read.",
   },
   fr: {
@@ -42,7 +42,7 @@ const messages = defineMessages({
     photo: "Photo de profil",
     changePhoto: "Changer la photo",
     addPhoto: "Ajouter une photo",
-    pickHint: "Clique sur l'image ou dépose une photo dessus. JPEG, PNG ou WebP.",
+    pickHint: "JPEG, PNG ou WebP.",
     unreadable: "Cette image n'a pas pu être lue.",
   },
 });
@@ -54,36 +54,24 @@ const messages = defineMessages({
 export function ProfileFields({
   idPrefix,
   defaults,
+  rows,
 }: {
   idPrefix: string;
   defaults?: Partial<ProfileInput>;
+  /** Settings: one row per field, the label on the left, the input on the right (as Linear's). */
+  rows?: boolean;
 }) {
   const id = (name: string) => `${idPrefix}-${name}`;
   const t = useT(messages);
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <Field>
-        <FormLabel htmlFor={id("firstName")} required>
-          {t.firstName}
-        </FormLabel>
-        <Input id={id("firstName")} name="firstName" required maxLength={60} autoComplete="given-name" defaultValue={defaults?.firstName} />
-      </Field>
-      <Field>
-        <FormLabel htmlFor={id("lastName")} required>
-          {t.lastName}
-        </FormLabel>
-        <Input id={id("lastName")} name="lastName" required maxLength={60} autoComplete="family-name" defaultValue={defaults?.lastName} />
-      </Field>
-      <Field>
-        <FormLabel htmlFor={id("title")} required>
-          {t.role}
-        </FormLabel>
-        <Input id={id("title")} name="title" required maxLength={60} placeholder={t.rolePlaceholder} defaultValue={defaults?.title} />
-      </Field>
-      <Field>
-        <FormLabel htmlFor={id("username")} required>
-          {t.username}
-        </FormLabel>
+  const fields = [
+    { name: "firstName", label: t.firstName, required: true, input: <Input id={id("firstName")} name="firstName" required maxLength={60} autoComplete="given-name" defaultValue={defaults?.firstName} /> },
+    { name: "lastName", label: t.lastName, required: true, input: <Input id={id("lastName")} name="lastName" required maxLength={60} autoComplete="family-name" defaultValue={defaults?.lastName} /> },
+    { name: "title", label: t.role, required: true, input: <Input id={id("title")} name="title" required maxLength={60} placeholder={t.rolePlaceholder} defaultValue={defaults?.title} /> },
+    {
+      name: "username",
+      label: t.username,
+      required: true,
+      input: (
         <Input
           id={id("username")}
           name="username"
@@ -96,11 +84,33 @@ export function ProfileFields({
           placeholder={t.usernamePlaceholder}
           defaultValue={defaults?.username}
         />
-      </Field>
-      <Field className="sm:col-span-2">
-        <FormLabel htmlFor={id("bio")}>{t.bio}</FormLabel>
-        <Textarea id={id("bio")} name="bio" maxLength={500} rows={3} placeholder={t.bioPlaceholder} defaultValue={defaults?.bio} />
-      </Field>
+      ),
+    },
+    { name: "bio", label: t.bio, required: false, input: <Textarea id={id("bio")} name="bio" maxLength={500} rows={rows ? 2 : 3} placeholder={t.bioPlaceholder} defaultValue={defaults?.bio} /> },
+  ];
+  if (rows)
+    return (
+      <>
+        {fields.map((f) => (
+          <div key={f.name} className={cn("flex justify-between gap-6 px-4 py-3", f.name === "bio" ? "items-start" : "items-center")}>
+            <FormLabel htmlFor={id(f.name)} required={f.required} className="font-medium text-foreground">
+              {f.label}
+            </FormLabel>
+            <div className="w-72 shrink-0">{f.input}</div>
+          </div>
+        ))}
+      </>
+    );
+  return (
+    <div className="grid gap-x-3 gap-y-4 sm:grid-cols-2">
+      {fields.map((f) => (
+        <Field key={f.name} className={f.name === "bio" ? "sm:col-span-2" : undefined}>
+          <FormLabel htmlFor={id(f.name)} required={f.required}>
+            {f.label}
+          </FormLabel>
+          {f.input}
+        </Field>
+      ))}
     </div>
   );
 }
@@ -176,15 +186,15 @@ export function AvatarField({
           pick(e.dataTransfer.files[0]);
         }}
         className={cn(
-          "group/photo relative size-16 shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          "group/photo relative size-12 shrink-0 cursor-pointer rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
           over && "ring-3 ring-ring/60 ring-offset-2 ring-offset-background",
         )}
       >
         {/* No name yet: an empty disc with the camera, never a "?" placeholder. */}
         {shown || name ? (
-          <PersonAvatar person={{ id, name, image: shown }} className="size-16" />
+          <PersonAvatar person={{ id, name, image: shown }} className="size-12" />
         ) : (
-          <Avatar className="size-16">
+          <Avatar className="size-12">
             <AvatarFallback>
               <CameraIcon />
             </AvatarFallback>
@@ -193,22 +203,25 @@ export function AvatarField({
         <span
           aria-hidden
           className={cn(
-            "absolute inset-0 grid place-items-center rounded-full bg-foreground/50 text-background opacity-0 transition-opacity group-hover/photo:opacity-100 group-focus-visible/photo:opacity-100",
+            "absolute inset-0 grid place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover/photo:opacity-100 group-focus-visible/photo:opacity-100",
             over && "opacity-100",
           )}
         >
           <CameraIcon />
         </span>
       </button>
-      <div className="flex min-w-0 flex-col gap-1">
-        <span className="text-sm font-medium">{label ?? t.photo}</span>
-        {error ? <FieldError>{error}</FieldError> : <FieldDescription>{t.pickHint}</FieldDescription>}
-        {shown && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(current ? null : undefined)} className="self-start">
-            {c.remove}
-          </Button>
-        )}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-ui font-medium">{label ?? t.photo}</span>
+        {error ? <FieldError>{error}</FieldError> : <FieldDescription className="text-ui">{t.pickHint}</FieldDescription>}
       </div>
+      {shown && (
+        <Button type="button" variant="ghost" size="sm" onClick={() => onChange(current ? null : undefined)} className="text-muted-foreground">
+          {c.remove}
+        </Button>
+      )}
+      <Button type="button" variant="secondary" size="sm" onClick={() => input.current?.click()}>
+        {shown ? t.changePhoto : t.addPhoto}
+      </Button>
       <input
         ref={input}
         type="file"

@@ -12,6 +12,7 @@ import { formatDueDate, isOverdue } from "@/lib/dates";
 import { taskQuery } from "@/lib/queries";
 import { priorityMessages } from "@/lib/task-status";
 import { cn } from "@/lib/utils";
+import { StatusLine } from "@/components/views/block";
 
 const messages = defineMessages({
   en: {
@@ -37,7 +38,6 @@ const refTone: Record<TaskStatus, string> = {
   done: "bg-muted text-muted-foreground",
 };
 
-const statusVariant = { todo: "secondary", in_progress: "default", done: "outline" } as const;
 const priorityVariant = { urgent: "destructive", high: "secondary", normal: "secondary", low: "outline" } as const;
 
 /** A task cited in a message: its title with a status-colored check; hovering shows the task. */
@@ -59,9 +59,7 @@ export function TaskRef({ taskId }: { taskId: string }) {
         <div className="flex flex-col gap-1.5">
           <p className="font-medium">{task.title}</p>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant={statusVariant[task.status]}>
-              {t.status[task.status]}
-            </Badge>
+            <StatusLine tone={({ todo: "neutral", in_progress: "warning", done: "success" } as const)[task.status]}>{t.status[task.status]}</StatusLine>
             {task.priority !== "normal" && !done && (
               <Badge variant={priorityVariant[task.priority]}>
                 {p.label[task.priority]}

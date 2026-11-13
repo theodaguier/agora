@@ -159,7 +159,7 @@ function DndCard({ userId, settings }: { userId: string; settings: ScheduleSetti
     <Card>
       <CardHeader>
         <CardTitle>{t.dnd}</CardTitle>
-        <CardDescription>{active ? (status ?? t.dndOn) : t.dndOff}</CardDescription>
+        <CardDescription className={active ? "text-destructive" : undefined}>{active ? (status ?? t.dndOn) : t.dndOff}</CardDescription>
         {active && (
           <CardAction>
             <Button variant="outline" size="sm" disabled={change.isPending} onClick={() => change.mutate(null)}>

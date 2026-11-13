@@ -3,7 +3,7 @@ import { useState } from "react";
 import { MoreIcon, RefreshIcon, ServerIcon } from "@/components/icons";
 import { confirmAction } from "@/lib/confirm";
 import { LoadError, LoadFailed, Loading, SectionHeader, SettingTile } from "@/components/admin/ui";
-import { Badge } from "@/components/ui/badge";
+import { StatusLine } from "@/components/views/block";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
@@ -96,10 +96,10 @@ const messages = defineMessages({
   },
 });
 
-/** Status badge: colour only where it means something (red = down, orange = degraded), neutral otherwise. */
+/** Status badge: green when up, orange when degraded, red when down, grey when off. */
 function StateBadge({ state, children }: { state: CheckState; children: React.ReactNode }) {
-  const variant = ({ down: "destructive", warn: "outline", off: "ghost", ok: "secondary" } as const)[state];
-  return <Badge variant={variant}>{children}</Badge>;
+  const tone = ({ down: "danger", warn: "warning", off: "neutral", ok: "success" } as const)[state];
+  return <StatusLine tone={tone}>{children}</StatusLine>;
 }
 
 export function Status() {

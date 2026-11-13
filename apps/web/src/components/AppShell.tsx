@@ -36,9 +36,10 @@ export function AppShell() {
       className="h-dvh min-h-0 overflow-hidden"
     >
       {desktop ? (
-        <div className="flex min-w-0 flex-1 bg-background">
+        // Figma « Boîte de réception · 1440 »: the sidebar on the app's ground, the work in a panel set 8 px in.
+        <div className="flex min-w-0 flex-1 bg-sidebar">
           <AppSidebar width={sidebarWidth} onWidthChange={setSidebarWidth} />
-          <main className="flex min-w-0 flex-1">
+          <main className="my-2 mr-2 flex min-w-0 flex-1 overflow-hidden rounded-lg border bg-background">
             <Workspace />
           </main>
         </div>

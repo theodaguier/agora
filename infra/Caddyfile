@@ -22,7 +22,9 @@
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
-		X-Frame-Options DENY
+		# Same origin: the app frames its artifacts (/api/artifacts/*/content). The
+		# app's own pages still refuse any frame (frame-ancestors 'none' below).
+		X-Frame-Options SAMEORIGIN
 		# The app uses none of these; clipboard stays allowed (copy buttons).
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), interest-cohort=()"
 		# Isolates the window from pages that open it; "allow-popups" keeps the
@@ -48,12 +50,19 @@
 		}
 	}
 
+	# Artifact share links: served by the API, with their own CSP (sandbox, so
+	# the page's scripts run on an opaque origin, away from the app's cookies).
+	handle /s/* {
+		rewrite * /api{uri}
+		reverse_proxy hermes:3001
+	}
+
 	# Web app. Scripts: only the app's own files (no inline script, no eval).
 	# Images and videos: https allowed, agents' replies show pictures from the web;
 	# data:/blob: for the agent screen frames and upload previews.
 	# Styles: inline allowed (UI libraries inject <style> and style attributes).
 	handle {
-		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
 		root * /srv
 		try_files {path} /index.html
 		file_server

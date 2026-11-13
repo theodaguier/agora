@@ -1,7 +1,10 @@
 import { confirmAction } from "@/lib/confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { CheckCircleIcon, ChevronDownIcon, CircleIcon, LoaderIcon, MoreIcon, PencilIcon, StopIcon, TaskListIcon, TrashIcon, UserIcon, WarningIcon } from "@/components/icons";
+import { CheckCircleIcon, ChevronDownIcon, CircleIcon, LoaderIcon, MoreIcon, PencilIcon, PlusIcon, StopIcon, TaskListIcon, TrashIcon, UserIcon, WarningIcon } from "@/components/icons";
+import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { AgentAvatar } from "@/components/AgentAvatar";
+import { PriorityIcon, TaskStatusIcon } from "@/components/Marks";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState, type ReactNode } from "react";
 import { PersonAvatar } from "@/components/ConversationAvatar";
@@ -33,7 +36,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle }
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, type AgentSummary, type Task, type TaskPriority, type TaskStatus } from "@/lib/api";
-import { formatDueDate, isOverdue } from "@/lib/dates";
+import { dueLabel, formatDueDate, isOverdue } from "@/lib/dates";
 import { agentTasksQuery, tasksQuery } from "@/lib/queries";
 import { MentionText } from "@/lib/mentions";
 import { useMentionables, usePeople } from "@/lib/people";
@@ -73,6 +76,7 @@ const messages = defineMessages({
     errorTitle: "Tasks unavailable",
     error: "Tasks can't be reached right now.",
     columns: { task: "Task", who: "Who", due: "Due" },
+    add: (group: string) => `Add a task (${group})`,
   },
   fr: {
     deleteTitle: (title: string) => `Supprimer « ${title} » ?`,
@@ -103,6 +107,7 @@ const messages = defineMessages({
     errorTitle: "Tâches indisponibles",
     error: "Les tâches sont injoignables pour le moment.",
     columns: { task: "Tâche", who: "Qui", due: "Échéance" },
+    add: (group: string) => `Ajouter une tâche (${group})`,
   },
 });
 
@@ -118,11 +123,17 @@ export function TaskList({
   empty,
   emptyTitle,
   table,
+  showDone = true,
+  onAdd,
 }: ({ userId: string; agentId?: never } | { agentId: string; userId?: never }) & {
   empty: string;
   emptyTitle?: string;
-  /** Figma « Mes tâches »: as a table (priority, who, due date in columns), groups without frames, as in Linear. */
+  /** Figma « Mes tâches · 1440 »: the tasks given to `userId`, in groups of rows, as Linear's issues. */
   table?: boolean;
+  /** Table: the done group shown. */
+  showDone?: boolean;
+  /** Table: the « + » of a group. */
+  onAdd?: () => void;
 }) {
   const t = useT(messages);
   const p = useT(priorityMessages);
@@ -154,7 +165,8 @@ export function TaskList({
         </EmptyContent>
       </Empty>
     );
-  const all = tasks ?? [];
+  // My tasks: only the ones given to me (the ones I gave others are theirs).
+  const all = (tasks ?? []).filter((x) => !table || !userId || x.assignees.some((a) => a.id === userId));
   if (!all.length)
     return (
       <Empty>
@@ -178,6 +190,40 @@ export function TaskList({
 
   const inProgress = open.filter((x) => x.status === "in_progress");
   const todo = open.filter((x) => x.status === "todo");
+  if (table)
+    return (
+      <div className="flex flex-col">
+        {(
+          [
+            ["in_progress", inProgress],
+            ["todo", todo],
+            ["done", showDone ? done : []],
+          ] as const
+        ).map(
+          ([status, items]) =>
+            items.length > 0 && (
+              <section key={status} aria-label={t.group[status]}>
+                <h2 className="group/head flex h-9 items-center gap-2 border-b bg-card pr-2 pl-5 text-ui font-medium">
+                  <TaskStatusIcon status={status} />
+                  {t.group[status]}
+                  <span className="font-normal text-subtle-foreground tabular-nums">{items.length}</span>
+                  <span className="flex-1" />
+                  {onAdd && (
+                    <Button variant="ghost" size="icon-xs" aria-label={t.add(t.group[status])} onClick={onAdd} className="text-subtle-foreground opacity-0 group-hover/head:opacity-100 focus-visible:opacity-100">
+                      <PlusIcon />
+                    </Button>
+                  )}
+                </h2>
+                <div role="list">
+                  {items.map((task) => (
+                    <TaskTableRow key={task.id} task={task} />
+                  ))}
+                </div>
+              </section>
+            ),
+        )}
+      </div>
+    );
   const rows = (items: Task[]) =>
     table ? (
       <div role="list" className="flex flex-col">
@@ -465,6 +511,149 @@ function TaskRow({ task, owner, table }: { task: Task; owner: string | null; tab
   );
 }
 
+/**
+ * Figma « Mes tâches · 1440 »: one 40 px line per task: its priority (a menu), its state (a click
+ * closes or reopens it), the title, the agent it came from, who is on it, when it is due. The other
+ * actions on a right click, as in Linear.
+ */
+function TaskTableRow({ task }: { task: Task }) {
+  const { user } = useRouteContext({ from: "/app" });
+  const work = useWorkingOn();
+  const mine = task.assignees.find((a) => a.id === user.id);
+  const mentions = useMentionables(noBots);
+  const qc = useQueryClient();
+  const t = useT(messages);
+  const p = useT(priorityMessages);
+  const c = useT(common);
+  const [editing, setEditing] = useState(false);
+  const refresh = () => qc.invalidateQueries({ queryKey: ["tasks"] });
+  const patch = useMutation({
+    mutationFn: (body: Partial<Pick<Task, "status" | "priority">>) => api<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    onSettled: refresh,
+    meta: { error: t.failed },
+  });
+  const remove = useMutation({ mutationFn: () => api(`/tasks/${task.id}`, { method: "DELETE" }), onSettled: refresh, meta: { success: c.deleted } });
+  const done = task.status === "done";
+  const overdue = !done && isOverdue(task.dueOn);
+  const agent = task.assignedBy?.kind === "agent" ? task.assignedBy : null;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        render={<div role="listitem" className="flex h-10 items-center gap-3 border-b px-5 hover:bg-muted/40" />}
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            disabled={!task.canEdit}
+            render={<Button variant="ghost" size="icon-xs" aria-label={`${p.priority} : ${p.label[task.priority]}`} className="-mx-1" />}
+          >
+            <PriorityIcon priority={task.priority} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-44">
+            <DropdownMenuRadioGroup value={task.priority} onValueChange={(v) => patch.mutate({ priority: v as TaskPriority })}>
+              {TASK_PRIORITIES.map((level) => (
+                <DropdownMenuRadioItem key={level} value={level}>
+                  <PriorityIcon priority={level} />
+                  {p.label[level]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="-mx-1"
+          disabled={!task.canEdit || patch.isPending}
+          onClick={() => patch.mutate({ status: done ? "todo" : "done" })}
+          aria-label={done ? t.reopen : t.complete}
+          aria-pressed={done}
+        >
+          <TaskStatusIcon status={task.status} />
+        </Button>
+        <button
+          type="button"
+          disabled={!task.canDelete}
+          onClick={() => setEditing(true)}
+          className={cn("min-w-0 flex-1 truncate text-left text-ui outline-none disabled:cursor-default", done && "text-muted-foreground")}
+        >
+          <MentionText text={task.title} mentionables={mentions} />
+        </button>
+        <span className="hidden w-27.5 shrink-0 items-center gap-1.5 text-xs text-muted-foreground md:flex">
+          {agent && (
+            <>
+              <AgentAvatar agent={agent} className="size-3.5" />
+              <span className="truncate">{agent.name}</span>
+            </>
+          )}
+        </span>
+        <span className="hidden w-12 shrink-0 justify-end md:flex">
+          <Participants task={task} small />
+        </span>
+        <span className={cn("w-18 shrink-0 truncate text-right text-xs", overdue ? "text-destructive" : done ? "text-subtle-foreground" : "text-muted-foreground")}>
+          {task.dueOn ? dueLabel(task.dueOn) : ""}
+        </span>
+        {task.canDelete && <TaskDialog open={editing} onOpenChange={setEditing} task={task} />}
+      </ContextMenuTrigger>
+      {(task.canEdit || task.canDelete) && (
+        <ContextMenuContent className="w-52">
+          {task.canEdit && (
+            <ContextMenuGroup>
+              {task.status !== "in_progress" && !done && (
+                <ContextMenuItem onClick={() => patch.mutate({ status: "in_progress" })}>
+                  <LoaderIcon />
+                  {t.start}
+                </ContextMenuItem>
+              )}
+              {task.status !== "todo" && (
+                <ContextMenuItem onClick={() => patch.mutate({ status: "todo" })}>
+                  <CircleIcon />
+                  {t.reopen}
+                </ContextMenuItem>
+              )}
+              {!done && (
+                <ContextMenuItem onClick={() => patch.mutate({ status: "done" })}>
+                  <CheckCircleIcon />
+                  {t.complete}
+                </ContextMenuItem>
+              )}
+              {mine && !done && !mine.current && (
+                <ContextMenuItem onClick={() => work.mutate(task.id)}>
+                  <UserIcon />
+                  {t.workOn}
+                </ContextMenuItem>
+              )}
+              {mine?.current && (
+                <ContextMenuItem onClick={() => work.mutate(null)}>
+                  <StopIcon />
+                  {t.stopWorking}
+                </ContextMenuItem>
+              )}
+            </ContextMenuGroup>
+          )}
+          {task.canDelete && (
+            <>
+              {task.canEdit && <ContextMenuSeparator />}
+              <ContextMenuGroup>
+                <ContextMenuItem onClick={() => setEditing(true)}>
+                  <PencilIcon />
+                  {t.edit}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  variant="destructive"
+                  onClick={async () => (await confirmAction({ title: t.deleteTitle(task.title), description: t.deleteBody, action: c.delete })) && remove.mutate()}
+                >
+                  <TrashIcon />
+                  {c.delete}
+                </ContextMenuItem>
+              </ContextMenuGroup>
+            </>
+          )}
+        </ContextMenuContent>
+      )}
+    </ContextMenu>
+  );
+}
+
 const noBots: AgentSummary[] = [];
 
 const FACES = 3;
@@ -473,7 +662,7 @@ const FACES = 3;
  * Who works on the task, as overlapping faces. Anyone who can edit it opens the
  * list and checks or unchecks people; there is always at least one.
  */
-function Participants({ task }: { task: Task }) {
+function Participants({ task, small }: { task: Task; small?: boolean }) {
   const qc = useQueryClient();
   const t = useT(messages);
   const people = usePeople();
@@ -493,7 +682,9 @@ function Participants({ task }: { task: Task }) {
   const faces = (
     <span className="flex items-center">
       {task.assignees.slice(0, FACES).map((a, i) => (
-        <PersonAvatar key={a.id} person={a} className={cn("size-6 ring-2 ring-background", i > 0 && "-ml-2")} />
+        <span key={a.id} className={cn("relative flex", i > 0 && (small ? "-ml-1" : "-ml-2"))} style={{ zIndex: FACES - i }}>
+          <PersonAvatar person={a} className={small ? "size-4.5 ring-2 ring-background" : "size-6 ring-2 ring-background"} />
+        </span>
       ))}
       {task.assignees.length > FACES && <span className="pl-1 text-xs tabular-nums text-muted-foreground">+{task.assignees.length - FACES}</span>}
     </span>
@@ -506,7 +697,7 @@ function Participants({ task }: { task: Task }) {
     );
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<Button variant="ghost" size="sm" aria-label={t.editParticipants(names)} />}>
+      <PopoverTrigger render={<Button variant="ghost" size={small ? "xs" : "sm"} className={small ? "-mr-1.5 px-1" : undefined} aria-label={t.editParticipants(names)} />}>
         {faces}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64">

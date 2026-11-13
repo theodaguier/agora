@@ -22,8 +22,8 @@ const messages = defineMessages({
     stored: "The theme and sounds are saved in this browser.",
     language: {
       label: "Language",
-      org: (language: string | null) => `The organization's${language ? ` (${language})` : ""}`,
-      help: "The interface language, and the one agents reply in unless you write to them in another.",
+      org: (language: string | null) => `Organization${language ? ` (${language})` : ""}`,
+      help: "Interface and agents' replies.",
     },
     theme: {
       label: "Theme",
@@ -44,8 +44,8 @@ const messages = defineMessages({
     stored: "Le thème et les sons sont enregistrés dans ce navigateur.",
     language: {
       label: "Langue",
-      org: (language: string | null) => `Celle de l'organisation${language ? ` (${language})` : ""}`,
-      help: "La langue de l'interface, et celle dans laquelle les agents te répondent, sauf si tu leur écris dans une autre.",
+      org: (language: string | null) => `Organisation${language ? ` (${language})` : ""}`,
+      help: "Interface et réponses des agents.",
     },
     theme: {
       label: "Thème",

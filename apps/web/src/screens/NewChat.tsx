@@ -7,7 +7,6 @@ import { AgentAvatar } from "@/components/AgentAvatar";
 import { PersonAvatar, StatusAvatar } from "@/components/ConversationAvatar";
 import { type Participant } from "@/lib/participants";
 import { closeOrGoHome } from "@/lib/workspace";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
@@ -23,14 +22,15 @@ import { useOrgTitle } from "@/lib/org";
 import { agentsQuery, conversationsQuery, usersQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-type Row = { key: string; label: string; hint?: string; run: () => void; icon: React.ReactNode };
+type Row = { key: string; label: string; section: "actions" | "bots" | "people"; run: () => void; icon: React.ReactNode };
 
 const participantKey = (p: Participant) => (p.kind === "agent" ? `a:${p.agent.id}` : `u:${p.person.id}`);
 const participantName = (p: Participant) => (p.kind === "agent" ? p.agent.name : p.person.name);
 
 const messages = defineMessages({
   en: {
-    colleague: "Colleague",
+    bots: "Bots",
+    colleagues: "Colleagues",
     creatingBot: "Creating Bot…",
     createBot: "Create a new Bot",
     createGroup: "Create a group conversation",
@@ -50,7 +50,8 @@ const messages = defineMessages({
     error: "Bots and colleagues can't be reached right now.",
   },
   fr: {
-    colleague: "Collègue",
+    bots: "Bots",
+    colleagues: "Collègues",
     creatingBot: "Création du Bot…",
     createBot: "Créer un nouveau Bot",
     createGroup: "Créer une conversation de groupe",
@@ -138,8 +139,8 @@ export function NewChat() {
   const pickRow = (p: Participant): Row => ({
     key: participantKey(p),
     label: participantName(p),
-    hint: p.kind === "user" ? t.colleague : undefined,
-    icon: <StatusAvatar p={p} className="size-8" />,
+    section: p.kind === "agent" ? "bots" : "people",
+    icon: <StatusAvatar p={p} className="size-6" />,
     run: () => {
       if (groupMode) {
         setPicked((xs) => [...xs, p]);
@@ -159,29 +160,25 @@ export function NewChat() {
               {
                 key: "create",
                 label: createBot.isPending ? t.creatingBot : t.createBot,
+                section: "actions" as const,
                 run: () => !createBot.isPending && createBot.mutate(),
-                icon: (
-                  <Avatar>
-                    <AvatarFallback>{createBot.isPending ? <Spinner /> : <PlusIcon />}</AvatarFallback>
-                  </Avatar>
-                ),
+                icon: <span className="flex size-6 items-center justify-center text-muted-foreground">{createBot.isPending ? <Spinner /> : <PlusIcon />}</span>,
               },
             ]
           : []),
         {
           key: "group",
           label: t.createGroup,
+          section: "actions" as const,
           run: () => {
             setGroupMode(true);
             setQ("");
             setSelected("");
           },
           icon: (
-            <Avatar>
-              <AvatarFallback>
-                <UsersIcon />
-              </AvatarFallback>
-            </Avatar>
+            <span className="flex size-6 items-center justify-center text-muted-foreground">
+              <UsersIcon />
+            </span>
           ),
         },
         ...candidates.map(pickRow),
@@ -273,22 +270,26 @@ export function NewChat() {
       )}
 
         <CommandList className="max-h-none min-h-0 flex-1">
-          <CommandGroup>
-            {rows.map((r) => (
-              <CommandItem
-                key={r.key}
-                value={r.key}
-                onSelect={r.run}
-                className={cn(r.key === "create" && createBot.isPending && "cursor-progress")}
-              >
-                {r.icon}
-                <span className="grid min-w-0 flex-1">
-                  <span className="truncate">{r.label}</span>
-                  {r.hint && <span className="truncate text-xs text-muted-foreground">{r.hint}</span>}
-                </span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
+          {/* The actions, then one section per kind: who someone is is said once, by its heading. */}
+          {(["actions", "bots", "people"] as const).map((section) => {
+            const items = rows.filter((r) => r.section === section);
+            if (!items.length) return null;
+            return (
+              <CommandGroup key={section} heading={section === "bots" ? t.bots : section === "people" ? t.colleagues : undefined}>
+                {items.map((r) => (
+                  <CommandItem
+                    key={r.key}
+                    value={r.key}
+                    onSelect={r.run}
+                    className={cn(r.key === "create" && createBot.isPending && "cursor-progress")}
+                  >
+                    {r.icon}
+                    <span className="min-w-0 flex-1 truncate">{r.label}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            );
+          })}
           {listPending ? (
             <div className="flex flex-col gap-2 p-1">
               {[0, 1, 2].map((i) => (

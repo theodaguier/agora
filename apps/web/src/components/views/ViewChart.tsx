@@ -67,7 +67,7 @@ export function ViewChart({ view }: { view: ChartView }) {
       {!values && <CartesianGrid vertical={false} />}
       <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} tickFormatter={tick} />
       {!values && <YAxis tickLine={false} axisLine={false} width={scale} tickFormatter={f.axis} />}
-      <ChartTooltip cursor={view.chart === "bar" ? { fill: "var(--muted)", opacity: 0.5 } : true} content={<ChartTooltipContent labelFormatter={(label) => tick(String(label))} />} />
+      <ChartTooltip cursor={view.chart === "bar" ? false : true} content={<ChartTooltipContent labelFormatter={(label) => tick(String(label))} />} />
       {several && <ChartLegend content={<ChartLegendContent className="flex-wrap" />} />}
     </>
   );
@@ -75,7 +75,8 @@ export function ViewChart({ view }: { view: ChartView }) {
   return (
     <>
       <Caption unit={f.caption} />
-      <ChartContainer config={config} className="aspect-auto h-64 w-full px-1 pt-2">
+      {/* Clicked, Recharts' wrapper takes the focus: no browser ring drawn around the plot. */}
+      <ChartContainer config={config} className="aspect-auto h-64 w-full px-1 pt-2 [&_.recharts-wrapper]:outline-hidden">
         {view.chart === "bar" ? (
           <BarChart data={data} margin={{ left: 4, right: 4, top: values ? 24 : 8 }} barCategoryGap="20%" barGap={2}>
             {children}
@@ -91,7 +92,8 @@ export function ViewChart({ view }: { view: ChartView }) {
                 maxBarSize={single ? 40 : 32}
                 radius={!stack || i === keys.length - 1 ? [6, 6, 0, 0] : 0}
               >
-                {single && data.map((d) => <Cell key={d.j} fill={isHighest(d.j) ? "var(--primary)" : "var(--chart-5)"} />)}
+                {/* One series: every bar in its colour, the highest full, the others a step back. */}
+                {single && data.map((d) => <Cell key={d.j} fill={`var(--color-${k})`} fillOpacity={isHighest(d.j) ? 1 : 0.35} />)}
                 {values && (
                   <LabelList
                     dataKey={k}

@@ -2,7 +2,6 @@ import { Link, useRouter, type ErrorComponentProps } from "@tanstack/react-route
 import { SearchIcon, WarningIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Spinner } from "@/components/ui/spinner";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 
@@ -26,9 +25,8 @@ const messages = defineMessages({
 /** A page still loading (the session checked, a screen fetched): a spinner, never a blank window. */
 export function RoutePending() {
   return (
-    <div className="flex h-dvh items-center justify-center bg-background">
-      <Spinner />
-    </div>
+    // A blank page, never a spinner: the screen shows up as soon as it's ready.
+    <div className="h-dvh bg-background" />
   );
 }
 

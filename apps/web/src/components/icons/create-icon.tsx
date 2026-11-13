@@ -1,12 +1,15 @@
 import { Children, Fragment, isValidElement, useId, type ReactElement, type ReactNode, type SVGProps } from "react";
 import { LUCIDE } from "./lucide";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { HUGEICONS } from "./hugeicons";
+import { FILLED, MIRRORED, PHOSPHOR } from "./phosphor";
 import { Hole } from "./shapes";
 
 /**
- * Which drawings the app uses: the house ones (below), or Lucide's under the same names (lucide.tsx).
- * Being tried out: switch back to "house" to return to the house style.
+ * Which drawings the app uses: the house ones (below), or Lucide's / Phosphor's / Hugeicons' under
+ * the same names (lucide.tsx, phosphor.tsx, hugeicons.tsx). Switch back to "house" to return to the house style.
  */
-const ICON_SET: "house" | "lucide" = "lucide";
+const ICON_SET: "house" | "lucide" | "phosphor" | "hugeicons" = "hugeicons";
 
 export type IconProps = Omit<SVGProps<SVGSVGElement>, "children"> & {
   /** Width and height, in px or any CSS length. A `size-*` class overrides it. */
@@ -45,6 +48,25 @@ const isGap = (part: ReactElement<{ strokeWidth?: number | string }>) => Number(
  * default), its details (`cut`), what sits on top (`solid`) and the lines in the full one.
  */
 export function createIcon(name: string, { fill, cut, solid, line }: IconLayers): IconComponent {
+  const Huge = ICON_SET === "hugeicons" ? HUGEICONS[name] : undefined;
+  if (Huge) {
+    const Hugeicon = ({ size = 24, strokeWidth = 1.5, ...props }: IconProps) => (
+      <HugeiconsIcon icon={Huge} size={size} strokeWidth={Number(strokeWidth)} aria-hidden="true" data-glyph={name} {...(props as object)} />
+    );
+    Hugeicon.displayName = `${name.replace(/(^|-)(\w)/g, (_, _d, c: string) => c.toUpperCase())}Icon`;
+    (Hugeicon as IconComponent).layers = { fill, cut, solid, line };
+    return Hugeicon as IconComponent;
+  }
+  const Ph = ICON_SET === "phosphor" ? PHOSPHOR[name] : undefined;
+  if (Ph) {
+    // Phosphor draws with fills, not strokes: `strokeWidth` has no meaning for it.
+    const Phosphor = ({ size = 24, strokeWidth: _strokeWidth, ...props }: IconProps) => (
+      <Ph size={size} weight={FILLED.has(name) ? "fill" : "regular"} mirrored={MIRRORED.has(name)} aria-hidden="true" data-glyph={name} {...(props as object)} />
+    );
+    Phosphor.displayName = `${name.replace(/(^|-)(\w)/g, (_, _d, c: string) => c.toUpperCase())}Icon`;
+    (Phosphor as IconComponent).layers = { fill, cut, solid, line };
+    return Phosphor as IconComponent;
+  }
   const Alt = ICON_SET === "lucide" ? LUCIDE[name] : undefined;
   if (Alt) {
     const Lucide = ({ size = 24, strokeWidth = 1.75, ...props }: IconProps) => <Alt size={size} strokeWidth={strokeWidth} aria-hidden="true" data-glyph={name} {...props} />;

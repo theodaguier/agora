@@ -6,7 +6,7 @@ import { confirmAction } from "@/lib/confirm";
 import { FormLabel } from "@/components/FormLabel";
 import { LogOutIcon, MoreIcon } from "@/components/icons";
 import { IntegrationTile } from "@/components/marketplace/IntegrationType";
-import { Badge } from "@/components/ui/badge";
+import { StatusLine } from "@/components/views/block";
 import { Button } from "@/components/ui/button";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { CardContent, CardTitle } from "@/components/ui/card";
@@ -44,6 +44,13 @@ const SPECS: Record<Id, { name: string; domain: string; type: IntegrationType; d
     docs: "https://www.logo.dev/dashboard/api-keys",
     fields: [{ name: "publishableKey" }],
   },
+  googlemaps: {
+    name: "Google Maps",
+    domain: "google.com",
+    type: "other",
+    docs: "https://console.cloud.google.com/google/maps-apis/credentials",
+    fields: [{ name: "mapsKey", secret: true }],
+  },
 };
 
 const messages = defineMessages({
@@ -54,16 +61,19 @@ const messages = defineMessages({
     purpose: {
       resend: "Sends invitation and password reset emails.",
       logodev: "Shows brand logos in conversations and connectors.",
+      googlemaps: "Draws the maps of the places agents show.",
     } as Record<Id, string>,
     fields: {
       apiKey: "API key",
       from: "Sender",
       publishableKey: "Publishable key",
+      mapsKey: "API key",
     } as Record<string, string>,
     help: {
       apiKey: "A “Sending access” key is enough.",
       from: "Its domain must be verified in Resend.",
       publishableKey: "It's made to be read by the browser.",
+      mapsKey: "With the Maps Static API enabled. It stays on the server.",
     } as Record<string, string>,
     connected: "Connected",
     fromEnv: "From the environment",
@@ -75,6 +85,7 @@ const messages = defineMessages({
     disconnectText: {
       resend: "Invitation links will only be shown to the admin, and password reset emails won't be sent anymore.",
       logodev: "Conversations and connectors show generic icons again.",
+      googlemaps: "Maps of places fall back to a plain base map.",
     } as Record<Id, string>,
     envNote: "The server's environment variables will apply again, if any.",
     dialogTitle: (name: string) => `Connect ${name}`,
@@ -92,16 +103,19 @@ const messages = defineMessages({
     purpose: {
       resend: "Envoie les emails d'invitation et de réinitialisation du mot de passe.",
       logodev: "Affiche le logo des marques dans les conversations et les connecteurs.",
+      googlemaps: "Dessine la carte des lieux que montrent les agents.",
     },
     fields: {
       apiKey: "Clé API",
       from: "Expéditeur",
       publishableKey: "Clé publique",
+      mapsKey: "Clé API",
     },
     help: {
       apiKey: "Une clé « Sending access » suffit.",
       from: "Son domaine doit être vérifié dans Resend.",
       publishableKey: "Elle est faite pour être lue par le navigateur.",
+      mapsKey: "Avec l'API Maps Static activée. Elle reste sur le serveur.",
     },
     connected: "Connecté",
     fromEnv: "Via l'environnement",
@@ -113,6 +127,7 @@ const messages = defineMessages({
     disconnectText: {
       resend: "Les liens d'invitation ne seront plus qu'affichés à l'admin, et les emails de réinitialisation du mot de passe ne partiront plus.",
       logodev: "Les conversations et les connecteurs retrouvent des icônes génériques.",
+      googlemaps: "Les cartes des lieux reviennent à un fond de carte simple.",
     },
     envNote: "Les variables d'environnement du serveur s'appliqueront de nouveau, s'il y en a.",
     dialogTitle: (name: string) => `Connecter ${name}`,
@@ -174,9 +189,7 @@ export function AppIntegrations() {
                     <ItemTitle>
                       {spec.name}
                       {i.source && (
-                        <Badge variant={i.source === "app" ? "default" : "secondary"}>
-                          {i.source === "app" ? t.connected : t.fromEnv}
-                        </Badge>
+                        <StatusLine tone={i.source === "app" ? "success" : "info"}>{i.source === "app" ? t.connected : t.fromEnv}</StatusLine>
                       )}
                     </ItemTitle>
                     <ItemDescription className="truncate" title={details.length ? details.join(", ") : undefined}>

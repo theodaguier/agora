@@ -6,8 +6,10 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react"
  * Combined with ⌘, only letters: punctuation moves between layouts (AZERTY needs Shift
  * for "." and "/") and ⌘ changes what the browser reports for it.
  * `typing: false` skips the shortcut while a field has the focus (single-key shortcuts).
+ * `ctrl` is the Control key itself, on every platform (⌃ on a Mac, beside ⌘ which stays free).
+ * A digit matches by its physical key too: on AZERTY, ⌃1 reports "&".
  */
-export type Shortcut = { key: string; mod?: boolean; shift?: boolean; alt?: boolean; typing?: false };
+export type Shortcut = { key: string; mod?: boolean; ctrl?: boolean; shift?: boolean; alt?: boolean; typing?: false };
 
 export const isApple = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -22,12 +24,20 @@ export const shortcuts = {
   searchConversation: { key: "f", mod: true, shift: false },
   settings: { key: ",", mod: true },
   help: { key: "?", typing: false },
+  // Not ⌃Tab (the browser keeps it for its own tabs) nor ⌃← / ⌃→ (macOS switches desktops).
+  nextTab: { key: "ArrowRight", ctrl: true, alt: true },
+  previousTab: { key: "ArrowLeft", ctrl: true, alt: true },
 } satisfies Record<string, Shortcut>;
 
-function matches(e: KeyboardEvent, s: Shortcut) {
-  const mod = isApple ? e.metaKey : e.ctrlKey;
-  if (!!s.mod !== mod || !!s.alt !== e.altKey || (isApple ? e.ctrlKey : e.metaKey)) return false;
+/** ⌃1 to ⌃9: the code session tab n, ⌃9 the last one (as in browsers). */
+export const tabShortcut = (n: number): Shortcut => ({ key: String(n), ctrl: true });
+
+export function matches(e: KeyboardEvent, s: Shortcut) {
+  const ctrl = !!s.ctrl || (!isApple && !!s.mod);
+  const meta = isApple && !!s.mod;
+  if (e.ctrlKey !== ctrl || e.metaKey !== meta || !!s.alt !== e.altKey) return false;
   if (s.shift !== undefined && s.shift !== e.shiftKey) return false;
+  if (/^\d$/.test(s.key) && e.code === `Digit${s.key}`) return true;
   // With ⌥ on a Mac, `key` is the composed character (⌥B → "∫"): fall back to the physical key.
   return e.key.toLowerCase() === s.key.toLowerCase() || (e.altKey && e.code === `Key${s.key.toUpperCase()}`);
 }
@@ -51,17 +61,18 @@ export function useShortcut(shortcut: Shortcut, handler: (e: KeyboardEvent) => v
   }, [shortcut, enabled]);
 }
 
-const keyLabels: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Enter: "↵", Escape: "Esc" };
+const keyLabels: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Enter: "↵", Escape: "Esc", Tab: "Tab" };
 
 /** Keys to display, in the platform's order: ["⌘", "⇧", "O"] or ["Ctrl", "Shift", "O"]. */
 export function shortcutKeys(s: Shortcut): string[] {
   const keys: string[] = [];
   if (isApple) {
+    if (s.ctrl) keys.push("⌃");
     if (s.alt) keys.push("⌥");
     if (s.shift) keys.push("⇧");
     if (s.mod) keys.push("⌘");
   } else {
-    if (s.mod) keys.push("Ctrl");
+    if (s.mod || s.ctrl) keys.push("Ctrl");
     if (s.alt) keys.push("Alt");
     if (s.shift) keys.push("Shift");
   }

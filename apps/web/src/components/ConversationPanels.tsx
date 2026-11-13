@@ -22,7 +22,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -154,13 +153,13 @@ export function ConversationPanel({
   const c = useT(common);
   return (
     <aside className="flex h-full w-full flex-col bg-background">
-      <PanelBar title={labels[kind]} actions={onDetach && <BesideButton onClick={onDetach} />} closeLabel={c.close} onClose={onClose} />
+      {kind !== "search" && <PanelBar title={labels[kind]} actions={onDetach && <BesideButton onClick={onDetach} />} closeLabel={c.close} onClose={onClose} />}
       {kind === "screen" && (
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
           <AgentScreen conversationId={conversationId} />
         </div>
       )}
-      {kind === "search" && <SearchPanel conversationId={conversationId} onJump={onJump} />}
+      {kind === "search" && <SearchPanel conversationId={conversationId} onJump={onJump} closeLabel={c.close} onClose={onClose} />}
       {kind === "files" && <FilesPanel conversationId={conversationId} onJump={onJump} />}
       {kind === "pins" && <PinsPanel conversationId={conversationId} onJump={onJump} />}
     </aside>
@@ -298,7 +297,7 @@ function Excerpt({ hit }: { hit: Hit }) {
   );
 }
 
-function SearchPanel({ conversationId, onJump }: { conversationId: string; onJump: (id: string) => void }) {
+function SearchPanel({ conversationId, onJump, closeLabel, onClose }: { conversationId: string; onJump: (id: string) => void; closeLabel: string; onClose: () => void }) {
   const t = useT(messages);
   const thread = useQuery(messagesQuery(conversationId));
   const list = thread.data ?? noMessages;
@@ -307,26 +306,29 @@ function SearchPanel({ conversationId, onJump }: { conversationId: string; onJum
   const hits = useMemo(() => search(list, deferred).slice(0, 100), [list, deferred]);
   return (
     <>
-      <div className="shrink-0 px-3 pb-2">
-        <InputGroup>
-          <InputGroupAddon>
-            <SearchIcon />
-          </InputGroupAddon>
-          <InputGroupInput
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && hits[0] && onJump(hits[0].message.id)}
-            placeholder={t.searchPlaceholder}
-            aria-label={t.searchPlaceholder}
-          />
-        </InputGroup>
-        {deferred.trim() && hits.length > 0 && <p className="mt-2 text-sm text-muted-foreground">{t.results(hits.length)}</p>}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
-        {!deferred.trim() ? (
-          <p className="px-1 text-sm text-muted-foreground">{t.searchHint}</p>
-        ) : thread.isPending ? (
+      {/* The search is the panel's bar: a row over a hairline, not a boxed field under a « Rechercher » title. */}
+      <PanelBar
+        title={
+          <span className="flex items-center gap-2 font-normal">
+            <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && hits[0] && onJump(hits[0].message.id)}
+              placeholder={t.searchPlaceholder}
+              aria-label={t.searchPlaceholder}
+              className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+            />
+          </span>
+        }
+        closeLabel={closeLabel}
+        onClose={onClose}
+      />
+      <div className="shrink-0 border-b" />
+      {deferred.trim() && hits.length > 0 && <p className="shrink-0 px-5 pt-3 pb-1 text-sm text-muted-foreground">{t.results(hits.length)}</p>}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-4">
+        {!deferred.trim() ? null : thread.isPending ? (
           <PanelLoading />
         ) : thread.isError ? (
           <PanelError error={thread.error} onRetry={() => void thread.refetch()} />

@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Fragment } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +9,7 @@ import { Item, ItemActions, ItemContent, ItemGroup, ItemMedia, ItemSeparator, It
 import { adminAgentsQuery } from "@/lib/queries";
 import type { AdminAgent } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
+import { StatusLine } from "@/components/views/block";
 
 const messages = defineMessages({
   en: { installed: "Installed", none: "No bots yet.", unavailable: "Bots unreachable for now.", all: "Check all", noneOf: "Uncheck all" },
@@ -84,7 +84,7 @@ export function AgentTargets(props: {
                   <ItemTitle>{a.name}</ItemTitle>
                 </ItemContent>
                 <ItemActions>
-                  {locked && <Badge variant="secondary">{props.lockedLabel ?? t.installed}</Badge>}
+                  {locked && <StatusLine tone="success">{props.lockedLabel ?? t.installed}</StatusLine>}
                   <Checkbox id={`target-${a.id}`} checked={locked || props.value.includes(a.id)} disabled={locked} onCheckedChange={() => toggle(a.id)} />
                 </ItemActions>
               </Item>

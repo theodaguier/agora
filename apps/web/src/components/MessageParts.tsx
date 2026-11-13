@@ -168,14 +168,19 @@ export function ChatMessage(props: {
   );
 }
 
-/** Downloads each file, as a click on its link would. */
+/**
+ * Downloads each file, as a click on its link would. One after the other: links clicked in the same
+ * instant cancel each other in Chrome, and only the first file came down.
+ */
 function downloadAll(files: Attachment[]) {
-  for (const f of files) {
-    const a = document.createElement("a");
-    a.href = attachmentUrl(f.id, true);
-    a.download = f.name;
-    a.click();
-  }
+  files.forEach((f, i) => {
+    setTimeout(() => {
+      const a = document.createElement("a");
+      a.href = attachmentUrl(f.id, true);
+      a.download = f.name;
+      a.click();
+    }, i * 400);
+  });
 }
 
 type MenuParts = {
@@ -285,10 +290,9 @@ export function MessageRow(props: {
       <ContextMenuTrigger
         id={`msg-${props.id}`}
         className={cn(
-          "group/msg -mx-2 flex scroll-my-24 select-text rounded-2xl px-2 transition-colors duration-700",
+          "group/msg -mx-2 flex scroll-my-24 select-text px-2",
           props.className,
           props.mine ? "justify-end" : "justify-start",
-          props.highlighted && "bg-muted duration-150",
         )}
       >
         <div
@@ -299,7 +303,8 @@ export function MessageRow(props: {
             props.wide ? "w-full items-start" : "max-w-4/5",
           )}
         >
-          <div className={cn("min-w-0", props.wide && "flex-1")}>{props.children}</div>
+          {/* A message jumped to is outlined itself, never the whole width of the thread. */}
+          <div className={cn("min-w-0 rounded-2xl ring-0 ring-ring/50 transition-shadow duration-700", props.wide && "flex-1", props.highlighted && "ring-3 duration-150")}>{props.children}</div>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -313,7 +318,8 @@ export function MessageRow(props: {
             >
               <MoreIcon />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align={props.mine ? "end" : "start"} className="w-48">
+            {/* Opens over the message, never past the window: the button sits at the message's outer end. */}
+            <DropdownMenuContent align={props.mine ? "start" : "end"} className="w-48">
               {items(dropdownParts)}
             </DropdownMenuContent>
           </DropdownMenu>

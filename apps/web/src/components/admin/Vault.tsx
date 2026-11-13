@@ -118,7 +118,11 @@ const messages = defineMessages({
 
 const isMain = (a: AdminAgent) => a.hermesProfile === "default";
 
-export function Vault() {
+/**
+ * The organization's technical secrets. `embedded`: a section of the Coffre-fort tab (one place for
+ * everything secret), its title as a section's rather than a tab's.
+ */
+export function Vault({ embedded }: { embedded?: boolean } = {}) {
   const t = useT(messages);
   const c = useT(common);
   const qc = useQueryClient();
@@ -142,7 +146,14 @@ export function Vault() {
 
   return (
     <>
-      <SectionHeader title={t.title} text={t.text} />
+      {embedded ? (
+        <div className="mt-4 flex flex-col gap-0.5">
+          <h3 className="text-ui font-medium">{t.title}</h3>
+          <p className="text-xs text-muted-foreground">{t.text}</p>
+        </div>
+      ) : (
+        <SectionHeader title={t.title} text={t.text} />
+      )}
       <Tabs defaultValue="list" className="gap-4">
         <TabsList>
           <TabsTrigger value="list">{t.list}</TabsTrigger>

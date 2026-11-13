@@ -3,7 +3,7 @@ import { createContext, useContext, useSyncExternalStore, type DragEvent } from 
 /**
  * Desktop workspace: side-by-side panes (split view), each with its own tabs. A tab is the path of
  * what it shows (`/c/<id>`, `/c/<id>/screen`, `/c/<id>/code/<session>`, `/c/<id>/preview/<key>`,
- * `/new`, `/tasks`, `/inbox`), and a path is open in one tab at most. The URL is the focused pane's
+ * `/new`, `/tasks`, `/inbox`, `/artifacts`, `/artifacts/<id>`), and a path is open in one tab at most. The URL is the focused pane's
  * active tab: following a link replaces that tab, unless it is already open somewhere (then it
  * comes to the front). Kept in this browser, per account.
  */
@@ -21,11 +21,14 @@ export type TabTarget =
   | { kind: "screen"; conversationId: string }
   | { kind: "code"; conversationId: string; sessionId: string }
   | { kind: "preview"; conversationId: string; previewKey: string }
-  | { kind: "new" | "tasks" | "inbox" | "sessions" };
+  | { kind: "artifact"; artifactId: string }
+  | { kind: "new" | "tasks" | "inbox" | "sessions" | "artifacts" };
 
 /** What a path shows in a tab; null for a path that is not one (home, settings routes…). */
 export function parseTab(path: string): TabTarget | null {
-  if (path === "/new" || path === "/tasks" || path === "/inbox" || path === "/sessions") return { kind: path.slice(1) as "new" | "tasks" | "inbox" | "sessions" };
+  if (path === "/new" || path === "/tasks" || path === "/inbox" || path === "/sessions" || path === "/artifacts") return { kind: path.slice(1) as "new" | "tasks" | "inbox" | "sessions" | "artifacts" };
+  const artifact = /^\/artifacts\/([^/]+)$/.exec(path);
+  if (artifact) return { kind: "artifact", artifactId: decodeURIComponent(artifact[1]!) };
   const m = /^\/c\/([^/]+)(?:\/(screen)|\/code\/([^/]+)|\/preview\/([^/]+))?$/.exec(path);
   if (!m) return null;
   const conversationId = decodeURIComponent(m[1]!);
@@ -41,6 +44,7 @@ export const tabPath = {
   screen: (conversationId: string) => `/c/${enc(conversationId)}/screen`,
   code: (conversationId: string, sessionId: string) => `/c/${enc(conversationId)}/code/${enc(sessionId)}`,
   preview: (conversationId: string, previewKey: string) => `/c/${enc(conversationId)}/preview/${enc(previewKey)}`,
+  artifact: (artifactId: string) => `/artifacts/${enc(artifactId)}`,
 };
 
 /* ---------- store ---------- */

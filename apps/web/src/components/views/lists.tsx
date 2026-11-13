@@ -3,6 +3,13 @@ import type { ChatItem, CodeItem, ContactItem, EventItem, FileItem, FinanceItem,
 import { integrations } from "@agora/core/i18n";
 import { useState, type ReactNode } from "react";
 import { FILE_ICONS } from "@/lib/file-icons";
+import { FileTile, FileTiles } from "@/components/FileTile";
+import { MailIcon, PhoneIcon } from "@/components/icons";
+import { useQuery } from "@tanstack/react-query";
+import { BrandLogo } from "@/components/BrandLogo";
+import { PersonAvatar } from "@/components/ConversationAvatar";
+import { brandIcon } from "@/lib/brand-icons";
+import { usersQuery } from "@/lib/queries";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
@@ -28,7 +35,8 @@ function Rows<T extends { id?: string }>({ items, children }: { items: T[]; chil
   const shown = all ? items : items.slice(0, SHOWN);
   return (
     <div className="flex flex-col gap-2">
-      <ItemGroup role="list" className="gap-0">
+      {/* Rows at the thread's size: 13 px titles, 12 px lines under them, edge to edge with the card's text. */}
+      <ItemGroup role="list" className="-mx-2 w-auto gap-0 [&_[data-slot=item-description]]:text-xs [&_[data-slot=item-title]]:text-ui">
         {contentKeys(shown, itemKey).map(([key, item]) => children(item, key))}
       </ItemGroup>
       {items.length > shown.length && (
@@ -51,23 +59,51 @@ const NoItems = ({ children }: { children: ReactNode }) => (
 
 /** One row: a link when the item has a web address, a button when the bot can open it. */
 function Row({ url, onOpen, children }: { url?: string; onOpen?: () => void; children: ReactNode }) {
-  if (url) return <Item size="sm" role="listitem" render={<a href={url} target="_blank" rel="noreferrer" />}>{children}</Item>;
-  if (onOpen) return <Item size="sm" role="listitem" render={<button type="button" onClick={onOpen} />}>{children}</Item>;
+  if (url) return <Item size="xs" role="listitem" render={<a href={url} target="_blank" rel="noreferrer" />}>{children}</Item>;
+  if (onOpen) return <Item size="xs" role="listitem" render={<button type="button" onClick={onOpen} className="text-left" />}>{children}</Item>;
   return (
-    <Item size="sm" role="listitem">
+    <Item size="xs" role="listitem">
       {children}
     </Item>
   );
 }
 
-const Meta = ({ children }: { children: ReactNode }) => <span className="shrink-0 self-start text-xs tabular-nums text-muted-foreground">{children}</span>;
+const Meta = ({ children }: { children: ReactNode }) => <span className="shrink-0 text-xs tabular-nums text-subtle-foreground">{children}</span>;
 
-/** Initials of a person. */
-const Initials = ({ name, size }: { name: string; size?: "default" | "lg" }) => (
-  <Avatar size={size}>
-    <AvatarFallback>{initials(name)}</AvatarFallback>
-  </Avatar>
-);
+/** Gmail's letter colours: a sender without a photo gets one, always the same for the same name. */
+const LETTER_COLORS = ["#1a73e8", "#e8710a", "#188038", "#d93025", "#9334e6", "#12b5cb", "#e52592", "#f29900"];
+const hue = (name: string) => LETTER_COLORS[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % LETTER_COLORS.length]!;
+/** Mailboxes anyone has: their domain says nothing about who writes. */
+const PERSONAL = /(^|\.)(gmail|googlemail|outlook|hotmail|live|yahoo|icloud|me|proton|protonmail|orange|free|sfr|laposte|wanadoo)\./i;
+
+/**
+ * Who wrote, as Gmail shows them: a colleague by their face, a company (Stripe…) by its logo, anyone
+ * else by their first letter on a colour of their own. `from`: « Name <address> », a name or an address.
+ */
+function Sender({ from, size = "sm" }: { from: string; size?: "sm" | "lg" }) {
+  const { data: people = [] } = useQuery(usersQuery);
+  const name = displayName(from);
+  const address = /<([^>]+)>/.exec(from)?.[1] ?? (from.includes("@") ? from.trim() : "");
+  const domain = address.split("@")[1] ?? "";
+  const box = size === "lg" ? "size-9" : "size-7";
+  const colleague = people.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  if (colleague) return <PersonAvatar person={colleague} className={box} />;
+  if (domain && !PERSONAL.test(domain) && brandIcon(domain)) {
+    return (
+      <span aria-hidden className={cn("flex shrink-0 items-center justify-center rounded-full bg-accent", box)}>
+        <BrandLogo domain={domain} fallback={null} className={size === "lg" ? "size-4.5" : "size-3.5"} />
+      </span>
+    );
+  }
+  return (
+    <span aria-hidden className={cn("flex shrink-0 items-center justify-center rounded-full font-medium text-white", box, size === "lg" ? "text-ui" : "text-xs")} style={{ background: hue(name) }}>
+      {(name.trim()[0] ?? "?").toUpperCase()}
+    </span>
+  );
+}
+
+/** Initials of a person (a contact, a chat author): the same face as a mail's sender. */
+const Initials = ({ name, size }: { name: string; size?: "default" | "lg" }) => <Sender from={name} size={size === "lg" ? "lg" : "sm"} />;
 
 /** A status written by the bot, as a badge with a dot in its tone (late, pending, done, ongoing…). */
 const Status = ({ children }: { children?: string }) => (children ? <StatusLine tone={statusTone(children)}>{children}</StatusLine> : null);
@@ -79,7 +115,7 @@ export function MailList({ items, onAsk }: { items: MailItem[]; onAsk?: (item: M
       {(m, key) => (
         <Row key={key} url={m.url} onOpen={onAsk && (() => onAsk(m))}>
           <ItemMedia>
-            <Initials name={displayName(m.from)} />
+            <Sender from={m.from} />
           </ItemMedia>
           <ItemContent className="min-w-0">
             <div className="flex items-center gap-2">
@@ -102,7 +138,7 @@ export function MailMessage({ view }: { view: MailMessageView }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start gap-3">
-        <Initials name={displayName(m.from)} size="lg" />
+        <Sender from={m.from} size="lg" />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
             <p className="truncate font-medium">{displayName(m.from)}</p>
@@ -223,42 +259,63 @@ export function TaskItems({ items }: { items: TaskItem[] }) {
   );
 }
 
-export function FileList({ items }: { items: FileItem[] }) {
+/**
+ * Where a found file downloads from: a Google Drive page has its own download address; any other
+ * address is the file itself.
+ */
+function downloadUrl(url?: string) {
+  if (!url) return undefined;
+  const drive = /drive\.google\.com\/file\/d\/([^/?#]+)/.exec(url);
+  return drive ? `https://drive.google.com/uc?export=download&id=${drive[1]}` : url;
+}
+
+/** The address itself when it is the file (an image, a PDF): the app can show it. A drive's page can't be. */
+const viewable = (url?: string) => (url && /\.(png|jpe?g|gif|webp|avif|svg|pdf)(\?|#|$)/i.test(new URL(url, location.href).pathname) ? url : undefined);
+
+/** Files a bot found (a drive, a folder): attachment tiles, as the files people send. */
+export function FileList({ items, source }: { items: FileItem[]; source?: string }) {
+  const t = useT(integrations);
+  if (!items.length) return <NoItems>{t.empty}</NoItems>;
   return (
-    <Rows items={items}>
-      {(f, key) => {
-        const Icon = FILE_ICONS[fileKind(f.name)];
-        return (
-          <Row key={key} url={f.url}>
-            <ItemMedia variant="icon">
-              <Icon />
-            </ItemMedia>
-            <ItemContent className="min-w-0">
-              <ItemTitle className="w-full truncate">{f.name}</ItemTitle>
-            </ItemContent>
-            <Meta>{[f.size != null && formatSize(f.size), f.modified && shortDate(f.modified)].filter(Boolean).join(", ")}</Meta>
-          </Row>
-        );
-      }}
-    </Rows>
+    <FileTiles>
+      {items.map((f) => (
+        <FileTile key={itemKey(f)} name={f.name} src={viewable(f.url)} openHref={f.url} source={source} downloadHref={downloadUrl(f.url)} meta={[f.size != null && formatSize(f.size), f.modified && shortDate(f.modified)].filter(Boolean).join(", ")} />
+      ))}
+    </FileTiles>
   );
 }
 
+/**
+ * People (a CRM, an address book): their face, their name over their company, and on the right what
+ * to do with them, write or call, as icons; never the address and the number run together.
+ */
 export function ContactList({ items }: { items: ContactItem[] }) {
+  const t = useT(integrations);
   return (
     <Rows items={items}>
       {(p, key) => (
-        <Row key={key} url={p.url ?? (p.email ? `mailto:${p.email}` : undefined)}>
+        <Row key={key} url={p.url}>
           <ItemMedia>
             <Initials name={p.name} />
           </ItemMedia>
           <ItemContent className="min-w-0">
-            <ItemTitle className="w-full truncate">
-              {p.name}
-              {p.company && <span className="font-normal text-muted-foreground"> {p.company}</span>}
-            </ItemTitle>
-            {(p.email || p.phone) && <ItemDescription className="line-clamp-1">{[p.email, p.phone].filter(Boolean).join(", ")}</ItemDescription>}
+            <ItemTitle className="w-full truncate">{p.name}</ItemTitle>
+            {p.company && <ItemDescription className="line-clamp-1">{p.company}</ItemDescription>}
           </ItemContent>
+          {(p.email || p.phone) && (
+            <ItemActions className="gap-0.5">
+              {p.email && (
+                <Button variant="ghost" size="icon-sm" title={p.email} aria-label={`${t.write} ${p.email}`} nativeButton={false} render={<a href={`mailto:${p.email}`} />} className="text-muted-foreground">
+                  <MailIcon />
+                </Button>
+              )}
+              {p.phone && (
+                <Button variant="ghost" size="icon-sm" title={p.phone} aria-label={`${t.call} ${p.phone}`} nativeButton={false} render={<a href={`tel:${p.phone.replace(/\s+/g, "")}`} />} className="text-muted-foreground">
+                  <PhoneIcon />
+                </Button>
+              )}
+            </ItemActions>
+          )}
         </Row>
       )}
     </Rows>
@@ -290,13 +347,14 @@ export function CodeList({ items }: { items: CodeItem[] }) {
   return (
     <Rows items={items}>
       {(c, key) => (
-        <Row key={key} url={c.url}>
+        // Without its address, a pull request's is known from its repository and number (GitHub's).
+        <Row key={key} url={c.url ?? (c.repo && c.number != null ? `https://github.com/${c.repo}/pull/${c.number}` : undefined)}>
           <ItemContent className="min-w-0">
             <ItemTitle className="w-full truncate">
               {c.number != null && <span className="tabular-nums text-muted-foreground">#{c.number} </span>}
               {c.title}
             </ItemTitle>
-            {(c.repo || c.author) && <ItemDescription className="line-clamp-1 font-mono text-xs">{[c.repo, c.author].filter(Boolean).join(", ")}</ItemDescription>}
+            {(c.repo || c.author) && <ItemDescription className="line-clamp-1">{[c.repo?.split("/").pop(), c.author].filter(Boolean).join(", ")}</ItemDescription>}
           </ItemContent>
           <ItemActions>
             <Status>{c.state}</Status>
@@ -323,26 +381,33 @@ export function GenericList({ items }: { items: GenericItem[] }) {
   );
 }
 
+/**
+ * Rows a bot read (a database, a sheet), as the tables written in a message: no box, the header in
+ * small grey, hairlines between rows; a column of numbers right-aligned in code figures, header included.
+ */
 export function DataTable({ view }: { view: TableView }) {
   const t = useT(integrations);
   if (!view.rows.length) return <NoItems>{t.empty}</NoItems>;
+  const numeric = view.columns.map((_, j) => view.rows.every((r) => r[j] == null || typeof r[j] === "number") && view.rows.some((r) => typeof r[j] === "number"));
   return (
-    <div className="max-h-96 overflow-auto rounded-lg border">
+    <div className="max-h-96 overflow-auto">
       <Table>
         <TableHeader>
-          <TableRow>
-            {view.columns.map((c) => (
-              <TableHead key={c}>{c}</TableHead>
+          <TableRow className="hover:bg-transparent">
+            {view.columns.map((c, j) => (
+              <TableHead key={c} className={cn("h-auto px-0 pt-1 pb-2 text-xs font-normal text-muted-foreground not-first:pl-4", numeric[j] && "w-24 text-right")}>
+                {c}
+              </TableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
           {contentKeys(view.rows, (row) => JSON.stringify(row)).map(([key, row]) => (
-            <TableRow key={key}>
+            <TableRow key={key} className="hover:bg-transparent">
               {view.columns.map((_, j) => {
                 const v = row[j];
                 return (
-                  <TableCell key={j} className={cn("max-w-64 truncate", typeof v === "number" && "text-right tabular-nums", v == null && "text-muted-foreground")}>
+                  <TableCell key={j} className={cn("max-w-64 truncate px-0 py-2.25 text-ui not-first:pl-4", numeric[j] && "text-right font-mono tabular-nums", v == null && "text-muted-foreground")}>
                     {v == null ? "—" : String(v)}
                   </TableCell>
                 );

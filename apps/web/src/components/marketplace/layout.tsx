@@ -4,11 +4,11 @@ import { ItemGroup } from "@/components/ui/item";
 /** A section of the marketplace: its title (and what to do with it) on one line, then its content. No box: the dialog is the box. */
 export function MarketSection({ title, description, action, children }: { title: string; description?: string; action?: ReactNode; children?: ReactNode }) {
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 className="text-sm font-medium">{title}</h2>
-          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+          <h2 className="text-xs font-medium text-muted-foreground">{title}</h2>
+          {description && <p className="text-xs text-subtle-foreground">{description}</p>}
         </div>
         {action && <div className="flex shrink-0 items-center gap-1">{action}</div>}
       </div>
@@ -20,7 +20,7 @@ export function MarketSection({ title, description, action, children }: { title:
 /** Entries in a grid (two, three on a wide dialog), each an outlined Item. */
 export function Tiles({ children, busy }: { children: ReactNode; busy?: boolean }) {
   return (
-    <ItemGroup aria-busy={busy || undefined} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <ItemGroup aria-busy={busy || undefined} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {children}
     </ItemGroup>
   );

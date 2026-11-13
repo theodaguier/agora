@@ -1,0 +1,8 @@
+name: agora_ssh
+version: 0.1.0
+description: "Machines SSH (Agora) — lets an agent run commands on the remote machines an admin declared, with a key that never leaves the Agora server."
+provides_tools:
+  - ssh_hosts
+  - ssh_run
+  - ssh_add_host
+  - ssh_test_host

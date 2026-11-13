@@ -1,11 +1,13 @@
 import { confirmAction } from "@/lib/confirm";
 import { soulTemplate } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useAutosave } from "@/lib/autosave";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { api } from "@/lib/api";
 import { orgQuery } from "@/lib/org";
 import { cn } from "@/lib/utils";
@@ -21,6 +23,8 @@ const messages = defineMessages({
     replaceBody: "What you wrote will be lost unless you copy it first.",
     replaceAction: "Replace",
     useTemplate: "Start from the template",
+    notSaved: "Not saved",
+    retry: "Retry",
     advised: (length: number, limit: number) => `${length} / ${limit} chars recommended`,
     empty: "Empty for now.",
     memoryTitle: "What the agent remembers",
@@ -38,6 +42,8 @@ const messages = defineMessages({
     replaceBody: "Ce que tu as écrit sera perdu, sauf si tu le copies avant.",
     replaceAction: "Remplacer",
     useTemplate: "Partir du modèle",
+    notSaved: "Non enregistré",
+    retry: "Réessayer",
     advised: (length: number, limit: number) => `${length} / ${limit} car. conseillés`,
     empty: "Vide pour l'instant.",
     memoryTitle: "Ce que l'agent a retenu",
@@ -59,16 +65,29 @@ export function AgentSoul({ agentId, agentName }: { agentId: string; agentName: 
   const key = ["hermes", "soul", agentId];
   const { data, isPending, error } = useQuery({ queryKey: key, queryFn: () => api<{ value: string }>(`/admin/hermes/agents/${agentId}/soul`) });
   const [value, setValue] = useState("");
+  // The editor starts again from a text set from outside (loaded, saved, the template).
+  const [version, setVersion] = useState(0);
+  const reset = (text: string) => {
+    setValue(text);
+    setVersion((v) => v + 1);
+  };
+  // Loaded once: a save mustn't restart the editor under the cursor.
+  const loaded = useRef(false);
   useEffect(() => {
-    if (data) setValue(data.value);
+    if (data && !loaded.current) {
+      loaded.current = true;
+      reset(data.value);
+    }
   }, [data]);
-  const save = useMutation({
-    mutationFn: () => api(`/admin/hermes/agents/${agentId}/soul`, { method: "PUT", body: JSON.stringify({ value }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
-    meta: { success: c.saved },
-  });
+  const latest = useRef(value);
+  latest.current = value;
+  // Saved as it's typed, like a document: no button to forget.
+  const autosave = useAutosave(async () => {
+    const text = latest.current;
+    await api(`/admin/hermes/agents/${agentId}/soul`, { method: "PUT", body: JSON.stringify({ value: text }) });
+    qc.setQueryData(key, { value: text });
+  }, 1200);
   if (!data) return <CardShell title={t.soulTitle} intro={t.soulIntro}>{isPending ? <Loading /> : <LoadError error={error} />}</CardShell>;
-  const dirty = value !== data.value;
 
   return (
     <Card>
@@ -79,28 +98,41 @@ export function AgentSoul({ agentId, agentName }: { agentId: string; agentName: 
           <Button
             variant="outline"
             size="sm"
-            onClick={async () => (!value.trim() || (await confirmAction({ title: t.replaceConfirm, description: t.replaceBody, action: t.replaceAction }))) && setValue(soulTemplate({ name: agentName, org: org?.name ?? "Agora", locale: org?.locale ?? "fr" }))}
+            onClick={async () => (!value.trim() || (await confirmAction({ title: t.replaceConfirm, description: t.replaceBody, action: t.replaceAction }))) && (reset(soulTemplate({ name: agentName, org: org?.name ?? "Agora", locale: org?.locale ?? "fr" })), autosave.schedule())}
           >
             {t.useTemplate}
           </Button>
         </CardAction>
       </CardHeader>
       <CardContent>
-        {/* The file's name only shows on hover. */}
-        <Textarea
-          aria-label={t.soulTitle}
-          title="SOUL.md"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          maxLength={20_000}
-          className="h-96 resize-y field-sizing-fixed"
+        {/* SOUL.md is Markdown: edited formatted, written back as Markdown. */}
+        <RichTextEditor
+          key={version}
+          initial={{ markdown: value }}
+          label={t.soulTitle}
+          onChange={(e) => {
+            latest.current = e.getMarkdown();
+            setValue(latest.current);
+            autosave.schedule();
+          }}
+          className="h-96 overflow-hidden rounded-lg border"
+          contentClassName="min-h-full px-4 py-3"
         />
       </CardContent>
-      {dirty && (
-        <CardFooter className="justify-end">
-          <Button disabled={save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? c.saving : c.save}
-          </Button>
+      {autosave.status !== "idle" && (
+        <CardFooter className="justify-end gap-2 text-xs text-muted-foreground" aria-live="polite">
+          {autosave.status === "error" ? (
+            <>
+              <span className="text-destructive">{t.notSaved}</span>
+              <Button variant="outline" size="xs" onClick={() => void autosave.retry()}>
+                {t.retry}
+              </Button>
+            </>
+          ) : autosave.status === "saved" ? (
+            c.saved
+          ) : (
+            c.saving
+          )}
         </CardFooter>
       )}
     </Card>

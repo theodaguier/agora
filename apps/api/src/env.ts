@@ -38,6 +38,8 @@ export const env = z
     /** Tools allowed without confirmation (-p mode refuses the others). */
     /** Invitation emails via Resend; empty = the link is only shown to the admin and logged. */
     RESEND_API_KEY: z.string().default(""),
+    // Google Maps Static API key, for the maps of the places bots show (also settable in Settings › Integrations).
+    GOOGLE_MAPS_API_KEY: z.string().default(""),
     MAIL_FROM: z.string().default("Agora <no-reply@localhost>"),
     CLAUDE_CODE_ALLOWED_TOOLS: z.string().default("WebSearch WebFetch"),
     /** Codex engine (ChatGPT subscription): its owner, empty = CLAUDE_CODE_OWNER_EMAIL's. */

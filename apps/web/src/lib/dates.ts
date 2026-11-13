@@ -5,20 +5,24 @@ const messages = defineMessages({
   en: {
     today: "Today",
     yesterday: "Yesterday",
+    tomorrow: "Tomorrow",
     online: "Online",
     justNow: "Seen just now",
     seen: (when: string) => `Seen ${when}`,
     seenAt: (when: string) => `Seen ${when.replace(/^(Today|Yesterday)/, (w) => w.toLowerCase())}`,
     never: "Not connected yet",
+    age: { min: "min", h: "h", d: "d" },
   },
   fr: {
     today: "Aujourd'hui",
     yesterday: "Hier",
+    tomorrow: "Demain",
     online: "En ligne",
     justNow: "Vu à l'instant",
     seen: (when: string) => `Vu ${when}`,
     seenAt: (when: string) => `Vu ${when.charAt(0).toLowerCase()}${when.slice(1)}`,
     never: "Jamais connecté",
+    age: { min: "min", h: "h", d: "j" },
   },
 });
 
@@ -72,6 +76,14 @@ export function formatDueDate(day: string) {
   return dateFormat({ day: "numeric", month: "short", ...(!sameYear && { year: "numeric" }) }).format(date);
 }
 
+/** A due date as Linear says it: « Aujourd'hui », « Demain », « Hier », then the date. */
+export function dueLabel(day: string) {
+  const t = tr(messages);
+  const today = toDay(new Date());
+  const shift = (n: number) => toDay(new Date(Date.now() + n * 86_400_000));
+  return day === today ? t.today : day === shift(1) ? t.tomorrow : day === shift(-1) ? t.yesterday : formatDueDate(day);
+}
+
 /** Due before today. */
 export const isOverdue = (day: string | null) => !!day && day < toDay(new Date());
 
@@ -99,4 +111,15 @@ export function dayLabel(date: Date) {
   if (diff === 1) return t.yesterday;
   const label = dateFormat({ weekday: "long", day: "numeric", month: "long" }).format(date);
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** Linear's ages: « 5min », « 3h », « 2j », then the date. */
+export function ageLabel(date: Date) {
+  const u = tr(messages).age;
+  const m = Math.max(1, Math.round((Date.now() - date.getTime()) / 60_000));
+  if (m < 60) return `${m}${u.min}`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}${u.h}`;
+  const d = Math.round(h / 24);
+  return d < 7 ? `${d}${u.d}` : dateFormat({ day: "numeric", month: "short" }).format(date);
 }

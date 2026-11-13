@@ -1,6 +1,9 @@
 import type { DragEvent, ReactNode } from "react";
 import { CloseIcon } from "@/components/icons";
+import { ShortcutKeys } from "@/components/Shortcuts";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { Shortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,6 +20,7 @@ export function TabChip({
   onSelect,
   onClose,
   onDragStart,
+  shortcut,
   className,
 }: {
   title: string;
@@ -29,14 +33,16 @@ export function TabChip({
   onClose: () => void;
   /** Makes the tab draggable. */
   onDragStart?: (e: DragEvent) => void;
+  /** Its keys (⌃1…), shown with its title on hover. */
+  shortcut?: Shortcut;
   className?: string;
 }) {
-  return (
+  const tab = (
     <div
       role="tab"
       aria-selected={active}
       tabIndex={active ? 0 : -1}
-      title={title}
+      title={shortcut ? undefined : title}
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onClick={onSelect}
@@ -52,13 +58,13 @@ export function TabChip({
         onClose();
       }}
       className={cn(
-        "group/tab flex h-8 min-w-0 max-w-48 flex-1 select-none items-center gap-2 rounded-md pr-1.5 pl-2.5 text-sm text-muted-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50",
-        active && "bg-background font-medium text-foreground shadow-sm ring-1 ring-border hover:bg-background",
+        "group/tab flex h-7 min-w-0 max-w-48 shrink select-none items-center gap-1.5 rounded-md pr-1 pl-2 text-sm text-muted-foreground outline-none hover:bg-muted/50 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+        active && "bg-muted text-foreground hover:bg-muted",
         active && dimmed && "text-muted-foreground",
         className,
       )}
     >
-      <span className="flex min-w-4 shrink-0 items-center justify-center gap-1">{icon}</span>
+      <span className="flex min-w-4 shrink-0 items-center justify-center gap-1 [&_svg:not([class*='size-'])]:size-4">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{title}</span>
       {unread && !active && <span className="size-1.5 shrink-0 rounded-full bg-brand" />}
       <Button
@@ -69,10 +75,20 @@ export function TabChip({
           e.stopPropagation();
           onClose();
         }}
-        className={cn("shrink-0 opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100", active && "opacity-100")}
+        className="shrink-0 opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100"
       >
         <CloseIcon />
       </Button>
     </div>
+  );
+  if (!shortcut) return tab;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={tab} />
+      <TooltipContent>
+        {title}
+        <ShortcutKeys shortcut={shortcut} />
+      </TooltipContent>
+    </Tooltip>
   );
 }

@@ -170,6 +170,15 @@ export type Stat = { label: string; value: number | string; unit?: string; note?
 export const MAX_STATS = 6;
 export type StatsView = { type: IntegrationType; kind: "stats"; title?: string; stats: Stat[] };
 
+/**
+ * Places (```view``` block, `"kind": "place"`): addresses a bot found (a restaurant, a client's
+ * office, a meeting's venue), drawn on a map when it gives their coordinates, each with its way there.
+ */
+/** `rating`: out of 5, with `reviews` how many gave it (Google Maps, TripAdvisor…), shown as stars when known. */
+export type Place = { name: string; address?: string; lat?: number; lng?: number; note?: string; url?: string; rating?: number; reviews?: number };
+export const MAX_PLACES = 8;
+export type PlaceView = { type: IntegrationType; kind: "place"; title?: string; places: Place[] };
+
 /** A label written as an ISO date ("2026-09-24", "2026-09-24T14:00:00Z") shown as a short date, with its hour if it has one. */
 export function chartLabel(label: string, locale: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(label);
@@ -184,7 +193,7 @@ export function chartLabel(label: string, locale: string) {
  * `source`: the MCP server the data comes from, for its logo. `subtitle`: what the view counts and
  * over which period ("Personnes ayant atteint chaque étape, du 22 au 25/09"), under its title.
  */
-export type ViewBlock = (ListView | MailMessageView | TableView | DraftView | ChartView | StatsView) & { source?: string; subtitle?: string };
+export type ViewBlock = (ListView | MailMessageView | TableView | DraftView | ChartView | StatsView | PlaceView) & { source?: string; subtitle?: string };
 
 /**
  * The employee's answer to a draft, sent back to the bot with their (possibly edited) values:

@@ -1,4 +1,5 @@
-import { CheckIcon, ClockIcon, ToolIcon } from "@/components/icons";
+import { CheckIcon, ClockIcon } from "@/components/icons";
+import { connectorName } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Fragment } from "react";
@@ -16,6 +17,13 @@ const messages = defineMessages({
   en: {
     using: "Using",
     used: "Used",
+    tools: {
+      terminal: "Terminal", execute_code: "Code", read_file: "File read", write_file: "File edit", patch: "File edit",
+      search_files: "File search", web_search: "Web search", web_extract: "Web page", web_fetch: "Web page", browser: "Browser",
+      vision_analyze: "Image analysis", image_generate: "Image generation", text_to_speech: "Voice", memory: "Memory",
+      session_search: "History", todo: "Tasks", clarify: "Question", delegate_task: "Sub-agent", cronjob: "Routine",
+      send_message: "Message", mixture_of_agents: "Several models", skill: "Skill", thinking: "Thinking",
+    } as Record<string, string>,
     and: "and",
     usingTool: (name: string) => `${name} is using`,
     typing: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
@@ -23,6 +31,13 @@ const messages = defineMessages({
   fr: {
     using: "Utilise",
     used: "A utilisé",
+    tools: {
+      terminal: "Terminal", execute_code: "Code", read_file: "Lecture de fichier", write_file: "Modification de fichier", patch: "Modification de fichier",
+      search_files: "Recherche de fichiers", web_search: "Recherche web", web_extract: "Lecture de page", web_fetch: "Lecture de page", browser: "Navigateur",
+      vision_analyze: "Analyse d'image", image_generate: "Génération d'image", text_to_speech: "Voix", memory: "Mémoire",
+      session_search: "Historique", todo: "Tâches", clarify: "Question", delegate_task: "Sous-agent", cronjob: "Routine",
+      send_message: "Message", mixture_of_agents: "Plusieurs modèles", skill: "Compétence", thinking: "Réflexion",
+    } as Record<string, string>,
     and: "et",
     usingTool: (name: string) => `${name} utilise`,
     typing: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
@@ -69,14 +84,14 @@ export function FlatText({
   );
 }
 
-/** Our message: the bot's colour (--bot in a conversation). */
+/** Our message (Figma « Conversation · Dev »): a grey bubble on the right, the conversation's colours aside. */
 export function UserBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
   return (
     <MessageText
       plain
       text={text}
       mentionables={mentionables}
-      className={cn("bubble-mine ml-auto w-fit min-w-0 max-w-lg break-words rounded-2xl bg-bot px-3 py-2 text-sm text-bot-foreground", className)}
+      className={cn("bubble-mine ml-auto w-fit min-w-0 max-w-lg break-words rounded-2xl bg-accent px-3.5 py-2.25 text-sm text-foreground", className)}
     />
   );
 }
@@ -94,6 +109,7 @@ export function TypingBubble({ label, className }: { label: string; className?: 
 /** Who is writing, on one line as in a messaging app: the bots before their reply (with the tool they use), and people. */
 export function TypingLine({ entries, className }: { entries: { key: string; name: string; avatar?: React.ReactNode; tool?: string }[]; className?: string }) {
   const t = useT(messages);
+  const words = useToolWords();
   const writers = entries.filter((e) => !e.tool);
   const users = entries.filter((e) => e.tool);
   const avatars = (list: typeof entries) =>
@@ -106,7 +122,10 @@ export function TypingLine({ entries, className }: { entries: { key: string; nam
           {i > 0 && <Separator orientation="vertical" />}
           {avatars([e])}
           <span className="typing-shimmer">{t.usingTool(e.name)}</span>
-          <ToolBadge name={e.tool!} />
+          <span className="inline-flex items-center gap-1 text-foreground">
+            {words(e.tool!).server && <BrandLogo server={words(e.tool!).server!} fallback={null} className="size-3 rounded-sm" />}
+            {words(e.tool!).label}
+          </span>
         </Fragment>
       ))}
       {writers.length > 0 && (
@@ -120,29 +139,48 @@ export function TypingLine({ entries, className }: { entries: { key: string; nam
   );
 }
 
-function ToolBadge({ name }: { name: string }) {
+/** A tool in words: a connector by its name and logo, the others by what they do (never `web_search`). */
+function useToolWords() {
+  const t = useT(messages);
   const { data: brands } = useQuery(brandsQuery);
   const servers = Object.keys(brands?.servers ?? {});
-  return (
-    <span className="inline-flex items-center gap-1 text-foreground">
-      <BrandLogo server={toolServer(name, servers)} fallback={<ToolIcon name={name} className="size-3.5" />} className="size-3.5 rounded-sm" />
-      {name}
-    </span>
-  );
+  return (name: string): { key: string; label: string; server: string | null } => {
+    const server = toolServer(name, servers);
+    if (server) return { key: `mcp:${server}`, label: connectorName(server), server };
+    const id = name.toLowerCase();
+    const known = id.startsWith("browser_") ? "browser" : id.startsWith("skill") ? "skill" : id === "process" || id === "bash" ? "terminal" : id;
+    const label = t.tools[known] ?? id.replace(/^mcp_+/, "").replace(/_+/g, " ").replace(/^./, (c) => c.toUpperCase());
+    return { key: label, label, server: null };
+  };
 }
 
-/** Tools used by the agent during a reply (hermes.tool.progress events). */
+/**
+ * Tools used by the agent during a reply (hermes.tool.progress events): one quiet line, « A utilisé
+ * Recherche web · Lecture de page », a connector with its logo. Code sessions are told by their card.
+ */
 export function ToolLine({ tools, running, className }: { tools: { name: string; status: string }[]; running?: boolean; className?: string }) {
   const t = useT(messages);
-  // The code session tools are told by the session's card under the reply, not by their raw names.
-  const names = [...new Set(tools.map((tool) => tool.name))].filter((n) => !n.startsWith("claude_code_"));
-  if (!names.length) return null;
+  const words = useToolWords();
+  const seen = new Map<string, ReturnType<typeof words>>();
+  for (const tool of tools) {
+    // Its reasoning isn't a tool it used.
+    if (tool.name.startsWith("claude_code_") || tool.name === "code_session" || /^(thinking|réflexion)$/i.test(tool.name)) continue;
+    const w = words(tool.name);
+    if (!seen.has(w.key)) seen.set(w.key, w);
+  }
+  if (!seen.size) return null;
   return (
-    <p className={cn("my-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground", className)}>
-      {running ? <Spinner /> : <CheckIcon className="size-4" />}
-      {running ? t.using : t.used}
-      {names.map((n) => (
-        <ToolBadge key={n} name={n} />
+    <p className={cn("flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-subtle-foreground", className)}>
+      {running ? <Spinner className="size-3" /> : <CheckIcon className="size-3" />}
+      <span>{running ? t.using : t.used}</span>
+      {[...seen.values()].map((w, i) => (
+        <Fragment key={w.key}>
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
+            {w.server && <BrandLogo server={w.server} fallback={null} className="size-3 rounded-sm" />}
+            {w.label}
+            {i < seen.size - 1 && ","}
+          </span>
+        </Fragment>
       ))}
     </p>
   );
