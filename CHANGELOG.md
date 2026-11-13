@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.62.0 — 2026-11-13
+
+### Features
+- **mobile**: menus iOS natifs, avatars du web et sessions de code portées
+
 ## v0.61.3 — 2026-11-13
 
 ### Fixes
