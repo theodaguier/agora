@@ -1,25 +1,23 @@
 import { ABSENCE_KINDS, type AbsenceKind } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { Button, Description, Input, Label, Radio, RadioGroup, Separator, Surface, TextField } from "heroui-native";
-import { Fragment, useState } from "react";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { Button, Description, Input } from "heroui-native";
+import { useState } from "react";
+import { FieldRow, Intro, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
 import { absenceMessages } from "@/components/profile/absences";
 import { DayPicker } from "@/components/profile/native-pickers";
-import { ControlRow, Section, useFeedback } from "@/components/profile/settings";
+import { OptionPicker } from "@/components/menus";
 import { useMe } from "@/components/server-scope";
 import { api } from "@/lib/api";
 import { fromDay, scheduleSettingsQuery, toDay, type ScheduleSettings } from "@/lib/availability";
 import { tr } from "@/lib/i18n";
 import { presenceQuery } from "@/lib/presence";
-import { CheckIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 
-/* apps/web/src/components/AvailabilityEditor.tsx AbsenceForm, plus editing and deleting an existing absence. */
+/* apps/web/src/components/AvailabilityEditor.tsx AbsenceForm (type, days, note), plus editing and deleting an existing absence. */
 
 export default function AbsenceScreen() {
   const me = useMe();
@@ -37,7 +35,7 @@ export default function AbsenceScreen() {
 function AbsenceForm({ userId, existing }: { userId: string; existing?: ScheduleSettings["absences"][number] }) {
   const t = { ...absenceMessages, ...tr(common) };
   const qc = useQueryClient();
-  const feedback = useFeedback();
+  const toast = useAdminToast();
   const today = fromDay(toDay(new Date()));
   const [kind, setKind] = useState<AbsenceKind>(existing?.kind ?? "vacation");
   const [start, setStart] = useState(existing ? fromDay(existing.startOn) : today);
@@ -57,18 +55,18 @@ function AbsenceForm({ userId, existing }: { userId: string; existing?: Schedule
       if (existing) await api(`${path}/${encodeURIComponent(existing.id)}`, { method: "DELETE" });
     },
     onSuccess: () => {
-      feedback.saved();
+      toast.success();
       return done();
     },
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
   });
   const remove = useMutation({
     mutationFn: () => api(`${path}/${encodeURIComponent(existing!.id)}`, { method: "DELETE" }),
     onSuccess: () => {
-      feedback.saved(t.removed);
+      toast.deleted(t.removed);
       return done();
     },
-    onError: feedback.failed,
+    onError: (e) => toast.failed(e),
   });
 
   return (
@@ -77,38 +75,13 @@ function AbsenceForm({ userId, existing }: { userId: string; existing?: Schedule
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={save.isPending ? t.saving : existing ? t.save : t.add} disabled={save.isPending || remove.isPending} variant="prominent" onPress={withTap(() => save.mutate())} />
       </Stack.Toolbar>
-      <KeyboardAwareScrollView bottomOffset={24}
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        className="bg-background"
-        contentContainerClassName="gap-8 px-4 pb-12 pt-4"
-      >
-        {/* A few exclusive choices: a HeroUI RadioGroup in a Surface, as its "basic" example. */}
-        <Section header={t.kind} bare>
-          <Surface>
-            <RadioGroup
-              value={kind}
-              onValueChange={(v) => {
-                Haptics.selectionAsync();
-                setKind(v as AbsenceKind);
-              }}
-            >
-              {ABSENCE_KINDS.map((k, i) => (
-                <Fragment key={k}>
-                  {i > 0 && <Separator className="my-1" />}
-                  <RadioGroup.Item value={k}>
-                    <Label className="flex-1">{t.kinds[k]}</Label>
-                    <Radio />
-                  </RadioGroup.Item>
-                </Fragment>
-              ))}
-            </RadioGroup>
-          </Surface>
-        </Section>
-
-        <Section footer={t.pickDates}>
-          <ControlRow title={t.firstDay}>
+      <SettingsScroll>
+        <Intro>{t.pickDates}</Intro>
+        <Section>
+          <FieldRow label={t.kind} required>
+            <OptionPicker label={t.kind} value={kind} options={ABSENCE_KINDS.map((k) => ({ value: k, label: t.kinds[k] }))} onChange={setKind} />
+          </FieldRow>
+          <FieldRow label={t.firstDay} required>
             <DayPicker
               label={t.firstDay}
               value={start}
@@ -118,17 +91,15 @@ function AbsenceForm({ userId, existing }: { userId: string; existing?: Schedule
                 if (d > end) setEnd(d);
               }}
             />
-          </ControlRow>
-          <ControlRow title={t.lastDay}>
+          </FieldRow>
+          <FieldRow label={t.lastDay} required>
             <DayPicker key={toDay(start)} label={t.lastDay} value={end < start ? start : end} from={start} onChange={setEnd} />
-          </ControlRow>
+          </FieldRow>
+          <FieldRow label={t.note}>
+            <Input variant="secondary" value={note} onChangeText={setNote} maxLength={200} />
+            <Description>{t.noteHelp}</Description>
+          </FieldRow>
         </Section>
-
-        <TextField>
-          <Label>{t.note}</Label>
-          <Input value={note} onChangeText={setNote} maxLength={200} />
-          <Description>{t.noteHelp}</Description>
-        </TextField>
 
         {existing && (
           <Button
@@ -140,7 +111,7 @@ function AbsenceForm({ userId, existing }: { userId: string; existing?: Schedule
             {t.remove}
           </Button>
         )}
-      </KeyboardAwareScrollView>
+      </SettingsScroll>
     </>
   );
 }

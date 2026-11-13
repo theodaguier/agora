@@ -10,7 +10,7 @@ import { scheduleOnRN } from "react-native-worklets";
 import { removeMessage } from "@agora/core";
 import { BubbleAttachments, SentAttachments } from "@/components/attachments";
 import { attachmentSource, Image, isImage, saveAttachment } from "@/components/attachment-files";
-import { Bubble, PeerBubble, UserBubble } from "@/components/bubbles";
+import { Bubble, FlatText, UserBubble } from "@/components/bubbles";
 import { confirmAction } from "@/components/confirm-action";
 import { LongPressMenu } from "@/components/menus";
 import { ClockIcon, PackageIcon, PlugIcon, ReplyIcon } from "@/components/icons";
@@ -62,31 +62,31 @@ const messages = defineMessages({
 });
 
 /**
- * The message being answered: in the bubble that answers it, and above the composer.
- * `onAccent`: drawn inside one of your bubbles (the accent), so on the `secondary` surface.
+ * The message being answered: in the bubble that answers it, and above a colleague's message.
+ * `inBubble`: drawn inside one of your grey bubbles, so one step darker.
  */
 export function QuoteBlock({
   quote,
   onPress,
   actions,
   className,
-  onAccent,
+  inBubble,
 }: {
   quote: ReplyTo;
   onPress?: () => void;
   actions?: ReactNode;
   className?: string;
-  onAccent?: boolean;
+  inBubble?: boolean;
 }) {
   const t = messages;
   const image = quote.attachment && isImage(quote.attachment.mime) ? quote.attachment : null;
   const label = quote.text || (image ? t.photo : (quote.attachment?.name ?? ""));
   return (
     <PressableFeedback onPress={onPress} isDisabled={!onPress} className={cn("w-full self-stretch", className)}>
-      <Surface variant={onAccent ? "secondary" : "tertiary"} className="w-full flex-row items-center gap-2.5 px-3 py-2">
+      <Surface variant={inBubble ? "tertiary" : "secondary"} className="w-full flex-row items-center gap-2.5 px-3 py-2">
         <PressableFeedback.Highlight />
         <View className="min-w-0 flex-1">
-          <Typography weight="medium" numberOfLines={1}>
+          <Typography type="body-sm" weight="medium" numberOfLines={1}>
             {quote.authorName}
           </Typography>
           <Typography type="body-sm" color="muted" numberOfLines={1}>
@@ -105,8 +105,9 @@ export function QuoteBlock({
 }
 
 /**
- * An employee's message: text, files, reply and forward context in one bubble.
- * Files sent without text stay bare.
+ * An employee's message. Yours: text, files, reply and forward context in one grey bubble. Someone
+ * else's (web: Figma « Groupe et membres »): flat in their column, the files under it. Files sent
+ * without text stay bare.
  */
 export function ChatMessage(props: {
   mine: boolean;
@@ -120,10 +121,23 @@ export function ChatMessage(props: {
 }) {
   const { mine, text, attachments = [], invocations = [], replyTo, forwarded, mentionables, onQuote } = props;
   const t = messages;
+  if (!mine)
+    return (
+      <View className="min-w-0 gap-2">
+        {forwarded && (
+          <Typography type="body-xs" color="muted">
+            {t.forwardedFrom(forwarded.authorName)}
+          </Typography>
+        )}
+        {replyTo && <QuoteBlock quote={replyTo} onPress={onQuote && (() => onQuote(replyTo.id))} />}
+        {!!text && <FlatText plain text={text} mentionables={mentionables} />}
+        {attachments.length > 0 && <SentAttachments items={attachments} align="start" />}
+      </View>
+    );
   const framed = !!(text || replyTo || forwarded);
   const rich = !!(attachments.length || replyTo || forwarded);
   return (
-    <View className={cn("min-w-0 flex-col gap-1", mine ? "items-end" : "items-start")}>
+    <View className={cn("min-w-0 flex-col items-end gap-1.5", attachments.length > 0 && "mt-1")}>
       {invocations.length > 0 && (
         <View className="flex-row flex-wrap justify-end gap-1.5">
           {invocations.map((v) => {
@@ -137,25 +151,32 @@ export function ChatMessage(props: {
           })}
         </View>
       )}
-      {!framed && attachments.length > 0 && <SentAttachments items={attachments} align={mine ? "end" : "start"} />}
-      {framed && !rich && (mine ? <UserBubble text={text} mentionables={mentionables} /> : <PeerBubble text={text} mentionables={mentionables} />)}
+      {!framed && attachments.length > 0 && <SentAttachments items={attachments} align="end" />}
+      {framed && !rich && <UserBubble text={text} mentionables={mentionables} className="max-w-full" />}
       {framed && rich && (
-        <Bubble
-          mine={mine}
-          className={cn("max-w-full flex-col gap-1 p-1", attachments.some((a) => isImage(a.mime)) ? "w-64" : "max-w-80", replyTo && "min-w-52")}
- >
+        <Bubble className={cn("max-w-full flex-col gap-1 overflow-hidden p-1", attachments.some((a) => isImage(a.mime)) ? "w-64" : "max-w-80", replyTo && "min-w-52")}>
           {forwarded && (
-            <Typography type="body-sm" color="muted" className={cn("px-2.5 pt-1", mine && "text-accent-foreground opacity-75")}>
+            <Typography type="body-xs" color="muted" className="px-2 pt-1">
               {t.forwardedFrom(forwarded.authorName)}
             </Typography>
           )}
-          {replyTo && <QuoteBlock quote={replyTo} onAccent={mine} onPress={onQuote && (() => onQuote(replyTo.id))} />}
+          {replyTo && <QuoteBlock quote={replyTo} inBubble onPress={onQuote && (() => onQuote(replyTo.id))} />}
           {attachments.length > 0 && <BubbleAttachments items={attachments} />}
-          {!!text && (
-            <MessageText plain onAccent={mine} text={text} mentionables={mentionables} className="min-w-0 px-2.5 pt-0.5 pb-1.5" textClassName={mine ? "text-accent-foreground" : undefined} />
-          )}
+          {!!text && <MessageText plain text={text} mentionables={mentionables} className="min-w-0 px-2.5 pt-0.5 pb-1.5" />}
         </Bubble>
       )}
+    </View>
+  );
+}
+
+/** Your message while it is being sent: laid out like its MessageRow, faded until it is in. */
+export function PendingRow({ failed, children }: { failed?: boolean; children: ReactNode }) {
+  const { width } = useWindowDimensions();
+  return (
+    <View className="flex-row justify-end">
+      <View style={{ maxWidth: Math.round((width - 32) * 0.8) }} className={cn("min-w-0 items-end", !failed && "opacity-60")}>
+        {children}
+      </View>
     </View>
   );
 }
@@ -242,8 +263,8 @@ export function MessageRow(props: {
   const { toast } = useToast();
   const files = props.attachments ?? [];
   const { width } = useWindowDimensions();
-  // 80% of the screen (88% for a bot's answer), less the thread's margins.
-  const maxWidth = Math.round((width - 32) * (props.wide ? 0.88 : 0.8));
+  // Yours: 80% of the screen, less the thread's margins. Someone else's (`wide`): their whole column.
+  const maxWidth = props.wide ? undefined : Math.round((width - 32) * 0.8);
 
   const x = useSharedValue(0);
   const armed = useSharedValue(false);
@@ -278,7 +299,7 @@ export function MessageRow(props: {
         </Surface>
       </Animated.View>
       <GestureDetector gesture={swipe}>
-        <Animated.View style={moving}>
+        <Animated.View style={moving} className={cn(props.wide && "min-w-0 flex-1")}>
           <LongPressMenu
             actions={[
               { label: t.reply, icon: "arrowshape.turn.up.left", onPress: props.onReply },
@@ -299,7 +320,7 @@ export function MessageRow(props: {
               props.onDelete && { label: t.delete, icon: "trash", destructive: true, onPress: props.onDelete },
             ]}
  >
-            <View style={{ maxWidth }} className={cn("min-w-0", props.mine ? "items-end" : "items-start")}>
+            <View style={{ maxWidth }} className={cn("min-w-0", props.mine ? "items-end" : props.wide ? "w-full" : "items-start")}>
               {props.children}
             </View>
           </LongPressMenu>

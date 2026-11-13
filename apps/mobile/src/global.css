@@ -37,8 +37,16 @@
   --text-caption2: 11px;
   --text-caption2--line-height: 13px;
 
-  /* The system monospace (Menlo on iOS). */
-  --font-mono: Menlo;
+  /*
+   * Geist and Geist Mono, as on the web (apps/web/src/index.css). Each weight is its own face,
+   * loaded under these names by app/_layout.tsx (HeroUI Native's « Custom Fonts »).
+   */
+  --font-normal: 'Geist_400Regular';
+  --font-medium: 'Geist_500Medium';
+  --font-semibold: 'Geist_600SemiBold';
+  --font-bold: 'Geist_700Bold';
+  --font-sans: 'Geist_400Regular';
+  --font-mono: 'GeistMono_400Regular';
 
   --spacing-hairline: hairlineWidth();
 

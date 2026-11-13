@@ -5,7 +5,7 @@ import { defineMessages } from "@/lib/i18n";
 
 /*
  * Where files come from on the phone: the photo library, the camera or Files (no drag and drop, no
- * paste). The "+" of the composer opens a menu; `open` is controlled so the "/" menu's "Attach
+ * paste). The composer's paperclip opens a menu; `open` is controlled so the "/" menu's "Attach
  * files" opens the same one.
  */
 
@@ -52,12 +52,12 @@ const sources = () => [
   { label: messages.files, icon: "doc" as const, pick: pickDocuments },
 ];
 
-/** The "+" of the composer's toolbar: photo library, camera, Files; `open` lets the "/" menu open it too. */
+/** The paperclip of the composer's toolbar: photo library, camera, Files; `open` lets the "/" menu open it too. */
 export function AttachMenu({ open, onOpenChange, onFiles }: { open: boolean; onOpenChange: (open: boolean) => void; onFiles: (files: LocalFile[]) => void }) {
   return (
     <MenuButton
-      icon="plus"
-      // Figma « Composer »: a plain "+", no ring.
+      icon="paperclip"
+      // As on the web's composer: a plain paperclip, no ring.
       variant="ghost"
       // Above the "+": the composer sits on the keyboard.
       placement="top"

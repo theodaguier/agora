@@ -4,11 +4,10 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Description, Input, Label, Tabs, TextField, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
-import { AdminGate, ErrorAlert, LoadingRows, SettingsScroll } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, LoadingRows, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { ConnectorField } from "@/components/connector-field";
 import { OAuthClientFields } from "@/components/marketplace/oauth-client-fields";
 import { EMPTY_OAUTH_CLIENT, needsOwnClient, oauthClientOf } from "@/components/marketplace/oauth-client";
-import { useFeedback } from "@/components/profile/settings";
 import { api, apiUrl } from "@/lib/api";
 import { haptic, withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
@@ -51,7 +50,7 @@ function Form({ req }: { req: McpRequest }) {
   const c = tr(common);
   const qc = useQueryClient();
   const router = useRouter();
-  const feedback = useFeedback();
+  const toast = useAdminToast();
   const oauth = useMcpOAuth();
   const [auth, setAuth] = useState<Auth>(req.auth);
   const [token, setToken] = useState("");
@@ -74,7 +73,7 @@ function Form({ req }: { req: McpRequest }) {
       });
     },
     onSuccess: () => {
-      feedback.saved(t.reconfigured(req.name));
+      toast.success(t.reconfigured(req.name));
       router.back();
     },
     onSettled: () => {

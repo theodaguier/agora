@@ -7,14 +7,13 @@ import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { Alert, Button, Card, Description, Input, Label, LinkButton, TextField, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
-import { AdminGate, ErrorAlert, SettingsScroll, Section } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, SettingsScroll, Section, SwitchRow } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
 import { AgentTargets } from "@/components/marketplace/agent-targets";
 import { IntegrationTypeSection } from "@/components/marketplace/integration-type";
 import { ItemTile } from "@/components/marketplace/item-row";
 import { RestartBanner } from "@/components/marketplace/restart-banner";
 import { useSkillOwners } from "@/components/marketplace/use-market";
-import { ToggleRow } from "@/components/profile/settings";
 import { adminAgentsQuery } from "@/lib/agents-admin";
 import { api, ApiError } from "@/lib/api";
 import { withTap } from "@/lib/haptics";
@@ -329,7 +328,7 @@ function AddItem({ item }: { item: Item }) {
           )}
           {reg?.transport === "remote" && !reg.bearer && (
             <Section>
-              <ToggleRow title={t.oauth} value={oauth} onChange={setOauth} />
+              <SwitchRow title={t.oauth} value={oauth} onChange={setOauth} />
             </Section>
           )}
           {item.kind === "mcp" && item.entry.auth_type === "oauth" && (

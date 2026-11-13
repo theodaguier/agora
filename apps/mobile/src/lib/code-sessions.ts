@@ -83,6 +83,10 @@ export const setCodeSessionMode = (conversationId: string, id: string, mode: Cod
 export const setCodeSessionPriority = (conversationId: string, id: string, priority: CodePriority) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/priority`), { method: "PUT", body: JSON.stringify({ priority }) });
 
+/** Set aside (« Mettre de côté ») or brought back. */
+export const setCodeSessionParked = (conversationId: string, id: string, parked: boolean) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/parked`), { method: "PUT", body: JSON.stringify({ parked }) });
+
 /** Its issue detached: the session linked one that is not its task. */
 export const detachCodeSessionIssue = (conversationId: string, id: string) => api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/issue`), { method: "DELETE" });
 

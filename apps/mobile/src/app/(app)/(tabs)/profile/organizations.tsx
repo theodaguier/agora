@@ -1,16 +1,22 @@
-import { Stack } from "expo-router";
-import { ScrollView } from "react-native";
+import { router, Stack } from "expo-router";
+import { Intro, SettingsScroll } from "@/components/admin/ui";
+import { headerIcon } from "@/components/header-button";
 import { Organizations } from "@/components/profile/organizations";
-import { organizationsMessages } from "@/components/profile/organizations-messages";
+import { organizationsMessages as t } from "@/components/profile/organizations-messages";
+import { withTap } from "@/lib/haptics";
 
-/** The organizations this phone is signed in to (was the `servers` sheet). */
+/** The organizations this phone is signed in to (was the `servers` sheet); "+" adds one. */
 export default function OrganizationsScreen() {
   return (
     <>
-      <Stack.Screen.Title>{organizationsMessages.organizations}</Stack.Screen.Title>
-      <ScrollView contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="px-4 pb-12 pt-4">
+      <Stack.Screen.Title>{t.organizations}</Stack.Screen.Title>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button icon={headerIcon.plus} iconRenderingMode="template" accessibilityLabel={t.add} onPress={withTap(() => router.push("/server"))} />
+      </Stack.Toolbar>
+      <SettingsScroll>
+        <Intro>{t.help}</Intro>
         <Organizations />
-      </ScrollView>
+      </SettingsScroll>
     </>
   );
 }

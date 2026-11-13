@@ -81,7 +81,8 @@ export function ColorDot({ size, color, bar }: { size: number; color: string; ba
   );
 }
 
-type DotSpec = { color: string; bar?: boolean; pulse?: boolean };
+/** `mark`: drawn on the dot (the inbox's action badge: its icon on a grey disc). */
+export type DotSpec = { color: string; bar?: boolean; pulse?: boolean; mark?: ReactNode };
 
 const working: DotSpec = { color: "text-brand", pulse: true };
 
@@ -105,7 +106,7 @@ const dotSize = (avatar: number) => Math.max(8, Math.round(avatar * 0.3));
  * there, only its hole comes and goes: the avatar isn't remounted when the status changes.
  * A working bot's dot breathes.
  */
-function Notched({ size, dot, dotPx = dotSize(size), children }: { size: number; dot: DotSpec | null; dotPx?: number; children: ReactNode }) {
+export function Notched({ size, dot, dotPx = dotSize(size), children }: { size: number; dot: DotSpec | null; dotPx?: number; children: ReactNode }) {
   const [opacity] = useState(() => new Animated.Value(1));
   const pulse = !!dot?.pulse;
   useEffect(() => {
@@ -141,6 +142,7 @@ function Notched({ size, dot, dotPx = dotSize(size), children }: { size: number;
       {dot && (
         <Animated.View pointerEvents="none" className="absolute" style={{ left: center - dotPx / 2, top: center - dotPx / 2, opacity }}>
           <ColorDot size={dotPx} color={dot.color} bar={dot.bar} />
+          {!!dot.mark && <View className="absolute inset-0 items-center justify-center">{dot.mark}</View>}
         </Animated.View>
       )}
     </View>

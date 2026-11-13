@@ -1,10 +1,9 @@
 import { agentAccentColor, agentMascot, insertMessage, renderEvent, withoutMediaTags, withoutPreviews, type ViewAction } from "@agora/core";
-import { integrations } from "@agora/core/i18n";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useNavigation } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { Alert, Button, Chip, Spinner, Surface, useToast } from "heroui-native";
+import { Alert, Button, LinkButton, Spinner, Surface, Typography, useToast } from "heroui-native";
 import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import { View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
@@ -13,41 +12,43 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { ApprovalCard, ApprovalLog } from "@/components/approval-card";
 import { FileCard, SentAttachments } from "@/components/attachments";
-import { AuthorLine, BotBubble, DateDivider, SystemEvent, ToolLine, TypingBubble, TypingLine } from "@/components/bubbles";
+import { DayDivider, FlatText, Post, ThreadEvent, ToolLine, TypingBubble, TypingLine, type PostHead } from "@/components/bubbles";
 import { ChoiceCard } from "@/components/choice-card";
 import { CodeSessionCard, ReplyWithSessions, useCanStartCodeSession, useCodeSessions } from "@/components/code-session";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { HeaderTitle } from "@/components/conversation/header";
 import { infoHref } from "@/components/conversation/info-href";
 import { ConversationAvatar, PersonAvatar } from "@/components/conversation-avatar";
+import { headerIcon } from "@/components/header-button";
 import { conversationTitle, othersOf } from "@/components/participants";
 import { ConversationPanel, PinnedBar, usePanelLabels, usePins, type PanelKind } from "@/components/conversation-panels";
 import { ForwardDialog } from "@/components/forward-dialog";
 import { McpRequestCard } from "@/components/mcp-request-card";
-import { ChatMessage, MessageRow, useDeleteMessage } from "@/components/message-parts";
+import { ChatMessage, MessageRow, PendingRow, useDeleteMessage } from "@/components/message-parts";
 import { QuestionsCard } from "@/components/questions-card";
 import { useMe } from "@/components/server-scope";
 import { SkillRequestCard } from "@/components/skill-request-card";
 import { BotRequestCard } from "@/components/bot-request-card";
 import { ViewCard } from "@/components/views/ViewCard";
-import { api, ApiError, conversationPath, sendMessage } from "@/lib/api";
+import { api, ApiError, conversationPath, retryLast, sendMessage } from "@/lib/api";
 import { ConversationFilesProvider } from "@/lib/conversation-files";
-import { dividerLabel, needsDivider } from "@/lib/dates";
-import { withTap } from "@/lib/haptics";
+import { clockTime, dayLabel } from "@/lib/dates";
+import { haptic, withTap } from "@/lib/haptics";
 import { defineMessages, locale, tr } from "@/lib/i18n";
+import { integrations } from "@agora/core/i18n";
 import type { Mentionable } from "@/lib/mentions";
 import { useMentionables } from "@/lib/people";
 import { conversationQuery, conversationsQuery, messagesQuery } from "@/lib/queries";
 import { seedTurns, useTurns, useTyping } from "@/lib/realtime";
 import { useThreadHaptics } from "@/screens/conversation-haptics";
 import type { ActiveTurn, AgentSummary, Attachment, Author, ConversationDetail, Invocation, Message, ReplyTo } from "@/lib/types";
-import { cn } from "@/lib/utils";
 import { MenuButton } from "@/components/menus";
 import { EmptyState } from "@/components/empty-state";
 
 /*
- * apps/web/src/screens/Conversation.tsx as an iOS chat: the native header (avatar, name, status,
- * "…" menu), the thread scrolling under it and under the composer's bar.
+ * apps/web/src/screens/Conversation.tsx (the Geist redesign) as an iOS screen: the native header (face,
+ * name, status, the sessions' count; search and "…"), the thread scrolling under it (day dividers, runs
+ * opening on their author, others flat and yours in grey bubbles) and under the composer's card.
  */
 
 /** Minimum interval between two "is typing" signals. */
@@ -81,7 +82,8 @@ const authorKey = (a: Author) => (a ? `${a.kind}:${a.id}` : "event");
 const strings = defineMessages({
   en: {
     sendFailed: "Message not sent. Try again.",
-    notSent: "Not sent",
+    retry: "Retry",
+    retryFailed: "Couldn't retry.",
     gone: "This conversation no longer exists or you're no longer part of it.",
     unavailable: "Conversation unavailable.",
     messageTo: (name: string) => `Message ${name}`,
@@ -98,7 +100,8 @@ const strings = defineMessages({
   },
   fr: {
     sendFailed: "Message non envoyé. Réessaie.",
-    notSent: "Non envoyé",
+    retry: "Réessayer",
+    retryFailed: "Relance impossible.",
     gone: "Cette conversation n'existe plus ou tu n'en fais plus partie.",
     unavailable: "Conversation indisponible.",
     messageTo: (name: string) => `Message à ${name}`,
@@ -306,9 +309,18 @@ export function Conversation({ conversationId, focus }: { conversationId: string
 
   // Its sessions, or the way to start one for the owner of the subscription.
   const canStartCode = useCanStartCodeSession(conversationId);
-  const hasCodeSessions = !!useCodeSessions(conversationId) || canStartCode;
+  const codeSessions = useCodeSessions(conversationId);
   const header = (
-    <ConversationHeader conv={conv} me={user.id} title={title} counterpart={(directPerson ?? directBot)?.name} codeSessions={hasCodeSessions} onPanel={setPanel} />
+    <ConversationHeader
+      conv={conv}
+      me={user.id}
+      title={title}
+      counterpart={(directPerson ?? directBot)?.name}
+      waiting={turns.some((turn) => !!turn.approval)}
+      // Started ones are counted in the title, which opens them; the menu offers the first one.
+      startCode={canStartCode && !codeSessions}
+      onPanel={setPanel}
+    />
   );
 
   if (detail.error) {
@@ -335,8 +347,10 @@ export function Conversation({ conversationId, focus }: { conversationId: string
     !turns.length && !sending.length && last?.kind === "bot" && (last.data?.choices || last.data?.questions) && dismissed !== last.id ? last : null;
   const mine = turns.filter((turn) => turn.requestedBy === user.id);
   const placeholder = directBot ? t.messageTo(directBot.name) : group ? t.writeGroup : t.messageTo(title);
+  // Sessions already shown in the reply that started them: their « started » event adds no second card.
+  const shownSessions = new Set([...messages.flatMap((m) => m.data?.codeSessions ?? []), ...turns.flatMap((turn) => turn.codeSessions ?? [])].map((x) => x.id));
 
-  // Figma « Agora · Accent du bot »: a conversation with a bot dresses your bubbles in its colour (never a button).
+  // A conversation with a bot is dressed in its colour (`--bot`, as on the web); your bubbles stay grey and buttons neutral.
   const accent = accentVariables(directBot?.avatar.color);
 
   return (
@@ -392,99 +406,72 @@ export function Conversation({ conversationId, focus }: { conversationId: string
                   )}
                 </View>
               )}
-              {messages.slice(hidden).map((m, i) => (
-                <ThreadMessage
-                  key={m.id}
-                  conversationId={conversationId}
-                  m={m}
-                  prev={messages[hidden + i - 1]}
-                  next={messages[hidden + i + 1]}
-                  bot={directBot ?? undefined}
-                  liveAfter={turns.length > 0}
-                  me={user.id}
-                  group={group}
-                  directBot={!!directBot}
-                  highlighted={highlight === m.id}
-                  pinned={isPinned({ messageId: m.id })}
-                  mentions={mentions}
-                  viewAnswers={viewAnswers}
-                  actions={rowActions}
- />
-              ))}
+              {messages.slice(hidden).map((m, i) => {
+                const at = hidden + i;
+                return (
+                  <ThreadMessage
+                    key={m.id}
+                    conversationId={conversationId}
+                    m={m}
+                    prev={messages[at - 1]}
+                    next={messages[at + 1]}
+                    me={user.id}
+                    last={at === messages.length - 1 && !turns.length}
+                    sessionShown={m.data?.event?.type === "code.started" && shownSessions.has(m.data.event.sessionId)}
+                    highlighted={highlight === m.id}
+                    pinned={isPinned({ messageId: m.id })}
+                    mentions={mentions}
+                    viewAnswers={viewAnswers}
+                    actions={rowActions}
+                  />
+                );
+              })}
+              {/* The bot's question: in its column (right of the avatar gutter), a block apart from its message. */}
               {question?.data?.questions && (
-                <QuestionsCard
-                  key={question.id}
-                  questions={question.data.questions}
-                  onAnswer={(text) => send(text, [], [], answerAs(question))}
-                  onDismiss={() => setDismissed(question.id)}
-   />
+                <Post key={question.id} className="mt-3">
+                  <QuestionsCard questions={question.data.questions} onAnswer={(text) => send(text, [], [], answerAs(question))} onDismiss={() => setDismissed(question.id)} />
+                </Post>
               )}
               {question?.data?.choices && (
-                <ChoiceCard key={question.id} choices={question.data.choices} onAnswer={(text) => send(text, [], [], answerAs(question))} onDismiss={() => setDismissed(question.id)} />
+                <Post key={question.id} className="mt-3">
+                  <ChoiceCard choices={question.data.choices} onAnswer={(text) => send(text, [], [], answerAs(question))} onDismiss={() => setDismissed(question.id)} />
+                </Post>
               )}
               {sending.map((s) => (
                 <Fragment key={s.key}>
-                  <View className={cn("mt-1 ml-auto max-w-[80%]", !s.failed && "opacity-60")}>
+                  <PendingRow failed={s.failed}>
                     <ChatMessage mine text={s.text} attachments={s.attachments} invocations={s.invocations} replyTo={s.replyTo} mentionables={mentions} />
-                  </View>
+                  </PendingRow>
                   {s.failed && (
-                    <Chip size="sm" variant="soft" color="danger" className="self-end">
-                      <Chip.Label>{t.notSent}</Chip.Label>
-                    </Chip>
+                    <Typography accessibilityRole="alert" type="body-xs" align="end" className="text-danger">
+                      {t.sendFailed}
+                    </Typography>
                   )}
                 </Fragment>
               ))}
-              {turns.filter((turn) => !beforeReply(turn)).map((turn) => {
+              {turns.map((turn, i) => {
                 const bot = agentById(turn.agentId);
-                const visible = hideBlocks(turn.text);
+                const start = turnStart(turn.turnId);
+                // A run: the same author within the same minute; it opens on who and when, 22 pt under the previous one.
+                const before = i > 0 ? { author: `agent:${turns[i - 1]!.agentId}`, at: turnStart(turns[i - 1]!.turnId) } : last && { author: authorKey(last.author), at: entryTime(last) };
+                const head = !before || before.author !== `agent:${turn.agentId}` || clockTime(before.at) !== clockTime(start) || dayOf(before.at) !== dayOf(start);
                 return (
-                  <BotRun key={turn.turnId} avatar={directBot ?? undefined}>
-                    {group && bot && <AuthorLine name={bot.name} avatar={<AgentAvatar agent={bot} className="size-5" />} />}
-                    <ToolLine tools={turn.tools} running={!visible} />
-                    {turn.codeSessions?.length ? (
-                      <View className="max-w-[88%] self-start">
-                        <ReplyWithSessions
-                          conversationId={conversationId}
-                          text={visible}
-                          sessions={turn.codeSessions}
-                          streaming
-                          typing={!turn.approval && <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} />}
-                          bubble={(text, streaming) => <BotBubble text={text} streaming={streaming} mentionables={mentions} />}
-                        />
-                      </View>
-                    ) : visible ? (
-                      <View className="max-w-[88%] self-start">
-                        <BotBubble text={visible} streaming mentionables={mentions} />
-                      </View>
-                    ) : (
-                      !turn.approval && <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} />
-                    )}
-                    {turn.approval && (
-                      <ApprovalCard
-                        conversationId={conversationId}
-                        turnId={turn.turnId}
-                        botName={bot?.name ?? t.theBot}
-                        approval={turn.approval}
-                        canAnswer={turn.requestedBy === user.id || user.role === "admin"}
-   />
-                    )}
-                  </BotRun>
+                  <Fragment key={turn.turnId}>
+                    {(!before || dayOf(before.at) !== dayOf(start)) && <DayDivider label={dayLabel(start)} />}
+                    <LiveTurn
+                      turn={turn}
+                      bot={bot}
+                      at={start}
+                      head={head}
+                      className={head && (before || i > 0) ? "mt-5.5" : undefined}
+                      conversationId={conversationId}
+                      mentions={mentions}
+                      canAnswer={turn.requestedBy === user.id || user.role === "admin"}
+                    />
+                  </Fragment>
                 );
               })}
-              <TypingLine
-                entries={[
-                  ...turns.filter(beforeReply).map((turn) => {
-                    const bot = agentById(turn.agentId);
-                    return {
-                      key: turn.turnId,
-                      name: bot?.name ?? t.theBot,
-                      avatar: group && bot && <AgentAvatar agent={bot} className="size-4" />,
-                      tool: turn.tools.at(-1)?.name,
-                    };
-                  }),
-                  ...typing.map((p) => ({ key: p.userId, name: p.name.split(" ")[0]! })),
-                ]}
-              />
+              <TypingLine entries={typing.map((p) => ({ key: p.userId, name: p.name.split(" ")[0]! }))} />
             </View>
           </KeyboardChatScrollView>
         </ConversationFilesProvider>
@@ -506,18 +493,21 @@ export function Conversation({ conversationId, focus }: { conversationId: string
  >
           {scrolledUp && (
             <View pointerEvents="box-none" className="absolute inset-x-0 bottom-full mb-2 items-center">
-              <Button size="sm" variant="secondary" onPress={withTap(toEnd)}>
+              {/* The tap inline, not withTap(toEnd): handing a function that reads a ref to a call made during render is what the compiler forbids. */}
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={() => {
+                  haptic.tap();
+                  toEnd();
+                }}
+              >
                 {t.latest}
               </Button>
             </View>
           )}
           {/* overflow-visible: the composer's "/" and "@" menu floats above the bar, over the thread. */}
           <Surface variant="transparent" className="gap-2 overflow-visible bg-background px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
-            {mine.length > 0 && (
-              <Button size="sm" variant="secondary" className="self-center" onPress={withTap(() => mine.forEach((turn) => stop(turn.turnId)))}>
-                {t.stop}
-              </Button>
-            )}
             {conv && (
               <Composer
                 key={conversationId}
@@ -534,7 +524,9 @@ export function Conversation({ conversationId, focus }: { conversationId: string
                 onTyping={onTyping}
                 replyTo={replyTo}
                 onCancelReply={() => setReplyTo(null)}
- />
+                onStop={mine.length ? () => mine.forEach((turn) => stop(turn.turnId)) : undefined}
+                stopLabel={t.stop}
+              />
             )}
           </Surface>
         </KeyboardStickyView>
@@ -556,22 +548,26 @@ function accentVariables(color: string | undefined) {
   return vars;
 }
 
-/** Answer of a bot choosing to stay silent (apps/api/src/group.ts). */
-/** The thread's native header: its title, and the menu of its panels and of its info screen. */
+/**
+ * The thread's native header (web: Figma « Conversation · Dev »): the face, the name, its sessions in
+ * grey in the title; search, then the other panels and the info screen under « … ».
+ */
 function ConversationHeader({
   conv,
   me,
   title,
   counterpart,
-  codeSessions,
+  waiting,
+  startCode,
   onPanel,
 }: {
   conv?: ConversationDetail;
   me: string;
   title: string;
   counterpart?: string;
-  /** Claude Code sessions were started here: the menu lists them (the web's header button). */
-  codeSessions: boolean;
+  waiting: boolean;
+  /** No session yet, but its owner may start one: the menu offers it (started ones are in the title). */
+  startCode: boolean;
   onPanel: (panel: PanelKind) => void;
 }) {
   const t = strings;
@@ -590,20 +586,20 @@ function ConversationHeader({
           // iOS 26 gives the screen's scroll view an edge effect, and the thread is flipped (scaleY -1): its bottom
           // edge, as tall as the keyboard and the composer, was drawn over the top of the thread, blurring every message.
           scrollEdgeEffects: { top: "hidden", bottom: "hidden", left: "hidden", right: "hidden" },
-          headerTitle: () => <HeaderTitle conversation={conv} me={me} title={title} label={infoLabel || undefined} />,
+          headerTitle: () => <HeaderTitle conversation={conv} me={me} title={title} label={infoLabel || undefined} waiting={waiting} onSessions={() => onPanel("code")} />,
         }}
- />
+      />
       {conv && (
         <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button icon={headerIcon.search} iconRenderingMode="template" accessibilityLabel={panelLabels.search} onPress={withTap(() => onPanel("search"))} />
           <Stack.Toolbar.View>
             <MenuButton
               icon="ellipsis"
               label={t.more}
               actions={[
-                { label: panelLabels.search, icon: "magnifyingglass", onPress: () => onPanel("search") },
                 { label: panelLabels.files, icon: "folder", onPress: () => onPanel("files") },
                 { label: panelLabels.pins, icon: "pin", onPress: () => onPanel("pins") },
-                codeSessions && { label: panelLabels.code, icon: "chevron.left.forwardslash.chevron.right", onPress: () => onPanel("code") },
+                startCode && { label: panelLabels.code, icon: "chevron.left.forwardslash.chevron.right", onPress: () => onPanel("code") },
                 !!info && !!infoLabel && { label: infoLabel, icon: group ? "person.2" : "info.circle", onPress: () => router.push(info) },
               ]}
             />
@@ -615,9 +611,6 @@ function ConversationHeader({
 }
 
 const NO_REPLY = "NO_REPLY";
-
-/** A reply with nothing to show yet (no text, session or approval): it goes on the typing line. */
-const beforeReply = (turn: ActiveTurn) => !hideBlocks(turn.text) && !turn.codeSessions?.length && !turn.approval;
 
 /** While streaming, structured blocks (questions, profile) and a silent answer are not shown raw. */
 const hideBlocks = (text: string) =>
@@ -643,17 +636,33 @@ type RowActions = {
   laidOut: (id: string, y: number) => void;
 };
 
-/** A message of the thread, with its date divider and author line. */
+/** When a message's reply started (its turn), else when it was written: its place and its time in the thread. */
+const entryTime = (m: Message) => new Date(m.data?.turn?.startedAt ?? m.createdAt);
+
+const dayOf = (d: Date) => new Date(d).setHours(0, 0, 0, 0);
+
+/** When each live reply was first seen: its time on its first line, stable while it streams. */
+const turnStarts = new Map<string, Date>();
+function turnStart(turnId: string) {
+  let at = turnStarts.get(turnId);
+  if (!at) turnStarts.set(turnId, (at = new Date()));
+  return at;
+}
+
+/**
+ * A message of the thread (web: the timeline of screens/Conversation.tsx), with the day before it
+ * when it is the day's first. Others' messages are flat under their author, the first of a run (same
+ * author, same minute) opening on their face, name and time; yours are grey bubbles on the right,
+ * the time under the last of a run.
+ */
 const ThreadMessage = memo(function ThreadMessage({
   conversationId,
   m,
   prev,
-  me,
-  group,
-  directBot,
-  bot,
   next,
-  liveAfter,
+  me,
+  last,
+  sessionShown,
   highlighted,
   pinned,
   mentions,
@@ -663,14 +672,12 @@ const ThreadMessage = memo(function ThreadMessage({
   conversationId: string;
   m: Message;
   prev?: Message;
-  me: string;
-  group: boolean;
-  directBot: boolean;
-  /** Direct conversation with a bot: its messages sit right of a 28 px gutter, its avatar under the last of a run. */
-  bot?: AgentSummary;
   next?: Message;
-  /** A live reply follows the last message: the run goes on. */
-  liveAfter: boolean;
+  me: string;
+  /** The thread's last word, no reply under way: a failure there can be retried. */
+  last: boolean;
+  /** A session started here already has its card in the reply that started it. */
+  sessionShown: boolean;
   highlighted: boolean;
   pinned: boolean;
   mentions: Mentionable[];
@@ -678,79 +685,86 @@ const ThreadMessage = memo(function ThreadMessage({
   actions: RowActions;
 }) {
   const vt = tr(integrations);
-  const at = new Date(m.createdAt);
-  const divider = needsDivider(prev && new Date(prev.createdAt), at);
+  const at = entryTime(m);
+  const before = prev && entryTime(prev);
+  const divider = !before || dayOf(before) !== dayOf(at);
+  const sameMinute = !!before && clockTime(before) === clockTime(at);
   const newAuthor = divider || !prev || authorKey(prev.author) !== authorKey(m.author);
   const fromMe = m.kind === "user" && m.author?.kind === "user" && m.author.id === me;
-  const showAuthor = newAuthor && !fromMe && m.kind !== "event" && (group || (m.kind === "user" && !directBot)) && !!m.author;
+  const head = !fromMe && m.kind !== "event" && (newAuthor || !sameMinute);
+  const postHead: PostHead | undefined =
+    head && m.author
+      ? {
+          avatar: m.author.kind === "agent" ? <AgentAvatar agent={m.author} size={20} /> : <PersonAvatar person={m.author} size={20} />,
+          name: m.author.name,
+          time: clockTime(at),
+        }
+      : undefined;
+  const gap = !!prev && (head || (fromMe && newAuthor)) ? "mt-5.5" : undefined;
+  // Your messages carry their time under the bubble, once per run within the minute.
+  const lastOfMine = fromMe && !(next && authorKey(next.author) === authorKey(m.author) && clockTime(entryTime(next)) === clockTime(at));
+  const event = m.kind === "event" ? m.data?.event : undefined;
+  const codeStarted = event?.type === "code.started" ? event : null;
+  if (codeStarted && sessionShown && !divider) return null;
+  const row = (wide: boolean, children: ReactNode, onDelete?: () => void) => (
+    <MessageRow
+      id={m.id}
+      mine={fromMe}
+      wide={wide}
+      highlighted={highlighted}
+      text={m.text}
+      attachments={m.kind === "user" ? m.data?.attachments : undefined}
+      onReply={() => actions.reply(m)}
+      onForward={() => actions.forward(m)}
+      pinned={pinned}
+      onTogglePin={() => actions.togglePin(m.id)}
+      onDelete={onDelete}
+    >
+      {children}
+    </MessageRow>
+  );
+  const chat = (
+    <ChatMessage
+      mine={fromMe}
+      text={m.text}
+      attachments={m.data?.attachments}
+      invocations={fromMe ? m.data?.invocations : undefined}
+      replyTo={m.data?.replyTo}
+      forwarded={m.data?.forwarded}
+      mentionables={mentions}
+      onQuote={actions.quote}
+    />
+  );
+  const flat = (text: string) => <FlatText text={text} mentionables={mentions} />;
   return (
-    <View className={cn("gap-1", newAuthor && "mt-1.5")} onLayout={(e) => actions.laidOut(m.id, e.nativeEvent.layout.y)}>
-      {divider && <DateDivider label={dividerLabel(at)} />}
-      {showAuthor && m.author && group && (
-        <AuthorLine
-          name={m.author.name}
-          avatar={m.author.kind === "agent" ? <AgentAvatar agent={m.author} className="size-5" /> : <PersonAvatar person={m.author} className="size-5" />}
-        />
-      )}
-      {m.kind === "user" && (
-        <MessageRow
-          id={m.id}
-          mine={fromMe}
-          highlighted={highlighted}
-          text={m.text}
-          attachments={m.data?.attachments}
-          onReply={() => actions.reply(m)}
-          onForward={() => actions.forward(m)}
-          pinned={pinned}
-          onTogglePin={() => actions.togglePin(m.id)}
-          onDelete={fromMe ? () => actions.delete(m.id) : undefined}
-        >
-          <ChatMessage
-            mine={fromMe}
-            text={m.text}
-            attachments={m.data?.attachments}
-            invocations={fromMe ? m.data?.invocations : undefined}
-            replyTo={m.data?.replyTo}
-            forwarded={m.data?.forwarded}
-            mentionables={mentions}
-            onQuote={actions.quote}
-          />
-        </MessageRow>
-      )}
+    <View className="gap-1" onLayout={(e) => actions.laidOut(m.id, e.nativeEvent.layout.y)}>
+      {divider && <DayDivider label={dayLabel(at)} />}
+      {m.kind === "user" &&
+        (fromMe ? (
+          <View className={gap}>
+            {row(false, chat, () => actions.delete(m.id))}
+            {lastOfMine && (
+              <Typography type="body-xs" align="end" className="mt-1 text-subtle tabular-nums">
+                {clockTime(at)}
+              </Typography>
+            )}
+          </View>
+        ) : (
+          <Post head={postHead} className={gap}>
+            {row(true, chat)}
+          </Post>
+        ))}
       {m.kind === "bot" && (
-        <BotRun
-          avatar={
-            bot && m.author?.kind === "agent"
-              ? (next ? next.kind !== "bot" || authorKey(next.author) !== authorKey(m.author) || needsDivider(at, new Date(next.createdAt)) : !liveAfter) && bot
-              : undefined
-          }
-        >
+        <Post head={postHead} className={gap}>
+          {/* What it used, before what it says: as while it works (the live reply starts with it). */}
           {m.data?.tools && <ToolLine tools={m.data.tools} />}
           {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
-          {(!!m.text || !!m.data?.codeSessions?.length) && (
-            <MessageRow
-              id={m.id}
-              wide
-              highlighted={highlighted}
-              text={m.text}
-              onReply={() => actions.reply(m)}
-              onForward={() => actions.forward(m)}
-              pinned={pinned}
-              onTogglePin={() => actions.togglePin(m.id)}
-              onDelete={() => actions.delete(m.id)}
-            >
-              {m.data?.codeSessions?.length ? (
-                <ReplyWithSessions
-                  conversationId={conversationId}
-                  text={m.text}
-                  sessions={m.data.codeSessions}
-                  bubble={(text) => <BotBubble text={text} mentionables={mentions} />}
-                />
-              ) : (
-                <BotBubble text={m.text} mentionables={mentions} />
-              )}
-            </MessageRow>
-          )}
+          {(!!m.text || !!m.data?.codeSessions?.length) &&
+            row(
+              true,
+              m.data?.codeSessions?.length ? <ReplyWithSessions conversationId={conversationId} text={m.text} sessions={m.data.codeSessions} bubble={flat} /> : flat(m.text),
+              () => actions.delete(m.id),
+            )}
           {m.data?.views?.map((view, index) => (
             <ViewCard
               key={index}
@@ -772,39 +786,91 @@ const ThreadMessage = memo(function ThreadMessage({
           {m.data?.previews?.map((p) => {
             // Opened from the share sheet, which previews the page.
             const file = m.data?.attachments?.find((a) => a.id === p.id);
-            return file && <FileCard key={p.key} a={file} className="my-1 self-start" />;
+            return file && <FileCard key={p.key} a={file} className="self-start" />;
           })}
           {/* The other files it sent: videos played here, the rest downloaded. */}
           {(() => {
             const files = (m.data?.attachments ?? []).filter((a) => !m.data?.previews?.some((p) => p.id === a.id));
-            return files.length > 0 && <SentAttachments items={files} align="start" className="my-1" />;
+            return files.length > 0 && <SentAttachments items={files} align="start" />;
           })()}
           {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
           {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
           {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}
-        </BotRun>
+        </Post>
       )}
-      {m.data?.event?.type === "code.started" ? (
-        <CodeSessionCard conversationId={conversationId} sessionId={m.data.event.sessionId} title={m.data.event.title} />
-      ) : (
-        m.kind === "event" && <SystemEvent label={m.data?.event ? renderEvent(m.data.event, locale) : m.text} />
+      {codeStarted && !sessionShown && (
+        <View className="mt-3 pl-7">
+          <CodeSessionCard conversationId={conversationId} sessionId={codeStarted.sessionId} title={codeStarted.title} />
+        </View>
       )}
+      {event?.type === "bot.failed" && <FailureLine conversationId={conversationId} label={renderEvent(event, locale)} retry={last} />}
+      {m.kind === "event" && !codeStarted && event?.type !== "bot.failed" && <ThreadEvent label={event ? renderEvent(event, locale) : m.text} />}
     </View>
   );
 });
 
 const FLIPPED = { transform: [{ scaleY: -1 }] };
 
-/**
- * Figma « Ligne · agent »: a bot's message and its parts. `avatar` undefined (groups, colleagues): no
- * gutter. Otherwise a 28 px gutter on the left, the bot's mascot at its bottom (false: the run goes on).
- */
-export function BotRun({ avatar, children }: { avatar?: AgentSummary | false; children: ReactNode }) {
-  if (avatar === undefined) return <>{children}</>;
+/** A bot that couldn't answer, on one line with its red dot, and the retry when it is the last word (web: FailureLine). */
+function FailureLine({ conversationId, label, retry }: { conversationId: string; label: string; retry: boolean }) {
+  const t = strings;
+  const { toast } = useToast();
+  const again = useMutation({
+    mutationFn: () => retryLast(conversationId),
+    onError: () => toast.show({ variant: "danger", label: t.retryFailed }),
+  });
   return (
-    <View className="flex-row items-end gap-2">
-      <View className="size-7">{avatar && <AgentAvatar agent={avatar} size={28} />}</View>
-      <View className="min-w-0 flex-1 gap-1">{children}</View>
+    <View accessibilityRole="summary" className="mt-5.5 flex-row items-center gap-2">
+      <View className="size-1.5 rounded-full bg-danger" />
+      <Typography type="body-sm" color="muted" className="shrink">
+        {label}
+      </Typography>
+      {retry && (
+        <LinkButton size="sm" isDisabled={again.isPending} onPress={withTap(() => again.mutate())}>
+          <LinkButton.Label className="font-medium text-foreground">{t.retry}</LinkButton.Label>
+        </LinkButton>
+      )}
     </View>
+  );
+}
+
+/** A reply being written (web: LiveTurn): its tools, the streamed text or the typing dots, and a pending approval. */
+function LiveTurn({
+  turn,
+  bot,
+  at,
+  head,
+  className,
+  conversationId,
+  mentions,
+  canAnswer,
+}: {
+  turn: ActiveTurn;
+  bot: AgentSummary | undefined;
+  /** When the reply started: on its first line. */
+  at: Date;
+  /** Starts a run: the bot's face, name and time on its first line. */
+  head: boolean;
+  className?: string;
+  conversationId: string;
+  mentions: Mentionable[];
+  canAnswer: boolean;
+}) {
+  const t = strings;
+  const visible = hideBlocks(turn.text);
+  const typing = <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} />;
+  const text = (value: string, streaming: boolean) => <FlatText text={value} streaming={streaming} mentionables={mentions} />;
+  return (
+    <Post head={head && bot ? { avatar: <AgentAvatar agent={bot} size={20} />, name: bot.name, time: clockTime(at) } : undefined} className={className}>
+      <ToolLine tools={turn.tools} running={!visible} />
+      {turn.codeSessions?.length ? (
+        <ReplyWithSessions conversationId={conversationId} text={visible} sessions={turn.codeSessions} streaming typing={!turn.approval && typing} bubble={text} />
+      ) : visible ? (
+        text(visible, true)
+      ) : (
+        !turn.approval && typing
+      )}
+      {turn.approval && <ApprovalCard conversationId={conversationId} turnId={turn.turnId} botName={bot?.name ?? t.theBot} approval={turn.approval} canAnswer={canAnswer} />}
+    </Post>
   );
 }

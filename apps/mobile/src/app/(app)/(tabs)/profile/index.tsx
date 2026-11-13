@@ -1,96 +1,136 @@
-import { auth } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
 import * as Application from "expo-application";
-import { router, Stack, useFocusEffect, type Href } from "expo-router";
-import { ListGroup } from "heroui-native";
+import { Link, router, Stack, useFocusEffect, type Href } from "expo-router";
+import { Chip, ListGroup } from "heroui-native";
 import { useCallback, useState } from "react";
-import { Linking, ScrollView } from "react-native";
+import { Linking } from "react-native";
 import { PersonAvatar } from "@/components/conversation-avatar";
 import {
   BellIcon,
+  BotIcon,
+  BrainIcon,
   BuildingIcon,
+  CalendarClockIcon,
   ChartIcon,
-  ClockIcon,
+  CheckCircleIcon,
   FileTextIcon,
+  KeyIcon,
+  LayersIcon,
   MoonIcon,
   PackageIcon,
   PaletteIcon,
-  SettingsIcon,
+  PlugIcon,
+  RefreshIcon,
+  ServerIcon,
   ShieldCheckIcon,
   SparklesIcon,
+  MonitorIcon,
+  UsersIcon,
+  type IconComponent,
 } from "@/components/icons";
+import { LinkRow, PressableRow, Section, SettingsRow, SettingsScroll } from "@/components/admin/ui";
 import { useDnd } from "@/components/profile/dnd";
 import { useMeProfile } from "@/components/profile/me";
-import { useSignOut } from "@/components/profile/organizations";
 import { organizationsMessages } from "@/components/profile/organizations-messages";
-import { LinkRow, PressableRow, Section } from "@/components/profile/settings";
 import { ConnectedPhones } from "@/components/admin/connected-phones";
 import { useTheme } from "@/components/profile/theme";
 import { useServer } from "@/components/server-scope";
 import { digestQuery } from "@/lib/digest";
 import { serverVersionQuery } from "@/lib/queries";
-import { defineMessages, tr } from "@/lib/i18n";
+import { defineMessages } from "@/lib/i18n";
 import { latestRelease } from "@/lib/whats-new";
 import { notificationStatus, syncPushToken } from "@/lib/notifications";
 import { TapMenu } from "@/components/menus";
 import { twoFactorMessages } from "@/components/two-factor";
 
+/*
+ * apps/web/src/components/Settings.tsx's navigation at phone width, with the web's user and workspace
+ * menus: you (General), your status, the Account tabs, the workspace, then (admins) the Organization and
+ * Instance tabs, each one group of rows with its icon in a tile.
+ */
+
 const messages = defineMessages({
   en: {
     title: "Profile",
+    admin: "Admin",
     dnd: "Do not disturb",
     off: "Off",
     notifications: "Notifications",
     on: "On",
-    availability: "Availability",
-    availabilityHelp: "Working hours and absences",
-    appearance: "Appearance",
-    security: "Security",
     themes: { system: "System", light: "Light", dark: "Dark" },
-    usage: "Usage",
     digest: "Morning recap",
     unread: "New",
     whatsNew: "What's new",
-    admin: "Admin",
-    administration: "Administration",
     marketplace: "Marketplace",
     organizations: "Organizations",
-    member: "Member",
     about: "About",
     appVersion: "App",
     serverVersion: "Server",
     engineVersion: "Hermes engine",
+    groups: { account: "Account", organization: "Organization", instance: "Instance" },
+    tabs: {
+      security: "Security",
+      availability: "Availability",
+      appearance: "Appearance",
+      usage: "Usage",
+      organization: "Organization",
+      users: "Users",
+      agents: "Agents",
+      access: "Access",
+      integrations: "Integrations",
+      models: "Models",
+      memory: "Memory",
+      digest: "Recaps",
+      status: "Status",
+      server: "Server",
+      machines: "SSH machines",
+      updates: "Updates",
+    },
   },
   fr: {
     title: "Profil",
+    admin: "Admin",
     dnd: "Ne pas déranger",
     off: "Désactivé",
     notifications: "Notifications",
     on: "Activées",
-    availability: "Disponibilité",
-    availabilityHelp: "Horaires de travail et absences",
-    appearance: "Apparence",
-    security: "Sécurité",
     themes: { system: "Système", light: "Clair", dark: "Sombre" },
-    usage: "Consommation",
     digest: "Récap du matin",
     unread: "Nouveau",
     whatsNew: "Nouveautés",
-    admin: "Admin",
-    administration: "Administration",
     marketplace: "Marketplace",
     organizations: "Organisations",
-    member: "Membre",
     about: "À propos",
     appVersion: "Application",
     serverVersion: "Serveur",
     engineVersion: "Moteur Hermes",
+    groups: { account: "Compte", organization: "Organisation", instance: "Instance" },
+    tabs: {
+      security: "Sécurité",
+      availability: "Disponibilité",
+      appearance: "Apparence",
+      usage: "Consommation",
+      organization: "Organisation",
+      users: "Utilisateurs",
+      agents: "Agents",
+      access: "Accès",
+      integrations: "Intégrations",
+      models: "Modèles",
+      memory: "Mémoire",
+      digest: "Récaps",
+      status: "Statut",
+      server: "Serveur",
+      machines: "Machines SSH",
+      updates: "Mises à jour",
+    },
   },
 });
 
-/** The signed-in person's space: their profile, status, preferences, organizations; the web's user menu and personal Settings tabs. */
+type Tab = { href: string; icon: IconComponent; title: string };
+
+/** The signed-in person's settings: the web's Settings navigation, user menu and workspace menu. */
 export default function Profile() {
-  const t = { ...messages, signOut: tr(auth).signOut, orgs: organizationsMessages };
+  const t = { ...messages, orgs: organizationsMessages };
   const me = useMeProfile();
   const server = useServer();
   const dnd = useDnd(me.id);
@@ -98,85 +138,113 @@ export default function Profile() {
   const { data: digest } = useQuery(digestQuery);
   const { data: versions } = useQuery(serverVersionQuery);
   const appVersion = [Application.nativeApplicationVersion, Application.nativeBuildVersion && `(${Application.nativeBuildVersion})`].filter(Boolean).join(" ");
-  const signOut = useSignOut();
   const admin = me.role === "admin";
   const notifications = useNotificationStatus();
   const subtitle = [me.title, admin ? t.admin : null].filter(Boolean).join(" · ");
+  const unread = (show: boolean) =>
+    show ? (
+      <Chip size="sm" variant="primary" color="accent">
+        {t.unread}
+      </Chip>
+    ) : null;
+
+  // The web's admin-only tabs, in its two groups.
+  const adminGroups: { title: string; tabs: Tab[] }[] = [
+    {
+      title: t.groups.organization,
+      tabs: [
+        { href: "/profile/admin/organization", icon: BuildingIcon, title: t.tabs.organization },
+        { href: "/profile/admin/users", icon: UsersIcon, title: t.tabs.users },
+        { href: "/profile/admin/agents", icon: BotIcon, title: t.tabs.agents },
+        { href: "/profile/admin/access", icon: KeyIcon, title: t.tabs.access },
+        { href: "/profile/admin/integrations", icon: PlugIcon, title: t.tabs.integrations },
+        { href: "/profile/admin/models", icon: LayersIcon, title: t.tabs.models },
+        { href: "/profile/admin/memory", icon: BrainIcon, title: t.tabs.memory },
+        { href: "/profile/admin/recaps", icon: FileTextIcon, title: t.tabs.digest },
+      ],
+    },
+    {
+      title: t.groups.instance,
+      tabs: [
+        { href: "/profile/admin/status", icon: CheckCircleIcon, title: t.tabs.status },
+        { href: "/profile/admin/server", icon: ServerIcon, title: t.tabs.server },
+        { href: "/profile/admin/machines", icon: MonitorIcon, title: t.tabs.machines },
+        { href: "/profile/admin/updates", icon: RefreshIcon, title: t.tabs.updates },
+      ],
+    },
+  ];
 
   return (
     <>
       <Stack.Screen.Title>{t.title}</Stack.Screen.Title>
-      <ScrollView contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="gap-8 px-4 pb-12 pt-2">
-        <ListGroup>
+      <SettingsScroll>
+        {/* You: the General tab (profile and account). */}
+        <Section>
           <PressableRow onPress={() => router.push("/profile/edit")} accessibilityLabel={[me.name, subtitle, me.email].filter(Boolean).join(", ")}>
-            <ListGroup.Item>
-              <ListGroup.ItemPrefix>
-                <PersonAvatar person={{ id: me.id, name: me.name, image: me.image }} size={64} />
-              </ListGroup.ItemPrefix>
-              <ListGroup.ItemContent>
-                <ListGroup.ItemTitle numberOfLines={1}>{me.name}</ListGroup.ItemTitle>
-                {!!subtitle && <ListGroup.ItemDescription numberOfLines={1}>{subtitle}</ListGroup.ItemDescription>}
-                <ListGroup.ItemDescription numberOfLines={1}>{me.email}</ListGroup.ItemDescription>
-              </ListGroup.ItemContent>
-              <ListGroup.ItemSuffix />
-            </ListGroup.Item>
+            <ListGroup.ItemPrefix>
+              <PersonAvatar person={{ id: me.id, name: me.name, image: me.image }} size={48} />
+            </ListGroup.ItemPrefix>
+            <ListGroup.ItemContent>
+              <ListGroup.ItemTitle numberOfLines={1}>{me.name}</ListGroup.ItemTitle>
+              <ListGroup.ItemDescription numberOfLines={1}>{subtitle || me.email}</ListGroup.ItemDescription>
+            </ListGroup.ItemContent>
+            <ListGroup.ItemSuffix />
           </PressableRow>
-        </ListGroup>
-
-        <Section inset="icon">
-          <TapMenu actions={dnd.actions} accessibilityLabel={`${t.dnd}, ${dnd.on ? dnd.label : t.off}`}>
-            <LinkRow icon={MoonIcon} tone={dnd.on ? "danger" : "default"} title={t.dnd} value={dnd.on ? dnd.label : t.off} disabled={dnd.pending} />
-          </TapMenu>
-          <LinkRow icon={BellIcon} tone="danger" title={t.notifications} value={notifications.granted ? t.on : t.off} onPress={notifications.open} />
-          <LinkRow icon={ClockIcon} tone="success" title={t.availability} description={t.availabilityHelp} onPress={() => router.push("/profile/availability")} />
         </Section>
 
-        <Section inset="icon">
-          <LinkRow icon={PaletteIcon} title={t.appearance} value={t.themes[theme]} onPress={() => router.push("/profile/appearance")} />
+        {/* The user menu's status, and this phone's notifications. */}
+        <Section>
+          <TapMenu actions={dnd.actions} accessibilityLabel={`${t.dnd}, ${dnd.on ? dnd.label : t.off}`}>
+            <LinkRow icon={MoonIcon} tone={dnd.on ? "danger" : undefined} title={t.dnd} value={dnd.on ? dnd.label : t.off} isDisabled={dnd.pending} pointerEvents="none" />
+          </TapMenu>
+          <LinkRow icon={BellIcon} title={t.notifications} value={notifications.granted ? t.on : t.off} onPress={notifications.open} />
+        </Section>
+
+        <Section title={t.groups.account}>
+          <LinkRow icon={CalendarClockIcon} title={t.tabs.availability} onPress={() => router.push("/profile/availability")} />
           <LinkRow
             icon={ShieldCheckIcon}
-            tone="success"
-            title={t.security}
+            title={t.tabs.security}
             value={me.twoFactorEnabled ? twoFactorMessages.on : twoFactorMessages.off}
             onPress={() => router.push("/profile/security" as Href)}
           />
-          <LinkRow icon={ChartIcon} tone="warning" title={t.usage} onPress={() => router.push("/profile/usage")} />
-          {digest ? (
-            <LinkRow icon={FileTextIcon} tone="default" title={t.digest} badge={digest.seen ? null : t.unread} onPress={() => router.push("/digest")} />
-          ) : null}
-          <LinkRow
-            icon={SparklesIcon}
-            tone="default"
-            title={t.whatsNew}
-            badge={latestRelease && me.releaseNotesSeen !== undefined && me.releaseNotesSeen !== latestRelease.version ? t.unread : null}
-            onPress={() => router.push("/whats-new")}
-          />
+          <LinkRow icon={PaletteIcon} title={t.tabs.appearance} value={t.themes[theme]} onPress={() => router.push("/profile/appearance")} />
+          <LinkRow icon={ChartIcon} title={t.tabs.usage} onPress={() => router.push("/profile/usage")} />
         </Section>
 
-        {admin && (
-          <Section inset="icon">
-            <LinkRow icon={SettingsIcon} tone="default" title={t.administration} onPress={() => router.push("/profile/admin" as Href)} />
-            <LinkRow icon={PackageIcon} title={t.marketplace} onPress={() => router.push("/profile/marketplace" as Href)} />
-          </Section>
-        )}
-
-        <Section inset="icon">
-          <LinkRow icon={BuildingIcon} tone="default" title={t.organizations} value={server.orgName} onPress={() => router.push("/profile/organizations")} />
+        {/* The workspace menu: switch organization, its recap; the marketplace for admins. */}
+        <Section>
+          <LinkRow icon={BuildingIcon} title={t.organizations} value={server.orgName} onPress={() => router.push("/profile/organizations")} />
+          {digest ? <LinkRow icon={FileTextIcon} title={t.digest} badge={unread(!digest.seen)} onPress={() => router.push("/digest")} /> : null}
+          {admin && <LinkRow icon={PackageIcon} title={t.marketplace} onPress={() => router.push("/profile/marketplace" as Href)} />}
         </Section>
+
+        {admin &&
+          adminGroups.map((g) => (
+            <Section key={g.title} title={g.title}>
+              {g.tabs.map((x) => (
+                <Link key={x.href} href={x.href as Href} asChild>
+                  <LinkRow icon={x.icon} title={x.title} />
+                </Link>
+              ))}
+            </Section>
+          ))}
 
         {/* Phones signed in to this account (this one included), each can be signed out. */}
         <ConnectedPhones />
 
-        <Section header={t.about}>
-          <LinkRow title={t.appVersion} value={appVersion || "—"} chevron={false} />
-          <LinkRow title={t.serverVersion} value={versions?.app ?? "—"} chevron={false} />
-          <LinkRow title={t.engineVersion} value={versions?.hermes ?? "—"} chevron={false} />
+        <Section title={t.about}>
+          <LinkRow
+            icon={SparklesIcon}
+            title={t.whatsNew}
+            badge={unread(!!latestRelease && me.releaseNotesSeen !== undefined && me.releaseNotesSeen !== latestRelease.version)}
+            onPress={() => router.push("/whats-new")}
+          />
+          <SettingsRow label={t.appVersion} value={appVersion || "—"} />
+          <SettingsRow label={t.serverVersion} value={versions?.app ?? "—"} />
+          <SettingsRow label={t.engineVersion} value={versions?.hermes ?? "—"} />
         </Section>
-
-        <Section footer={server.url.replace(/^https?:\/\//, "")}>
-          <LinkRow title={t.signOut} destructive chevron={false} onPress={() => signOut(server)} />
-        </Section>
-      </ScrollView>
+      </SettingsScroll>
     </>
   );
 }
