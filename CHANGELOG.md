@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.59.0 — 2026-11-13
+
+### Features
+- refonte Geist, artefacts partageables et machines SSH
+
 ## v0.58.0 — 2026-11-12
 
 ### Features
