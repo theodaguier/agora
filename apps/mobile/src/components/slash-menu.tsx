@@ -1,6 +1,6 @@
 import { ListGroup, PressableFeedback, Separator, Surface, Typography } from "heroui-native";
 import { Fragment, type ReactNode } from "react";
-import { ScrollView, View } from "react-native";
+import { ScrollView } from "react-native";
 import { AtIcon, ClockIcon, CommandIcon, PackageIcon, PlugIcon } from "@/components/icons";
 import { withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";

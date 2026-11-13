@@ -51,3 +51,12 @@ export function removeMessage<T extends Timed & { data?: { replyTo?: { id: strin
 
 /** A message its author sent while the bots worked: it waits, in order, until they are done. */
 export type QueuedMessageDto = { id: string; text: string; files: number; createdAt: string };
+
+/** A message as one line of a list's preview: markdown links kept as their words, bare addresses and markup left out. */
+export const plainPreview = (text: string) =>
+  text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[*_`#>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();

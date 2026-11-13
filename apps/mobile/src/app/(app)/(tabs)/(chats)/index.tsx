@@ -1,4 +1,4 @@
-import { renderEvent } from "@agora/core";
+import { plainPreview, renderEvent } from "@agora/core";
 import { common, conversations } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Link, router, Stack } from "expo-router";
@@ -19,17 +19,36 @@ import { headerIcon } from "@/components/header-button";
 import { usePullToRefresh, withTap } from "@/lib/haptics";
 import { useTurns } from "@/lib/realtime";
 import { EmptyState } from "@/components/empty-state";
+import { WarningIcon } from "@/components/icons";
 
 const messages = defineMessages({
-  en: { title: "Chats", waiting: "Waits for your answer", working: "Working", digest: "Morning recap", digestReady: "Morning recap ready" },
-  fr: { title: "Discussions", waiting: "Attend ta réponse", working: "Au travail", digest: "Récap du matin", digestReady: "Récap du matin prêt" },
+  en: {
+    title: "Chats",
+    waiting: "Waits for your answer",
+    working: "Working",
+    digest: "Morning recap",
+    digestReady: "Morning recap ready",
+    agents: "Agents",
+    team: "Team",
+    listError: "Conversations can't be reached right now.",
+  },
+  fr: {
+    title: "Discussions",
+    waiting: "Attend ta réponse",
+    working: "Au travail",
+    digest: "Récap du matin",
+    digestReady: "Récap du matin prêt",
+    agents: "Agents",
+    team: "Équipe",
+    listError: "Les conversations sont injoignables pour le moment.",
+  },
 });
 
 /** The conversation list: the app's home, like the web's sidebar. */
 export default function Chats() {
   const me = useMe();
   const t = { ...messages, ...tr(conversations), you: tr(common).you };
-  const { data: list = [], isPending, refetch } = useQuery(conversationsQuery);
+  const { data: list = [], isPending, error, refetch } = useQuery(conversationsQuery);
   const pull = usePullToRefresh(refetch);
   const rows = useMemo(() => list.map((c) => ({ ...c, name: conversationTitle(c, me.id) })), [list, me.id]);
 
@@ -54,12 +73,28 @@ export default function Chats() {
  >
         <Home />
         {rows.length ? (
-          // Figma « Discussions »: one flat list on the page, no card, no separators.
-          <ListGroup variant="transparent" className="mx-1 mb-8 mt-1">
-            {rows.map((item) => (
-              <Row key={item.id} item={item} me={me.id} t={t} />
-            ))}
-          </ListGroup>
+          // As the web's sidebar: the bots you talk to one-on-one, then the team (colleagues and groups).
+          <View className="mb-8 mt-1 gap-4">
+            {[
+              { key: "agents", label: t.agents, rows: rows.filter((c) => c.kind === "direct" && c.agents.length > 0) },
+              { key: "team", label: t.team, rows: rows.filter((c) => !(c.kind === "direct" && c.agents.length > 0)) },
+            ].map(
+              (g) =>
+                g.rows.length > 0 && (
+                  <View key={g.key}>
+                    <Typography type="body-sm" color="muted" className="mx-5 mb-0.5">
+                      {g.label}
+                    </Typography>
+                    {/* Figma « Discussions »: one flat list on the page, no card, no separators. */}
+                    <ListGroup variant="transparent" className="mx-1">
+                      {g.rows.map((item) => (
+                        <Row key={item.id} item={item} me={me.id} t={t} />
+                      ))}
+                    </ListGroup>
+                  </View>
+                ),
+            )}
+          </View>
         ) : isPending ? (
           <ListGroup className="mx-4 mt-2">
             {[0, 1, 2, 3].map((i) => (
@@ -75,6 +110,8 @@ export default function Chats() {
               </Fragment>
             ))}
           </ListGroup>
+        ) : error ? (
+          <EmptyState icon={WarningIcon} description={t.listError} action={{ label: tr(common).retry, onPress: () => refetch() }} />
         ) : (
           // Nothing yet: say so, and offer the first conversation (Figma « État vide », Grand).
           <EmptyState mascot="violet" title={t.empty} action={{ label: t.newConversation, onPress: () => router.push("/new") }} />
@@ -99,7 +136,9 @@ function Row({
   const working = !waiting && turns.length > 0;
   const preview = c.preview;
   const prefix = preview ? (preview.fromMe ? t.prefix(t.you) : preview.author && c.kind === "group" ? t.prefix(preview.author) : "") : "";
-  const text = preview ? (preview.event ? renderEvent(preview.event, locale) : preview.text).replace(/[*_`#>]/g, "").replace(/\s+/g, " ") : "";
+  // « Pixel est prêt » under Pixel's name says nothing: a list preview is a message, not a setup event.
+  const shown = preview && preview.event?.type !== "agent.ready" ? preview : null;
+  const text = shown ? plainPreview(shown.event ? renderEvent(shown.event, locale) : shown.text) : "";
   return (
     <Link href={{ pathname: "/c/[conversationId]", params: { conversationId: c.id } }} asChild>
       <Link.Trigger>
@@ -121,7 +160,7 @@ function Row({
             <View className="flex-row items-center gap-2">
               {working && <Spinner size="sm" color="default" />}
               <ListGroup.ItemDescription className="flex-1" numberOfLines={1}>
-                {waiting ? t.waiting : working ? t.working : preview ? `${prefix}${text}` : ""}
+                {waiting ? t.waiting : working ? t.working : shown ? `${prefix}${text}` : ""}
               </ListGroup.ItemDescription>
               {waiting ? (
                 <View accessibilityLabel={t.waiting}>

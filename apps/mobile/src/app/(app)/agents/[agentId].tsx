@@ -12,7 +12,8 @@ import { TaskSection } from "@/components/people/task-section";
 import { useMe } from "@/components/server-scope";
 import { agentHref } from "@/lib/agents-admin";
 import { defineMessages, locale, tr } from "@/lib/i18n";
-import { agentProfileQuery, useOpenDirect } from "@/lib/profile";
+import { agentProfileQuery, useOpenDirect, type AgentProfile } from "@/lib/profile";
+import { useStatus } from "@/components/conversation-avatar";
 import { withTap } from "@/lib/haptics";
 import { dateFormat } from "@/lib/intl";
 import { EmptyState } from "@/components/empty-state";
@@ -29,7 +30,7 @@ const messages = defineMessages({
     unavailable: "Profile unavailable.",
     message: "Message",
     openFailed: "Couldn't open the conversation.",
-    botSince: (date: string) => `Bot · since ${date}`,
+    botSince: (date: string) => `Bot since ${date}`,
     botTasks: "Tasks it created",
     noBotTasks: "It hasn't created any tasks yet.",
     edit: "Edit",
@@ -38,12 +39,23 @@ const messages = defineMessages({
     unavailable: "Profil indisponible.",
     message: "Écrire",
     openFailed: "Impossible d'ouvrir la conversation.",
-    botSince: (date: string) => `Bot · depuis ${date}`,
+    botSince: (date: string) => `Bot depuis ${date}`,
     botTasks: "Tâches qu'il a créées",
     noBotTasks: "Il n'a encore créé aucune tâche.",
     edit: "Modifier",
   },
 });
+
+/** Since when it exists, then what it is doing (web: the bot sheet's description), on two lines at most. */
+function BotSubtitle({ agent }: { agent: AgentProfile }) {
+  const status = useStatus({ kind: "agent", agent })?.label;
+  const since = messages.botSince(dateFormat(locale, { month: "long", year: "numeric" }).format(new Date(agent.createdAt)));
+  return (
+    <Typography type="body-sm" color="muted" numberOfLines={2}>
+      {[since, status].filter(Boolean).join(", ")}
+    </Typography>
+  );
+}
 
 export default function BotProfile() {
   const { agentId, conversationId } = useLocalSearchParams<{ agentId: string; conversationId?: string }>();
@@ -83,9 +95,7 @@ export default function BotProfile() {
                   <Typography.Heading type="h4" numberOfLines={1}>
                     {agent.name}
                   </Typography.Heading>
-                  <Typography type="body-sm" color="muted" numberOfLines={1}>
-                    {t.botSince(dateFormat(locale, { month: "long", year: "numeric" }).format(new Date(agent.createdAt)))}
-                  </Typography>
+                  <BotSubtitle agent={agent} />
                 </View>
                 <View className="flex-row flex-wrap gap-2">
                   {/* You may write to it, once it's configured; not from its own conversation. */}

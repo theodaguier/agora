@@ -83,7 +83,7 @@ export function ForwardDialog({ conversationId, message, onClose }: { conversati
   };
 
   const files = message?.data?.attachments?.length ?? 0;
-  const preview = [message?.text.replace(/\s+/g, " ").trim(), files ? t.files(files) : ""].filter(Boolean).join(" · ");
+  const preview = [message?.text.replace(/\s+/g, " ").trim(), files ? t.files(files) : ""].filter(Boolean).join(", ");
   // Filter on the title only.
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();

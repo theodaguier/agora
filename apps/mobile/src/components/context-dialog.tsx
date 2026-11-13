@@ -20,7 +20,7 @@ const messages = defineMessages({
     compacted: "Compacted: the summary goes with your next message.",
     autoCompressions: (n: number) => `Hermes compressed it on its own ${n === 1 ? "once" : `${n} times`}.`,
     totals: "Tokens used in this session",
-    totalsDetail: (input: string, output: string, cache: string) => `${input} in · ${output} out · ${cache} from cache`,
+    totalsDetail: (input: string, output: string, cache: string) => `${input} in, ${output} out, ${cache} from cache`,
     empty: "Nothing sent to the bot since this context started.",
     outside: (engine: string) => `${engine} keeps its context outside Hermes: no details available.`,
     failed: "Couldn't read the context.",
@@ -35,7 +35,7 @@ const messages = defineMessages({
     compacted: "Compacté : le résumé part avec ton prochain message.",
     autoCompressions: (n: number) => `Hermes l'a compressé de lui-même ${n === 1 ? "une fois" : `${n} fois`}.`,
     totals: "Tokens consommés dans cette session",
-    totalsDetail: (input: string, output: string, cache: string) => `${input} en entrée · ${output} en sortie · ${cache} depuis le cache`,
+    totalsDetail: (input: string, output: string, cache: string) => `${input} en entrée, ${output} en sortie, ${cache} depuis le cache`,
     empty: "Rien n'a été envoyé au bot depuis le début de ce contexte.",
     outside: (engine: string) => `${engine} garde son contexte hors de Hermes : pas de détail disponible.`,
     failed: "Impossible de lire le contexte.",
@@ -57,7 +57,7 @@ export function ContextDialog({ conversationId, open, onOpenChange }: { conversa
           ? [
               {
                 title: t.messages,
-                value: `${session.messages}${session.autoCompressions > 0 ? ` · ${t.autoCompressions(session.autoCompressions)}` : ""}`,
+                value: `${session.messages}${session.autoCompressions > 0 ? `, ${t.autoCompressions(session.autoCompressions)}` : ""}`,
               },
               {
                 title: t.totals,
@@ -98,7 +98,7 @@ export function ContextDialog({ conversationId, open, onOpenChange }: { conversa
                   <View className="flex-row items-baseline justify-between gap-3">
                     <Typography weight="semibold">{t.usage}</Typography>
                     <Typography type="body-sm" color="muted" className="tabular-nums">
-                      {session.window ? `≈ ${number.format(session.tokens)} / ${number.format(session.window)}` : `≈ ${number.format(session.tokens)} · ${t.unknownWindow}`}
+                      {session.window ? `≈ ${number.format(session.tokens)} / ${number.format(session.window)}` : `≈ ${number.format(session.tokens)}, ${t.unknownWindow}`}
                     </Typography>
                   </View>
                   {percent !== null && (

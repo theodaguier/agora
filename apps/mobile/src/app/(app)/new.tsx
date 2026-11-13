@@ -9,7 +9,7 @@ import { ScrollView, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { ParticipantAvatar, StatusAvatar } from "@/components/conversation-avatar";
 import { type Participant } from "@/components/participants";
-import { CheckIcon, ChevronLeftIcon, CloseIcon, PlusIcon, SearchIcon, UsersIcon } from "@/components/icons";
+import { CloseIcon, PlusIcon, SearchIcon, UsersIcon } from "@/components/icons";
 import { PressableItem, Section } from "@/components/people/section";
 import { useMe } from "@/components/server-scope";
 import { api } from "@/lib/api";
