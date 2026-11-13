@@ -1,13 +1,6 @@
-import { agentAccentColor } from "@agora/core";
+import { agentAccentColor, shade } from "@agora/core";
 import { useId } from "react";
 import { cn } from "@/lib/utils";
-
-/** `hex` moved towards white (`to` 255) or black (`to` 0) by `k`. */
-function shade(hex: string, to: number, k: number) {
-  const n = Number.parseInt(hex.slice(1), 16);
-  const c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (to - v) * k));
-  return `rgb(${c.join(",")})`;
-}
 
 const FILL = { width: "100%", height: "100%" } as const;
 

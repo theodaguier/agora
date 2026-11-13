@@ -7,24 +7,10 @@ import { CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { defineMessages, useT } from "@/i18n";
+import { queue } from "@agora/core/i18n";
+import { useT } from "@/i18n";
 
-const messages = defineMessages({
-  en: {
-    title: "Queued",
-    edit: "Edit",
-    sendNow: "Send now",
-    remove: "Remove",
-    files: (n: number) => (n === 1 ? "1 file" : `${n} files`),
-  },
-  fr: {
-    title: "En file d'attente",
-    edit: "Modifier",
-    sendNow: "Envoyer maintenant",
-    remove: "Retirer",
-    files: (n: number) => (n === 1 ? "1 fichier" : `${n} fichiers`),
-  },
-});
+const messages = queue;
 
 export type QueueItem = { id: string; text: string; files: number };
 

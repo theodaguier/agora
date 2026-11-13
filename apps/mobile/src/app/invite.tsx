@@ -1,3 +1,4 @@
+import { initials, personTint } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -8,7 +9,7 @@ import { View, type TextInput } from "react-native";
 import { AuthLinkStep } from "@/components/auth-link-step";
 import { AuthScreen } from "@/components/auth-screen";
 import { LoginField } from "@/components/login-field";
-import { Marble } from "@/components/marble";
+import { initialsSize } from "@/components/conversation-avatar";
 import { ApiError, findOrg, signIn, type Org } from "@/lib/api";
 import { publicRequest, readAuthParams } from "@/lib/auth-links";
 import { readLocalFile } from "@/lib/files";
@@ -226,8 +227,12 @@ function InvitationForm({ server, token, org, email }: { server: string; token: 
         <TapMenu actions={photoActions} accessibilityLabel={photo ? t.changePhoto : t.addPhoto}>
           <Avatar size="lg" alt={name} className="size-22">
             {!!photo && <Avatar.Image source={{ uri: photo.uri }} />}
-            <Avatar.Fallback>
-              <Marble name={email} size={88} />
+            <Avatar.Fallback
+              animation="disabled"
+              classNames={{ text: "font-semibold" }}
+              styles={{ container: { backgroundColor: personTint(email) }, text: { color: "rgba(255,255,255,0.9)", fontSize: initialsSize(88) } }}
+            >
+              {initials(name || email)}
             </Avatar.Fallback>
           </Avatar>
         </TapMenu>

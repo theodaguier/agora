@@ -2,14 +2,7 @@ import type { AgentSummary, Person } from "@/lib/api";
 import { tr } from "@/i18n";
 import { conversations } from "@agora/core/i18n";
 
-export const initials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+export { initials } from "@agora/core";
 
 export type Participant = { kind: "agent"; agent: AgentSummary } | { kind: "user"; person: Person };
 

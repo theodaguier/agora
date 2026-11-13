@@ -1,6 +1,6 @@
 /* apps/web/src/lib/code-sessions.ts: same queries, same calls. */
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
-import type { CodeAccount, CodeApprovalAnswer, CodePermissionMode, CodePriority, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
+import type { CodeAccount, CodeApprovalAnswer, CodeCommand, CodeEngine, CodePermissionMode, CodePriority, CodeRepo, CodeSession, CodeSessionDetail, CodeStep } from "@agora/core";
 import { api, conversationPath } from "./api";
 
 /** Claude Code sessions of a conversation (apps/api/src/code-sessions.ts): list for the cards, detail with steps for the panel. */
@@ -112,13 +112,29 @@ export const refreshCodeSessionGit = (conversationId: string, id: string) =>
 
 export const stopCodeSession = (conversationId: string, id: string) => api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/stop`), { method: "POST" });
 
-/** Models the owner may give a session (the Claude Code engine's list, minus blocked ones). */
-export const codeModelsQuery = (conversationId: string) =>
+/** Models the owner may give a session of this engine (the engine's list, minus blocked ones). */
+export const codeModelsQuery = (conversationId: string, engine: CodeEngine = "claude") =>
   queryOptions({
-    queryKey: ["code-models", conversationId],
-    queryFn: () => api<{ id: string; label?: string; description?: string; reasoning?: boolean }[]>(path(conversationId, "/models")),
+    queryKey: ["code-models", conversationId, engine],
+    queryFn: () => api<{ id: string; label?: string; description?: string; reasoning?: boolean }[]>(path(conversationId, `/models?engine=${engine}`)),
     staleTime: 10 * 60_000,
   });
+
+/** What a session of this engine offers after "/" before it runs: the engine's commands, the team's skills. */
+export const codeCommandsQuery = (conversationId: string, engine: CodeEngine) =>
+  queryOptions({
+    queryKey: ["code-commands", conversationId, engine],
+    queryFn: () => api<CodeCommand[]>(path(conversationId, `/commands?engine=${engine}`)),
+    staleTime: 60_000,
+  });
+
+/** Messages queued while the session works: sent now, reworded, or taken out. */
+export const sendQueuedNow = (conversationId: string, id: string, queuedId: string) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/queue/${encodeURIComponent(queuedId)}/send`), { method: "POST" });
+export const editQueued = (conversationId: string, id: string, queuedId: string, text: string) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/queue/${encodeURIComponent(queuedId)}`), { method: "PATCH", body: JSON.stringify({ text }) });
+export const removeQueued = (conversationId: string, id: string, queuedId: string) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/queue/${encodeURIComponent(queuedId)}`), { method: "DELETE" });
 
 export const setCodeSessionModel = (conversationId: string, id: string, model: string) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/model`), { method: "PUT", body: JSON.stringify({ model }) });

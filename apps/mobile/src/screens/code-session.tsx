@@ -1,106 +1,91 @@
 import {
   CODE_ENGINE_NAMES,
-  CODE_PERMISSION_MODES,
+  codeEngineModes,
   codeSessionState,
   codeStatusText,
-  OTHER_ANSWER,
-  questionAnswer,
+  modelName,
   rankByQuery,
-  type CodeApproval,
-  type CodeBotQuestion,
+  toolLabel,
+  type CodeCommand,
   type CodeGit,
   type CodeIssue,
-  type CodeQuestion,
+  type CodePermissionMode,
   type CodeSession,
+  type CodeSessionDetail,
   type CodeStep,
-  toolLabel,
 } from "@agora/core";
-import { codeSessions, common } from "@agora/core/i18n";
+import { codeSessions, common, pullRequests } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { Stack, router, useFocusEffect, type Href } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import {
-  Accordion,
-  Alert,
-  BottomSheet,
-  Button,
-  Card,
-  Chip,
-  ControlField,
-  Description,
-  Input,
-  Label,
-  LinkButton,
-  ListGroup,
-  Menu,
-  PressableFeedback,
-  Radio,
-  RadioGroup,
-  Separator,
-  Spinner,
-  Surface,
-  TextArea,
-  TextField,
-  Typography,
-  useBottomSheetAwareHandlers,
-} from "heroui-native";
-import { Fragment, useCallback, useRef, useState, type ComponentRef, type ReactNode } from "react";
-import { AppState, ScrollView, View } from "react-native";
+import { Accordion, Alert, Button, Card, Description, Input, LinkButton, ListGroup, PressableFeedback, Separator, Spinner, Surface, TextArea, TextField, Typography } from "heroui-native";
+import { Fragment, useCallback, useLayoutEffect, useRef, useState, type ComponentRef } from "react";
+import { AppState, View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAdminToast } from "@/components/admin/ui";
 import { SentAttachments } from "@/components/attachments";
+import { BrandLogo } from "@/components/brand-logo";
 import { AttachMenu } from "@/components/composer/attach-menu";
 import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
 import { UserBubble } from "@/components/bubbles";
-import { ENGINE_PROVIDER, isActive, priorityEntries, useSetCodePriority } from "@/components/code-session";
-import { CodePriorityIcon, CodeStateIcon, codeStateTone, IssueIcon, ProgressMark, TaskStatusIcon } from "@/components/code-session-marks";
+import { ENGINE_PROVIDER, isActive, PRIORITY_ICONS, priorityEntries, useSetCodePriority } from "@/components/code-session";
+import { CodeBlock, SessionDecision } from "@/components/code-session-decision";
+import { CodeStateIcon, codeStateTone, IssueIcon, ProgressMark, TaskStatusIcon } from "@/components/code-session-marks";
 import { Shimmer } from "@/components/shimmer";
 import { confirmAction } from "@/components/confirm-action";
-import { ArrowUpIcon, BranchIcon, ChartIcon, CloseCircleIcon, ExternalLinkIcon, KeyIcon, StopIcon, ToolIcon, UserIcon } from "@/components/icons";
-import { MenuButton, MenuContent, TapMenu } from "@/components/menus";
+import { ArrowUpIcon, BranchIcon, CheckCircleIcon, ChevronDownIcon, CloseCircleIcon, BanIcon, SparklesIcon, StopIcon, TerminalIcon, ToolIcon } from "@/components/icons";
+import { MenuButton, TapMenu, type MenuEntry } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
 import { ModelLogo } from "@/components/model-logo";
+import { PullRequestCard } from "@/components/pull-request";
+import { QueueList } from "@/components/queue-list";
 import { format } from "@/components/profile/usage-format";
 import { useMe } from "@/components/server-scope";
 import {
-  answerCodeApproval,
   applyCodeSession,
   codeAccountsQuery,
+  codeCommandsQuery,
   codeModelsQuery,
   codeSessionQuery,
-  deleteCodeSession,
   detachCodeSessionIssue,
-  dropCodeSession,
+  editQueued,
   refreshCodeSessionGit,
   removeCodeSessionWorktree,
+  removeQueued,
   runCodeGit,
+  sendQueuedNow,
   sendToCodeSession,
   setCodeSessionMode,
   setCodeSessionModel,
+  setCodeSessionParked,
   stopCodeSession,
   switchCodeSessionAccount,
   writeCommitMessage,
   type CodeGitRequest,
 } from "@/lib/code-sessions";
 import { withTap } from "@/lib/haptics";
-import { locale, tr } from "@/lib/i18n";
+import { defineMessages, locale, tr } from "@/lib/i18n";
 import { dateFormat } from "@/lib/intl";
 import { cn } from "@/lib/utils";
 
 /*
- * apps/web/src/components/CodeSession.tsx's panel as a screen pushed over the conversation. No tabs:
- * one stream, as on the web. Its line (state, engine, issue, branch), the branch and its pull request
- * (a tap opens the files and the git actions in a sheet), its tasks, then every step, live, ending on
- * what waits for an answer (an approval, questions, a plan). Only the field rides on the keyboard. The
- * priority is the header's icon button, the session's details are in its menu. The pull request's form
- * is a form sheet (app/(app)/code/…/pull-request.tsx).
+ * apps/web/src/components/CodeSessionView as a screen pushed over the conversation. Its header is the
+ * web's PaneHeader: the engine's tile and the title, then one line, who then where then what (the
+ * engine, its branch, its issue, its state, a menu for its owner); its « … » holds the details, the
+ * priority and the project's secrets. Its stream is the web's Avancement: the branch and its pull
+ * request, its tasks, every step live, what waits for an answer, the worktree once done. Only the field
+ * (with what waits in its queue) rides on the keyboard. The pull request's form is a form sheet
+ * (app/(app)/code/…/pull-request.tsx), the secrets another.
  */
 
-type SheetKind = "info" | "git";
+/** What a session says when it can't be reached (web CodeSession's stateMessages). */
+const messages = defineMessages({
+  en: { unreachableTitle: "Session unreachable", unreachable: "This session couldn't be loaded for now. Try again in a moment." },
+  fr: { unreachableTitle: "Session injoignable", unreachable: "Cette session n'a pas pu être chargée pour le moment. Réessaie dans un instant." },
+});
 
 export function CodeSessionScreen({ conversationId, sessionId }: { conversationId: string; sessionId: string }) {
   const t = tr(codeSessions);
@@ -108,81 +93,58 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const keyboardOffset = Math.max(0, insets.bottom - 8);
-  const { data: session, error } = useQuery(codeSessionQuery(conversationId, sessionId));
+  const { data: session, error, refetch } = useQuery(codeSessionQuery(conversationId, sessionId));
   const scroller = useRef<ComponentRef<typeof KeyboardChatScrollView>>(null);
   const follow = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
   const [barHeight, setBarHeight] = useState(0);
-  const [sheet, setSheet] = useState<SheetKind | null>(null);
   const owner = !!session && session.requestedBy === me.id;
   useGitRefresh(conversationId, sessionId, !!session?.git && !session.worktree?.removedAt);
-  const qc = useQueryClient();
-  const toast = useAdminToast();
-  // Deleted by its owner: its run stops, and the screen gives way to the conversation.
-  const remove = useMutation({
-    mutationFn: () => deleteCodeSession(conversationId, sessionId),
-    onSuccess: () => {
-      router.back();
-      dropCodeSession(qc, conversationId, sessionId);
-      toast.success(t.deleted);
-    },
-    onError: (e) => toast.failed(e),
-  });
-  const confirmDelete = async () => {
-    if (session && (await confirmAction({ title: t.deleteTitle(session.title), description: t.deleteHelp, action: t.deleteSession }))) remove.mutate();
-  };
 
   const toEnd = (animated: boolean) => {
     follow.current = true;
     scroller.current?.scrollToEnd({ animated });
   };
-  const pending = session && (
-    <>
-      {session.approval?.kind === "question" && session.approval.questions ? (
-        <QuestionBlock conversationId={conversationId} session={session} approval={session.approval} questions={session.approval.questions} canAnswer={owner} />
-      ) : session.approval?.kind === "plan" ? (
-        <PlanBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
-      ) : (
-        session.approval && <ApprovalBlock conversationId={conversationId} session={session} approval={session.approval} canAnswer={owner} />
-      )}
-      {session.question && <BotQuestionBlock conversationId={conversationId} session={session} question={session.question} canAnswer={owner} />}
-    </>
-  );
+  // A new decision comes into view: the stream shows it, at its end.
+  const waitingFor = session?.approval?.id ?? session?.question?.text;
+  useLayoutEffect(() => {
+    if (waitingFor) toEnd(true);
+  }, [waitingFor]);
+  const waiting = !!(session?.approval || session?.question);
 
   return (
     <>
-      <Stack.Screen options={{ title: session?.title ?? t.codeSession, headerTransparent: true, headerBlurEffect: "systemChromeMaterial" }} />
+      <Stack.Screen
+        options={{
+          title: session?.title ?? t.codeSession,
+          headerTransparent: true,
+          headerBlurEffect: "systemChromeMaterial",
+          headerTitle: () => <SessionTitle conversationId={conversationId} session={session} owner={owner} />,
+        }}
+      />
       {session && (
         <Stack.Toolbar placement="right">
-          {owner && (
-            <Stack.Toolbar.View>
-              <PriorityButton session={session} />
-            </Stack.Toolbar.View>
-          )}
           <Stack.Toolbar.View>
-            <MenuButton
-              icon="ellipsis"
-              label={t.codeSession}
-              actions={[
-                { label: t.details, icon: "info.circle", onPress: () => setSheet("info") },
-                owner && !!session.repo && { label: t.credentials.open, icon: "key", onPress: () => router.push(credentialsHref(conversationId, session.id)) },
-                owner && "divider",
-                owner && { label: t.deleteSession, icon: "trash", destructive: true, disabled: remove.isPending, onPress: () => void confirmDelete() },
-              ]}
-            />
+            <DetailsMenu conversationId={conversationId} session={session} owner={owner} />
           </Stack.Toolbar.View>
         </Stack.Toolbar>
       )}
       <Surface className="flex-1 p-0">
         {!session ? (
-          <View className="flex-1 items-center justify-center px-4">
+          <View className="flex-1 items-center justify-center gap-3 px-4">
             {error ? (
-              <Alert status="danger">
-                <Alert.Indicator />
-                <Alert.Content>
-                  <Alert.Title>{error.message}</Alert.Title>
-                </Alert.Content>
-              </Alert>
+              <>
+                <Alert status="danger">
+                  <Alert.Indicator />
+                  <Alert.Content>
+                    <Alert.Title>{messages.unreachableTitle}</Alert.Title>
+                    <Alert.Description>{messages.unreachable}</Alert.Description>
+                  </Alert.Content>
+                </Alert>
+                <Button variant="secondary" onPress={withTap(() => void refetch())}>
+                  {tr(common).retry}
+                </Button>
+              </>
             ) : (
               <Spinner />
             )}
@@ -195,7 +157,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
               keyboardLiftBehavior="whenAtEnd"
               offset={keyboardOffset}
               className="flex-1"
-              contentContainerClassName="gap-4 px-4"
+              contentContainerClassName="gap-6 px-4"
               contentContainerStyle={{ paddingTop: headerHeight + 12, paddingBottom: barHeight + 16 }}
               scrollIndicatorInsets={{ top: headerHeight, bottom: barHeight }}
               keyboardDismissMode="interactive"
@@ -210,24 +172,8 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 setAtBottom(bottom);
               }}
             >
-              <HeaderLine conversationId={conversationId} session={session} owner={owner} />
               {session.limit && <LimitAlert conversationId={conversationId} session={session} limit={session.limit} owner={owner} />}
-              {session.git && <ChangesCard git={session.git} onOpen={() => setSheet("git")} />}
-              <TodoSection session={session} />
-              {session.steps.length === 0 && !session.approval && !session.question ? (
-                <View className="items-center py-12">
-                  <Spinner />
-                </View>
-              ) : (
-                <View className="gap-4">
-                  <Timeline steps={session.steps} running={session.status === "running"} />
-                  {/* While it works and waits for nobody: what it does now, a light passing over the words. */}
-                  {session.status === "running" && !session.approval && !session.question && <Shimmer>{session.activity || t.status.running}</Shimmer>}
-                </View>
-              )}
-              {/* What waits for an answer ends the stream, where the run stopped. */}
-              {pending}
-              {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
+              <Overview conversationId={conversationId} session={session} owner={owner} waiting={waiting} />
             </KeyboardChatScrollView>
 
             <KeyboardStickyView
@@ -253,15 +199,6 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                 )}
               </Surface>
             </KeyboardStickyView>
-
-            <SessionSheet open={sheet === "info"} onClose={() => setSheet(null)} title={t.details}>
-              <InfoList conversationId={conversationId} session={session} owner={owner} onLeave={() => setSheet(null)} />
-            </SessionSheet>
-            {session.git && (
-              <SessionSheet open={sheet === "git"} onClose={() => setSheet(null)} title={t.git.changesTitle} snapPoints={["70%", "92%"]}>
-                <ChangesPanel conversationId={conversationId} session={session} git={session.git} owner={owner && !session.worktree?.removedAt} onLeave={() => setSheet(null)} />
-              </SessionSheet>
-            )}
           </>
         )}
       </Surface>
@@ -269,49 +206,115 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
   );
 }
 
-/**
- * Its line under the title (web PaneHeader's description, Figma « En-tête de session »): its state with
- * its mark, the engine said once, its issue, its branch; spaced, each with its mark, no separators.
- */
-function HeaderLine({ conversationId, session, owner }: { conversationId: string; session: CodeSession; owner: boolean }) {
-  const t = tr(codeSessions);
-  const state = codeSessionState(session);
-  const tone = codeStateTone(state);
-  const branch = session.git?.branch ?? session.worktree?.branch;
+/* ---------- header ---------- */
+
+/** A session's tile: its engine's logo (Claude Code, Codex), as on its card in the thread; its name for VoiceOver. */
+function EngineTile({ engine }: { engine?: CodeSession["engine"] }) {
   return (
-    <View className="flex-row flex-wrap items-center gap-x-3.5 gap-y-1">
-      <View className="flex-row items-center gap-1.5">
-        <ModelLogo provider={ENGINE_PROVIDER[session.engine]} model={session.engine === "cursor" ? undefined : session.engine} size={14} />
-        <Typography type="body-sm" color="muted">
-          {CODE_ENGINE_NAMES[session.engine]}
+    <Surface variant="tertiary" accessibilityLabel={engine ? CODE_ENGINE_NAMES[engine] : undefined} className="size-6 items-center justify-center rounded-md p-0 shadow-none">
+      {engine ? <ModelLogo provider={ENGINE_PROVIDER[engine]} model={engine === "cursor" ? undefined : engine} size={14} /> : <TerminalIcon size={14} className="text-muted" />}
+    </Surface>
+  );
+}
+
+/**
+ * The header's title (web PaneHeader): the engine's tile and the title; under it, one line, who then
+ * where then what: the engine, its branch (opens on GitHub), its issue, then its state (a menu for its
+ * owner). Spaced, each with its mark, no separators.
+ */
+function SessionTitle({ conversationId, session, owner }: { conversationId: string; session?: CodeSession; owner: boolean }) {
+  const t = tr(codeSessions);
+  const branch = session?.git?.branch ?? session?.worktree?.branch;
+  return (
+    <View className="max-w-72 items-center gap-0.5">
+      <View className="min-w-0 flex-row items-center gap-2">
+        <EngineTile engine={session?.engine} />
+        <Typography weight="medium" numberOfLines={1} className="shrink">
+          {session?.title ?? t.codeSession}
         </Typography>
       </View>
-      {!!branch && (
-        <PressableFeedback
-          isDisabled={!session.repo}
-          onPress={() => session.repo && void Linking.openURL(`https://github.com/${session.repo}/tree/${encodeURI(branch)}`)}
-          accessibilityRole="link"
-          accessibilityLabel={[session.repo, branch].filter(Boolean).join(" · ")}
-          className="min-w-0 shrink flex-row items-center gap-1"
-        >
-          <BranchIcon size={14} className="text-muted" />
-          <Typography type="body-sm" color="muted" numberOfLines={1} className="min-w-0 shrink">
-            {branch}
+      {session && (
+        <View className="min-w-0 flex-row items-center gap-3">
+          <Typography type="body-xs" color="muted" className="shrink-0">
+            {CODE_ENGINE_NAMES[session.engine]}
           </Typography>
-        </PressableFeedback>
+          {!!branch && (
+            <PressableFeedback
+              isDisabled={!session.repo}
+              onPress={withTap(() => session.repo && void Linking.openURL(`https://github.com/${session.repo}/tree/${encodeURI(branch)}`))}
+              accessibilityRole="link"
+              accessibilityLabel={[session.repo, branch].filter(Boolean).join(", ")}
+              className="min-w-0 shrink flex-row items-center gap-1"
+            >
+              <BranchIcon size={12} className="text-muted" />
+              <Typography type="body-xs" color="muted" numberOfLines={1} className="min-w-0 shrink">
+                {branch}
+              </Typography>
+            </PressableFeedback>
+          )}
+          {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
+          <StatusMenu session={session} owner={owner} />
+        </View>
       )}
-      {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
-      <View className="flex-row items-center gap-1.5">
-        <CodeStateIcon state={state} size={14} />
-        <Typography type="body-sm" color={tone ? "default" : "muted"} className={tone}>
-          {codeStatusText(t, session)}
-        </Typography>
-      </View>
     </View>
   );
 }
 
-/** Its issue in its line: open it on GitHub; its owner detaches it when the session linked the wrong one. */
+/** Its state, as a mark and its words, coloured for what waits for you and a failure. */
+function StatusText({ session }: { session: CodeSession }) {
+  const t = tr(codeSessions);
+  const state = codeSessionState(session);
+  const tone = codeStateTone(state);
+  return (
+    <View className="shrink-0 flex-row items-center gap-1">
+      <CodeStateIcon state={state} size={12} />
+      <Typography type="body-xs" color={tone ? "default" : "muted"} className={tone}>
+        {codeStatusText(t, session)}
+      </Typography>
+    </View>
+  );
+}
+
+/**
+ * The session's state, changed right there (web StatusMenu): set it aside or bring it back, stop it
+ * while it works. Its owner only; others read it.
+ */
+function StatusMenu({ session, owner }: { session: CodeSession; owner: boolean }) {
+  const t = tr(codeSessions);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  const park = useMutation({
+    mutationFn: (parked: boolean) => setCodeSessionParked(session.conversationId, session.id, parked),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      toast.success(s.parked ? t.parkedNotice : t.unparkedNotice);
+    },
+    onError: (e) => toast.failed(e),
+  });
+  const stop = useMutation({
+    mutationFn: () => stopCodeSession(session.conversationId, session.id),
+    onSuccess: (s) => applyCodeSession(qc, s),
+    onError: (e) => toast.failed(e),
+  });
+  if (!owner) return <StatusText session={session} />;
+  const state = codeSessionState(session);
+  const working = state === "running" || state === "waiting";
+  return (
+    <TapMenu
+      accessibilityLabel={codeStatusText(t, session)}
+      actions={[
+        session.parked
+          ? { label: t.unpark, icon: "circle", onPress: () => park.mutate(false) }
+          : { label: t.park, icon: "circle.dashed", disabled: working, onPress: () => park.mutate(true) },
+        working && { label: stop.isPending ? t.stopping : t.stop, icon: "stop.circle", disabled: stop.isPending, onPress: () => stop.mutate() },
+      ]}
+    >
+      <StatusText session={session} />
+    </TapMenu>
+  );
+}
+
+/** Its issue in the header: open it on GitHub; its owner detaches it when the session linked the wrong one. */
 function IssueMenu({ conversationId, session, issue, owner }: { conversationId: string; session: CodeSession; issue: CodeIssue; owner: boolean }) {
   const t = tr(codeSessions);
   const qc = useQueryClient();
@@ -332,14 +335,20 @@ function IssueMenu({ conversationId, session, issue, owner }: { conversationId: 
           title: issue.title,
           actions: [
             { label: t.issue.open, icon: "link", onPress: () => void Linking.openURL(issue.url) },
-            owner && { label: t.issue.detach, icon: "xmark", destructive: true, disabled: detach.isPending, onPress: () => void confirmAction({ title: t.issue.detachTitle(issue.number), description: t.issue.detachHelp, action: t.issue.detach }).then((ok) => ok && detach.mutate()) },
+            owner && {
+              label: t.issue.detach,
+              icon: "xmark",
+              destructive: true,
+              disabled: detach.isPending,
+              onPress: () => void confirmAction({ title: t.issue.detachTitle(issue.number), description: t.issue.detachHelp, action: t.issue.detach }).then((ok) => ok && detach.mutate()),
+            },
           ],
         },
       ]}
     >
-      <View className="flex-row items-center gap-1">
-        <IssueIcon size={14} />
-        <Typography type="body-sm" color="muted">
+      <View className="shrink-0 flex-row items-center gap-1">
+        <IssueIcon size={12} />
+        <Typography type="body-xs" color="muted">
           #{issue.number}
         </Typography>
       </View>
@@ -347,30 +356,78 @@ function IssueMenu({ conversationId, session, issue, owner }: { conversationId: 
   );
 }
 
-/** The header's priority (its owner): its mark alone, opening the five priorities (Figma « Menu de priorité »). */
-function PriorityButton({ session }: { session: CodeSession }) {
+const credentialsHref = (conversationId: string, sessionId: string) => `/code/${conversationId}/${sessionId}/credentials` as Href;
+export const pullRequestHref = (conversationId: string, sessionId: string) => `/code/${conversationId}/${sessionId}/pull-request` as Href;
+
+const usageTime = (u: NonNullable<CodeSession["usage"]>) => {
+  const minutes = u.durationMs / 60_000;
+  return minutes < 1 ? `${Math.max(1, Math.round(u.durationMs / 1000))} s` : `${Math.round(minutes)} min`;
+};
+
+/**
+ * The session's « … » (web SessionDetails): its details as plain lines (the model for those who cannot
+ * change it, the account, what it consumed), then its owner's priority and the repository's secrets.
+ * Nothing to show: no button.
+ */
+function DetailsMenu({ conversationId, session, owner }: { conversationId: string; session: CodeSession; owner: boolean }) {
   const t = tr(codeSessions);
   const set = useSetCodePriority();
+  const u = session.usage;
+  const lines = [
+    !owner && session.model ? { label: t.model, value: modelName(session.model), icon: "cpu" } : null,
+    owner && session.account?.email ? { label: t.account, value: session.account.email, icon: "person" } : null,
+    u ? { label: t.usage, value: `${t.estimated(format.cost(u.costUsd))}, ${usageTime(u)}`, icon: "chart.bar" } : null,
+  ].filter((x) => x !== null);
+  const canSecrets = owner && !!session.repo;
+  if (!lines.length && !owner) return null;
+  const actions: MenuEntry[] = [
+    // Read, not chosen: each line its label over its value.
+    ...lines.map((l): MenuEntry => ({ title: l.label, actions: [{ label: l.value, icon: l.icon, disabled: true, onPress: () => {} }] })),
+    lines.length > 0 && owner && "divider",
+    owner && { submenu: `${t.priority} : ${t.priorities[session.priority]}`, icon: PRIORITY_ICONS[session.priority], actions: priorityEntries(session, (priority) => set.mutate({ conversationId, id: session.id, priority })) },
+    canSecrets && "divider",
+    canSecrets && { label: t.credentials.open, icon: "key", onPress: () => router.push(credentialsHref(conversationId, session.id)) },
+  ];
+  return <MenuButton icon="ellipsis" label={t.details} actions={actions} />;
+}
+
+/* ---------- stream ---------- */
+
+/** Avancement: its branch and pull request, its tasks, its steps live, what waits for an answer, its worktree once done. */
+function Overview({ conversationId, session, owner, waiting }: { conversationId: string; session: CodeSessionDetail; owner: boolean; waiting: boolean }) {
+  const t = tr(codeSessions);
+  const running = session.status === "running";
   return (
-    <Menu>
-      <Menu.Trigger asChild>
-        <Button isIconOnly size="sm" variant="ghost" accessibilityLabel={`${t.priority} ${t.priorities[session.priority]}`} isDisabled={set.isPending}>
-          <CodePriorityIcon priority={session.priority} size={18} />
-        </Button>
-      </Menu.Trigger>
-      <MenuContent entries={priorityEntries(session, (priority) => set.mutate({ conversationId: session.conversationId, id: session.id, priority }))} />
-    </Menu>
+    <>
+      <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
+      {session.todos.length > 0 && <SessionTodos session={session} />}
+      {session.steps.length === 0 && !waiting ? (
+        <View className="items-center gap-3 py-12">
+          <Spinner />
+          <Typography type="body-sm" color="muted">
+            {t.empty}
+          </Typography>
+        </View>
+      ) : (
+        <View className="gap-4">
+          <Timeline steps={session.steps} running={running} />
+          {/* While it works and waits for nobody: what it does now, a light passing over the words. */}
+          {running && !waiting && <Shimmer>{session.activity || t.status.running}</Shimmer>}
+        </View>
+      )}
+      {/* What waits for an answer ends the stream, right above the field. */}
+      <SessionDecision conversationId={conversationId} session={session} canAnswer={owner} />
+      {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
+    </>
   );
 }
 
 /**
- * Its shared task list (web SessionTodos), at the top of the stream: « Tâches » and done over total in a
- * lighter grey, a thin bar of what is done, then each task with its state's mark; the one under way
- * shimmers while it runs.
+ * Its tasks, as Linear's sub-issues (web SessionTodos): « Tâches 2/3 » over a thin bar, then one tight
+ * line each with the app's task mark; the one under way shimmers while the session works.
  */
-function TodoSection({ session }: { session: CodeSession }) {
+function SessionTodos({ session }: { session: CodeSession }) {
   const v = tr(codeSessions).view;
-  if (!session.todos.length) return null;
   const running = session.status === "running";
   const done = session.todos.filter((x) => x.status === "completed").length;
   const total = session.todos.length;
@@ -413,29 +470,6 @@ function TodoSection({ session }: { session: CodeSession }) {
   );
 }
 
-/** A sheet over the session: its details, its task list or its branch. */
-function SessionSheet({ open, onClose, title, snapPoints = ["50%", "92%"], children }: { open: boolean; onClose: () => void; title: string; snapPoints?: string[]; children: ReactNode }) {
-  const insets = useSafeAreaInsets();
-  return (
-    <BottomSheet isOpen={open} onOpenChange={(next) => !next && onClose()}>
-      <BottomSheet.Portal>
-        <BottomSheet.Overlay />
-        <BottomSheet.Content snapPoints={snapPoints} enableDynamicSizing={false} enableOverDrag={false} keyboardBehavior="extend" contentContainerClassName="h-full">
-          <View className="flex-row items-center justify-between pb-3">
-            <BottomSheet.Title>{title}</BottomSheet.Title>
-            <BottomSheet.Close />
-          </View>
-          <View className="min-h-0 flex-1">
-            <BottomSheetScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerClassName="gap-4 pt-1" contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}>
-              {children}
-            </BottomSheetScrollView>
-          </View>
-        </BottomSheet.Content>
-      </BottomSheet.Portal>
-    </BottomSheet>
-  );
-}
-
 const GIT_REFRESH_MS = 30_000;
 
 /**
@@ -466,89 +500,6 @@ function useGitRefresh(conversationId: string, sessionId: string, enabled: boole
   );
 }
 
-/**
- * The session's details, in the sheet of the header's menu: the model, the Claude account, the folder
- * (a tap copies its path), what it consumed, and the repository's credentials for its owner.
- */
-function InfoList({ conversationId, session, owner, onLeave }: { conversationId: string; session: CodeSession; owner: boolean; onLeave: () => void }) {
-  const t = tr(codeSessions);
-  const c = tr(common);
-  const toast = useAdminToast();
-  const u = session.usage;
-  const minutes = u ? u.durationMs / 60_000 : 0;
-  const time = !u ? "" : minutes < 1 ? `${Math.max(1, Math.round(u.durationMs / 1000))} s` : `${Math.round(minutes)} min`;
-  const rows: ReactNode[] = [
-    !!session.model && (
-      <ListGroup.Item key="model">
-        <ListGroup.ItemPrefix>
-          <ModelLogo provider="anthropic" model={session.model} size={20} />
-        </ListGroup.ItemPrefix>
-        <ListGroup.ItemContent>
-          <ListGroup.ItemTitle>{t.model}</ListGroup.ItemTitle>
-          <ListGroup.ItemDescription>{session.model}</ListGroup.ItemDescription>
-        </ListGroup.ItemContent>
-      </ListGroup.Item>
-    ),
-    owner && !!session.account?.email && (
-      <ListGroup.Item key="account">
-        <ListGroup.ItemPrefix>
-          <UserIcon size={20} className="text-muted" />
-        </ListGroup.ItemPrefix>
-        <ListGroup.ItemContent>
-          <ListGroup.ItemTitle>{t.account}</ListGroup.ItemTitle>
-          <ListGroup.ItemDescription>{session.account.email}</ListGroup.ItemDescription>
-          {!!session.account.plan && <ListGroup.ItemDescription>{session.account.plan}</ListGroup.ItemDescription>}
-        </ListGroup.ItemContent>
-      </ListGroup.Item>
-    ),
-    !!u && (
-      <ListGroup.Item key="usage">
-        <ListGroup.ItemPrefix>
-          <ChartIcon size={20} className="text-muted" />
-        </ListGroup.ItemPrefix>
-        <ListGroup.ItemContent>
-          <ListGroup.ItemTitle>{t.usage}</ListGroup.ItemTitle>
-          <View className="flex-row gap-3">
-            <ListGroup.ItemDescription>{t.estimated(format.cost(u.costUsd))}</ListGroup.ItemDescription>
-            <ListGroup.ItemDescription>{time}</ListGroup.ItemDescription>
-          </View>
-        </ListGroup.ItemContent>
-      </ListGroup.Item>
-    ),
-    owner && !!session.repo && (
-      <ListGroup.Item
-        key="credentials"
-        onPress={withTap(() => {
-          onLeave();
-          router.push(credentialsHref(conversationId, session.id));
-        })}
-      >
-        <ListGroup.ItemPrefix>
-          <KeyIcon size={20} className="text-muted" />
-        </ListGroup.ItemPrefix>
-        <ListGroup.ItemContent>
-          <ListGroup.ItemTitle>{t.credentials.open}</ListGroup.ItemTitle>
-          <ListGroup.ItemDescription>{session.repo}</ListGroup.ItemDescription>
-        </ListGroup.ItemContent>
-        <ListGroup.ItemSuffix />
-      </ListGroup.Item>
-    ),
-  ].filter(Boolean);
-  return (
-    <View className="gap-2">
-      <ListGroup>
-        {rows.map((row, i) => (
-          <Fragment key={i}>
-            {i > 0 && <Separator className="mx-4" />}
-            {row}
-          </Fragment>
-        ))}
-      </ListGroup>
-      {!!u && <Description className="px-4">{t.costNote}</Description>}
-    </View>
-  );
-}
-
 /** Usage warning; once the limit is hit, its owner can move the session to another of their Claude accounts. */
 function LimitAlert({ conversationId, session, limit, owner }: { conversationId: string; session: CodeSession; limit: NonNullable<CodeSession["limit"]>; owner: boolean }) {
   const t = tr(codeSessions);
@@ -556,7 +507,8 @@ function LimitAlert({ conversationId, session, limit, owner }: { conversationId:
   const qc = useQueryClient();
   const toast = useAdminToast();
   const rejected = limit.status === "rejected";
-  const { data: accounts = [] } = useQuery({ ...codeAccountsQuery(conversationId), enabled: owner && rejected });
+  // Only Claude Code's accounts are switched from here.
+  const { data: accounts = [] } = useQuery({ ...codeAccountsQuery(conversationId), enabled: owner && rejected && session.engine === "claude" });
   const others = accounts.filter((a) => a.id !== (session.account?.id ?? null));
   const change = useMutation({
     mutationFn: (id: string | null) => switchCodeSessionAccount(conversationId, session.id, id),
@@ -577,7 +529,7 @@ function LimitAlert({ conversationId, session, limit, owner }: { conversationId:
         {rejected && owner && others.length > 0 && (
           <View className="flex-row flex-wrap gap-2">
             {others.map((a) => (
-              <Button key={a.id ?? "server"} size="sm" variant="secondary" isDisabled={change.isPending} onPress={withTap(() => change.mutate(a.id))}>
+              <Button key={a.id ?? "server"} size="sm" variant="outline" isDisabled={change.isPending} onPress={withTap(() => change.mutate(a.id))}>
                 {change.isPending && change.variables === a.id ? c.inProgress : t.switchTo(a.email ?? t.serverAccount)}
               </Button>
             ))}
@@ -587,14 +539,6 @@ function LimitAlert({ conversationId, session, limit, owner }: { conversationId:
     </Alert>
   );
 }
-
-/* ---------- git ---------- */
-
-const FILE_STATE = { added: "A", modified: "M", deleted: "D", renamed: "R" } as const;
-const FILE_TONE = { added: "text-success", modified: "text-warning", deleted: "text-danger", renamed: "text-muted" } as const;
-
-export const pullRequestHref = (conversationId: string, sessionId: string) => `/code/${conversationId}/${sessionId}/pull-request` as Href;
-const credentialsHref = (conversationId: string, sessionId: string) => `/code/${conversationId}/${sessionId}/credentials` as Href;
 
 /**
  * Once its owner is done with a session started on a repository: the way to delete its worktree
@@ -639,67 +583,27 @@ function WorktreeBanner({ conversationId, session, worktree }: { conversationId:
   );
 }
 
-/**
- * The branch and its pull request, at the top of the stream (web ChangesView's card): its PR's title or
- * the branch, where it stands, and « N fichiers modifiés »; a tap opens the files and the git actions.
- */
-function ChangesCard({ git, onOpen }: { git: CodeGit; onOpen: () => void }) {
-  const all = tr(codeSessions);
-  const t = all.git;
-  const pr = git.pr;
-  const where = [
-    pr ? `${t.pr(pr.number)} ${t.prState[pr.state]}` : null,
-    git.ahead ? (git.pushed ? all.view.commits(git.ahead) : t.ahead(git.ahead, false)) : null,
-    git.behind ? t.behind(git.behind) : null,
-    !pr && !git.ahead && !git.behind && !git.changes ? t.clean : null,
-  ].filter((w): w is string => !!w);
-  return (
-    <PressableFeedback accessibilityRole="button" accessibilityLabel={t.changesTitle} onPress={withTap(onOpen)}>
-      <Card className="flex-row items-center gap-3">
-        <Surface variant="secondary" className="size-9 items-center justify-center rounded-[10px] p-0 shadow-none">
-          <BranchIcon size={18} className="text-muted" />
-        </Surface>
-        <Card.Body className="min-w-0 flex-1 gap-0.5">
-          {pr ? (
-            <Card.Title numberOfLines={1}>{pr.title}</Card.Title>
-          ) : (
-            <Typography type="code" numberOfLines={1}>
-              {git.branch ?? "?"}
-            </Typography>
-          )}
-          <View className="flex-row flex-wrap items-center gap-x-3">
-            {where.map((w) => (
-              <Card.Description key={w}>{w}</Card.Description>
-            ))}
-            {git.changes > 0 && (
-              <LinkButton size="sm" onPress={withTap(onOpen)}>
-                <LinkButton.Label>{t.changes(git.changes)}</LinkButton.Label>
-              </LinkButton>
-            )}
-          </View>
-        </Card.Body>
-        {pr && (
-          <Button size="sm" variant="secondary" onPress={withTap(() => void Linking.openURL(pr.url))}>
-            {all.open}
-          </Button>
-        )}
-      </Card>
-    </PressableFeedback>
-  );
-}
+/* ---------- git ---------- */
+
+const FILE_STATE = { added: "A", modified: "M", deleted: "D", renamed: "R" } as const;
+const FILE_TONE = { added: "text-success", modified: "text-warning", deleted: "text-danger", renamed: "text-muted" } as const;
+
+type GitAction = { label: string; icon: string; onPress: () => void };
 
 /**
- * The branch's sheet (web: ChangesBar): where the clone stands, its pull request, the files changed
- * with their lines, and for the owner the commit message and the git actions (commit, push, PR,
- * merge). A commit without a message gets one written by Claude Code from the diff.
+ * Its branch and its pull request, at the top of the stream (web ChangesView): the pull request's card
+ * (its merge, its CI) or the branch's line, where it stands, the next git action, and « N fichiers
+ * modifiés », which unfolds the files changed and not committed with, for the owner, the commit message
+ * (written from the diff when left empty) and the commit.
  */
-function ChangesPanel({ conversationId, session, git, owner, onLeave }: { conversationId: string; session: CodeSession; git: CodeGit; owner: boolean; onLeave: () => void }) {
-  const t = tr(codeSessions).git;
-  const c = tr(common);
+function ChangesView({ conversationId, session, owner }: { conversationId: string; session: CodeSession; owner: boolean }) {
+  const all = tr(codeSessions);
+  const t = all.git;
+  const v = all.view;
   const qc = useQueryClient();
   const toast = useAdminToast();
-  const field = useBottomSheetAwareHandlers();
   const [message, setMessage] = useState("");
+  const [filesOpen, setFilesOpen] = useState(false);
   const run = useMutation({
     // One after the other: "commit and push" is two actions, each its own step.
     mutationFn: async (reqs: CodeGitRequest[]) => {
@@ -720,141 +624,170 @@ function ChangesPanel({ conversationId, session, git, owner, onLeave }: { conver
     onError: (e) => toast.failed(e, t.failed),
   });
 
+  const git: CodeGit | null | undefined = session.git;
+  // Not a GitHub clone, or not read yet: nothing to show above its stream.
+  if (!git) return null;
   const files = git.files ?? [];
-  const added = files.reduce((n, f) => n + (f.added ?? 0), 0);
-  const removed = files.reduce((n, f) => n + (f.removed ?? 0), 0);
   const onBase = !!git.branch && git.branch === git.base;
   const pr = git.pr;
   const openPr = pr?.state === "open" ? pr : null;
   const working = isActive(session.status);
   const busy = working || run.isPending || generate.isPending;
   const commitReq = (): CodeGitRequest => ({ action: "commit", message: message.trim() });
-  const merge = async () => {
-    if (openPr && (await confirmAction({ title: t.mergeTitle(openPr.number, openPr.base), description: t.mergeHelp, action: t.merge, destructive: false }))) {
-      run.mutate([{ action: "merge", method: "squash" }]);
-    }
-  };
 
-  // The next thing to do with the branch first, then what else can be done with it.
-  type Action = { label: string; onPress: () => void };
+  const commitActions: GitAction[] =
+    owner && git.changes > 0
+      ? [
+          { label: t.commit, icon: "checkmark", onPress: () => run.mutate([commitReq()]) },
+          ...(git.github && !onBase ? [{ label: openPr ? t.commitPushPr(openPr.number) : t.commitPush, icon: "arrow.up", onPress: () => run.mutate([commitReq(), { action: "push" }]) }] : []),
+        ]
+      : [];
   const canPush = git.github && !onBase && git.ahead > 0;
   const canOpenPr = git.github && !onBase && !openPr && (git.ahead > 0 || git.pushed);
-  const actions: Action[] = !owner
+  const branchActions: GitAction[] = !owner
     ? []
-    : git.changes > 0
-      ? [
-          { label: t.commit, onPress: () => run.mutate([commitReq()]) },
-          ...(git.github && !onBase ? [{ label: openPr ? t.commitPushPr(openPr.number) : t.commitPush, onPress: () => run.mutate([commitReq(), { action: "push" }]) }] : []),
-        ]
-      : [
-          ...(canOpenPr
-            ? [
-                {
-                  label: t.openPr,
-                  onPress: () => {
-                    onLeave();
-                    router.push(pullRequestHref(conversationId, session.id));
-                  },
-                },
-              ]
-            : []),
-          ...(canPush ? [{ label: openPr ? t.pushPr(openPr.number) : t.push, onPress: () => run.mutate([{ action: "push" }]) }] : []),
-          ...(git.pushed && git.behind > 0 ? [{ label: t.pull, onPress: () => run.mutate([{ action: "pull" }]) }] : []),
-          ...(git.github && openPr && !canPush ? [{ label: t.merge, onPress: () => void merge() }] : []),
-        ];
-  const summary = [git.changes ? t.changes(git.changes) : null, git.ahead ? t.ahead(git.ahead, git.pushed) : null, git.behind ? t.behind(git.behind) : null].filter(Boolean);
+    : [
+        ...(canPush ? [{ label: t.push, icon: "arrow.up", onPress: () => run.mutate([{ action: "push" }]) }] : []),
+        ...(canOpenPr ? [{ label: t.openPr, icon: "arrow.triangle.branch", onPress: () => router.push(pullRequestHref(conversationId, session.id)) }] : []),
+        ...(git.pushed && git.behind > 0 ? [{ label: t.pull, icon: "arrow.down", onPress: () => run.mutate([{ action: "pull" }]) }] : []),
+      ];
+  // Merged from its card once the session has finished and what is committed is on GitHub.
+  const mergeBlocked = working ? t.busy : canPush ? tr(pullRequests).unpushed : null;
+
+  const where = [
+    pr ? `${t.pr(pr.number)} ${t.prState[pr.state]}` : git.branch,
+    git.ahead ? (git.pushed ? v.commits(git.ahead) : t.ahead(git.ahead, false)) : null,
+    git.behind ? t.behind(git.behind) : null,
+    !pr && !git.ahead && !git.behind && !git.changes ? t.clean : null,
+  ].filter((w): w is string => !!w);
+  // With a pull request: its card, then where the branch stands beside it.
+  const branchLine = pr ? where.slice(1) : where;
+  const filesLink = git.changes > 0 && (
+    <LinkButton size="sm" onPress={withTap(() => setFilesOpen((o) => !o))}>
+      <LinkButton.Label>{t.changes(git.changes)}</LinkButton.Label>
+    </LinkButton>
+  );
+  const line = (
+    <View className="min-w-0 flex-row flex-wrap items-center gap-x-2.5 gap-y-1">
+      {branchLine.map((w) => (
+        <Typography key={w} type="body-sm" color="muted">
+          {w}
+        </Typography>
+      ))}
+      {filesLink}
+    </View>
+  );
 
   return (
     <View className="gap-4">
-      <View className="gap-1 px-1">
-        <Typography type="code" numberOfLines={1}>
-          {git.branch ?? "?"}
-        </Typography>
-        <View className="flex-row flex-wrap items-center gap-x-3">
-          {(summary.length ? summary : [t.clean]).map((w) => (
-            <Typography key={w} type="body-sm" color="muted">
-              {w}
-            </Typography>
-          ))}
-          {(added > 0 || removed > 0) && (
-            <Typography type="body-sm">
-              {added > 0 && <Typography type="body-sm" className="text-success">{`+${added} `}</Typography>}
-              {removed > 0 && <Typography type="body-sm" className="text-danger">{`−${removed}`}</Typography>}
-            </Typography>
+      {pr ? (
+        <View className="gap-2">
+          <PullRequestCard
+            pr={pr}
+            repo={git.repo}
+            onMerge={owner && git.github && openPr ? (method) => run.mutate([{ action: "merge", method }]) : undefined}
+            merging={run.isPending && run.variables?.at(-1)?.action === "merge"}
+            blocked={mergeBlocked}
+            actions={branchActions.length > 0 && <GitActions actions={branchActions} busy={busy} pending={run.isPending && run.variables?.at(-1)?.action !== "merge"} />}
+          />
+          {(branchLine.length > 0 || git.changes > 0) && line}
+        </View>
+      ) : (
+        <Card>
+          <View className="gap-3">
+            <View className="flex-row items-center gap-3">
+              <BrandLogo domain="github.com" fallback={<BranchIcon size={20} className="text-muted" />} className="size-6" />
+              <View className="min-w-0 flex-1 gap-0.5">
+                <Typography type="code" numberOfLines={1}>
+                  {git.branch ?? "?"}
+                </Typography>
+                {line}
+              </View>
+            </View>
+            {branchActions.length > 0 && (
+              <View className="flex-row justify-end">
+                <GitActions actions={branchActions} busy={busy} pending={run.isPending} />
+              </View>
+            )}
+          </View>
+        </Card>
+      )}
+      {working && (branchActions.length > 0 || commitActions.length > 0) && <Description className="px-1">{t.busy}</Description>}
+      {owner && !git.github && <Description className="px-1">{t.noGithub}</Description>}
+
+      {filesOpen && (git.changes > 0 || files.length > 0) && (
+        <View className="gap-2">
+          <Typography type="body-xs" weight="medium" color="muted" className="px-1">
+            {v.uncommitted(git.changes)}
+          </Typography>
+          {files.length > 0 && (
+            <ListGroup>
+              {files.map((f, i) => (
+                <Fragment key={f.path}>
+                  {i > 0 && <Separator className="mx-4" />}
+                  <ListGroup.Item accessibilityLabel={f.path}>
+                    <ListGroup.ItemPrefix>
+                      <Typography type="code" className={FILE_TONE[f.state]}>
+                        {FILE_STATE[f.state]}
+                      </Typography>
+                    </ListGroup.ItemPrefix>
+                    <ListGroup.ItemContent>
+                      {/* The end of the path, where the file's name is. */}
+                      <Typography type="code" numberOfLines={1} ellipsizeMode="head">
+                        {f.path}
+                      </Typography>
+                    </ListGroup.ItemContent>
+                    {f.added !== null && (
+                      <ListGroup.ItemSuffix className="flex-row gap-1.5">
+                        {f.added > 0 && <Typography type="body-xs" className="font-mono text-success">{`+${f.added}`}</Typography>}
+                        {!!f.removed && <Typography type="body-xs" className="font-mono text-danger">{`−${f.removed}`}</Typography>}
+                      </ListGroup.ItemSuffix>
+                    )}
+                  </ListGroup.Item>
+                </Fragment>
+              ))}
+            </ListGroup>
+          )}
+          {git.changes > files.length && <Description className="px-1">{t.moreFiles(git.changes - files.length)}</Description>}
+          {commitActions.length > 0 && (
+            <View className="flex-row items-end gap-2">
+              <TextField className="flex-1">
+                <TextArea value={message} onChangeText={setMessage} accessibilityLabel={t.message} placeholder={t.messagePlaceholder} />
+              </TextField>
+              <Button isIconOnly size="sm" variant="ghost" accessibilityLabel={t.generate} isDisabled={busy} onPress={withTap(() => generate.mutate())}>
+                {generate.isPending ? <Spinner size="sm" /> : <SparklesIcon size={18} className="text-muted" />}
+              </Button>
+            </View>
+          )}
+          {commitActions.length > 0 && (
+            <View className="flex-row justify-end">
+              <GitActions actions={commitActions} busy={busy} pending={run.isPending} />
+            </View>
           )}
         </View>
-      </View>
-
-      {pr && (
-        <ListGroup>
-          <ListGroup.Item accessibilityRole="link" onPress={withTap(() => Linking.openURL(pr.url))}>
-            <ListGroup.ItemContent>
-              <ListGroup.ItemTitle>
-                {t.pr(pr.number)} {t.prState[pr.state]}
-              </ListGroup.ItemTitle>
-              <ListGroup.ItemDescription numberOfLines={2}>{pr.title}</ListGroup.ItemDescription>
-            </ListGroup.ItemContent>
-            <ListGroup.ItemSuffix>
-              <ExternalLinkIcon size={16} className="text-muted" />
-            </ListGroup.ItemSuffix>
-          </ListGroup.Item>
-        </ListGroup>
       )}
+    </View>
+  );
+}
 
-      {files.length > 0 && (
-        <ListGroup>
-          {files.map((f, i) => {
-            const slash = f.path.lastIndexOf("/");
-            return (
-              <Fragment key={f.path}>
-                {i > 0 && <Separator className="mx-4" />}
-                <ListGroup.Item accessibilityLabel={f.path}>
-                  <ListGroup.ItemPrefix>
-                    <Typography type="code" className={FILE_TONE[f.state]}>
-                      {FILE_STATE[f.state]}
-                    </Typography>
-                  </ListGroup.ItemPrefix>
-                  <ListGroup.ItemContent>
-                    <ListGroup.ItemTitle numberOfLines={1}>{f.path.slice(slash + 1)}</ListGroup.ItemTitle>
-                    {slash > 0 && <ListGroup.ItemDescription numberOfLines={1}>{f.path.slice(0, slash)}</ListGroup.ItemDescription>}
-                  </ListGroup.ItemContent>
-                  {f.added !== null && (
-                    <ListGroup.ItemSuffix>
-                      <Typography type="body-sm">
-                        {f.added > 0 && <Typography type="body-sm" className="text-success">{`+${f.added}`}</Typography>}
-                        {!!f.removed && <Typography type="body-sm" className="text-danger">{` −${f.removed}`}</Typography>}
-                      </Typography>
-                    </ListGroup.ItemSuffix>
-                  )}
-                </ListGroup.Item>
-              </Fragment>
-            );
-          })}
-        </ListGroup>
-      )}
-      {git.changes > files.length && <Description className="px-4">{t.moreFiles(git.changes - files.length)}</Description>}
-
-      {owner && git.changes > 0 && (
-        <TextField>
-          <Label>{t.message}</Label>
-          <TextArea value={message} onChangeText={setMessage} placeholder={t.messagePlaceholder} onFocus={field.onFocus} onBlur={field.onBlur} />
-          <Button size="sm" variant="ghost" className="self-start" isDisabled={busy} onPress={withTap(() => generate.mutate())}>
-            {generate.isPending ? t.writing : t.generate}
+/** The next git action as a button, the others behind its arrow; unavailable while the session works. */
+function GitActions({ actions, busy, pending }: { actions: GitAction[]; busy: boolean; pending: boolean }) {
+  const t = tr(codeSessions).git;
+  const c = tr(common);
+  const [primary, ...more] = actions;
+  if (!primary) return null;
+  return (
+    <View className="flex-row items-center gap-1">
+      <Button size="sm" variant="secondary" isDisabled={busy} onPress={withTap(primary.onPress)}>
+        {pending ? c.inProgress : primary.label}
+      </Button>
+      {more.length > 0 && !busy && (
+        <TapMenu accessibilityLabel={t.more} actions={more.map((a) => ({ label: a.label, icon: a.icon, onPress: a.onPress }))}>
+          <Button isIconOnly size="sm" variant="secondary" accessibilityLabel={t.more}>
+            <ChevronDownIcon size={16} className="text-foreground" />
           </Button>
-        </TextField>
+        </TapMenu>
       )}
-
-      {actions.length > 0 && (
-        <View className="gap-2">
-          {actions.map((a, i) => (
-            <Button key={a.label} variant={i === 0 ? "primary" : "secondary"} isDisabled={busy} onPress={withTap(a.onPress)}>
-              {run.isPending && i === 0 ? c.inProgress : a.label}
-            </Button>
-          ))}
-          {working && <Description className="px-4">{t.busy}</Description>}
-        </View>
-      )}
-      {owner && !git.github && <Description className="px-4">{t.noGithub}</Description>}
     </View>
   );
 }
@@ -862,57 +795,38 @@ function ChangesPanel({ conversationId, session, git, owner, onLeave }: { conver
 /* ---------- steps ---------- */
 
 type ToolStepT = Extract<CodeStep, { kind: "tool" }>;
-type Block = { kind: "step"; step: Exclude<CodeStep, ToolStepT> } | { kind: "tools"; steps: ToolStepT[] };
+type Block = { kind: "step"; step: Exclude<CodeStep, ToolStepT> } | { kind: "tools"; steps: ToolStepT[] } | { kind: "agents"; steps: ToolStepT[] };
+const parentOf = (s: CodeStep) => ("parentId" in s ? s.parentId : undefined);
+const isSubagent = (s: CodeStep): boolean => s.kind === "tool" && (s.name === "Agent" || s.name === "Task");
 
-/** Consecutive tool calls read as one block; a subagent's steps go under its Task call. */
+/** Consecutive actions read as one block; subagents started together, as another, never folded. */
 function blocks(steps: CodeStep[]): Block[] {
   const out: Block[] = [];
   for (const step of steps) {
     const last = out.at(-1);
-    if (step.kind === "tool" && last?.kind === "tools") last.steps.push(step);
-    else if (step.kind === "tool") out.push({ kind: "tools", steps: [step] });
-    else out.push({ kind: "step", step });
+    const kind = isSubagent(step) ? "agents" : step.kind === "tool" ? "tools" : null;
+    if (kind && last?.kind === kind) last.steps.push(step as ToolStepT);
+    else if (kind) out.push({ kind, steps: [step as ToolStepT] });
+    else out.push({ kind: "step", step: step as Exclude<CodeStep, ToolStepT> });
   }
   return out;
 }
 
-const parentOf = (s: CodeStep) => ("parentId" in s ? s.parentId : undefined);
-
-/** The steps of one level (the session's, or a subagent's), each Task call holding its own. */
+/** The steps of one level (the session's, or a subagent's), each subagent call holding its own. */
 function Timeline({ steps, running, parentId }: { steps: CodeStep[]; running: boolean; parentId?: string }) {
   const own = steps.filter((s) => parentOf(s) === parentId);
   const last = own.at(-1);
   return (
     <View className="gap-3">
       {blocks(own).map((b) =>
-        b.kind === "tools" ? (
+        b.kind === "agents" ? (
+          <SubagentBlock key={b.steps[0]!.id} steps={b.steps} all={steps} running={running} />
+        ) : b.kind === "tools" ? (
           <ToolBlock key={b.steps[0]!.id} steps={b.steps} all={steps} />
         ) : (
           <StepView key={b.step.id} step={b.step} streaming={running && b.step === last} />
         ),
       )}
-    </View>
-  );
-}
-
-/** A run of actions: the latest few in view, the earlier ones folded behind one line (web: ToolBlock). */
-const SHOWN = 3;
-function ToolBlock({ steps, all }: { steps: ToolStepT[]; all: CodeStep[] }) {
-  const t = tr(codeSessions);
-  const [open, setOpen] = useState(false);
-  const hidden = open ? 0 : Math.max(0, steps.length - SHOWN);
-  return (
-    <View>
-      {hidden > 0 && (
-        <Button size="sm" variant="ghost" className="self-start px-0" onPress={withTap(() => setOpen(true))}>
-          <Button.Label className="text-muted">{t.earlierActions(hidden)}</Button.Label>
-        </Button>
-      )}
-      <Accordion selectionMode="multiple" hideSeparator>
-        {steps.slice(hidden).map((s) => (
-          <ToolRow key={s.id} step={s} all={all} />
-        ))}
-      </Accordion>
     </View>
   );
 }
@@ -938,22 +852,131 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
       return (
         <View className="flex-row items-start gap-2">
           {step.ok ? <BranchIcon size={14} className="mt-0.5 text-muted" /> : <CloseCircleIcon size={14} className="mt-0.5 text-danger" />}
-          <Typography type="body-sm" color={step.ok ? "muted" : "default"} className={cn("min-w-0 flex-1", !step.ok && "text-danger")}>
+          <Typography type="body-xs" color={step.ok ? "muted" : "default"} className={cn("min-w-0 flex-1", !step.ok && "text-danger")}>
             {step.text}
-            {!!step.by && <Typography type="body-sm" className="text-subtle">{`  ${step.by}`}</Typography>}
+            {!!step.by && <Typography type="body-xs" color="muted">{`  ${step.by}`}</Typography>}
           </Typography>
         </View>
       );
     case "notice":
+      if (step.code === "error") {
+        return (
+          <Alert status="danger">
+            <Alert.Indicator />
+            <Alert.Content className="gap-1">
+              <Alert.Title>{t.notices.error}</Alert.Title>
+              {!!step.text && (
+                <Typography type="code" selectable className="text-danger">
+                  {step.text}
+                </Typography>
+              )}
+            </Alert.Content>
+          </Alert>
+        );
+      }
+      // A note on the run (interrupted, resumed…): one grey line in the flow, not a centred caption.
       return (
-        <View className="gap-1.5">
-          <Typography type="body-sm" color={step.code === "error" ? "default" : "muted"} align="center" className={cn(step.code === "error" && "text-danger")}>
+        <View className="gap-1.5 px-2">
+          <Typography type="body-xs" className="text-subtle">
             {t.notices[step.code]}
           </Typography>
-          {!!step.text && <Detail text={step.text} />}
+          {!!step.text && <CodeBlock text={step.text} />}
         </View>
       );
   }
+}
+
+/** A run of actions: the latest few in view, the earlier ones folded behind one line. */
+const SHOWN = 3;
+function ToolBlock({ steps, all }: { steps: ToolStepT[]; all: CodeStep[] }) {
+  const t = tr(codeSessions);
+  const [open, setOpen] = useState(false);
+  const hidden = open ? 0 : Math.max(0, steps.length - SHOWN);
+  return (
+    <View>
+      {hidden > 0 && (
+        <Button size="sm" variant="ghost" className="self-start px-0" onPress={withTap(() => setOpen(true))}>
+          <Button.Label className="text-muted">{t.earlierActions(hidden)}</Button.Label>
+        </Button>
+      )}
+      <Accordion selectionMode="multiple" hideSeparator>
+        {steps.slice(hidden).map((s) => (
+          <ToolRow key={s.id} step={s} all={all} />
+        ))}
+      </Accordion>
+    </View>
+  );
+}
+
+type SubagentState = "running" | "done" | "error" | "stopped";
+
+/** Where a subagent stands: its own events when it runs in the background, else its call's. */
+function subagentState(step: ToolStepT, running: boolean): SubagentState {
+  const state: SubagentState = step.agent?.state ?? (step.status === "running" ? "running" : step.status === "done" ? "done" : "error");
+  // The session no longer runs: neither does its subagent.
+  return state === "running" && !running ? "stopped" : state;
+}
+
+/** Subagents started together: one row each, what it does, how far it got and how it ended. */
+function SubagentBlock({ steps, all, running }: { steps: ToolStepT[]; all: CodeStep[]; running: boolean }) {
+  const t = tr(codeSessions);
+  return (
+    <View className="gap-2">
+      <Typography type="body-sm" weight="medium">
+        {t.subagents(steps.length)}
+      </Typography>
+      <Accordion selectionMode="multiple" variant="surface">
+        {steps.map((s) => (
+          <SubagentRow key={s.id} step={s} all={all} running={running} />
+        ))}
+      </Accordion>
+    </View>
+  );
+}
+
+function SubagentRow({ step, all, running }: { step: ToolStepT; all: CodeStep[]; running: boolean }) {
+  const t = tr(codeSessions);
+  const state = subagentState(step, running);
+  const own = all.filter((s) => parentOf(s) === step.id);
+  const tools = step.agent?.tools ?? own.filter((s) => s.kind === "tool").length;
+  const lastTool = step.agent?.last ?? own.findLast((s): s is ToolStepT => s.kind === "tool")?.name;
+  const progress = [tools ? t.subagentActions(tools) : null, state === "running" && lastTool ? t.subagentLast(toolLabel(lastTool, t.toolNames).name) : null].filter(Boolean).join(", ");
+  const description = state === "running" ? progress || t.subagentWaiting : step.agent?.summary || progress || t.subagentState[state];
+  return (
+    <Accordion.Item value={step.id}>
+      <Accordion.Trigger className="gap-3">
+        {state === "running" ? (
+          <Spinner size="sm" />
+        ) : state === "done" ? (
+          <CheckCircleIcon size={16} className="text-success" />
+        ) : state === "error" ? (
+          <CloseCircleIcon size={16} className="text-danger" />
+        ) : (
+          <BanIcon size={16} className="text-muted" />
+        )}
+        <View className="min-w-0 flex-1 gap-0.5">
+          <Typography type="body-sm" weight="medium" numberOfLines={1}>
+            {step.title}
+          </Typography>
+          {state === "running" ? (
+            <Shimmer type="body-xs" numberOfLines={1}>
+              {description}
+            </Shimmer>
+          ) : (
+            <Typography type="body-xs" color="muted" numberOfLines={1}>
+              {description}
+            </Typography>
+          )}
+        </View>
+        <Accordion.Indicator />
+      </Accordion.Trigger>
+      <Accordion.Content className="gap-3">
+        {!!step.input && <Detail label={t.input} text={step.input} />}
+        {own.length > 0 && <Timeline steps={all} running={false} parentId={step.id} />}
+        {!!step.output && <Detail label={t.output} text={step.output} />}
+      </Accordion.Content>
+    </Accordion.Item>
+  );
 }
 
 /** A path reads as its file name; the folders it sits in on the server say nothing. */
@@ -962,7 +985,7 @@ const shortTitle = (title: string) => title.replace(/\S*\/([^\s/]+)/g, "$1");
 /** Tools whose target is code (a command, a file, a pattern): it reads in code type; the others' in words. */
 const CODE_ARGS = new Set(["Bash", "BashOutput", "Grep", "Glob", "Read", "Edit", "MultiEdit", "Write", "NotebookEdit"]);
 
-/** One tool call; unfolds to its input and result, and to its subagent's steps for a Task call. */
+/** One action, named in words; unfolds to its input and result, and to a subagent's own steps. */
 function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const t = tr(codeSessions);
   const nested = all.some((s) => parentOf(s) === step.id);
@@ -970,8 +993,8 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   // Its name as people read it (the connector of an MCP tool, what a built-in one does), never mcp__x__y.
   const label = toolLabel(step.name, t.toolNames);
   const detail = step.title && step.title !== step.name ? shortTitle(step.title) : (label.action ?? "");
-  // One quiet line (web ToolRow): the tool's mark, what it does (shimmering while it does it), on what,
-  // in code type for a command or a file; a finished call shows nothing more, a failed one its cross.
+  // One quiet line: the tool's mark, what it does (shimmering while it does it), on what, in code type
+  // for a command or a file; a finished call shows nothing more, a failed one its cross.
   const row = (
     <View className="min-w-0 flex-1 flex-row items-center gap-2">
       <ToolIcon name={step.name} size={14} className="text-subtle" />
@@ -992,351 +1015,58 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   );
   return (
     <Accordion.Item value={step.id} isDisabled={!expandable}>
-      <Accordion.Trigger className="gap-2 px-0 py-1.5">
-        {row}
-        {expandable && <Accordion.Indicator />}
-      </Accordion.Trigger>
-      <Accordion.Content className="gap-2 px-0 pb-2">
+      <Accordion.Trigger className="gap-2 px-0 py-1.5">{row}</Accordion.Trigger>
+      <Accordion.Content className="ml-1.5 gap-2 border-l border-border pr-0 pb-2 pl-3">
         {!!step.input && (step.name === "ExitPlanMode" ? <MessageText text={step.input} /> : <Detail label={t.input} text={step.input} />)}
-        {nested && (
-          <View className="pl-3">
-            <Timeline steps={all} running={false} parentId={step.id} />
-          </View>
-        )}
+        {nested && <Timeline steps={all} running={false} parentId={step.id} />}
         {!!step.output && <Detail label={t.output} text={step.output} />}
       </Accordion.Content>
     </Accordion.Item>
   );
 }
 
-function Detail({ label, text }: { label?: string; text: string }) {
+function Detail({ label, text }: { label: string; text: string }) {
   return (
     <View className="gap-1">
-      {!!label && (
-        <Typography type="body-xs" color="muted">
-          {label}
-        </Typography>
-      )}
-      <Surface variant="secondary" className="p-0">
-        <ScrollView nestedScrollEnabled style={{ maxHeight: 288 }} contentContainerClassName="px-3 py-2">
-          <Typography type="code" selectable>
-            {text}
-          </Typography>
-        </ScrollView>
-      </Surface>
+      <Typography type="body-xs" color="muted">
+        {label}
+      </Typography>
+      <CodeBlock text={text} />
     </View>
   );
 }
 
-/* ---------- approval and writing ---------- */
+/* ---------- composer ---------- */
 
-function ApprovalBlock({ conversationId, session, approval, canAnswer }: { conversationId: string; session: CodeSession; approval: CodeApproval; canAnswer: boolean }) {
-  const t = tr(codeSessions);
-  const c = tr(common);
-  const qc = useQueryClient();
-  const toast = useAdminToast();
-  const answer = useMutation({
-    mutationFn: (choice: CodeApproval["choices"][number]) => answerCodeApproval(conversationId, session.id, approval.id, { choice }),
-    onSuccess: (s) => applyCodeSession(qc, s),
-    onError: (e) => toast.failed(e),
-  });
-  return (
-    <Card role="alert" accessibilityLabel={t.asks}>
-      <View className="gap-4">
-        <Card.Body className="gap-3">
-          <View className="gap-1">
-            <Card.Title>
-              {t.asks} <Typography type="code">{approval.tool}</Typography>
-            </Card.Title>
-            <Card.Description numberOfLines={2}>{approval.title}</Card.Description>
-          </View>
-          {!!approval.detail && <Detail text={approval.detail} />}
-        </Card.Body>
-        <Card.Footer className="flex-row flex-wrap gap-2">
-          {canAnswer ? (
-            approval.choices.map((choice, i) => (
-              <Button
-                key={choice}
-                size="sm"
-                variant={choice === "deny" ? "danger-soft" : i === 0 ? "primary" : "secondary"}
-                isDisabled={answer.isPending}
-                onPress={withTap(() => answer.mutate(choice))}
-              >
-                {answer.isPending && answer.variables === choice ? c.inProgress : t.choices[choice]}
-              </Button>
-            ))
-          ) : (
-            <Typography type="body-sm" color="muted">
-              {t.waitingOwner}
-            </Typography>
-          )}
-        </Card.Footer>
-      </View>
-    </Card>
-  );
+/** What each permission mode lets the engine do, as an SF Symbol in its menu: ask first, edit freely, only plan, everything. */
+const MODE_ICONS: Record<CodePermissionMode, string> = {
+  default: "checkmark.shield",
+  acceptEdits: "pencil",
+  plan: "checklist",
+  bypassPermissions: "exclamationmark.shield",
+};
+
+/** Its commands, then its skills, each group's best matches of the query first. */
+function commandItems(commands: CodeCommand[], query: string): SlashItem[] {
+  const items = (skill: boolean) =>
+    rankByQuery(
+      commands
+        .filter((c) => c.skill === skill)
+        .map((c): SlashItem => ({
+          key: `${skill ? "skill" : "command"}:${c.name}`,
+          kind: skill ? "skill" : "command",
+          name: c.name,
+          description: c.argumentHint ? `${c.argumentHint}  ${c.description}` : c.description,
+        })),
+      query.toLowerCase(),
+    );
+  return [...items(false), ...items(true)];
 }
 
 /**
- * Its question to the bot that started it (ask_bot; web: BotQuestionBlock): the bot answers it, or its
- * owner, with one of its options or the next message of the field below, which goes to it as the answer.
- */
-function BotQuestionBlock({ conversationId, session, question, canAnswer }: { conversationId: string; session: CodeSession; question: CodeBotQuestion; canAnswer: boolean }) {
-  const t = tr(codeSessions);
-  const c = tr(common);
-  const qc = useQueryClient();
-  const toast = useAdminToast();
-  const [choice, setChoice] = useState<Choice>({ picked: [], other: "" });
-  const answer = useMutation({
-    mutationFn: (text: string) => sendToCodeSession(conversationId, session.id, text),
-    onSuccess: (s) => {
-      applyCodeSession(qc, s);
-      toast.success(t.question.answered);
-    },
-    onError: (e) => toast.failed(e),
-  });
-  const options = question.options?.length
-    ? [...question.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }]
-    : [];
-  const value = answerOf(choice);
-  const help = !canAnswer ? t.botQuestion.waiting(question.bot) : options.length ? t.botQuestion.pick(question.bot, options[0]!.label) : t.botQuestion.help(question.bot);
-  return (
-    <Card role="alert" accessibilityLabel={t.botQuestion.title(question.bot)}>
-      <View className="gap-4">
-        <Card.Body className="gap-3">
-          <View className="gap-1">
-            <Card.Title>{t.botQuestion.title(question.bot)}</Card.Title>
-            <Card.Description>{help}</Card.Description>
-          </View>
-          <MessageText text={question.text} />
-          {!!question.context && <MessageText text={question.context} />}
-          {options.length > 0 && (
-            <RadioGroup value={choice.picked[0]} isDisabled={!canAnswer || answer.isPending} onValueChange={(v) => setChoice((all) => ({ ...all, picked: [v] }))}>
-              {options.map((o, i) => (
-                <Fragment key={o.value}>
-                  {i > 0 && <Separator className="my-1" />}
-                  <RadioGroup.Item value={o.value}>
-                    <View className="flex-1">
-                      <Label>{o.label}</Label>
-                      {!!o.description && <Description>{o.description}</Description>}
-                    </View>
-                    <Radio />
-                  </RadioGroup.Item>
-                </Fragment>
-              ))}
-            </RadioGroup>
-          )}
-          {choice.picked.includes(OTHER_ANSWER) && (
-            <Input
-              autoFocus
-              accessibilityLabel={t.question.other}
-              placeholder={t.question.otherPlaceholder}
-              value={choice.other}
-              onChangeText={(other) => setChoice((all) => ({ ...all, other }))}
-            />
-          )}
-        </Card.Body>
-        {canAnswer && options.length > 0 && (
-          <Card.Footer className="flex-row flex-wrap gap-2">
-            <Button size="sm" variant="primary" isDisabled={!value || answer.isPending} onPress={withTap(() => answer.mutate(value))}>
-              {answer.isPending ? c.inProgress : t.question.answer}
-            </Button>
-          </Card.Footer>
-        )}
-      </View>
-    </Card>
-  );
-}
-
-type Choice = { picked: string[]; other: string };
-
-const answerOf = (c: Choice | undefined) => (c ? questionAnswer(c.picked, c.other) : "");
-
-/**
- * Claude Code's questions (AskUserQuestion; web: QuestionBlock): each with its options, one or several
- * to pick, and "Other" for an answer of one's own. The run waits for the answers.
- */
-function QuestionBlock({
-  conversationId,
-  session,
-  approval,
-  questions,
-  canAnswer,
-}: {
-  conversationId: string;
-  session: CodeSession;
-  approval: CodeApproval;
-  questions: CodeQuestion[];
-  canAnswer: boolean;
-}) {
-  const t = tr(codeSessions);
-  const c = tr(common);
-  const qc = useQueryClient();
-  const toast = useAdminToast();
-  const [choices, setChoices] = useState<Record<string, Choice>>({});
-  const answer = useMutation({
-    mutationFn: (skip: boolean) =>
-      answerCodeApproval(
-        conversationId,
-        session.id,
-        approval.id,
-        skip ? { choice: "deny" } : { choice: "once", answers: Object.fromEntries(questions.map((q) => [q.question, answerOf(choices[q.question])])) },
-      ),
-    onSuccess: (s, skip) => {
-      applyCodeSession(qc, s);
-      if (!skip) toast.success(t.question.answered);
-    },
-    onError: (e) => toast.failed(e),
-  });
-  const set = (question: string, change: Partial<Choice>) =>
-    setChoices((all) => ({ ...all, [question]: { ...(all[question] ?? { picked: [], other: "" }), ...change } }));
-  const complete = questions.every((q) => answerOf(choices[q.question]));
-  return (
-    <Card accessibilityLabel={t.question.title}>
-      <View className="gap-4">
-        <Card.Body className="gap-4">
-          <Card.Title>{questions.length > 1 ? t.question.titleMany(questions.length) : t.question.title}</Card.Title>
-          {questions.map((q) => {
-            const picked = choices[q.question]?.picked ?? [];
-            const options = [...q.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }];
-            const text = (o: (typeof options)[number]) => (
-              <View className="flex-1">
-                <Label>{o.label}</Label>
-                {!!o.description && <Description>{o.description}</Description>}
-              </View>
-            );
-            return (
-              <View key={q.question} className="gap-2">
-                <View className="flex-row flex-wrap items-center gap-2">
-                  {!!q.header && (
-                    <Chip size="sm" variant="secondary">
-                      {q.header}
-                    </Chip>
-                  )}
-                  <Typography type="body-sm" weight="medium" className="min-w-0 flex-1">
-                    {q.question}
-                  </Typography>
-                </View>
-                {q.multiSelect ? (
-                  <View className="gap-2">
-                    {options.map((o) => (
-                      <ControlField
-                        key={o.value}
-                        isDisabled={!canAnswer}
-                        isSelected={picked.includes(o.value)}
-                        onSelectedChange={(on) => set(q.question, { picked: on ? [...picked, o.value] : picked.filter((p) => p !== o.value) })}
-                      >
-                        {text(o)}
-                        <ControlField.Indicator variant="checkbox" />
-                      </ControlField>
-                    ))}
-                  </View>
-                ) : (
-                  <RadioGroup value={picked[0]} isDisabled={!canAnswer} onValueChange={(v) => set(q.question, { picked: [v] })}>
-                    {options.map((o, i) => (
-                      <Fragment key={o.value}>
-                        {i > 0 && <Separator className="my-1" />}
-                        <RadioGroup.Item value={o.value}>
-                          {text(o)}
-                          <Radio />
-                        </RadioGroup.Item>
-                      </Fragment>
-                    ))}
-                  </RadioGroup>
-                )}
-                {picked.includes(OTHER_ANSWER) && (
-                  <Input
-                    autoFocus
-                    accessibilityLabel={t.question.other}
-                    placeholder={t.question.otherPlaceholder}
-                    value={choices[q.question]?.other ?? ""}
-                    onChangeText={(other) => set(q.question, { other })}
-                  />
-                )}
-              </View>
-            );
-          })}
-        </Card.Body>
-        <Card.Footer className="flex-row flex-wrap gap-2">
-          {canAnswer ? (
-            <>
-              <Button size="sm" variant="primary" isDisabled={!complete || answer.isPending} onPress={withTap(() => answer.mutate(false))}>
-                {answer.isPending && !answer.variables ? c.inProgress : t.question.answer}
-              </Button>
-              <Button size="sm" variant="ghost" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(true))}>
-                {answer.isPending && answer.variables ? c.inProgress : t.question.skip}
-              </Button>
-            </>
-          ) : (
-            <Typography type="body-sm" color="muted">
-              {t.waitingOwner}
-            </Typography>
-          )}
-        </Card.Footer>
-      </View>
-    </Card>
-  );
-}
-
-/**
- * The plan Claude Code wrote in plan mode (ExitPlanMode; web: PlanBlock): read whole, then approved
- * (it starts, in the mode it had before planning) or sent back with what to change.
- */
-function PlanBlock({ conversationId, session, approval, canAnswer }: { conversationId: string; session: CodeSession; approval: CodeApproval; canAnswer: boolean }) {
-  const t = tr(codeSessions);
-  const c = tr(common);
-  const qc = useQueryClient();
-  const toast = useAdminToast();
-  const [feedback, setFeedback] = useState("");
-  const answer = useMutation({
-    mutationFn: (approve: boolean) =>
-      answerCodeApproval(conversationId, session.id, approval.id, approve ? { choice: "once" } : { choice: "deny", feedback: feedback.trim() }),
-    onSuccess: (s, approve) => {
-      applyCodeSession(qc, s);
-      setFeedback("");
-      toast.success(approve ? t.plan.approved : t.plan.sentBack);
-    },
-    onError: (e) => toast.failed(e),
-  });
-  return (
-    <Card accessibilityLabel={t.plan.title}>
-      <View className="gap-4">
-        <Card.Body className="gap-3">
-          <View className="gap-1">
-            <Card.Title>{t.plan.title}</Card.Title>
-            <Card.Description>{t.plan.help}</Card.Description>
-          </View>
-          {!!approval.plan && <MessageText text={approval.plan} />}
-          {canAnswer && (
-            <TextField>
-              <Label>{t.plan.feedback}</Label>
-              <TextArea value={feedback} onChangeText={setFeedback} placeholder={t.plan.feedbackPlaceholder} />
-            </TextField>
-          )}
-        </Card.Body>
-        <Card.Footer className="flex-row flex-wrap gap-2">
-          {canAnswer ? (
-            <>
-              <Button size="sm" variant="primary" isDisabled={answer.isPending || !!feedback.trim()} onPress={withTap(() => answer.mutate(true))}>
-                {answer.isPending && answer.variables ? c.inProgress : t.plan.approve}
-              </Button>
-              <Button size="sm" variant="secondary" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(false))}>
-                {answer.isPending && !answer.variables ? c.inProgress : t.plan.revise}
-              </Button>
-            </>
-          ) : (
-            <Typography type="body-sm" color="muted">
-              {t.waitingOwner}
-            </Typography>
-          )}
-        </Card.Footer>
-      </View>
-    </Card>
-  );
-}
-
-/**
- * Same field as the conversation's: the instruction, the session's mode and model, send (stop while it
- * works). "/" at its start lists Claude Code's skills and slash commands, as in its terminal.
+ * Same field as the conversation's: what waits in its queue above it, the instruction, the session's
+ * mode and model, send (stop while it works). "/" at its start lists the engine's commands and the
+ * team's skills, as in its terminal.
  */
 function SessionComposer({ conversationId, session, onSent }: { conversationId: string; session: CodeSession; onSent: () => void }) {
   const t = tr(codeSessions);
@@ -1362,92 +1092,99 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
     onError: (e) => toast.failed(e),
   });
   const mode = useMutation({
-    mutationFn: (value: CodeSession["mode"]) => setCodeSessionMode(conversationId, session.id, value),
+    mutationFn: (value: CodePermissionMode) => setCodeSessionMode(conversationId, session.id, value),
     onSuccess: (s) => {
       applyCodeSession(qc, s);
       toast.success(t.modeChanged(t.modes[s.mode]));
     },
     onError: (e) => toast.failed(e),
   });
+  // What a session of this engine has before it runs, and its own once it ran: its own win on a name.
+  const { data: base = [] } = useQuery({ ...codeCommandsQuery(conversationId, session.engine), retry: false });
+  const names = new Set(session.commands.map((c) => c.name));
+  const commands = [...session.commands, ...base.filter((c) => !names.has(c.name))];
   // "/name" alone in the field: a skill or a command being picked.
   const query = /^\/([\w:.-]*)$/.exec(text)?.[1] ?? null;
-  const items: SlashItem[] =
-    query === null
-      ? []
-      : rankByQuery(
-          [...session.commands]
-            .sort((a, b) => Number(b.skill) - Number(a.skill))
-            .map((cmd) => ({
-              key: `${cmd.skill ? "skill" : "command"}:${cmd.name}`,
-              kind: cmd.skill ? ("skill" as const) : ("command" as const),
-              name: cmd.name,
-              description: cmd.argumentHint ? `${cmd.argumentHint}  ${cmd.description}` : cmd.description,
-            })),
-          query,
-        );
-  // While Claude Code works, the send button stops it; typing turns it back into send (an instruction mid-run).
+  const items = query === null ? [] : commandItems(commands, query);
+  // While it works, the send button stops it; typing turns it back into send (an instruction mid-run).
   const stoppable = isActive(session.status) && !text.trim() && !files.length;
   const canSend = !send.isPending && !files.some((f) => f.status === "uploading") && (!!text.trim() || ids.length > 0);
   const submit = () => {
     if (canSend) send.mutate({ value: text.trim(), attachmentIds: ids });
   };
+  const queueDone = (s: CodeSession) => applyCodeSession(qc, s);
+  const placeholder = session.question
+    ? session.question.options?.length
+      ? t.placeholderAnswerOther
+      : t.placeholderAnswer
+    : isActive(session.status)
+      ? t.placeholderRunning
+      : commands.length
+        ? t.placeholderIdleCommands
+        : t.placeholderIdle;
   return (
-    <View>
-      {items.length > 0 && (
-        <View pointerEvents="box-none" className="absolute inset-x-0 bottom-full mb-2">
-          <SlashMenu items={items} onPick={(item) => setText(`/${item.name} `)} />
-        </View>
-      )}
-      <Surface variant="secondary" className="gap-1 p-2">
-        <PendingFiles items={files} onRemove={removeFile} />
-        <Input
-          multiline
-          value={text}
-          onChangeText={setText}
-          placeholder={session.question ? t.placeholderAnswer : isActive(session.status) ? t.placeholderRunning : session.commands.length ? t.placeholderIdleCommands : t.placeholderIdle}
-          className="max-h-[152px] bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
-        />
-        <View className="flex-row items-center gap-2">
-          <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
-          <Menu>
-            <Menu.Trigger asChild>
-              <Button variant="outline" size="sm" accessibilityLabel={`${t.mode}: ${t.modes[session.mode]}`} isDisabled={mode.isPending} className="max-w-[150px]">
-                <Button.Label numberOfLines={1}>{t.modes[session.mode]}</Button.Label>
-              </Button>
-            </Menu.Trigger>
-            <MenuContent
-              placement="top"
-              entries={[
+    <View className="gap-2">
+      <QueueList
+        items={session.queued ?? []}
+        onEdit={(id, value) => editQueued(conversationId, session.id, id, value).then(queueDone)}
+        onSendNow={(id) => sendQueuedNow(conversationId, session.id, id).then(queueDone)}
+        onRemove={(id) => removeQueued(conversationId, session.id, id).then(queueDone)}
+      />
+      <View>
+        {items.length > 0 && (
+          <View pointerEvents="box-none" className="absolute inset-x-0 bottom-full mb-2">
+            <SlashMenu items={items} onPick={(item) => setText(`/${item.name} `)} />
+          </View>
+        )}
+        <Surface variant="secondary" className="gap-1 p-2">
+          <PendingFiles items={files} onRemove={removeFile} />
+          <Input
+            multiline
+            value={text}
+            onChangeText={setText}
+            placeholder={placeholder}
+            accessibilityLabel={t.instruction}
+            className="max-h-[152px] bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
+          />
+          <View className="flex-row items-center gap-2">
+            <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
+            <TapMenu
+              accessibilityLabel={`${t.mode}: ${t.modes[session.mode]}`}
+              actions={[
                 {
                   title: t.mode,
-                  actions: CODE_PERMISSION_MODES.map((m) => ({ label: t.modes[m], checked: m === session.mode, onPress: () => m !== session.mode && mode.mutate(m) })),
+                  actions: codeEngineModes(session.engine).map((m) => ({ label: t.modes[m], icon: MODE_ICONS[m], checked: m === session.mode, onPress: () => m !== session.mode && mode.mutate(m) })),
                 },
               ]}
-            />
-          </Menu>
-          <SessionModelPicker conversationId={conversationId} session={session} />
-          <View className="flex-1" />
-          {stoppable ? (
-            <Button isIconOnly size="sm" variant="primary" accessibilityLabel={stop.isPending ? t.stopping : t.stop} isDisabled={stop.isPending} onPress={withTap(() => stop.mutate())}>
-              {stop.isPending ? <Spinner size="sm" /> : <StopIcon className="size-[18px] text-accent-foreground" />}
-            </Button>
-          ) : (
-            <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.send} isDisabled={!canSend} onPress={withTap(submit)}>
-              <ArrowUpIcon className="size-[18px] text-accent-foreground" strokeWidth={2.25} />
-            </Button>
-          )}
-        </View>
-      </Surface>
+            >
+              <Button variant="ghost" size="sm" isDisabled={mode.isPending} className="max-w-[150px]">
+                <Button.Label numberOfLines={1}>{t.modes[session.mode]}</Button.Label>
+              </Button>
+            </TapMenu>
+            <View className="flex-1" />
+            <SessionModelPicker conversationId={conversationId} session={session} />
+            {stoppable ? (
+              <Button isIconOnly size="sm" variant="primary" accessibilityLabel={stop.isPending ? t.stopping : t.stop} isDisabled={stop.isPending} onPress={withTap(() => stop.mutate())}>
+                {stop.isPending ? <Spinner size="sm" /> : <StopIcon className="size-[18px] text-accent-foreground" />}
+              </Button>
+            ) : (
+              <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.send} isDisabled={!canSend} onPress={withTap(submit)}>
+                <ArrowUpIcon className="size-[18px] text-accent-foreground" strokeWidth={2.25} />
+              </Button>
+            )}
+          </View>
+        </Surface>
+      </View>
     </View>
   );
 }
 
-/** The session's model, among the ones its owner may use (the Claude Code engine's list). */
+/** The session's model, among the ones its owner may use with its engine; named as people read it. */
 function SessionModelPicker({ conversationId, session }: { conversationId: string; session: CodeSession }) {
   const t = tr(codeSessions);
   const qc = useQueryClient();
   const toast = useAdminToast();
-  const { data: models = [] } = useQuery(codeModelsQuery(conversationId));
+  const { data: models = [] } = useQuery(codeModelsQuery(conversationId, session.engine));
   const change = useMutation({
     mutationFn: (model: string) => setCodeSessionModel(conversationId, session.id, model),
     onSuccess: (s) => {
@@ -1458,28 +1195,19 @@ function SessionModelPicker({ conversationId, session }: { conversationId: strin
   });
   if (!models.length && !session.model) return null;
   const current = models.find((m) => m.id === session.model);
-  // Claude Code's default, as it resolved it: listed even when it is not among the models offered.
+  // Its engine's default, as it resolved it: listed even when it is not among the models offered.
   const list: { id: string; label?: string }[] = session.model && !current ? [{ id: session.model }, ...models] : models;
+  const name = (m: { id: string; label?: string }) => m.label ?? modelName(m.id);
+  const shown = current ? name(current) : session.model ? modelName(session.model) : t.model;
   return (
-    <Menu>
-      <Menu.Trigger asChild>
-        <Button variant="outline" size="sm" accessibilityLabel={`${t.model}: ${current?.label ?? session.model ?? ""}`} className="max-w-[200px]">
-          <Button.Label numberOfLines={1}>{current?.label ?? session.model ?? t.model}</Button.Label>
-        </Button>
-      </Menu.Trigger>
-      <MenuContent
-        placement="top"
-        entries={[
-          {
-            title: CODE_ENGINE_NAMES[session.engine],
-            actions: list.map((m) => ({
-              label: m.label ?? m.id,
-              checked: m.id === session.model,
-              onPress: () => m.id !== session.model && change.mutate(m.id),
-            })),
-          },
-        ]}
-      />
-    </Menu>
+    <TapMenu
+      accessibilityLabel={`${t.model}: ${shown}`}
+      actions={list.map((m) => ({ label: name(m), checked: m.id === session.model, onPress: () => m.id !== session.model && change.mutate(m.id) }))}
+    >
+      <Button variant="ghost" size="sm" className="max-w-[180px]">
+        <ModelLogo provider={ENGINE_PROVIDER[session.engine]} model={session.model ?? undefined} size={14} />
+        <Button.Label numberOfLines={1}>{shown}</Button.Label>
+      </Button>
+    </TapMenu>
   );
 }

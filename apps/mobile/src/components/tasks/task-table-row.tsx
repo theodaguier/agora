@@ -13,7 +13,7 @@ import { withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
 import type { Mentionable } from "@/lib/mentions";
 import { isOverdue, taskHref, useDeleteTask, useTaskPatch, useWorkingOn, type Task, type TaskPriority, type TaskStatus } from "@/lib/tasks";
-import { priorityMessages, TASK_PRIORITIES } from "@/lib/task-status";
+import { PRIORITY_SYMBOL, priorityMessages, TASK_PRIORITIES } from "@/lib/task-status";
 
 /*
  * apps/web/src/components/TaskList.tsx `TaskTableRow` (Figma « Mes tâches »): one 40 px line per task,
@@ -45,12 +45,12 @@ export function TaskTableRow({ task, me, mentionables }: { task: Task; me: strin
   };
 
   const priorities: MenuEntry[] = task.canEdit
-    ? [{ title: p.priority, actions: TASK_PRIORITIES.map((level) => ({ label: p.label[level], mark: <PriorityMark priority={level} size={16} />, checked: level === task.priority, onPress: () => level !== task.priority && setPriority(level) })) }]
+    ? [{ title: p.priority, actions: TASK_PRIORITIES.map((level) => ({ label: p.label[level], icon: PRIORITY_SYMBOL[level], checked: level === task.priority, onPress: () => level !== task.priority && setPriority(level) })) }]
     : [];
   const actions: MenuEntry[] = [
-    task.canEdit && task.status !== "in_progress" && !done && { label: t.start, mark: <TaskStatusIcon status="in_progress" size={16} />, onPress: () => setStatus("in_progress") },
-    task.canEdit && task.status !== "todo" && { label: t.reopen, mark: <TaskStatusIcon status="todo" size={16} />, onPress: () => setStatus("todo") },
-    task.canEdit && !done && { label: t.complete, mark: <TaskStatusIcon status="done" size={16} />, onPress: () => setStatus("done") },
+    task.canEdit && task.status !== "in_progress" && !done && { label: t.start, icon: "circle.lefthalf.filled", onPress: () => setStatus("in_progress") },
+    task.canEdit && task.status !== "todo" && { label: t.reopen, icon: "circle", onPress: () => setStatus("todo") },
+    task.canEdit && !done && { label: t.complete, icon: "checkmark.circle", onPress: () => setStatus("done") },
     task.canEdit && mine && !done && !mine.current && { label: t.workOn, icon: "person", onPress: () => work.mutate(task.id, { onError: failed }) },
     task.canEdit && mine?.current && { label: t.stopWorking, icon: "stop.circle", onPress: () => work.mutate(null, { onError: failed }) },
     task.canEdit && task.canDelete && "divider",
