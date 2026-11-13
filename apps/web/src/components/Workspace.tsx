@@ -9,8 +9,9 @@ import { AgentAvatar } from "@/components/AgentAvatar";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
 import { TabChip } from "@/components/TabChip";
 import { ArtifactPage, findPreview, PreviewPage } from "@/components/Preview";
-import { type CodeSession } from "@agora/core";
-import { CodeEnginesLogo, ModelLogo } from "@/components/ProviderLogo";
+import { codeSessionState, type CodeSession } from "@agora/core";
+import { CodeStateIcon } from "@/components/CodeSessionMarks";
+import { CodeEnginesLogo } from "@/components/ProviderLogo";
 import { useCodeSessionUnread } from "@/lib/code-seen";
 import { BrowserIcon, ChatIntegrationIcon, CloseIcon, FileCodeIcon, InboxIcon, PlusIcon, SearchIcon, SplitIcon, TaskListIcon, TerminalIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -418,8 +419,8 @@ function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: bo
       const session = sessions?.find((s) => s.id === target.sessionId);
       return {
         title: isNewCodeSession(target.sessionId) ? t.newSession : (session?.title ?? t.session),
-        // A session's tab: who codes (Claude Code, Codex), as its card and its header; state and priority are in the pane.
-        icon: session ? <ModelLogo provider={session.engine} /> : <TerminalIcon />,
+        // A session's tab: its state, coloured, as in every list of sessions (who codes is in its header).
+        icon: session ? <CodeStateIcon state={codeSessionState(session)} /> : <TerminalIcon />,
         session,
       };
     }
