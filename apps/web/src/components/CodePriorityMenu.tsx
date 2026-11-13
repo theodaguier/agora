@@ -48,6 +48,23 @@ export function priorityOfKey(e: { key: string; metaKey: boolean; ctrlKey: boole
  * them, setting the session aside (Linear's backlog) or bringing it back; not while it works.
  */
 /** `park`: offer setting it aside here (the lists); the panel's header has it in its « … » menu instead. */
+/** The priorities to pick from, for a menu that holds other things (the session's « … »). */
+export function CodePriorityItems({ session }: { session: Pick<CodeSession, "id" | "conversationId" | "priority" | "parked" | "status" | "question" | "git"> }) {
+  const t = useT(codeSessions);
+  const set = useSetCodePriority(session);
+  return (
+    <DropdownMenuRadioGroup value={session.priority} onValueChange={(v) => set.mutate(v as CodePriority)}>
+      {CODE_PRIORITIES.map((p) => (
+        <DropdownMenuRadioItem key={p} value={p}>
+          <CodePriorityIcon priority={p} showNone />
+          {t.priorities[p]}
+          <DropdownMenuShortcut>{CODE_PRIORITY_KEYS[p]}</DropdownMenuShortcut>
+        </DropdownMenuRadioItem>
+      ))}
+    </DropdownMenuRadioGroup>
+  );
+}
+
 export function CodePriorityMenu({ session, trigger, align = "end", park: withPark = true }: { session: Pick<CodeSession, "id" | "conversationId" | "priority" | "parked" | "status" | "question" | "git">; trigger: ReactElement; align?: "start" | "end"; park?: boolean }) {
   const t = useT(codeSessions);
   const set = useSetCodePriority(session);

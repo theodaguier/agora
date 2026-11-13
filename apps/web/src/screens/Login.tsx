@@ -18,8 +18,19 @@ type LoginError = "invalid" | "tooMany" | "unknown";
 const loginError = (e: { status?: number; code?: string }): LoginError =>
   e.status === 429 ? "tooMany" : e.status === 401 || e.code?.startsWith("INVALID_") ? "invalid" : e.status && e.status >= 500 ? "unknown" : "invalid";
 
+/** A shared artifact sent here for a session (`/s/<token>`, served by the API): back to it once signed in. */
+const sharedLink = () => {
+  const next = new URLSearchParams(window.location.search).get("redirect");
+  return next && /^\/s\/[\w-]+$/.test(next) ? next : null;
+};
+
 export function Login() {
   const navigate = useNavigate();
+  const done = () => {
+    const next = sharedLink();
+    if (next) window.location.assign(next);
+    else navigate({ to: "/" });
+  };
   const t = useT(auth);
   const c = useT(common);
   const [error, setError] = useState<LoginError | null>(null);
@@ -27,7 +38,7 @@ export function Login() {
   const [twoFactor, setTwoFactor] = useState(false);
   const orgName = useOrgTitle();
 
-  if (twoFactor) return <TwoFactorStep onBack={() => setTwoFactor(false)} onDone={() => navigate({ to: "/" })} />;
+  if (twoFactor) return <TwoFactorStep onBack={() => setTwoFactor(false)} onDone={done} />;
 
   return (
     <div className="flex min-h-svh w-full items-start justify-center p-6 md:p-10 md:pt-28">
@@ -53,7 +64,7 @@ export function Login() {
           if (error) setError(loginError(error));
           // Two-step sign-in on for this account: no session yet, the code comes next.
           else if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) setTwoFactor(true);
-          else navigate({ to: "/" });
+          else done();
         }}
       >
         <FieldGroup>

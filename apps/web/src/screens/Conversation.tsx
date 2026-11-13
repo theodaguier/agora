@@ -1,13 +1,14 @@
 import { defineMessages, useT } from "@/i18n";
 import { PreviewUrls } from "@/lib/preview-urls";
 import { useEventText } from "@/i18n/events";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouteContext, useSearch } from "@tanstack/react-router";
-import { BrowserIcon, ChevronLeftIcon, FilesIcon, PanelLeftIcon, PinIcon, SearchIcon, WarningIcon } from "@/components/icons";
+import { BrowserIcon, ChevronLeftIcon, FilesIcon, MoreIcon, PanelRightIcon, PinIcon, SearchIcon, WarningIcon } from "@/components/icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { agentAccent } from "@/lib/agent-avatar";
-import { DateDivider, FlatText, Lead, ToolLine, TypingBubble, TypingLine } from "@/components/Bubbles";
+import { DateDivider, FlatText, ToolLine, TypingBubble, TypingLine } from "@/components/Bubbles";
 import { ApprovalCard, ApprovalLog } from "@/components/ApprovalCard";
 import { ChoiceCard } from "@/components/ChoiceCard";
 import { McpRequestCard } from "@/components/McpRequestCard";
@@ -18,6 +19,7 @@ import { VaultRequestCard } from "@/components/VaultRequestCard";
 import { GitHubMergeCard } from "@/components/github/GitHubMergeCard";
 import { PullRequestLinks } from "@/components/github/PullRequestLinks";
 import { ViewCard } from "@/components/views/ViewCard";
+import { RunCommandContext } from "@/lib/run-command";
 import { conversationTimeline, insertMessage, readPreviews, withoutMediaTags, withoutPreviews, type QueuedMessageDto, type ViewAction } from "@agora/core";
 import { common, integrations } from "@agora/core/i18n";
 import { Composer, type ComposerHandle } from "@/components/Composer";
@@ -47,7 +49,6 @@ import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ShortcutTooltip } from "@/components/Shortcuts";
 import { playSound } from "@/lib/sounds";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyFigure } from "@/components/EmptyFigure";
@@ -56,6 +57,7 @@ import {
   api,
   ApiError,
   conversationPath,
+  retryLast,
   sendMessage,
   type Attachment,
   type AgentSummary,
@@ -67,7 +69,7 @@ import {
   type Person,
   type ReplyTo,
 } from "@/lib/api";
-import { clockTime, dividerLabel, needsDivider } from "@/lib/dates";
+import { clockTime, dayLabel } from "@/lib/dates";
 import { ConversationFilesProvider } from "@/lib/conversation-files";
 import { codeSessionsQuery } from "@/lib/code-sessions";
 import { updateSide, useConversationSide, type ConversationSide } from "@/lib/conversation-side";
@@ -127,7 +129,8 @@ const strings = defineMessages({
     sendFailed: "Message not sent. Try again.",
     gone: "This conversation no longer exists or you're no longer part of it.",
     unavailable: "Conversation unavailable.",
-    messageTo: (name: string) => `Message ${name}`,
+    messageTo: (name: string) => `Message ${name}…`,
+    runCommand: "Run this command and look at what it returns:",
     writeGroupMention: "Message the group (@ to call a bot)",
     writeGroup: "Message the group",
     dropTo: (name: string) => `Drop your files to send them to ${name}`,
@@ -135,6 +138,10 @@ const strings = defineMessages({
     back: "Back",
     waitingYou: "Waits for your answer",
     showPanel: "Show panel",
+    togglePanel: "Show or hide the panel",
+    more: "More",
+    retry: "Retry",
+    retryFailed: "Couldn't retry.",
     emptyHint: "Send a first message to get started.",
     unavailableHint: "It can't be reached right now.",
     messagesErrorTitle: "Messages unavailable",
@@ -150,7 +157,8 @@ const strings = defineMessages({
     sendFailed: "Message non envoyé. Réessaie.",
     gone: "Cette conversation n'existe plus ou tu n'en fais plus partie.",
     unavailable: "Conversation indisponible.",
-    messageTo: (name: string) => `Envoyer un message à ${name}`,
+    messageTo: (name: string) => `Écrire à ${name}…`,
+    runCommand: "Exécute cette commande et analyse ce qu'elle renvoie :",
     writeGroupMention: "Écrire au groupe (@ pour appeler un bot)",
     writeGroup: "Écrire au groupe",
     dropTo: (name: string) => `Dépose tes fichiers pour les envoyer à ${name}`,
@@ -158,6 +166,10 @@ const strings = defineMessages({
     back: "Retour",
     waitingYou: "Attend ta réponse",
     showPanel: "Afficher le panneau",
+    togglePanel: "Afficher ou masquer le panneau",
+    more: "Plus",
+    retry: "Réessayer",
+    retryFailed: "Relance impossible.",
     emptyHint: "Envoie un premier message pour commencer.",
     unavailableHint: "Elle est injoignable pour le moment.",
     messagesErrorTitle: "Messages indisponibles",
@@ -206,18 +218,56 @@ function BotViews({
   ));
 }
 
-/**
- * Figma « Conversation — blocs riches »: a message from a bot or a colleague, flat in a column right
- * of a 36 px gutter; `avatar` (the first message of a run) sits in it, centred on the first line.
- */
-function Post({ avatar, className, children }: { avatar?: ReactNode; className?: string; children: ReactNode }) {
+/** Figma « Conversation · Dev »: a bot that couldn't answer, on one line with its red dot, and the retry when it is the last word. */
+function FailureLine({ label, onRetry }: { label: string; onRetry?: () => Promise<unknown> }) {
+  const t = useT(strings);
+  const retry = useMutation({ mutationFn: () => onRetry!(), meta: { error: t.retryFailed } });
   return (
-    <div className={cn("relative flex min-w-0 flex-col gap-3 pl-12", className)}>
-      {avatar && <span className="absolute top-0 left-0 -translate-y-2">{avatar}</span>}
-      {children}
+    <p role="status" className="mt-5.5 flex items-center gap-2 text-ui text-muted-foreground">
+      <span className="size-1.5 shrink-0 rounded-full bg-destructive" />
+      {label}
+      {onRetry && (
+        <Button variant="link" size="xs" className="h-auto px-0 text-ui font-medium text-foreground" disabled={retry.isPending} onClick={() => retry.mutate()}>
+          {t.retry}
+        </Button>
+      )}
+    </p>
+  );
+}
+
+type PostHead = { avatar: ReactNode; name: string; time: string };
+
+/**
+ * Figma « Conversation · Dev »: a message from a bot or a colleague, flat. The first of a run opens on
+ * its author (20 px face, name, time); the words run under it, 28 px in.
+ */
+function Post({ head, className, children }: { head?: PostHead; className?: string; children: ReactNode }) {
+  return (
+    <div className={cn("flex min-w-0 flex-col gap-2.5", className)}>
+      {head && (
+        <p className="flex items-center gap-2">
+          {head.avatar}
+          <span className="text-ui font-medium">{head.name}</span>
+          <span className="text-xs text-subtle-foreground tabular-nums">{head.time}</span>
+        </p>
+      )}
+      <div className="flex min-w-0 flex-col gap-3 pl-7">{children}</div>
     </div>
   );
 }
+
+/** Figma: the day between two lines, once per day; the times are on the messages. */
+function DayDivider({ label }: { label: string }) {
+  return (
+    <p className="my-1 flex items-center gap-3 text-xs text-subtle-foreground">
+      <span className="h-px flex-1 bg-border" />
+      {label}
+      <span className="h-px flex-1 bg-border" />
+    </p>
+  );
+}
+
+const dayOf = (d: Date) => new Date(d).setHours(0, 0, 0, 0);
 
 /** A reply being written: its tools, the streamed text or the typing dots, and a pending approval. */
 function LiveTurn({
@@ -252,15 +302,9 @@ function LiveTurn({
   // A mockup being written says so on its card.
   const quiet = !!turn.approval || previews.some((p) => !p.done);
   const typing = <TypingBubble label={t.botTyping(bot?.name ?? t.theBot)} className="chat-arrive" />;
-  const lead = head ? <Lead name={group ? bot?.name : undefined} time={clockTime(at)} /> : undefined;
-  let first = true;
-  const text = (value: string, streaming: boolean) => {
-    const l = first ? lead : undefined;
-    first = false;
-    return <FlatText text={value} streaming={streaming} mentionables={mentions} lead={l} />;
-  };
+  const text = (value: string, streaming: boolean) => <FlatText text={value} streaming={streaming} mentionables={mentions} />;
   return (
-    <Post avatar={head && bot && <AgentAvatar agent={bot} className="size-9" />} className={className}>
+    <Post head={head && bot ? { avatar: <AgentAvatar agent={bot} className="size-5" />, name: bot.name, time: clockTime(at) } : undefined} className={className}>
       <ToolLine tools={turn.tools} running={!visible} className="chat-arrive" />
       {turn.codeSessions?.length ? (
         <div className="w-full">
@@ -278,14 +322,11 @@ function LiveTurn({
         text(visible, true)
       ) : (
         !quiet && (
-          <div className="flex items-center gap-2 text-sm">
-            {lead}
-            {typing}
-          </div>
+          <div className="flex items-center gap-2 text-sm">{typing}</div>
         )
       )}
       {previews.map((p, i) => (
-        <PreviewCard key={i} title={p.title} writing={!p.done} onOpen={() => onOpenPreview(`${turn.turnId}:${i}`)} className="chat-arrive" />
+        <PreviewCard key={i} title={p.title} writing={!p.done} html={p.html} onOpen={() => onOpenPreview(`${turn.turnId}:${i}`)} className="chat-arrive" />
       ))}
       {turn.approval && (
         <ApprovalCard
@@ -338,9 +379,9 @@ function HeaderTitle({
         variant="ghost"
         onClick={() => (directPerson ? openProfile(directPerson.id) : openAgentProfile(directBot!.id))}
         aria-label={t.openProfile((directPerson ?? directBot)!.name)}
-        className="h-auto min-w-0 py-1"
+        className="-ml-2 h-7 min-w-0 px-2"
       >
-        <TitleWithStatus title={title} p={othersOf(conv!, me)[0]} waiting={waiting} avatar={<ConversationAvatar conversation={conv!} me={me} className="size-8" />} />
+        <TitleWithStatus title={title} p={othersOf(conv!, me)[0]} waiting={waiting} avatar={<ConversationAvatar conversation={conv!} me={me} className="size-4.5" />} />
       </Button>
     ) : (
       title && (
@@ -348,7 +389,7 @@ function HeaderTitle({
           title={title}
           p={conv && !group ? othersOf(conv, me)[0] : undefined}
           // A group's members are the facepile beside it: no initials tile repeating them.
-          avatar={conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-8" />}
+          avatar={conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-4.5" />}
         />
       )
     )}
@@ -357,65 +398,58 @@ function HeaderTitle({
   );
 }
 
-/** Search, files and pins toggles of the header, and the button that reopens the side panel. */
+/** Figma « Conversation · Dev »: search, the other panels under « … », and the side panel's toggle. */
 function PanelButtons({
   panel,
   setPanel,
   hasPanels,
   hasInfo,
-  sessions,
   className,
 }: {
   panel: PanelKind | "info" | null;
   setPanel: Dispatch<SetStateAction<PanelKind | "info" | null>>;
   hasPanels: boolean;
   hasInfo: boolean;
-  /** The Claude Code sessions button, first. */
-  sessions?: ReactNode;
   className?: string;
 }) {
   const t = useT(strings);
   const panelLabels = usePanelLabels();
   // Their panels open only beside the thread.
   const wide = useWide();
+  const toggle = (kind: PanelKind | "info") => setPanel((p) => (p === kind ? null : kind));
+  const icons = { screen: BrowserIcon, files: FilesIcon, pins: PinIcon } as const;
   return (
-    <div className={cn("flex shrink-0 items-center justify-end", className)}>
-      {sessions}
-      {hasPanels &&
-        wide &&
-        (["screen", "search", "files", "pins"] as const).map((kind) => {
-          const Icon = {
-            screen: BrowserIcon,
-            search: SearchIcon,
-            files: FilesIcon,
-            pins: PinIcon,
-          }[kind];
-          const button = (
-            <Button
-              variant={panel === kind ? "secondary" : "ghost"}
-              size="icon-sm"
-              aria-label={panelLabels[kind]}
-              aria-pressed={panel === kind}
-              onClick={() => setPanel((p) => (p === kind ? null : kind))}
-            >
-              <Icon />
+    <div className={cn("flex shrink-0 items-center gap-0.5 text-muted-foreground", className)}>
+      {hasPanels && wide && (
+        <>
+          <ShortcutTooltip label={panelLabels.search} shortcut={shortcuts.searchConversation}>
+            <Button variant={panel === "search" ? "secondary" : "ghost"} size="icon-sm" aria-label={panelLabels.search} aria-pressed={panel === "search"} onClick={() => toggle("search")}>
+              <SearchIcon />
             </Button>
-          );
-          return kind === "search" ? (
-            <ShortcutTooltip key={kind} label={panelLabels[kind]} shortcut={shortcuts.searchConversation}>
-              {button}
-            </ShortcutTooltip>
-          ) : (
-            <Tooltip key={kind}>
-              <TooltipTrigger render={button} />
-              <TooltipContent>{panelLabels[kind]}</TooltipContent>
-            </Tooltip>
-          );
-        })}
-      {wide && panel !== "info" && hasInfo && (
-        <ShortcutTooltip label={t.showPanel} shortcut={shortcuts.togglePanel}>
-          <Button variant="ghost" size="icon-sm" aria-label={t.showPanel} onClick={() => setPanel("info")}>
-            <PanelLeftIcon />
+          </ShortcutTooltip>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.more} />}>
+              <MoreIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuGroup>
+                {(["screen", "files", "pins"] as const).map((kind) => {
+                  const Icon = icons[kind];
+                  return (
+                    <DropdownMenuItem key={kind} onClick={() => toggle(kind)}>
+                      <Icon /> {panelLabels[kind]}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
+      {wide && hasInfo && (
+        <ShortcutTooltip label={t.togglePanel} shortcut={shortcuts.togglePanel}>
+          <Button variant="ghost" size="icon-sm" aria-label={t.togglePanel} aria-pressed={panel === "info"} onClick={() => toggle("info")}>
+            <PanelRightIcon />
           </Button>
         </ShortcutTooltip>
       )}
@@ -847,35 +881,34 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
       />
     ) : null;
 
+  // A shell block's « Exécuter »: the bot runs it with its own terminal (its approvals apply) and reads the result.
+  const runCommand = (command: string, language: string) =>
+    void send(`${t.runCommand}\n\n\`\`\`${language}\n${command.trim()}\n\`\`\``, [], [], []);
+
   const thread = (
+    <RunCommandContext.Provider value={runCommand}>
     <section ref={root} className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
       {dragging && conv && (
         <div className="pointer-events-none absolute inset-2 z-30 grid place-items-center rounded-2xl border-2 border-dashed border-brand bg-background/80 text-sm font-medium">
           {directBot ? t.dropTo(directBot.name) : group ? t.dropToGroup : t.dropTo(title)}
         </div>
       )}
-      <header className="@container/header grid h-16 shrink-0 grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-2 border-b px-4 md:px-6">
-        <div className="col-span-2 col-start-1 flex min-w-0 items-center gap-2">
+      {/* Figma « Conversation · Dev »: face, name, its sessions in grey; search, more and the side panel. */}
+      <header className="@container/header flex h-11.5 shrink-0 items-center gap-2 border-b pr-3.5 pl-3 md:pl-5">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
           <HeaderTitle conv={conv} me={user.id} title={title} directBot={directBot} directPerson={directPerson} waiting={turns.some((x) => x.approval)} onOpenInfo={() => setPanel("info")} />
+          {conv && (
+            <CodeSessionsButton
+              asCount
+              conversationId={conversationId}
+              current={codeSession}
+              onOpen={openCodeSession}
+              onDeleted={(id) => codeTabs.includes(id) && closeCodeTab(id)}
+              onOpenBeside={place.paneId ? (id) => openBeside(tabPath.code(conversationId, id), place.paneId!) : undefined}
+            />
+          )}
         </div>
-        <PanelButtons
-          className="col-start-3 justify-self-end"
-          panel={panel}
-          setPanel={setPanel}
-          hasPanels={!!conv}
-          hasInfo={hasInfo}
-          sessions={
-            conv && (
-              <CodeSessionsButton
-                conversationId={conversationId}
-                current={codeSession}
-                onOpen={openCodeSession}
-                onDeleted={(id) => codeTabs.includes(id) && closeCodeTab(id)}
-                onOpenBeside={place.paneId ? (id) => openBeside(tabPath.code(conversationId, id), place.paneId!) : undefined}
-              />
-            )
-          }
-        />
+        <PanelButtons panel={panel} setPanel={setPanel} hasPanels={!!conv} hasInfo={hasInfo} />
       </header>
       {conv && <PinnedBar conversationId={conversationId} onJump={jumpTo} onSeeAll={() => setPanel("pins")} />}
 
@@ -892,7 +925,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
           // gets a blank area to scroll under the composer.
           className="relative min-h-0 flex-1 overflow-y-auto"
         >
-          <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col justify-end gap-1 px-4 pt-6 pb-6 md:px-12">
+          <div className="mx-auto flex min-h-full w-full max-w-178 flex-col justify-end gap-1 px-4 pt-6 pb-6">
             {isPending && (
               <div className="chat-loading flex flex-col gap-3" aria-busy>
                 <Skeleton className="h-10 w-2/3" />
@@ -929,7 +962,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
             {timeline.map((entry, i) => {
               const at = new Date(entry.createdAt);
               const previous = timeline[i - 1];
-              const divider = needsDivider(previous && new Date(previous.createdAt), at);
+              const divider = !previous || dayOf(new Date(previous.createdAt)) !== dayOf(at);
               // A run (Figma « Conversation »): the same author within the same minute; it starts with an
               // avatar and who/when on its first line, 20 px under the previous one.
               const prevAuthor = previous?.kind === "message" ? authorKey(previous.message.author) : previous ? `agent:${previous.turn.agentId}` : null;
@@ -938,9 +971,9 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                 const head = divider || !sameMinute || prevAuthor !== `agent:${entry.turn.agentId}`;
                 return (
                 <Fragment key={entry.key}>
-                  {divider && <DateDivider label={dividerLabel(at)} />}
+                  {divider && <DayDivider label={dayLabel(at)} />}
                   <LiveTurn turn={entry.turn} bot={agentById(entry.turn.agentId)} conversationId={conversationId}
-                    head={head} at={at} className={head && i > 0 && !divider ? "mt-5" : undefined}
+                    head={head} at={at} className={head && i > 0 ? "mt-5.5" : undefined}
                     group={group} mentionables={mentions} onOpenCode={openCodeSession} onOpenPreview={openPreview} />
                 </Fragment>
                 );
@@ -952,19 +985,19 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
               // A bot's reply takes the place of its live turn and ours of its pending copy: only others' messages arrive.
               const arriving = m.kind === "user" && !fromMe && arrived(m.id);
               const head = !fromMe && m.kind !== "event" && (newAuthor || !sameMinute || prevAuthor !== authorKey(m.author));
-              const lead = head ? <Lead name={group ? m.author?.name : undefined} time={clockTime(at)} /> : undefined;
-              const avatar =
-                head && m.author ? (
-                  m.author.kind === "agent" ? <AgentAvatar agent={m.author} className="size-9" /> : <PersonAvatar person={m.author} className="size-9" />
-                ) : undefined;
-              const gap = i > 0 && !divider && (head || (fromMe && newAuthor)) && "mt-5";
-              // A reply cut by its code sessions: who/when on its first piece of text only.
-              let firstText = true;
-              const flat = (text: string) => {
-                const l = firstText ? lead : undefined;
-                firstText = false;
-                return <FlatText text={text} mentionables={mentions} lead={l} />;
-              };
+              const postHead: PostHead | undefined =
+                head && m.author
+                  ? {
+                      avatar: m.author.kind === "agent" ? <AgentAvatar agent={m.author} className="size-5" /> : <PersonAvatar person={m.author} className="size-5" />,
+                      name: m.author.name,
+                      time: clockTime(at),
+                    }
+                  : undefined;
+              const gap = i > 0 && (head || (fromMe && newAuthor)) && "mt-5.5";
+              // My messages carry their time under the bubble, once per run within the minute.
+              const next = timeline[i + 1];
+              const lastOfMine = fromMe && !(next?.kind === "message" && authorKey(next.message.author) === authorKey(m.author) && clockTime(new Date(next.createdAt)) === clockTime(at));
+              const flat = (text: string) => <FlatText text={text} mentionables={mentions} />;
               /** A Claude Code session started here: its card instead of the event line. */
               const codeStarted = m.kind === "event" && m.data?.event?.type === "code.started" ? m.data.event : null;
               if (codeStarted && shownSessions.has(codeStarted.sessionId)) return null;
@@ -974,7 +1007,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
               const githubMerge = m.kind === "event" && m.data?.event?.type === "github.merge" ? m.data.event : null;
               return (
                 <Fragment key={entry.key}>
-                  {divider && <DateDivider label={dividerLabel(at)} />}
+                  {divider && <DayDivider label={dayLabel(at)} />}
                   {m.kind === "user" &&
                     (fromMe ? (
                     <MessageRow
@@ -994,7 +1027,6 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                     >
                       <ChatMessage
                         mine={fromMe}
-                        lead={lead}
                         text={m.text}
                         attachments={m.data?.attachments}
                         invocations={fromMe ? m.data?.invocations : undefined}
@@ -1005,7 +1037,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                       />
                     </MessageRow>
                     ) : (
-                      <Post avatar={avatar} className={cn(gap || undefined, arriving && "chat-arrive")}>
+                      <Post head={postHead} className={cn(gap || undefined, arriving && "chat-arrive")}>
                     <MessageRow
                       className={fromMe ? gap || undefined : undefined}
                       wide={!fromMe}
@@ -1023,7 +1055,6 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                     >
                       <ChatMessage
                         mine={fromMe}
-                        lead={lead}
                         text={m.text}
                         attachments={m.data?.attachments}
                         invocations={fromMe ? m.data?.invocations : undefined}
@@ -1035,11 +1066,13 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                     </MessageRow>
                       </Post>
                     ))}
+                  {lastOfMine && <p className="mt-1 text-right text-xs text-subtle-foreground tabular-nums">{clockTime(at)}</p>}
                   {m.kind === "user" && <PullRequestLinks text={m.text} shown={sessionPulls} align={fromMe ? "end" : "start"} className={cn("mt-1.5", fromMe && "pr-8")} />}
                   {m.kind === "bot" && (
-                    <Post className={gap || undefined} avatar={avatar}>
+                    <Post className={gap || undefined} head={postHead}>
+                      {/* What it used, before what it says: as while it works (the live turn starts with it). */}
+                      {m.data?.tools && <ToolLine tools={m.data.tools} />}
                       {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
-                      {lead && !m.text && !m.data?.codeSessions?.length && <p className="text-sm">{lead}</p>}
                       {(m.text || !!m.data?.codeSessions?.length) && (
                         <MessageRow
                           id={m.id}
@@ -1061,11 +1094,10 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                               bubble={flat}
                             />
                           ) : (
-                            <FlatText text={m.text} mentionables={mentions} lead={lead} />
+                            <FlatText text={m.text} mentionables={mentions} />
                           )}
                         </MessageRow>
                       )}
-                      {m.data?.tools && <ToolLine tools={m.data.tools} />}
                       {m.data?.views && <BotViews message={m} views={m.data.views} answers={viewAnswers} send={send} />}
                       {m.data?.previews && <PreviewCards previews={m.data.previews} onOpen={openPreview} />}
                       <BotFiles message={m} />
@@ -1076,7 +1108,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                     </Post>
                   )}
                   {codeStarted && (
-                    <div className="mt-3 pl-12">
+                    <div className="mt-3 pl-7">
                     <CodeSessionCard
                       conversationId={conversationId}
                       sessionId={codeStarted.sessionId}
@@ -1086,20 +1118,26 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                     </div>
                   )}
                   {vaultRequest && (
-                    <div className="mt-3 pl-12">
+                    <div className="mt-3 pl-7">
                       <VaultRequestCard id={vaultRequest.requestId} />
                     </div>
                   )}
                   {githubMerge && (
-                    <div className="mt-3 pl-12">
+                    <div className="mt-3 pl-7">
                       <GitHubMergeCard id={githubMerge.requestId} bot={githubMerge.bot} repo={githubMerge.repo} number={githubMerge.number} />
                     </div>
                   )}
-                  {m.kind === "event" && !codeStarted && !vaultRequest && !githubMerge && (
-                    <DateDivider
-                      label={eventText(m.text, m.data?.event)}
-                      conversationId={m.data?.event?.type === "relay.group" ? m.data.event.conversationId : undefined}
-                    />
+                  {m.kind === "event" && m.data?.event?.type === "bot.failed" && (
+                    <FailureLine label={eventText(m.text, m.data.event)} onRetry={i === timeline.length - 1 ? () => retryLast(conversationId) : undefined} />
+                  )}
+                  {m.kind === "event" && !codeStarted && !vaultRequest && !githubMerge && m.data?.event?.type !== "bot.failed" && (
+                    // Figma: what happened, in the thread's flow on the left, in grey: no centred banner.
+                    <div className="mt-3 pl-7 text-xs text-subtle-foreground [&>p]:my-0 [&>p]:text-left [&>p]:text-subtle-foreground">
+                      <DateDivider
+                        label={eventText(m.text, m.data?.event)}
+                        conversationId={m.data?.event?.type === "relay.group" ? m.data.event.conversationId : undefined}
+                      />
+                    </div>
                   )}
                 </Fragment>
               );
@@ -1158,7 +1196,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
         )}
       </div>
 
-      <div className="mx-auto w-full max-w-5xl shrink-0 px-4 pb-4 md:px-12">
+      <div className="mx-auto w-full max-w-178 shrink-0 px-4 pb-5">
         {conv && (
           <QueueList
             items={queue}
@@ -1190,6 +1228,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
         <ForwardDialog conversationId={conversationId} message={forwarding} onClose={() => setForwarding(null)} />
       </div>
     </section>
+    </RunCommandContext.Provider>
   );
 
   return (
@@ -1265,12 +1304,10 @@ function TitleWithStatus({ title, p, avatar, waiting, className }: { title: stri
   const t = useT(strings);
   return (
     // Figma « Conversation »: the name over what they are doing, left of the thread.
-    <span className={cn("flex min-w-0 items-center gap-3 text-left", className)}>
+    <span className={cn("flex min-w-0 items-center gap-2.5 text-left", className)}>
       {avatar}
-      <span className="grid min-w-0">
-        <span className="truncate text-sm font-medium">{title}</span>
-        {waiting ? <span className="truncate text-xs font-normal text-muted-foreground">{t.waitingYou}</span> : p && <HeaderStatus p={p} />}
-      </span>
+      <span className="truncate text-ui font-medium">{title}</span>
+      {waiting ? <span className="truncate text-ui font-normal text-warning-foreground">{t.waitingYou}</span> : p && <HeaderStatus p={p} />}
     </span>
   );
 }
@@ -1282,8 +1319,8 @@ function HeaderStatus({ p }: { p: Participant }) {
   return (
     <span
       className={cn(
-        "truncate text-xs font-normal",
-        status.tone === "dnd" ? "text-destructive" : "text-muted-foreground",
+        "truncate text-ui font-normal",
+        { online: "text-success", working: "text-brand", dnd: "text-destructive", away: "text-subtle-foreground" }[status.tone],
       )}
     >
       {status.label}

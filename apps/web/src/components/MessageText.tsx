@@ -1,7 +1,10 @@
-import { Children, isValidElement, memo, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { Children, isValidElement, memo, useContext, useMemo, useState, type ComponentProps, type ReactElement, type ReactNode } from "react";
+import { TaskStatusIcon } from "@/components/Marks";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { defaultRehypePlugins, Streamdown, type CustomRendererProps } from "streamdown";
-import { CHAT_LINE, prepareMarkdown, rehypeQuotes, remarkChat } from "@/lib/chat-markdown";
+import { CodeBlock, CodeBlockCopyButton, defaultRehypePlugins, Streamdown, type CustomRendererProps } from "streamdown";
+import { RunCommandContext } from "@/lib/run-command";
+import { createCodePlugin } from "@streamdown/code";
+import { CHAT_LINE, prepareMarkdown, rehypeNumericColumns, rehypeQuotes, remarkChat } from "@/lib/chat-markdown";
 import { asFile, asPath, fileOfUrl, linkClass, linkLabel, parseRepo, rehypeLinks, splitEntities } from "@/lib/links";
 import { rehypeTaskRefs } from "@/lib/task-refs";
 import { TaskRef } from "@/components/TaskRef";
@@ -14,8 +17,8 @@ import { ColorValue, FileChip, PathChip, PortChip, RepoChip, Swatch } from "./Te
 const NONE: Mentionable[] = [];
 
 const messages = defineMessages({
-  en: { showImage: (host: string) => `Show image from ${host}` },
-  fr: { showImage: (host: string) => `Afficher l'image de ${host}` },
+  en: { showImage: (host: string) => `Show image from ${host}`, run: "Run", runLabel: "Ask the agent to run this command and read its result" },
+  fr: { showImage: (host: string) => `Afficher l'image de ${host}`, run: "Exécuter", runLabel: "Demander à l'agent d'exécuter cette commande et d'en lire le résultat" },
 });
 
 /** Words of a reply being written fade in as they arrive instead of popping in by chunks. */
@@ -26,27 +29,48 @@ const streamedWords = { animation: "fadeIn", duration: 180, easing: "var(--ease-
  * every token re-renders every message in the thread, and its code highlighter setStates from an
  * effect — the path that throws React's minified error #185 on a fast reply.
  */
-const SHIKI_THEME = ["github-dark", "github-dark"] as ["github-dark", "github-dark"];
+const SHIKI_THEME = ["github-light", "github-dark"] as ["github-light", "github-dark"];
+/** Shiki colours code blocks (Streamdown 2 ships it apart); languages load on first use. */
+const CODE_PLUGIN = createCodePlugin({ themes: SHIKI_THEME });
 const LINK_SAFETY = { enabled: false };
 const REMARK_CHAT = [remarkChat];
 /** A table is read, not a tool: no copy/download/fullscreen bar over it. Code keeps its copy button. */
 const CONTROLS = { table: false, code: { copy: true, download: false }, mermaid: false } as const;
 
 /** Lists, paragraphs and blocks of a message's markdown, spaced for a bubble. */
-/** Code blocks sit on the background with a border: in the muted bubble a muted block would vanish. */
-const proseClass =
-  "[&_p]:my-0 [&>div>*+*]:mt-2.5 [&_[data-streamdown=code-block]]:rounded-lg [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:border-border [&_[data-streamdown=code-block]]:bg-background";
+/**
+ * A code block is one box, not a box in a box: its language and copy on a thin bar over a hairline,
+ * then the code on the same ground, 13 px, no line numbers (Linear, GitHub's comments).
+ */
+const proseClass = cn(
+  "[&_p]:my-0 [&>div>*+*]:mt-2.5",
+  "[&_[data-streamdown=code-block]]:my-2 [&_[data-streamdown=code-block]]:gap-0 [&_[data-streamdown=code-block]]:overflow-hidden [&_[data-streamdown=code-block]]:rounded-lg [&_[data-streamdown=code-block]]:border [&_[data-streamdown=code-block]]:bg-card [&_[data-streamdown=code-block]]:p-0",
+  "[&_[data-streamdown=code-block-header]]:border-b [&_[data-streamdown=code-block-header]]:px-2 [&_[data-streamdown=code-block-header]]:text-subtle-foreground",
+  "[&_[data-streamdown=code-block-actions]]:border-0 [&_[data-streamdown=code-block-actions]]:bg-transparent [&_[data-streamdown=code-block-actions]]:px-1 [&_[data-streamdown=code-block-actions]]:backdrop-blur-none",
+  // Copy sits on the language's bar, not 8 px under it.
+  "[&_:has(>[data-streamdown=code-block-actions])]:top-0 [&_:has(>[data-streamdown=code-block-actions])]:-mt-8",
+  "[&_[data-streamdown=code-block-body]]:rounded-none [&_[data-streamdown=code-block-body]]:border-0 [&_[data-streamdown=code-block-body]]:bg-transparent [&_[data-streamdown=code-block-body]]:px-3 [&_[data-streamdown=code-block-body]]:py-2.5 [&_[data-streamdown=code-block-body]]:text-ui [&_[data-streamdown=code-block-body]_pre]:bg-transparent!",
+);
 
 type Md<T extends "table" | "thead" | "tbody" | "tr" | "th" | "td" | "ul" | "ol" | "li"> = ComponentProps<T> & { node?: unknown };
 
-/** Markdown tables are shadcn's Table: Streamdown's own wrapper boxes the table twice. */
+/**
+ * Markdown tables are shadcn's Table: Streamdown's own wrapper boxes the table twice. Figma
+ * (« Atelier · Théo »): a quiet header, rows without hover, figures right-aligned in mono, and the
+ * figure the author set in bold is the one that stands out, in the waiting colour.
+ */
+const numeric = (props: object) => "data-numeric" in props;
 const tableComponents = {
   table: ({ node, ...props }: Md<"table">) => <Table {...props} />,
   thead: ({ node, ...props }: Md<"thead">) => <TableHeader {...props} />,
   tbody: ({ node, ...props }: Md<"tbody">) => <TableBody {...props} />,
-  tr: ({ node, ...props }: Md<"tr">) => <TableRow {...props} />,
-  th: ({ node, ...props }: Md<"th">) => <TableHead {...props} />,
-  td: ({ node, ...props }: Md<"td">) => <TableCell {...props} />,
+  tr: ({ node, ...props }: Md<"tr">) => <TableRow {...props} className="hover:bg-transparent" />,
+  th: ({ node, ...props }: Md<"th">) => (
+    <TableHead {...props} className={cn("h-auto px-0 pt-1 pb-2 text-xs text-muted-foreground not-first:pl-4", numeric(props) ? "w-24 text-right font-normal" : "first:font-medium")} />
+  ),
+  td: ({ node, ...props }: Md<"td">) => (
+    <TableCell {...props} className={cn("px-0 py-2.25 text-ui not-first:pl-4", numeric(props) && "text-right font-mono [&_[data-streamdown=strong]]:font-normal [&_[data-streamdown=strong]]:text-warning")} />
+  ),
 };
 
 /**
@@ -55,9 +79,62 @@ const tableComponents = {
  * the marker inside the line with a wide gap.
  */
 const listComponents = {
-  ul: ({ node, className, ...props }: Md<"ul">) => <ul {...props} className={cn("flex list-disc flex-col gap-1 pl-5 marker:text-muted-foreground", className)} />,
+  // A checklist (« - [x] … ») has its marks, not bullets too.
+  ul: ({ node, className, ...props }: Md<"ul">) => (
+    <ul {...props} className={cn("flex flex-col gap-1", className?.includes("contains-task-list") ? "list-none" : "list-disc pl-5 marker:text-muted-foreground", className)} />
+  ),
   ol: ({ node, className, ...props }: Md<"ol">) => <ol {...props} className={cn("flex list-decimal flex-col gap-1 pl-5 marker:text-muted-foreground", className)} />,
-  li: ({ node, className, ...props }: Md<"li">) => <li {...props} className={cn("pl-0.5 [&>p]:inline", className)} />,
+  li: ({ node, className, children, ...props }: Md<"li">) => {
+    if (!className?.includes("task-list-item")) return <li {...props} className={cn("pl-0.5 [&>p]:inline", className)}>{children}</li>;
+    // The checkbox becomes the app's task mark: an empty ring to do, a filled check done (greyed text).
+    const kids = Children.toArray(children);
+    const box = kids.find((k): k is ReactElement<{ checked?: boolean }> => isValidElement(k) && k.type === "input");
+    const done = !!box?.props.checked;
+    return (
+      <li {...props} className={cn("flex items-start gap-2 [&>p]:inline", done && "text-muted-foreground")}>
+        <TaskStatusIcon status={done ? "done" : "todo"} className="mt-0.5" />
+        <span className="min-w-0">{kids.filter((k) => k !== box)}</span>
+      </li>
+    );
+  },
+};
+
+/** Languages a terminal runs: their blocks get « Exécuter » in a conversation. */
+const SHELLS = ["bash", "sh", "shell", "zsh", "console", "terminal"];
+
+/**
+ * A shell block: Streamdown's own code block (highlighted, copy), with « Exécuter » beside copy when
+ * the page can send it to the bot (RunCommandContext): the bot runs it and reads the result.
+ */
+function ShellBlock({ code, language, isIncomplete }: CustomRendererProps) {
+  const t = useT(messages);
+  const run = useContext(RunCommandContext);
+  return (
+    <CodeBlock code={code} language={language} isIncomplete={isIncomplete} lineNumbers={false}>
+      {run && !isIncomplete && (
+        <button type="button" title={t.runLabel} onClick={() => run(code, language)} className="cursor-pointer rounded-sm px-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+          {t.run}
+        </button>
+      )}
+      <CodeBlockCopyButton code={code} />
+    </CodeBlock>
+  );
+}
+
+/**
+ * Headings, quotes and rules at a message's scale: a reply is not a document, so a « # » title is a
+ * strong line a step above the text, never Streamdown's 30 px; a quote a grey rule and grey words.
+ */
+type Hx = ComponentProps<"h1"> & { node?: unknown };
+const blockComponents = {
+  h1: ({ node, className, ...props }: Hx) => <h3 {...props} className={cn("mt-2 text-base font-semibold", className)} />,
+  h2: ({ node, className, ...props }: Hx) => <h3 {...props} className={cn("mt-2 text-base font-semibold", className)} />,
+  h3: ({ node, className, ...props }: Hx) => <h4 {...props} className={cn("mt-1 text-ui font-semibold", className)} />,
+  h4: ({ node, className, ...props }: Hx) => <h4 {...props} className={cn("mt-1 text-ui font-semibold", className)} />,
+  blockquote: ({ node, className, ...props }: ComponentProps<"blockquote"> & { node?: unknown }) => (
+    <blockquote {...props} className={cn("my-0 border-l-2 pl-3 text-muted-foreground", className)} />
+  ),
+  hr: ({ node, className, ...props }: ComponentProps<"hr"> & { node?: unknown }) => <hr {...props} className={cn("my-3 border-border", className)} />,
 };
 
 /**
@@ -80,7 +157,7 @@ export const MessageText = memo(function MessageText({
 }) {
   // Links first: an email's "@" must not be read as a mention.
   const rehypePlugins = useMemo(
-    () => [...Object.values(defaultRehypePlugins), rehypeLinks, rehypeQuotes, rehypeTaskRefs, ...(mentionables.length ? [rehypeMentions(mentionables)] : [])],
+    () => [...Object.values(defaultRehypePlugins), rehypeLinks, rehypeQuotes, rehypeNumericColumns, rehypeTaskRefs, ...(mentionables.length ? [rehypeMentions(mentionables)] : [])],
     [mentionables],
   );
   const components = useMemo(() => {
@@ -88,6 +165,7 @@ export const MessageText = memo(function MessageText({
     return {
       ...tableComponents,
       ...listComponents,
+      ...blockComponents,
       a: MessageLink,
       img: MessageImage,
       inlineCode: InlineCode,
@@ -111,7 +189,13 @@ export const MessageText = memo(function MessageText({
     };
   }, [mentionables]);
   const plugins = useMemo(
-    () => ({ renderers: [{ language: "chat", component: (p: CustomRendererProps) => <ChatQuote code={p.code} mentionables={mentionables} /> }] }),
+    () => ({
+      code: CODE_PLUGIN,
+      renderers: [
+        { language: "chat", component: (p: CustomRendererProps) => <ChatQuote code={p.code} mentionables={mentionables} /> },
+        { language: SHELLS, component: ShellBlock },
+      ],
+    }),
     [mentionables],
   );
   const markdown = useMemo(() => prepareMarkdown(text), [text]);
@@ -124,6 +208,7 @@ export const MessageText = memo(function MessageText({
         shikiTheme={SHIKI_THEME}
         linkSafety={LINK_SAFETY}
         controls={CONTROLS}
+        lineNumbers={false}
         remarkPlugins={plain ? REMARK_CHAT : undefined}
         rehypePlugins={rehypePlugins}
         components={components}
@@ -212,7 +297,7 @@ function InlineCode({ node: _node, className, children, ...props }: ComponentPro
   if (!more.length && only && typeof only !== "string" && only.kind === "repo") return <RepoChip url={only.url} repo={only} label={only.text.startsWith("git@") ? only.text : undefined} />;
   const color = /^#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3})$/i.test(text.trim()) ? text.trim() : null;
   return (
-    <code {...props} className={cn("font-mono text-xs", className)}>
+    <code {...props} className={cn("font-mono text-ui text-muted-foreground", className)}>
       {color && <Swatch color={color} />}
       {children}
     </code>

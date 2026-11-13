@@ -14,7 +14,7 @@ const messages = defineMessages({
  */
 export function FormLabel({ htmlFor, required, children, className }: { htmlFor?: string; required?: boolean; children: ReactNode; className?: string }) {
   return (
-    <FieldLabel htmlFor={htmlFor} className={cn("gap-1", className)}>
+    <FieldLabel htmlFor={htmlFor} className={cn("gap-1 text-ui font-normal text-muted-foreground", className)}>
       {children}
       {/* Only required fields are marked; a field without an asterisk is optional. */}
       {required && <RequiredMark />}
@@ -27,7 +27,7 @@ export function RequiredMark({ className }: { className?: string }) {
   const t = useT(messages);
   return (
     <>
-      <span aria-hidden className={cn("text-destructive", className)}>
+      <span aria-hidden className={cn("text-subtle-foreground", className)}>
         *
       </span>
       <span className="sr-only">{t.required}</span>

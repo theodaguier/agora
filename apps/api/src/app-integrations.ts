@@ -1,7 +1,7 @@
 /**
  * The app's own integrations (Settings › Integrations): third-party services
  * Agora itself runs on, not the bots' MCP connectors. Resend sends the
- * invitation and password emails, logo.dev draws the brands' logos.
+ * invitation and password emails, logo.dev draws the brands' logos, Google Maps draws the bots' places.
  *
  * Stored in the `setting` table, one JSON row per integration. Secret fields
  * are encrypted with a key derived from BETTER_AUTH_SECRET: a database dump
@@ -20,6 +20,7 @@ const messages = defineMessages({
     missing: (field: string) => `${field} is required.`,
     resendInvalid: "Resend refused this API key.",
     logoDevInvalid: "logo.dev refused this publishable key.",
+    googleMapsInvalid: "Google refused this key (is the Maps Static API enabled for it?).",
     unreachable: (service: string) => `${service} is unreachable, try again.`,
     badFrom: "Expected an address like Agora <no-reply@your-domain.com>.",
   },
@@ -28,6 +29,7 @@ const messages = defineMessages({
     missing: (field: string) => `${field} est obligatoire.`,
     resendInvalid: "Resend a refusé cette clé API.",
     logoDevInvalid: "logo.dev a refusé cette clé publique.",
+    googleMapsInvalid: "Google a refusé cette clé (l'API Maps Static est-elle activée pour elle ?).",
     unreachable: (service: string) => `${service} est injoignable, réessaie.`,
     badFrom: "Adresse attendue du type Agora <no-reply@ton-domaine.com>.",
   },
@@ -71,6 +73,19 @@ const DEFS = [
       }).catch(() => null);
       if (!res) throw new IntegrationError(tr(messages).unreachable("logo.dev"));
       if (res.status === 401 || res.status === 403) throw new IntegrationError(tr(messages).logoDevInvalid);
+    },
+  },
+  {
+    // The maps of the places bots show: Google's Maps Static API, through the server (the key never reaches the browser).
+    id: "googlemaps",
+    fields: [{ name: "mapsKey", secret: true, required: true }],
+    fromEnv: () => (env.GOOGLE_MAPS_API_KEY ? { mapsKey: env.GOOGLE_MAPS_API_KEY } : null),
+    check: async (v) => {
+      const res = await fetch(`https://maps.googleapis.com/maps/api/staticmap?center=48.85,2.35&zoom=12&size=32x32&key=${encodeURIComponent(v.mapsKey!)}`, {
+        signal: AbortSignal.timeout(8000),
+      }).catch(() => null);
+      if (!res) throw new IntegrationError(tr(messages).unreachable("Google Maps"));
+      if (!res.ok) throw new IntegrationError(tr(messages).googleMapsInvalid);
     },
   },
 ] satisfies Def[];

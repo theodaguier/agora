@@ -23,6 +23,10 @@ RUN arch="$(dpkg --print-architecture)" \
  && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${arch}/bin/gh" /usr/local/bin/gh \
  && rm -rf "/tmp/gh_${GH_VERSION}_linux_${arch}" \
  && gh --version
+# Machines SSH (apps/api ssh.ts): ssh, ssh-agent, ssh-keygen and ssh-keyscan for the API, and ssh, scp,
+# sftp and rsync for the code sessions.
+RUN (command -v ssh-agent && command -v rsync) >/dev/null \
+ || (apt-get update && apt-get install -y --no-install-recommends openssh-client rsync && rm -rf /var/lib/apt/lists/*)
 # Browsers for the sessions' Playwright, with their system libraries: a session downloading one
 # hangs, and cannot write to PLAYWRIGHT_BROWSERS_PATH (inherited from Hermes, owned by root).
 # Full Chromium and the headless shell; /usr/local/bin/chromium is the path given to Claude Code

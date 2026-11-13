@@ -197,3 +197,41 @@ export function rehypeQuotes() {
     walk(tree);
   };
 }
+
+const hastText = (n: HastNode): string => (n.type === "text" ? (n.value ?? "") : (n.children ?? []).map(hastText).join(""));
+const cellsOf = (row: HastNode) => (row.children ?? []).filter((c) => c.type === "element" && (c.tagName === "td" || c.tagName === "th"));
+/** A figure: digits with their separators and units (7,1:1, 12 %, -3.5, 1 200 €). */
+const NUMERIC = /^[-+−]?[\d\s.,:/]*\d[\d\s.,:/]*\s?(%|€|\$|ms|s|px|k|M|Go|Mo|x|×)?$/;
+
+/**
+ * Marks a table's columns of figures (every body cell a number) with `data-numeric`, so they can be
+ * set right-aligned in mono as in the Figma frames (« Atelier · Théo »), header included.
+ */
+export function rehypeNumericColumns() {
+  return (tree: HastNode) => {
+    const walk = (node: HastNode) => {
+      for (const child of node.children ?? []) {
+        if (child.type !== "element") continue;
+        if (child.tagName !== "table") {
+          walk(child);
+          continue;
+        }
+        const rows: HastNode[] = [];
+        const collect = (n: HastNode) => (n.children ?? []).forEach((c) => (c.type === "element" && c.tagName === "tr" ? rows.push(c) : c.type === "element" && collect(c)));
+        collect(child);
+        const body = rows.filter((r) => cellsOf(r).some((c) => c.tagName === "td"));
+        if (!body.length) continue;
+        const width = Math.max(...rows.map((r) => cellsOf(r).length));
+        for (let i = 1; i < width; i++) {
+          const values = body.map((r) => hastText(cellsOf(r)[i] ?? { type: "text", value: "" }).trim()).filter(Boolean);
+          if (!values.length || !values.every((v) => NUMERIC.test(v))) continue;
+          for (const r of rows) {
+            const cell = cellsOf(r)[i];
+            if (cell) cell.properties = { ...cell.properties, dataNumeric: "" };
+          }
+        }
+      }
+    };
+    walk(tree);
+  };
+}

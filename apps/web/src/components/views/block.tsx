@@ -10,24 +10,23 @@ import { toneDot } from "./tone";
  * requests, views): a shadcn Card › CardHeader (title, description, action) › CardContent › CardFooter.
  */
 export function BlockCard({ className, ...props }: ComponentProps<typeof Card>) {
-  return <Card className={cn("w-full", className)} {...props} />;
+  // Geist density: 12 px around and between the parts, as the session card in the thread.
+  return <Card size="sm" className={cn("w-full", className)} {...props} />;
 }
 
 /**
- * Figma « En-tête de bloc »: the icon of what the block is in a tile, its title and a muted line,
- * its state (or its close button) on the right; a hairline under it.
+ * A block's header on one line, as Linear's: what it is (its icon, its title), where it comes from in
+ * grey beside it, its state or its count on the right; a hairline under it.
  */
 export function BlockHeader({ icon, title, description, action, titleClassName }: { icon?: ReactNode; title: ReactNode; description?: ReactNode; action?: ReactNode; titleClassName?: string }) {
   return (
     <CardHeader className="border-b">
-      <div className="flex min-w-0 items-center gap-3">
-        {icon && <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">{icon}</span>}
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <CardTitle className={titleClassName}>{title}</CardTitle>
-          {description && <CardDescription>{description}</CardDescription>}
-        </div>
+      <div className="flex min-w-0 items-center gap-2 text-ui">
+        {icon && <span className="flex shrink-0 text-muted-foreground [&_svg]:size-4">{icon}</span>}
+        <CardTitle className={cn("min-w-0 text-ui font-medium", titleClassName)}>{title}</CardTitle>
+        {description && <CardDescription className="min-w-0 shrink truncate text-xs text-subtle-foreground">{description}</CardDescription>}
       </div>
-      {action && <CardAction>{action}</CardAction>}
+      {action && <CardAction className="self-center">{action}</CardAction>}
     </CardHeader>
   );
 }

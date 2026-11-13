@@ -32,6 +32,9 @@ export const integrations = defineMessages<{
   due: string;
   project: string;
   noSubject: string;
+  /** Contact actions: « Écrire à … », « Appeler … ». */
+  write: string;
+  call: string;
   empty: string;
   more: (n: number) => string;
   open: string;
@@ -86,6 +89,8 @@ export const integrations = defineMessages<{
     due: "Due",
     project: "Project",
     noSubject: "(no subject)",
+    write: "Write to",
+    call: "Call",
     empty: "Nothing to show.",
     more: (n) => `${n} more`,
     open: "Open",
@@ -136,6 +141,8 @@ export const integrations = defineMessages<{
     due: "Échéance",
     project: "Projet",
     noSubject: "(sans objet)",
+    write: "Écrire à",
+    call: "Appeler",
     empty: "Rien à afficher.",
     more: (n) => `${n} de plus`,
     open: "Ouvrir",

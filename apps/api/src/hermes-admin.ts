@@ -211,6 +211,8 @@ export async function createProfile(profile: string, description: string) {
   await (await import("./screen")).installScreenPlugin(profile).catch((err) => console.error("screen: plugin", err));
   // Coffre-fort: what it reads is decided per vault by its members (vault-plugin.ts).
   await (await import("./vault-plugin")).installVaultPlugin(profile).catch((err) => console.error("vault plugin", err));
+  // Machines SSH: which bots reach a machine is decided per machine (ssh-plugin.ts).
+  await (await import("./ssh-plugin")).installSshPlugin(profile).catch((err) => console.error("ssh plugin", err));
   // Claude Code sessions, off until an admin turns them on for this agent (code-plugin.ts).
   const code = await import("./code-plugin");
   const linked = await code.linkCodePlugin(profile).then(

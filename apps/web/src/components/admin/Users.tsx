@@ -31,6 +31,7 @@ import { adminInvitationsQuery, adminUsersQuery } from "@/lib/queries";
 import { common } from "@agora/core/i18n";
 import { defineMessages, intlLocale, useLocale, useT } from "@/i18n";
 import { ErrorText, LoadError, Loading, SectionHeader } from "./ui";
+import { cn } from "@/lib/utils";
 
 const messages = defineMessages({
   en: {
@@ -47,9 +48,7 @@ const messages = defineMessages({
     noMembers: "No members yet. Invite someone above.",
     pending: "Pending",
     member: "Member",
-    memberHelp: "Uses the agents opened to them.",
     admin: "Admin",
-    adminHelp: "Manages users, agents and access, sees everyone's usage and approves requests.",
     access: "Access",
     roleOf: (name: string) => `${name}'s role`,
     scheduleOf: (name: string) => `${name}'s availability`,
@@ -88,9 +87,7 @@ const messages = defineMessages({
     noMembers: "Aucun membre pour l'instant. Invite quelqu'un ci-dessus.",
     pending: "En attente",
     member: "Membre",
-    memberHelp: "Utilise les agents qui lui sont ouverts.",
     admin: "Admin",
-    adminHelp: "Gère les utilisateurs, les agents et les accès, voit la consommation de tous et valide les demandes.",
     access: "Accès",
     roleOf: (name: string) => `Rôle de ${name}`,
     scheduleOf: (name: string) => `Disponibilité de ${name}`,
@@ -226,8 +223,8 @@ function AccessSelect({
 }) {
   const t = useT(messages);
   const access = [
-    { value: "user", label: t.member, help: t.memberHelp, icon: <UserIcon /> },
-    { value: "admin", label: t.admin, help: t.adminHelp, icon: <ShieldCheckIcon /> },
+    { value: "user", label: t.member, icon: <UserIcon /> },
+    { value: "admin", label: t.admin, icon: <ShieldCheckIcon /> },
   ];
   return (
     <Select
@@ -251,14 +248,11 @@ function AccessSelect({
           }}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent alignItemWithTrigger={false} align="end" className="w-72">
+      <SelectContent alignItemWithTrigger={false} align="end">
         {access.map((a) => (
           <SelectItem key={a.value} value={a.value}>
             {a.icon}
-            <span className="flex flex-col gap-0.5">
-              <span>{a.label}</span>
-              <span className="text-muted-foreground">{a.help}</span>
-            </span>
+            {a.label}
           </SelectItem>
         ))}
       </SelectContent>
@@ -421,7 +415,7 @@ function PendingInvitation({
         <ItemTitle>
           <span className="truncate">{inv.email}</span>
         </ItemTitle>
-        <ItemDescription className="truncate">
+        <ItemDescription className={cn("truncate", expired ? "text-destructive" : "text-warning-foreground")}>
           {`${inv.role === "admin" ? t.admin : t.member}, ${expired ? t.expired : t.invitedOn(new Date(inv.createdAt).toLocaleDateString(locale, { day: "numeric", month: "short" }))}`}
         </ItemDescription>
       </ItemContent>

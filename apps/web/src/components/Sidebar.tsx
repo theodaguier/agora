@@ -3,12 +3,13 @@ import { auth, common, conversations } from "@agora/core/i18n";
 import { useEventText } from "@/i18n/events";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams, useRouteContext } from "@tanstack/react-router";
-import { CalendarClockIcon, ClockIcon, CloseIcon, SplitIcon, FileTextIcon, KeyboardIcon, InboxIcon, LoaderIcon, TaskListIcon, LogOutIcon, MoonIcon, PlugIcon, PlusIcon, PuzzleIcon, SearchIcon, SlidersIcon, SparklesIcon, TerminalIcon, UserIcon } from "@/components/icons";
-import { useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
-import { BrandLogo } from "@/components/BrandLogo";
+import { CalendarClockIcon, ChartIcon, ChevronDownIcon, ClockIcon, CloseIcon, ComposeIcon, SplitIcon, FileCodeIcon, FileTextIcon, KeyboardIcon, InboxIcon, LoaderIcon, TaskListIcon, LogOutIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SparklesIcon, UserIcon } from "@/components/icons";
+import { useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { OrgLogo } from "@/components/OrgLogo";
-import { mcpServersQuery } from "@/components/marketplace/data";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { BrandLogo } from "@/components/BrandLogo";
+import { mcpCatalogQuery, mcpServersQuery } from "@/components/marketplace/data";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { CodeEnginesLogo, IntegrationsFolder, KnownIntegrationsLogo } from "@/components/ProviderLogo";
 import { useOrgName } from "@/lib/org";
 import type { ConversationSummary } from "@/lib/api";
 import { listTime } from "@/lib/dates";
@@ -52,7 +53,7 @@ import {
 import { authClient } from "@/lib/auth";
 import { openProfile } from "@/lib/profile";
 import { allCodeSessionsQuery } from "@/lib/code-sessions";
-import { conversationsQuery, digestQuery, inboxQuery, tasksQuery } from "@/lib/queries";
+import { brandsQuery, conversationsQuery, digestQuery, inboxQuery, tasksQuery } from "@/lib/queries";
 import { setDigestOpen } from "@/lib/digest";
 import { openSettings } from "@/lib/settings";
 import { availabilityLabel, dndPresets, isAway, scheduleSettingsQuery, setDnd, useAvailability } from "@/lib/availability";
@@ -60,7 +61,6 @@ import { presenceQuery } from "@/lib/presence";
 import { setOverlay, shortcuts } from "@/lib/shortcuts";
 import { setWhatsNewOpen } from "@/lib/whats-new";
 import { ShortcutKeys, ShortcutTooltip } from "@/components/Shortcuts";
-import { SidebarUsage } from "@/components/SidebarUsage";
 import { openBeside, openHere, startTabDrag, tabPath, writeSize } from "@/lib/workspace";
 
 const messages = defineMessages({
@@ -75,6 +75,10 @@ const messages = defineMessages({
     inboxShort: "Inbox",
     tasksShort: "Tasks",
     sessionsShort: "Sessions",
+    sessionsNav: "Code sessions",
+    artifactsNav: "Artifacts",
+    search: "Search",
+    usageNav: "Usage",
     waitingSessions: (n: number) => `${n} waiting for you`,
     unreadInbox: (n: number) => `${n} unread`,
     profile: "My profile",
@@ -108,6 +112,10 @@ const messages = defineMessages({
     inboxShort: "Boîte",
     tasksShort: "Tâches",
     sessionsShort: "Sessions",
+    sessionsNav: "Sessions de code",
+    artifactsNav: "Artefacts",
+    search: "Rechercher",
+    usageNav: "Consommation",
     waitingSessions: (n: number) => `${n} t'attend${n > 1 ? "ent" : ""}`,
     unreadInbox: (n: number) => `${n} non lue${n > 1 ? "s" : ""}`,
     profile: "Mon profil",
@@ -133,7 +141,7 @@ const messages = defineMessages({
 });
 
 /** The list's width until dragged, and how far it can be dragged (px). */
-export const SIDEBAR_WIDTH = 300;
+export const SIDEBAR_WIDTH = 240;
 const SIDEBAR_MIN = 240;
 const SIDEBAR_MAX = 480;
 const clampWidth = (px: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(px)));
@@ -149,7 +157,7 @@ export function AppSidebar({ width, onWidthChange }: { width: number; onWidthCha
   if (!isMobile) {
     if (!open) return null;
     return (
-      <Sidebar collapsible="none" style={{ "--sidebar-width": `${width}px` } as CSSProperties} className="relative shrink-0 border-r">
+      <Sidebar collapsible="none" style={{ "--sidebar-width": `${width}px` } as CSSProperties} className="relative shrink-0">
         <DesktopSidebar />
         <SidebarResizer width={width} onWidthChange={onWidthChange} />
       </Sidebar>
@@ -320,7 +328,7 @@ function SidebarBody() {
             {isAdmin && (
               <SidebarMenuItem>
                 <SidebarMenuButton onClick={() => setMarket(true)}>
-                  <PuzzleIcon />
+                  <MarketplaceLogos />
                   <span>{t.marketplace}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -339,10 +347,16 @@ function SidebarBody() {
               </SidebarMenuButton>
               {openTasks > 0 && <SidebarMenuBadge aria-label={t.openTasks(openTasks)}>{openTasks}</SidebarMenuBadge>}
             </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton isActive={pathname.startsWith("/artifacts")} render={<Link to="/artifacts" />}>
+                <FileCodeIcon />
+                <span>{t.artifactsNav}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
             {hasSessions && (
               <SidebarMenuItem>
                 <SidebarMenuButton isActive={pathname.startsWith("/sessions")} render={<Link to="/sessions" />}>
-                  <TerminalIcon />
+                  <CodeEnginesLogo />
                   <span>{t.sessionsShort}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -382,70 +396,122 @@ function DesktopSidebar() {
     select: (list) => ({ any: list.length > 0, waiting: list.filter((s) => s.status === "waiting" && s.requestedBy === user.id).length }),
   });
   const waitingSessions = sessionsPill?.waiting ?? 0;
+  const { data: tasks } = useQuery(tasksQuery(user.id));
+  const openTasks = tasks?.filter((x) => x.status !== "done" && x.assignees.some((a) => a.id === user.id)).length ?? 0;
   const list = conversations.map((c) => ({ ...c, name: conversationTitle(c, user.id) }));
+  const [folded, toggleFold] = useFoldedGroups();
 
   return (
     <>
-      <SidebarHeader>
-        {/* Who this space is (opens the morning recap when there is one), then search and new. */}
-        <div className="flex items-center gap-2">
-          <SidebarMenu className="min-w-0 flex-1">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                aria-label={digest ? t.digest : undefined}
-                onClick={digest ? () => setDigestOpen(true) : undefined}
-                render={digest ? undefined : <div />}
-                className="font-medium"
-              >
-                <OrgLogo className="size-5" />
-                <span className="truncate">{org}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-          {/* Inbox, tasks and sessions beside the name, as icons with a dot when something waits. */}
-          <ShortcutItem to="/inbox" active={pathname.startsWith("/inbox")} icon={<InboxIcon />} label={t.inboxShort} count={unreadInbox} countLabel={t.unreadInbox(unreadInbox)} tone="bg-brand" />
-          <ShortcutItem to="/tasks" active={pathname.startsWith("/tasks")} icon={<TaskListIcon />} label={t.tasksShort} />
-          {sessionsPill?.any && (
-            <ShortcutItem to="/sessions" active={pathname.startsWith("/sessions")} icon={<TerminalIcon />} label={t.sessionsShort} count={waitingSessions} countLabel={t.waitingSessions(waitingSessions)} tone="bg-warning" />
-          )}
+      {/* Figma « Boîte de réception · 1440 »: the workspace (its menu), search and write; the work; then who does it. */}
+      <SidebarHeader className="px-3 pt-3.5 pb-0">
+        <div className="flex h-9 items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="-ml-1 min-w-0 gap-2 px-2 text-ui font-medium" />}>
+              <OrgLogo className="size-4.5" />
+              <span className="truncate">{org}</span>
+              <ChevronDownIcon className="size-3 text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuGroup>
+                {digest && (
+                  <DropdownMenuItem onClick={() => setDigestOpen(true)}>
+                    <FileTextIcon /> {t.digest}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => openSettings("usage")}>
+                  <ChartIcon /> {t.usageNav}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <span className="flex-1" />
+          <ShortcutTooltip label={t.search} shortcut={shortcuts.palette}>
+            <Button variant="ghost" size="icon-sm" aria-label={t.search} onClick={() => setOverlay("palette")}>
+              <SearchIcon />
+            </Button>
+          </ShortcutTooltip>
           <ShortcutTooltip label={t.newConversation} shortcut={shortcuts.newConversation}>
-            <Button variant="ghost" size="icon-sm" aria-label={t.newConversation} nativeButton={false} render={<Link to="/new" {...tabLink("/new", true)} />}>
-              <PlusIcon />
+            <Button variant="secondary" size="icon-sm" aria-label={t.newConversation} nativeButton={false} render={<Link to="/new" {...tabLink("/new", true)} />}>
+              <ComposeIcon />
             </Button>
           </ShortcutTooltip>
         </div>
       </SidebarHeader>
 
-      <SidebarContent role="navigation" aria-label={t.conversations}>
+      <SidebarContent role="navigation" aria-label={t.conversations} className="gap-0 px-1">
+        <SidebarGroup className="pt-5.5">
+          <SidebarMenu className="gap-px">
+            {(
+              [
+                ["/inbox", <InboxIcon />, t.inbox, unreadInbox, t.unreadInbox(unreadInbox)],
+                ["/tasks", <TaskListIcon />, t.tasks, openTasks, t.openTasks(openTasks)],
+                ["/sessions", <CodeEnginesLogo />, t.sessionsNav, waitingSessions, t.waitingSessions(waitingSessions)],
+                ["/artifacts", <FileCodeIcon />, t.artifactsNav, 0, ""],
+              ] as const
+            ).map(([to, icon, label, count, countLabel]) => (
+              <SidebarMenuItem key={to}>
+                <SidebarMenuButton isActive={pathname.startsWith(to)} className="h-7.5 gap-2.5 text-ui data-active:font-normal" render={<Link to={to} {...tabLink(to, true)} />}>
+                  {icon}
+                  <span>{label}</span>
+                </SidebarMenuButton>
+                {count > 0 && <SidebarMenuBadge aria-label={countLabel} className="font-normal text-muted-foreground">{count}</SidebarMenuBadge>}
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
         {isPending && <ListSkeleton />}
         {!isPending && !list.length && <EmptyList query={conversations.length > 0} list={conversationList} />}
-        {/* The bots (a direct conversation with one), then the team: colleagues and groups. */}
         {[
           { key: "agents", label: t.agents, rows: list.filter((c) => c.kind === "direct" && c.agents.length > 0) },
           { key: "team", label: t.team, rows: list.filter((c) => !(c.kind === "direct" && c.agents.length > 0)) },
         ].map(
           (g) =>
             g.rows.length > 0 && (
-              <SidebarGroup key={g.key}>
-                <SidebarGroupLabel>{g.label}</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  {/* A little air between rows: the open one and the hovered one stay two rows. */}
-                  <SidebarMenu className="gap-1">
-                    {g.rows.map((c) => (
-                      <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
+              // Linear's groups: the name folds its list away; the chevron shows on hover, and stays when folded.
+              <Collapsible key={g.key} open={!folded.has(g.key)} onOpenChange={() => toggleFold(g.key)} render={<SidebarGroup className="group/fold pt-3.5" />}>
+                <SidebarGroupLabel
+                  render={<CollapsibleTrigger />}
+                  className="h-auto w-fit cursor-pointer gap-1 pb-1 leading-4.25 font-normal text-muted-foreground hover:text-foreground"
+                >
+                  {g.label}
+                  <ChevronDownIcon
+                    className={cn(
+                      "size-3! transition-[opacity,rotate] duration-150",
+                      folded.has(g.key) ? "-rotate-90" : "opacity-0 group-hover/fold:opacity-100",
+                    )}
+                  />
+                </SidebarGroupLabel>
+                <CollapsibleContent>
+                  <SidebarGroupContent>
+                    <SidebarMenu className="gap-px">
+                      {g.rows.map((c) => (
+                        <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </Collapsible>
             ),
         )}
       </SidebarContent>
 
-      {/* Your account, and the apps installed in the organisation. */}
-      <SidebarFooter>
-        <SidebarUsage />
-        <SidebarMenu>
-          {user.role === "admin" && <AppsItem onClick={() => setMarket(true)} label={t.marketplace} />}
+      <SidebarFooter className="px-3 pb-1.5">
+        <SidebarMenu className="gap-px">
+          {user.role === "admin" && (
+            <SidebarMenuItem>
+              <SidebarMenuButton className="h-7.5 gap-2.5 text-ui" onClick={() => setMarket(true)}>
+                <MarketplaceLogos />
+                <span>{t.marketplace}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
+          <SidebarMenuItem>
+            <SidebarMenuButton className="h-7.5 gap-2.5 text-ui" onClick={() => openSettings()}>
+              <SettingsIcon />
+              <span>{t.settings}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <UserMenu user={user} />
           </SidebarMenuItem>
@@ -517,42 +583,43 @@ function EmptyList({ query, list }: { query: boolean; list: { error: Error | nul
   );
 }
 
-/** A destination beside the organisation (inbox, tasks, sessions): its icon, a dot in `tone` when something waits (the count in its label). */
-function ShortcutItem({ to, active, icon, label, count = 0, countLabel, tone }: { to: string; active: boolean; icon: ReactNode; label: string; count?: number; countLabel?: string; tone?: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant={active ? "secondary" : "ghost"}
-            size="icon-sm"
-            aria-label={count > 0 ? `${label}, ${countLabel}` : label}
-            nativeButton={false}
-            render={<Link to={to} {...tabLink(to, true)} aria-current={active ? "page" : undefined} />}
-            className="relative"
-          />
-        }
-      >
-        {icon}
-        {count > 0 && tone && <span aria-hidden className={cn("absolute top-1 right-1 size-1.5 rounded-full ring-2 ring-sidebar", tone)} />}
-      </TooltipTrigger>
-      <TooltipContent>{count > 0 ? `${label}, ${countLabel}` : label}</TooltipContent>
-    </Tooltip>
-  );
+/**
+ * What the Marketplace holds, by its logos beside its name: the connectors installed, else the first
+ * the catalogue offers; without logo.dev or Hermes, the integrations people connect most.
+ */
+function MarketplaceLogos() {
+  const { data: brands } = useQuery(brandsQuery);
+  const { data: installed } = useQuery({ ...mcpServersQuery, retry: false, enabled: !!brands?.logos });
+  const { data: catalog } = useQuery({ ...mcpCatalogQuery, retry: false, enabled: !!brands?.logos && installed !== undefined && !installed.servers.length });
+  const servers = (installed?.servers.length ? installed.servers.map((x) => x.name) : (catalog?.entries.map((x) => x.name) ?? [])).slice(0, 4);
+  if (!brands?.logos || !servers.length) return <KnownIntegrationsLogo />;
+  // In the icon's place: an app folder of the connectors, so the label stays in line with the others.
+  return <IntegrationsFolder logos={servers.map((name) => <BrandLogo key={name} server={name} fallback={null} className="rounded-xs" />)} />;
 }
 
-/** The logos of the first connectors installed; opens the Marketplace. */
-function AppsItem({ onClick, label }: { onClick: () => void; label: string }) {
-  const { data } = useQuery(mcpServersQuery);
-  const servers = (data?.servers ?? []).slice(0, 3);
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton onClick={onClick}>
-        {servers.length ? servers.map((s) => <BrandLogo key={s.name} server={s.name} fallback={<PlugIcon />} className="size-4 rounded-sm" />) : <PuzzleIcon />}
-        <span>{label}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
+const FOLDED_KEY = "sidebar:folded";
+
+/** The sidebar groups folded away, remembered in this browser (a convenience: nothing breaks without it). */
+function useFoldedGroups(): [Set<string>, (key: string) => void] {
+  const [folded, setFolded] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(FOLDED_KEY) ?? "[]") as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggle = (key: string) =>
+    setFolded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      try {
+        localStorage.setItem(FOLDED_KEY, JSON.stringify([...next]));
+      } catch {
+        // Storage blocked: the fold lasts until the page reloads.
+      }
+      return next;
+    });
+  return [folded, toggle];
 }
 
 /**
@@ -575,12 +642,28 @@ function ConversationRow({ conversation: c, active, desktop }: { conversation: C
         <ContextMenuTrigger
           render={
             <SidebarMenuButton
-              size="lg"
+              size={desktop ? "default" : "lg"}
               isActive={active}
+              className={desktop ? "h-7.5 gap-2.5 text-ui data-active:font-normal" : undefined}
               render={<Link to="/c/$conversationId" params={{ conversationId: c.id }} {...tabLink(path, desktop)} aria-current={active ? "page" : undefined} />}
             />
           }
         >
+          {desktop ? (
+            // Figma « Boîte de réception · 1440 »: the face, the name; on the right only what asks for you.
+            <>
+              <ConversationAvatar conversation={c} me={user.id} className="size-4" />
+              <span className="min-w-0 flex-1 truncate">{c.name}</span>
+              {working ? (
+                <LoaderIcon className="animate-spin text-muted-foreground" aria-label={t.working} />
+              ) : waiting ? (
+                <span role="status" aria-label={t.waiting} className="size-1.5 shrink-0 rounded-full bg-warning" />
+              ) : (
+                unread && <span role="status" aria-label={t.unread} className="size-1.5 shrink-0 rounded-full bg-brand" />
+              )}
+            </>
+          ) : (
+          <>
           {/* Presence only for colleagues: what a bot is doing is said on the second line. */}
           <ConversationAvatar conversation={c} me={user.id} className="size-7" status={c.agents.length ? undefined : active ? "ring-sidebar-accent" : "ring-sidebar"} />
           <span className="grid min-w-0 flex-1">
@@ -614,6 +697,8 @@ function ConversationRow({ conversation: c, active, desktop }: { conversation: C
               )}
             </span>
           </span>
+          </>
+          )}
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
           <ContextMenuGroup>
@@ -635,44 +720,36 @@ function ConversationRow({ conversation: c, active, desktop }: { conversation: C
 export function UserMenu({ user }: { user: { id: string; name: string; image?: string | null } }) {
   const navigate = useNavigate();
   const t = useT(messages);
-  const { data: digest } = useQuery(digestQuery);
   const me = useAvailability(user.id);
   const away = isAway(me);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<SidebarMenuButton size="lg" tooltip={user.name} />}>
-        <PersonAvatar person={{ id: user.id, name: user.name, image: user.image ?? null }} className="size-8" />
+      <DropdownMenuTrigger render={<SidebarMenuButton tooltip={user.name} className="gap-2.5 text-ui" />}>
+        <PersonAvatar person={{ id: user.id, name: user.name, image: user.image ?? null }} className="-mx-0.5 size-5" />
         <span className="min-w-0 flex-1 truncate">{user.name}</span>
         {away && <MoonIcon role="img" aria-label={availabilityLabel(me) ?? t.dnd} className="text-destructive" />}
       </DropdownMenuTrigger>
+      {/* Three short groups, as Linear's: you, help, leave. Settings and the recap live in the sidebar already. */}
       <DropdownMenuContent side="top" align="start" className="w-56">
         <DropdownMenuGroup>
           <DropdownMenuItem onClick={() => openProfile(user.id)}>
             <UserIcon /> {t.profile}
           </DropdownMenuItem>
           <DndMenu userId={user.id} />
-          <DropdownMenuItem onClick={() => openSettings()}>
-            <SlidersIcon /> {t.settings}
-            <DropdownMenuShortcut>
-              <ShortcutKeys shortcut={shortcuts.settings} />
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
           <DropdownMenuItem onClick={() => setOverlay("help")}>
             <KeyboardIcon /> {t.shortcuts}
-            <DropdownMenuShortcut>
-              <ShortcutKeys shortcut={shortcuts.help} />
-            </DropdownMenuShortcut>
+            <DropdownMenuShortcut>?</DropdownMenuShortcut>
           </DropdownMenuItem>
-          {digest && (
-            <DropdownMenuItem onClick={() => setDigestOpen(true)}>
-              <FileTextIcon /> {t.digest}
-            </DropdownMenuItem>
-          )}
           <DropdownMenuItem onClick={() => setWhatsNewOpen(true)}>
             <SparklesIcon /> {t.whatsNew}
           </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
           <DropdownMenuItem
-            variant="destructive"
             onClick={async () => {
               await authClient.signOut();
               navigate({ to: "/login" });

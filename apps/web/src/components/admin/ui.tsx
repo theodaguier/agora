@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RedoIcon, WarningIcon } from "@/components/icons";
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ItemMedia } from "@/components/ui/item";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
@@ -45,13 +46,37 @@ export function SettingTile({ children }: { children: ReactNode }) {
   );
 }
 
+/** Figma « Réglages », as Linear's: a section's name, then its rows in one bordered group, split by hairlines. */
+export function SettingsGroup({ title, children, footer }: { title?: string; children: ReactNode; footer?: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2.5">
+      {title && <h3 className="text-ui font-medium">{title}</h3>}
+      <div className="flex flex-col divide-y rounded-lg border">{children}</div>
+      {footer}
+    </section>
+  );
+}
+
+/** One row of a SettingsGroup: what it is on the left (a hint under it), its value or control on the right. */
+export function SettingsRow({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="flex min-h-12 items-center justify-between gap-6 px-4 py-2.5 text-ui">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="font-medium">{label}</span>
+        {hint && <span className="text-muted-foreground">{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 /** Title of a settings tab, with its intro and main action: the same header on every tab. */
 export function SectionHeader(props: { title: string; text?: ReactNode; action?: string; onAction?: () => void }) {
   return (
     <div className="mb-2 flex items-start justify-between gap-4">
       <div className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold">{props.title}</h2>
-        {props.text && <p className="text-sm text-muted-foreground">{props.text}</p>}
+        <h2 className="text-title font-medium">{props.title}</h2>
+        {props.text && <p className="text-ui text-muted-foreground">{props.text}</p>}
       </div>
       {props.action && (
         <Button size="sm" onClick={props.onAction}>
@@ -74,10 +99,22 @@ export function ErrorText({ error }: { error: unknown }) {
 
 export function Loading({ label }: { label?: string }) {
   const c = useT(common);
+  // Nothing for a quick answer; past a moment, the rows' shape in place of a spinner (Linear, Raycast).
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setLate(true), 300);
+    return () => clearTimeout(id);
+  }, []);
   return (
-    <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-      <Spinner /> {label ?? c.loading}
-    </p>
+    <div role="status" aria-label={label ?? c.loading} className="flex flex-col">
+      {late &&
+        [0, 1, 2].map((i) => (
+          <div key={i} className="flex h-10 items-center justify-between gap-6">
+            <Skeleton className={cn("h-3", ["w-40", "w-32", "w-48"][i])} />
+            <Skeleton className="h-3 w-16" />
+          </div>
+        ))}
+    </div>
   );
 }
 

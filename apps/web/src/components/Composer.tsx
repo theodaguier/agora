@@ -1,7 +1,7 @@
 import { rankByQuery } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { ArrowUpIcon, ChartIcon, ClockIcon, CloseIcon, FilesIcon, LayersIcon, ModelsIcon, PackageIcon, PlugIcon, PlusIcon, RedoIcon, SettingsIcon, StopIcon, TrashIcon } from "@/components/icons";
+import { ArrowUpIcon, ChartIcon, ClockIcon, CloseIcon, FilesIcon, LayersIcon, ModelsIcon, PackageIcon, PlugIcon, PaperclipIcon, PlusIcon, RedoIcon, SettingsIcon, StopIcon, TrashIcon } from "@/components/icons";
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref, type RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
@@ -382,7 +382,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             e.target.value = "";
           }}
         />
-        <InputGroup>
+        <InputGroup className="rounded-xl bg-card shadow-xs dark:bg-card">
           {invocations.length > 0 && (
             <InputGroupAddon align="block-start" className="flex-wrap">
               {invocations.map((v) => (
@@ -423,7 +423,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
               <div
                 ref={overlay}
                 aria-hidden
-                className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-2.5 py-2 text-base [scrollbar-gutter:stable] md:text-sm"
+                className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3.5 pb-0 text-base [scrollbar-gutter:stable] md:text-sm"
               >
                 <MentionText text={text} mentionables={colored} flat />
                 {/* A final line break takes a line in the field: the same here, so both scroll as far. */}
@@ -431,6 +431,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
               </div>
             )}
             <InputGroupTextarea
+              autoComplete="off"
               ref={area}
               value={text}
               aria-expanded={!!token}
@@ -486,12 +487,12 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
                 }
               }}
               placeholder={placeholder}
-              className={cn("max-h-48 [scrollbar-gutter:stable]", highlighted && "text-transparent caret-foreground")}
+              className={cn("max-h-48 min-h-10 px-4 pt-3.5 pb-0 [scrollbar-gutter:stable]", highlighted && "text-transparent caret-foreground")}
             />
           </div>
           <InputGroupAddon align="block-end">
-            <InputGroupButton size="icon-sm" aria-label={t.attachFiles} onClick={() => picker.current?.click()}>
-              <PlusIcon />
+            <InputGroupButton size="icon-sm" aria-label={t.attachFiles} onClick={() => picker.current?.click()} className="text-muted-foreground">
+              <PaperclipIcon />
             </InputGroupButton>
             <div className="ml-auto flex items-center gap-1">
               {botTools && <ModelPicker conversationId={conversationId} open={modelOpen} onOpenChange={setModelOpen} />}
@@ -501,7 +502,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
                   <StopIcon />
                 </InputGroupButton>
               ) : (
-                <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} disabled={!canSend}>
+                <InputGroupButton type="submit" variant={canSend ? "default" : "secondary"} size="icon-sm" className="rounded-full aria-disabled:text-subtle-foreground" aria-label={t.send} aria-disabled={!canSend}>
                   <ArrowUpIcon />
                 </InputGroupButton>
               )}

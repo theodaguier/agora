@@ -1,19 +1,19 @@
-import { CloseIcon, DownloadIcon, FileTextIcon, PauseIcon, PlayIcon } from "@/components/icons";
-import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { CloseIcon, DownloadIcon, FileTextIcon, MaximizeIcon, PauseIcon, PlayIcon } from "@/components/icons";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { Slider } from "@/components/ui/slider";
+import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { defineMessages, useT } from "@/i18n";
 import { attachmentUrl, type Attachment } from "@/lib/api";
-import { isAudio, isImage, isVideo } from "@/lib/files";
+import { fileKind, isAudio, isImage, isVideo } from "@/lib/files";
 import { formatSize } from "@/lib/format";
+import { FileTile } from "@/components/FileTile";
 import { cn } from "@/lib/utils";
 
 const shownMessages = defineMessages({
-  en: { download: (name: string) => `Download ${name}`, downloadShort: "Download", failed: "Failed", remove: (name: string) => `Remove ${name}`, close: "Close", play: "Play", pause: "Pause", seek: "Position" },
-  fr: { download: (name: string) => `Télécharger ${name}`, downloadShort: "Télécharger", failed: "Échec", remove: (name: string) => `Retirer ${name}`, close: "Fermer", play: "Lire", pause: "Pause", seek: "Position" },
+  en: { download: (name: string) => `Download ${name}`, downloadShort: "Download", failed: "Failed", remove: (name: string) => `Remove ${name}`, close: "Close", play: "Play", pause: "Pause", seek: "Position", fullscreen: "Full screen", gone: "File not found" },
+  fr: { download: (name: string) => `Télécharger ${name}`, downloadShort: "Télécharger", failed: "Échec", remove: (name: string) => `Retirer ${name}`, close: "Fermer", play: "Lire", pause: "Pause", seek: "Position", fullscreen: "Plein écran", gone: "Fichier introuvable" },
 });
 
 type Shown = Attachment & { previewUrl?: string };
@@ -102,18 +102,24 @@ function ImageTile({ a, className, onOpen }: { a: Shown; className?: string; onO
   );
 }
 
-/** A video, played where it is; its controls hold fullscreen and download. */
-function VideoTile({ a, className }: { a: Shown; className?: string }) {
-  return (
-    <video
-      src={a.previewUrl ?? attachmentUrl(a.id)}
-      controls
-      playsInline
-      preload="metadata"
-      aria-label={a.name}
-      className={cn("bg-muted object-contain", className)}
-    />
-  );
+/**
+ * A video or a sound that won't play, as a file. If the server no longer has it (a 404), it says so
+ * and offers no download that would fail.
+ */
+function Unplayable({ a }: { a: Shown }) {
+  const t = useT(shownMessages);
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    if (a.previewUrl) return;
+    let live = true;
+    fetch(attachmentUrl(a.id), { method: "HEAD", credentials: "include" })
+      .then((res) => live && setGone(res.status === 404))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [a.id, a.previewUrl]);
+  return <FileTile name={a.name} meta={gone ? t.gone : formatSize(a.size)} downloadHref={gone ? undefined : (a.previewUrl ?? attachmentUrl(a.id, true))} />;
 }
 
 /** 83 → "1:23". */
@@ -122,14 +128,12 @@ const clock = (seconds: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
-/**
- * A sound: play/pause, its name, where it is and how long it lasts, a bar to move in it. The browser's
- * own player is hidden (it can't look like the rest of the app); it only plays.
- */
-function AudioCard({ a, className }: { a: Shown; className?: string }) {
-  const t = useT(shownMessages);
-  const ref = useRef<HTMLAudioElement>(null);
+/** A media element's play state, time and length, and the way to play, pause and move in it. */
+function useMedia<T extends HTMLMediaElement>() {
+  const ref = useRef<T>(null);
   const [playing, setPlaying] = useState(false);
+  // Played once: the time alone can't say, a video starts on its frame at 0.1 s.
+  const [started, setStarted] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const toggle = () => {
@@ -138,89 +142,238 @@ function AudioCard({ a, className }: { a: Shown; className?: string }) {
     if (el.paused) void el.play();
     else el.pause();
   };
+  const seek = (to: number) => {
+    if (ref.current) ref.current.currentTime = to;
+    setTime(to);
+  };
+  const events = {
+    onPlay: () => {
+      setPlaying(true);
+      setStarted(true);
+    },
+    onPause: () => setPlaying(false),
+    onEnded: () => setPlaying(false),
+    onTimeUpdate: (e: { currentTarget: HTMLMediaElement }) => setTime(e.currentTarget.currentTime),
+    onLoadedMetadata: (e: { currentTarget: HTMLMediaElement }) => setDuration(e.currentTarget.duration),
+  };
+  return { ref, playing, started, time, duration, toggle, seek, events };
+}
+
+/**
+ * Where a sound or a video is, as a thin line: a press or a drag moves in it, the arrows by 5 s.
+ * Lighter than a slider's knob, as players are (Linear's, Apple's).
+ */
+function Progress({ time, duration, onSeek, label, className }: { time: number; duration: number; onSeek: (t: number) => void; label: string; className?: string }) {
+  const at = (e: React.PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    onSeek(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (duration || 0));
+  };
   return (
-    <Item variant="outline" size="sm" className={cn("w-80 max-w-full flex-nowrap", className)}>
-      <audio
-        ref={ref}
-        src={a.previewUrl ?? attachmentUrl(a.id)}
-        preload="metadata"
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
-        onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-        className="hidden"
-      />
-      <ItemMedia>
-        <Button size="icon" variant="secondary" aria-label={playing ? t.pause : t.play} onClick={toggle}>
-          {playing ? <PauseIcon /> : <PlayIcon />}
-        </Button>
-      </ItemMedia>
-      <ItemContent className="min-w-0 gap-2">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <ItemTitle className="min-w-0 flex-1 truncate">{a.name}</ItemTitle>
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-            {clock(time)} / {clock(duration)}
-          </span>
-        </div>
-        <Slider
-          aria-label={t.seek}
-          min={0}
-          max={duration || 1}
-          step={0.1}
-          value={[time]}
-          onValueChange={(v) => {
-            const next = Array.isArray(v) ? v[0]! : (v as number);
-            if (ref.current) ref.current.currentTime = next;
-            setTime(next);
-          }}
-        />
-      </ItemContent>
-    </Item>
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration) || 0}
+      aria-valuenow={Math.round(time)}
+      aria-valuetext={`${clock(time)} / ${clock(duration)}`}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        at(e);
+      }}
+      onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && at(e)}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowRight") onSeek(Math.min(duration, time + 5));
+        else if (e.key === "ArrowLeft") onSeek(Math.max(0, time - 5));
+      }}
+      className={cn("group/progress flex h-3 cursor-pointer items-center outline-none focus-visible:ring-3 focus-visible:ring-ring/50", className)}
+    >
+      <div className="h-1 w-full overflow-hidden rounded-full bg-current/20 transition-all group-hover/progress:h-1.5">
+        <div className="h-full rounded-full bg-current" style={{ width: `${duration ? (time / duration) * 100 : 0}%` }} />
+      </div>
+    </div>
   );
 }
 
-/** The attachments by how they are shown. */
+/**
+ * A video, played where it is, with the app's controls rather than the browser's: its first frame
+ * while it waits, a white play button and its length in a corner; on hover a bar with play, time,
+ * where it is and fullscreen. A file that can't be read is shown as a file, not a black box.
+ */
+function VideoTile({ a, className, videoClassName }: { a: Shown; className?: string; /** Its size limits: the video keeps its own proportions within them. */ videoClassName?: string }) {
+  const t = useT(shownMessages);
+  const m = useMedia<HTMLVideoElement>();
+  const box = useRef<HTMLDivElement>(null);
+  const [broken, setBroken] = useState(false);
+  const started = m.started;
+  const src = a.previewUrl ?? attachmentUrl(a.id);
+  if (broken) return <Unplayable a={a} />;
+  return (
+    <div ref={box} className={cn("group/video relative w-fit max-w-full overflow-hidden bg-black", className)}>
+      {/* « #t=0.1 »: the browser paints the first frame instead of black. */}
+      <video ref={m.ref} src={`${src}#t=0.1`} playsInline preload="metadata" aria-label={a.name} onClick={m.toggle} onError={() => setBroken(true)} {...m.events} className={cn("block max-w-full group-[:fullscreen]/video:size-full group-[:fullscreen]/video:max-h-none group-[:fullscreen]/video:object-contain", videoClassName)} />
+      <Button
+        variant="secondary"
+        size="icon-sm"
+        aria-label={t.download(a.name)}
+        nativeButton={false}
+        render={<a href={a.previewUrl ?? attachmentUrl(a.id, true)} download={a.name} />}
+        className="absolute top-2.5 right-2.5 opacity-0 group-hover/video:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+      >
+        <DownloadIcon />
+      </Button>
+      {!started && (
+        <>
+          <button
+            type="button"
+            aria-label={t.play}
+            onClick={m.toggle}
+            className="absolute top-1/2 left-1/2 flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-black shadow-lg transition-transform outline-none hover:scale-105 focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <PlayIcon className="fill-current ml-0.5 size-5" />
+          </button>
+          {m.duration > 0 && <span className="absolute right-2.5 bottom-2.5 rounded-md bg-black/60 px-1.5 py-0.5 text-xs text-white tabular-nums backdrop-blur-sm">{clock(m.duration)}</span>}
+        </>
+      )}
+      {started && (
+        <div className={cn("absolute inset-x-0 bottom-0 flex items-center gap-2 bg-linear-to-t from-black/70 to-transparent px-3 pt-8 pb-2.5 text-white transition-opacity", m.playing && "opacity-0 group-hover/video:opacity-100 focus-within:opacity-100")}>
+          <button type="button" aria-label={m.playing ? t.pause : t.play} onClick={m.toggle} className="flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-white/15 focus-visible:ring-3 focus-visible:ring-ring/50">
+            {m.playing ? <PauseIcon className="fill-current size-3.5" /> : <PlayIcon className="fill-current size-3.5" />}
+          </button>
+          <span className="shrink-0 text-xs tabular-nums">
+            {clock(m.time)} / {clock(m.duration)}
+          </span>
+          <Progress time={m.time} duration={m.duration} onSeek={m.seek} label={t.seek} className="flex-1" />
+          <button
+            type="button"
+            aria-label={t.fullscreen}
+            onClick={() => void box.current?.requestFullscreen()}
+            className="flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-white/15 focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <MaximizeIcon className="size-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BARS = 40;
+
+/**
+ * A sound's waveform, as voice messages draw it: its loudness in 40 bars, read from the file once.
+ * Until then (or if it can't be read) even bars, so the card keeps its shape.
+ */
+function useWaveform(src: string) {
+  const [peaks, setPeaks] = useState<number[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const buffer = await (await fetch(src)).arrayBuffer();
+        const ctx = new OfflineAudioContext(1, 1, 44_100);
+        const audio = await ctx.decodeAudioData(buffer);
+        const data = audio.getChannelData(0);
+        const step = Math.floor(data.length / BARS) || 1;
+        const raw = Array.from({ length: BARS }, (_, i) => {
+          let sum = 0;
+          for (let j = i * step; j < Math.min(data.length, (i + 1) * step); j++) sum += Math.abs(data[j]!);
+          return sum / step;
+        });
+        const max = Math.max(...raw) || 1;
+        if (live) setPeaks(raw.map((v) => Math.max(0.12, v / max)));
+      } catch {
+        // Unreadable: the even bars stay.
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [src]);
+  return peaks ?? Array.from({ length: BARS }, () => 0.3);
+}
+
+/**
+ * A sound, as a voice message (iMessage, WhatsApp): a round play button, its waveform lit up to where
+ * it is (a press moves in it), its time. The browser's player is hidden; it only plays.
+ */
+function AudioCard({ a, className }: { a: Shown; className?: string }) {
+  const t = useT(shownMessages);
+  const m = useMedia<HTMLAudioElement>();
+  const src = a.previewUrl ?? attachmentUrl(a.id);
+  const peaks = useWaveform(src);
+  const [broken, setBroken] = useState(false);
+  const played = m.duration ? m.time / m.duration : 0;
+  const seekAt = (e: React.PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    m.seek(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (m.duration || 0));
+  };
+  return (
+    // A sound that can't be read is shown as a file, not a player stuck at 0:00.
+    broken ? (
+      <Unplayable a={a} />
+    ) : (
+    <div title={a.name} className={cn("flex w-72 max-w-full items-center gap-3 rounded-full bg-accent py-1.5 pr-4 pl-1.5", className)}>
+      <audio ref={m.ref} src={src} preload="metadata" onError={() => setBroken(true)} {...m.events} className="hidden" />
+      <button
+        type="button"
+        aria-label={m.playing ? t.pause : t.play}
+        onClick={m.toggle}
+        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-foreground text-background outline-none transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        {m.playing ? <PauseIcon className="fill-current size-4" /> : <PlayIcon className="fill-current ml-0.5 size-4" />}
+      </button>
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label={t.seek}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(m.duration) || 0}
+        aria-valuenow={Math.round(m.time)}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          seekAt(e);
+        }}
+        onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && seekAt(e)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") m.seek(Math.min(m.duration, m.time + 5));
+          else if (e.key === "ArrowLeft") m.seek(Math.max(0, m.time - 5));
+        }}
+        className="flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-0.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        {peaks.map((p, i) => (
+          <span key={i} className={cn("w-0.5 flex-1 rounded-full", (i + 0.5) / peaks.length <= played ? "bg-foreground" : "bg-foreground/25")} style={{ height: `${p * 100}%` }} />
+        ))}
+      </div>
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{clock(m.started ? m.time : m.duration)}</span>
+      <Button variant="ghost" size="icon-xs" aria-label={t.download(a.name)} nativeButton={false} render={<a href={a.previewUrl ?? attachmentUrl(a.id, true)} download={a.name} />} className="-mr-2 shrink-0 text-muted-foreground">
+        <DownloadIcon />
+      </Button>
+    </div>
+    )
+  );
+}
+
+/** The attachments by how they are shown; a file saved without a type is known by its extension. */
 function sortShown(items: Shown[]) {
+  const kind = (a: Shown) => {
+    if (isImage(a.mime)) return "image";
+    if (isVideo(a.mime)) return "video";
+    if (isAudio(a.mime)) return "audio";
+    const byName = a.mime === "application/octet-stream" || !a.mime ? fileKind(a.name) : "file";
+    return byName === "video" || byName === "audio" ? byName : "file";
+  };
   return {
-    images: items.filter((a) => isImage(a.mime)),
-    videos: items.filter((a) => isVideo(a.mime)),
-    sounds: items.filter((a) => isAudio(a.mime)),
-    files: items.filter((a) => !isImage(a.mime) && !isVideo(a.mime) && !isAudio(a.mime)),
+    images: items.filter((a) => kind(a) === "image"),
+    videos: items.filter((a) => kind(a) === "video"),
+    sounds: items.filter((a) => kind(a) === "audio"),
+    files: items.filter((a) => kind(a) === "file"),
   };
 }
 
-/** "recap.pdf" → "PDF": the file's type, from its extension. */
-const fileType = (name: string) => (/\.([a-z0-9]{1,8})$/i.exec(name)?.[1] ?? "").toUpperCase();
-
-/** File card: a click downloads it. */
+/** File card: the shared attachment tile; a click previews it, or opens a document in the editor. */
 function FileCard({ a, className }: { a: Shown; className?: string }) {
-  const t = useT(shownMessages);
-  return (
-    <Item
-      variant="outline"
-      size="sm"
-      render={<a href={a.previewUrl ?? attachmentUrl(a.id, true)} download={a.name} title={t.download(a.name)} />}
-      className={cn("w-72 max-w-full", className)}
-    >
-      <ItemMedia variant="icon">
-        <FileTextIcon />
-      </ItemMedia>
-      <ItemContent className="min-w-0">
-        <ItemTitle className="w-full truncate">{a.name}</ItemTitle>
-        <ItemDescription className="flex gap-2">
-          {fileType(a.name) && <span>{fileType(a.name)}</span>}
-          <span>{formatSize(a.size)}</span>
-        </ItemDescription>
-      </ItemContent>
-      <ItemActions>
-        {/* The whole card downloads: the icon only shows it, as a ghost button would. */}
-        <span aria-hidden className={buttonVariants({ variant: "ghost", size: "icon-sm" })}>
-          <DownloadIcon />
-        </span>
-      </ItemActions>
-    </Item>
-  );
+  return <FileTile name={a.name} meta={formatSize(a.size)} src={a.previewUrl ?? attachmentUrl(a.id)} downloadHref={a.previewUrl ?? attachmentUrl(a.id, true)} editId={a.previewUrl ? undefined : a.id} className={className} />;
 }
 
 /** Attachments sent alone, without text: shown bare. */
@@ -247,7 +400,7 @@ export function SentAttachments({
       )}
       <ImageViewer images={images} index={viewing} onIndexChange={setViewing} />
       {videos.map((a) => (
-        <VideoTile key={a.id} a={a} className="max-h-96 w-96 max-w-full rounded-2xl" />
+        <VideoTile key={a.id} a={a} className="rounded-2xl" videoClassName="max-h-96" />
       ))}
       {sounds.map((a) => (
         <AudioCard key={a.id} a={a} />
@@ -279,7 +432,7 @@ export function BubbleAttachments({ items }: { items: Shown[] }) {
       )}
       <ImageViewer images={images} index={viewing} onIndexChange={setViewing} />
       {videos.map((a) => (
-        <VideoTile key={a.id} a={a} className="max-h-80 w-full rounded-xl" />
+        <VideoTile key={a.id} a={a} className="rounded-xl" videoClassName="max-h-80" />
       ))}
       {sounds.map((a) => (
         <AudioCard key={a.id} a={a} className="w-full" />

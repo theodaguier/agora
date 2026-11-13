@@ -1,5 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+/** The type sizes index.css adds to Tailwind's: without them `text-ui` and a text colour would clash. */
+const twMerge = extendTailwindMerge({ extend: { theme: { text: ["ui", "title", "2xs"] } } });
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

@@ -7,7 +7,7 @@
  * A draft is never executed by the app: the employee confirms it (possibly
  * edited) and the bot receives their answer (withViewAction), then acts itself.
  */
-import { CHART_TYPES, DRAFT_TYPES, INTEGRATION_TYPES, MAX_CHART_SERIES, MAX_STATS, type DraftType, type IntegrationType, type ViewAction, type ViewBlock } from "@agora/core";
+import { CHART_TYPES, DRAFT_TYPES, INTEGRATION_TYPES, MAX_CHART_SERIES, MAX_PLACES, MAX_STATS, type DraftType, type IntegrationType, type ViewAction, type ViewBlock } from "@agora/core";
 import { z } from "zod";
 
 const str = (max = 300) => z.string().trim().max(max);
@@ -69,7 +69,7 @@ function parseView(raw: unknown): ViewBlock | null {
 }
 
 function parseBody(raw: unknown): ViewBlock | null {
-  const head = z.object({ type: z.enum(INTEGRATION_TYPES), kind: z.enum(["list", "message", "table", "chart", "stats", "draft"]) }).safeParse(raw);
+  const head = z.object({ type: z.enum(INTEGRATION_TYPES), kind: z.enum(["list", "message", "table", "chart", "stats", "draft", "place"]) }).safeParse(raw);
   if (!head.success) return null;
   const { type, kind } = head.data;
   const r = raw as Record<string, unknown>;
@@ -104,6 +104,7 @@ function parseBody(raw: unknown): ViewBlock | null {
   }
   if (kind === "chart") return parseChart(type, r);
   if (kind === "stats") return parseStats(type, r);
+  if (kind === "place") return parsePlaces(type, r);
   if (!DRAFT_TYPES.includes(type as DraftType)) return null;
   // Some models send the draft as a JSON string rather than an object.
   const draft = typeof r.draft === "string" ? tryJson(r.draft) : r.draft;
@@ -162,6 +163,29 @@ function parseStats(type: IntegrationType, r: Record<string, unknown>): ViewBloc
   return stats.length ? { type, kind: "stats", title: parsed.data.title, stats } : null;
 }
 
+/** Places: a name, an address, coordinates when known (invalid ones dropped, the place kept). */
+function parsePlaces(type: IntegrationType, r: Record<string, unknown>): ViewBlock | null {
+  const parsed = z.object({ title, places: z.array(z.unknown()).min(1) }).safeParse(r);
+  if (!parsed.success) return null;
+  const place = z.object({
+    name: str(120).min(1),
+    address: str(240).optional().catch(undefined),
+    lat: z.number().min(-90).max(90).optional().catch(undefined),
+    lng: z.number().min(-180).max(180).optional().catch(undefined),
+    note: str(160).optional().catch(undefined),
+    url: url.catch(undefined),
+    rating: z.number().min(0).max(5).optional().catch(undefined),
+    reviews: z.number().int().min(0).optional().catch(undefined),
+  });
+  const places = parsed.data.places.slice(0, MAX_PLACES).flatMap((p) => {
+    const one = place.safeParse(p);
+    if (!one.success) return [];
+    const { lat, lng, ...rest } = one.data;
+    return [{ ...rest, ...(lat !== undefined && lng !== undefined && { lat, lng }) }];
+  });
+  return places.length ? { type, kind: "place", title: parsed.data.title, places } : null;
+}
+
 /** A ```view``` block holds one view or an array of them. */
 export function parseViews(json: unknown): ViewBlock[] {
   const list = Array.isArray(json) ? json.slice(0, 6) : [json];
@@ -197,6 +221,8 @@ const CHART_SHAPE = [
     "`funnel` pour un tunnel de conversion (les étapes dans l'ordre, des libellés lisibles plutôt que les noms d'événements) : l'app affiche la part restante à chaque étape et la plus grosse perte. " +
     "Pour comparer des segments (mobile et desktop, parcours manuel et configurateur) ou deux périodes (cette semaine et la précédente), mets-les dans le même graphique, une série chacun sur les mêmes labels, plutôt qu'un graphique par segment ; ça vaut aussi pour `funnel` et `bar`. " +
     "`unit` : ce que comptent les valeurs, court (\"%\", \"€\", \"personnes\").",
+  '- Lieux (tout type, `"kind": "place"`) : `{"title": "…", "places": [{"name": "Le Comptoir", "address": "9 carrefour de l\'Odéon, Paris", "lat": 48.8519, "lng": 2.3389, "note": "12:30, réservé", "url": "…", "rating": 4.5, "reviews": 1230}]}`. ' +
+    `${MAX_PLACES} lieux au plus, quand on parle d'endroits (un rendez-vous, un restaurant, un client, un trajet). Donne \`lat\` et \`lng\` dès que tu les connais : l'app dessine la carte et le chemin pour y aller. \`rating\` (sur 5) et \`reviews\` (nombre d'avis) quand la source les donne, jamais inventés : l'app les montre en étoiles.`,
   "- Pour une analyse, montre plusieurs vues complémentaires, dans un tableau JSON (6 au plus) et dans cet ordre : les chiffres clés, puis un graphique par question (le tunnel, la répartition, l'évolution), puis un tableau pour le détail s'il le faut. " +
     "Un graphique quand la forme des données compte plus que leurs valeurs exactes ; sinon un tableau.",
   "- Chaque graphique et chaque bloc de chiffres doit se comprendre seul, sans lire ton texte, par quelqu'un qui ne connaît pas l'outil d'où viennent les données : " +

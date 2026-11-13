@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { brandsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
+import { brandIcon, isInkBrand } from "@/lib/brand-icons";
 
 /** "google-calendar-mcp" → "google calendar": what logo.dev's name lookup understands. */
 const brandName = (server: string) =>
@@ -41,7 +42,16 @@ export function BrandLogo({
 }) {
   const src = useBrandLogo({ domain, server });
   const [failed, setFailed] = useState<string | null>(null);
-  if (!src || failed === src) return fallback;
+  if (!src || failed === src) {
+    // No logo.dev (or it doesn't know it): the brand mark shipped with the app, else the caller's icon.
+    const icon = brandIcon(server, domain);
+    if (!icon) return fallback;
+    return (
+      <svg role="img" aria-hidden viewBox="0 0 24 24" className={cn("shrink-0", isInkBrand(icon.hex) && "text-foreground", className)} fill={isInkBrand(icon.hex) ? "currentColor" : `#${icon.hex}`}>
+        <path d={icon.path} />
+      </svg>
+    );
+  }
   return <img src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(src)} className={cn("shrink-0 object-contain", className)} />;
 }
 

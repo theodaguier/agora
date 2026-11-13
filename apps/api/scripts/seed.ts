@@ -1,7 +1,8 @@
 /**
  * Local demo data, to see every screen full: colleagues, bots of every colour, direct and group
  * conversations (markdown, code, tables, tool traces, choices, events), code sessions in every state
- * (running, waiting, set aside, done, merged, stopped, failed), tasks, inbox, an absence and usage.
+ * (running, waiting, set aside, done, merged, stopped, failed), tasks, inbox, an absence, usage, and
+ * artifacts (Artefacts screen: one in three versions shared with the organization, one shared by link).
  *
  *   cd apps/api && bun scripts/seed.ts            # seeds for the first admin
  *   SEED_OWNER=me@example.com bun scripts/seed.ts  # for another account
@@ -11,10 +12,17 @@
  * (recoverCodeSessions), as real ones would.
  */
 import { eq, inArray, like } from "drizzle-orm";
-import type { CodeGit, CodeStep, CodeTodo, CodeUsage, ConversationEvent } from "@agora/core";
+import { previewTitle, type CodeGit, type CodeStep, type CodeTodo, type CodeUsage, type ConversationEvent } from "@agora/core";
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { AlignmentType, Document, HeadingLevel, LevelFormat, Packer, Paragraph, TextRun } from "docx";
 import { db, schema } from "../src/db";
+import { savePreviews } from "../src/previews";
+import { env } from "../src/env";
 
 const {
+  attachment,
   user,
   agent,
   agentAccess,
@@ -28,6 +36,8 @@ const {
   notification,
   absence,
   usageEvent,
+  artifact,
+  artifactVersion,
 } = schema;
 
 if (/hermes\.e-do\.studio|amazonaws|neon\.tech|supabase/.test(process.env.DATABASE_URL ?? "")) throw new Error("seed: refusing to run on what looks like a production database");
@@ -114,8 +124,49 @@ const botName = (id: BotId) => bots.find((b) => b.id === id)!.name;
 type Msg =
   | { at: number; me: string; data?: Record<string, unknown> }
   | { at: number; from: PersonId; text: string; data?: Record<string, unknown> }
-  | { at: number; bot: BotId; text: string; data?: Record<string, unknown> }
+  | { at: number; bot: BotId; text: string; data?: Record<string, unknown>; files?: SeedFile[] }
   | { at: number; event: ConversationEvent };
+
+/** A file a bot sends: written where the app keeps a group's files, so it opens and can be edited. */
+type SeedFile = { name: string; mime: string; body: Uint8Array | string };
+
+const MD_MIME = "text/markdown";
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** A Word document: a title, paragraphs, a list per section. */
+async function docx(title: string, sections: { heading: string; text?: string; items?: string[]; numbered?: boolean }[]) {
+  const doc = new Document({
+    numbering: { config: [{ reference: "numbers", levels: [{ level: 0, format: LevelFormat.DECIMAL, text: "%1.", alignment: AlignmentType.START, style: { paragraph: { indent: { left: 720, hanging: 360 } } } }] }] },
+    sections: [
+      {
+        children: [
+          new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(title)] }),
+          ...sections.flatMap((s) => [
+            new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(s.heading)] }),
+            ...(s.text ? [new Paragraph({ children: [new TextRun(s.text)] })] : []),
+            ...(s.items ?? []).map((item) => new Paragraph({ children: [new TextRun(item)], ...(s.numbered ? { numbering: { reference: "numbers", level: 0 } } : { bullet: { level: 0 } }) })),
+          ]),
+        ],
+      },
+    ],
+  });
+  return new Uint8Array(await (await Packer.toBlob(doc)).arrayBuffer());
+}
+
+/** Written to disk and saved as attachments of the conversation (deleted with it on the next run). */
+async function saveFiles(conversationId: string, files: SeedFile[]) {
+  const dir = join(env.HERMES_HOME || join(homedir(), ".agora"), "agora-attachments", conversationId);
+  await mkdir(dir, { recursive: true });
+  return Promise.all(
+    files.map(async (f) => {
+      const id = crypto.randomUUID();
+      const path = join(dir, `${id}-${f.name}`);
+      const size = await Bun.write(path, f.body);
+      await db.insert(attachment).values({ id, conversationId, name: f.name, mime: f.mime, size, path });
+      return { id, name: f.name, mime: f.mime, size };
+    }),
+  );
+}
 
 let n = 0;
 async function conv(opts: { id: string; kind: "direct" | "group"; title?: string; people?: PersonId[]; bots?: BotId[]; unread?: boolean; messages: Msg[] }) {
@@ -137,12 +188,13 @@ async function conv(opts: { id: string; kind: "direct" | "group"; title?: string
     members.map((u) => ({ conversationId: opts.id, userId: u, joinedAt: created, lastReadAt: u === ME && opts.unread ? new Date(last.getTime() - 60_000) : last })),
   );
   if (agents.length) await db.insert(conversationAgent).values(agents.map((a) => ({ conversationId: opts.id, agentId: a, addedBy: ME, createdAt: created })));
+  const sent = await Promise.all(opts.messages.map((m) => ("files" in m && m.files ? saveFiles(opts.id, m.files) : null)));
   await db.insert(message).values(
-    opts.messages.map((m) => {
+    opts.messages.map((m, i) => {
       const id = `seed-m${++n}`;
       const createdAt = ago(m.at);
       if ("event" in m) return { id, conversationId: opts.id, kind: "event" as const, text: "", data: { event: m.event }, createdAt };
-      if ("bot" in m) return { id, conversationId: opts.id, kind: "bot" as const, authorAgentId: m.bot, text: m.text, data: { turn: { id: `seed-turn-${n}`, startedAt: new Date(createdAt.getTime() - 20_000).toISOString() }, ...m.data }, createdAt };
+      if ("bot" in m) return { id, conversationId: opts.id, kind: "bot" as const, authorAgentId: m.bot, text: m.text, data: { turn: { id: `seed-turn-${n}`, startedAt: new Date(createdAt.getTime() - 20_000).toISOString() }, ...m.data, ...(sent[i] && { attachments: sent[i] }) }, createdAt };
       if ("from" in m) return { id, conversationId: opts.id, kind: "user" as const, authorUserId: m.from, text: m.text, data: m.data ?? null, createdAt };
       return { id, conversationId: opts.id, kind: "user" as const, authorUserId: ME, text: m.me, data: m.data ?? null, createdAt };
     }),
@@ -464,6 +516,64 @@ await conv({
     { at: 3 * H + 10, me: "Les webhooks Stripe passent encore par l'ancienne API, tu peux t'en occuper ?" },
     { at: 3 * H + 8, bot: "seed-dev", text: "Oui. Je lance une session de code sur `e-do/facturation` et je garde l'ancien handler le temps de la bascule.", data: { tools: [{ name: "code_session", status: "done" }], codeSessions: [ref("seed-cs-webhooks", "Oui.")] } },
     { at: 3 * H + 7, event: { type: "code.started", bot: "Dev", title: "Migration des webhooks Stripe", sessionId: "seed-cs-webhooks" } },
+    {
+      at: 3 * H + 5,
+      bot: "seed-dev",
+      text: "Mes notes de migration, complète-les si tu vois un oubli.",
+      files: [
+        {
+          name: "notes-migration-stripe.md",
+          mime: MD_MIME,
+          body: [
+            "# Migration des webhooks Stripe",
+            "",
+            "Bascule de l'ancienne API vers les événements signés, **sans coupure** pour les clients.",
+            "",
+            "## Étapes",
+            "",
+            "1. Vérifier la signature de chaque événement",
+            "2. Migrer `invoice.paid` et `invoice.payment_failed`",
+            "3. Garder l'ancien handler pendant une semaine",
+            "4. Supprimer l'ancien handler",
+            "",
+            "## Points d'attention",
+            "",
+            "- Tolérance de cinq minutes sur l'horodatage",
+            "- Un événement rejoué ne doit pas créer de doublon",
+            "",
+            "> À valider avec Lucas avant la mise en production.",
+            "",
+          ].join("\n"),
+        },
+      ],
+    },
+    { at: 2 * H + 30, me: "Montre-moi comment tu vérifies la signature des webhooks." },
+    {
+      at: 2 * H + 28,
+      bot: "seed-dev",
+      text: [
+        "Avec la clé du endpoint, avant de lire l'événement :",
+        "",
+        "```ts",
+        "export async function verify(req: Request): Promise<Stripe.Event> {",
+        "  const signature = req.headers.get(\"stripe-signature\");",
+        "  if (!signature) throw new HttpError(400, \"missing signature\");",
+        "  const body = await req.text();",
+        "  // Five minutes of tolerance: a replayed event older than that is refused.",
+        "  return stripe.webhooks.constructEventAsync(body, signature, env.STRIPE_WEBHOOK_SECRET, 300);",
+        "}",
+        "```",
+        "",
+        "Et le changement dans le handler :",
+        "",
+        "```diff",
+        "- const event = JSON.parse(await req.text());",
+        "+ const event = await verify(req);",
+        "  switch (event.type) {",
+        "    case \"invoice.paid\":",
+        "```",
+      ].join("\n"),
+    },
     { at: 55, me: "Et le mode sombre du tableau de bord ? Marie s'en plaint." },
     { at: 52, bot: "seed-dev", text: "Je m'en charge aussi, dans une session à part pour ne pas mélanger les deux branches.", data: { codeSessions: [ref("seed-cs-dark")] } },
     { at: 6, event: { type: "code.wake", bot: "Dev", title: "Mode sombre du tableau de bord", sessionId: "seed-cs-dark", reason: "question" } },
@@ -489,6 +599,18 @@ await conv({
     { at: 4 * H - 2, bot: "seed-revue", text: "C'est la date : le test compare une date locale à une date UTC. Je corrige.", data: { codeSessions: [ref("seed-cs-utc")] } },
     { at: 25, event: { type: "code.pr", actor: "Revue", title: "Corrige la date UTC dans views.test.ts", sessionId: "seed-cs-utc", number: 43, url: "https://github.com/theodaguier/e-do-bots/pull/43", merged: false } },
     { at: 24, bot: "seed-revue", text: "C'est fait : les tests passent, la [PR #43](https://github.com/theodaguier/e-do-bots/pull/43) attend ta relecture." },
+
+    { at: 15, me: "Quelles PR attendent une relecture ?" },
+    {
+      at: 14,
+      bot: "seed-dev",
+      text: "Trois, dont une à toi.",
+      data: { views: [{ type: "code", kind: "list", source: "GitHub", items: [
+        { title: "Corrige la date UTC dans views.test.ts", repo: "theodaguier/e-do-bots", number: 43, state: "open", author: "Revue" },
+        { title: "Migration des webhooks Stripe", repo: "e-do/facturation", number: 58, state: "draft", author: "Dev" },
+        { title: "Export CSV des factures", repo: "e-do/facturation", number: 57, state: "open", author: "Trésorerie" },
+      ] }] },
+    },
   ],
 });
 
@@ -506,6 +628,35 @@ await conv({
     { at: 2 * H, bot: "seed-tresorerie", text: "L'export CSV est prêt. Pour octobre :\n\n- **42 factures** émises\n- **38 620 €** HT, dont 7 724 € de TVA\n- **3 impayées** depuis plus de 30 jours (4 180 €)\n\nJe peux relancer les trois clients concernés si tu veux." },
     { at: 31, me: "Oui, et automatise les relances pour la suite." },
     { at: 30, bot: "seed-tresorerie", text: "C'est parti : relances à J+15, J+30 et J+45.", data: { codeSessions: [ref("seed-cs-relances")], approvals: [{ command: "curl -X POST https://api.stripe.com/v1/invoices/in_1Q…/send", choice: "allow", by: owner.name }] } },
+
+    { at: 20, me: "Où en est le chiffre d'affaires ?" },
+    {
+      at: 19,
+      bot: "seed-tresorerie",
+      text: "Octobre est le meilleur mois de l'année.",
+      data: {
+        views: [
+          { type: "finance", kind: "stats", source: "Stripe", title: "Octobre", stats: [
+            { label: "Chiffre d'affaires", value: 38620, unit: "€", note: "+12 % sur septembre" },
+            { label: "Factures émises", value: 42 },
+            { label: "Impayés", value: 4180, unit: "€", note: "3 clients" },
+          ] },
+          { type: "finance", kind: "chart", source: "Stripe", title: "Chiffre d'affaires mensuel", chart: "bar", unit: "€", labels: ["Juin", "Juil.", "Août", "Sept.", "Oct."], series: [{ name: "HT", values: [28400, 31200, 22900, 34480, 38620] }] },
+          { type: "finance", kind: "list", source: "Stripe", title: "Derniers paiements", items: [
+            { label: "Facture F-2026-118", counterparty: "Atelier Lumen", amount: 1240, currency: "EUR", date: new Date(NOW - 2 * 60 * 60_000).toISOString(), status: "Payée" },
+            { label: "Facture F-2026-117", counterparty: "Studio Nord", amount: 3600, currency: "EUR", date: new Date(NOW - 26 * 60 * 60_000).toISOString(), status: "Payée" },
+            { label: "Facture F-2026-109", counterparty: "Maison Verte", amount: 2180, currency: "EUR", date: new Date(NOW - 34 * 24 * 60 * 60_000).toISOString(), status: "En retard" },
+          ] },
+        ],
+      },
+    },
+    { at: 12, me: "Et par client ?" },
+    {
+      at: 11,
+      bot: "seed-tresorerie",
+      text: "Studio Nord pèse plus d'un tiers du mois.",
+      data: { views: [{ type: "finance", kind: "chart", source: "Stripe", title: "Répartition d'octobre", chart: "pie", unit: "€", labels: ["Studio Nord", "Atelier Lumen", "Maison Verte", "Autres"], series: [{ name: "HT", values: [13900, 9800, 6420, 8500] }] }] },
+    },
   ],
 });
 
@@ -524,6 +675,25 @@ await conv({
       bot: "seed-atelier",
       text: "Trois pistes, du plus sobre au plus affirmé :\n\n1. **Vos agents, votre équipe.** Un espace où collègues et bots travaillent ensemble.\n2. **Le bureau qui ne dort jamais.** Vos bots avancent pendant que vous dormez.\n3. **Moins d'onglets, plus de travail fait.** Tout ce que vos agents savent faire, au même endroit.\n\nJe pencherais pour la première : elle dit ce que fait le produit sans promesse.",
     },
+
+    { at: 18 * H, me: "Comment convertit la nouvelle page d'accueil ?" },
+    {
+      at: 18 * H - 1,
+      bot: "seed-atelier",
+      text: "Mieux qu'avant sur l'inscription, c'est l'activation qui décroche.",
+      data: { views: [{ type: "other", kind: "chart", source: "PostHog", title: "Parcours d'inscription, 30 jours", chart: "funnel", labels: ["Visite", "Inscription", "Premier bot", "Activé"], series: [{ name: "Nouvelle page", values: [4820, 612, 301, 148] }, { name: "Ancienne page", values: [4610, 455, 238, 131] }] }] },
+    },
+    { at: 18 * H - 4, me: "Envoie-moi les maquettes." },
+    {
+      at: 18 * H - 5,
+      bot: "seed-atelier",
+      text: "Elles sont sur le Drive :",
+      data: { views: [{ type: "files", kind: "list", source: "Google Drive", items: [
+        { url: "https://www.figma.com/design/XsudA2MFOeIeLFx3yvpWMP", name: "Hero 2026 — desktop.fig", mimeType: "application/figma", modified: new Date(NOW - 3 * 24 * 60 * 60_000).toISOString(), size: 18400000 },
+        { url: "/icon-512.png", name: "Hero 2026 — mobile.png", mimeType: "image/png", modified: new Date(NOW - 3 * 24 * 60 * 60_000).toISOString(), size: 2400000 },
+        { url: "https://drive.google.com/file/d/1textesAccueilDOCX/view", name: "Textes de la page d'accueil.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", modified: new Date(NOW - 26 * 60 * 60_000).toISOString(), size: 48000 },
+      ] }] },
+    },
   ],
 });
 
@@ -536,6 +706,18 @@ await conv({
     { at: 26 * H, me: "Fais-moi une veille chaque matin sur les outils d'agents IA." },
     { at: 26 * H - 1, bot: "seed-veille", text: "Entendu, chaque matin à 8 h 30." },
     { at: 45, bot: "seed-veille", text: "**Veille du jour**\n\n- Anthropic publie une nouvelle version de Claude Code avec des sous-agents en arrière-plan.\n- Linear ouvre son API d'agents en bêta publique.\n- Figma ajoute l'écriture de composants par MCP.\n\nLe plus utile pour nous : l'API Linear, on pourrait y brancher les sessions de code.", data: { tools: [{ name: "web_search", status: "done" }, { name: "web_fetch", status: "done" }] } },
+
+    { at: 40, me: "Qu'est-ce qui se dit sur Slack à propos de la v0.50 ?" },
+    {
+      at: 39,
+      bot: "seed-veille",
+      text: "Trois fils depuis ce matin, plutôt positifs.",
+      data: { views: [{ type: "chat", kind: "list", source: "Slack", items: [
+        { author: "Marie Dupont", channel: "#produit", text: "Le mode sombre est validé côté design, on peut merger.", date: new Date(NOW - 3 * 60 * 60_000).toISOString() },
+        { author: "Lucas Martin", channel: "#tech", text: "Les webhooks Stripe passent en préprod, je surveille cette nuit.", date: new Date(NOW - 2 * 60 * 60_000).toISOString() },
+        { author: "Chloé Petit", channel: "#support", text: "Deux clients demandent l'export PDF, on l'annonce quand ?", date: new Date(NOW - 50 * 60_000).toISOString() },
+      ] }] },
+    },
   ],
 });
 
@@ -546,6 +728,79 @@ await conv({
   messages: [
     { at: 5 * D, me: "Résume-moi la réunion produit d'hier." },
     { at: 5 * D - 1, bot: "seed-hermes", text: "**Décisions**\n- On sort la v0.50 le 12 novembre.\n- Le mode sombre passe avant l'export PDF.\n\n**À faire**\n- Marie : maquettes du mode sombre (jeudi)\n- Lucas : migration Stripe (vendredi)\n- Inès : valider le format du CSV" },
+
+    { at: 3 * H, me: "Qu'est-ce qui m'attend aujourd'hui ?" },
+    {
+      at: 3 * H - 1,
+      bot: "seed-hermes",
+      text: "Trois rendez-vous, et deux mails qui attendent ta réponse.",
+      data: {
+        views: [
+          { type: "calendar", kind: "list", source: "Google Agenda", title: "Aujourd'hui", items: [
+            { title: "Point produit", start: `${day(0)}T10:00:00`, end: `${day(0)}T10:30:00`, location: "Meet", attendees: ["Marie Dupont", "Lucas Martin"] },
+            { title: "Déjeuner avec Claire (Studio Nord)", start: `${day(0)}T12:30:00`, end: `${day(0)}T14:00:00`, location: "Le Comptoir" },
+            { title: "Revue de la v0.50", start: `${day(0)}T16:00:00`, end: `${day(0)}T17:00:00`, attendees: ["Équipe produit"] },
+          ] },
+          { type: "mail", kind: "list", source: "Gmail", title: "À traiter", items: [
+            { from: "Claire Moreau <claire@studionord.fr>", subject: "Proposition de partenariat", snippet: "Est-ce qu'on pourrait se caler un créneau jeudi pour en parler ?", date: new Date(NOW - 4 * 60 * 60_000).toISOString(), unread: true },
+            { from: "Stripe <notifications@stripe.com>", subject: "Paiement reçu : facture F-2026-118", snippet: "1 240,00 € de Atelier Lumen", date: new Date(NOW - 5 * 60 * 60_000).toISOString(), unread: true },
+            { from: "Lucas Martin <lucas@e-do.studio>", subject: "Re: migration des webhooks", snippet: "Ok pour demain, je bloque l'après-midi.", date: new Date(NOW - 7 * 60 * 60_000).toISOString() },
+          ] },
+        ],
+      },
+    },
+    { at: 3 * H - 5, me: "Ouvre le mail de Claire." },
+    {
+      at: 3 * H - 6,
+      bot: "seed-hermes",
+      text: "Le voici.",
+      data: { views: [{ type: "mail", kind: "message", source: "Gmail", message: { from: "Claire Moreau <claire@studionord.fr>", to: ["theo@e-do.studio"], subject: "Proposition de partenariat", date: new Date(NOW - 4 * 60 * 60_000).toISOString(), body: "Bonjour Théo,\n\nOn a beaucoup aimé votre démo de la semaine dernière. Est-ce qu'on pourrait se caler un créneau jeudi pour parler d'un partenariat sur nos clients communs ?\n\nBelle journée,\nClaire" } }] },
+    },
+    { at: 3 * H - 8, me: "Réponds-lui que jeudi 14 h me va." },
+    {
+      at: 3 * H - 9,
+      bot: "seed-hermes",
+      text: "Voici le brouillon, je l'envoie dès que tu valides.",
+      data: { views: [{ type: "mail", kind: "draft", source: "Gmail", draft: { to: ["claire@studionord.fr"], subject: "Re: Proposition de partenariat", body: "Bonjour Claire,\n\nJeudi 14 h me va très bien. Je vous envoie une invitation.\n\nÀ jeudi,\nThéo" } }] },
+    },
+    { at: 2 * H, me: "Bloque une heure avec Lucas demain pour la migration." },
+    {
+      at: 2 * H - 1,
+      bot: "seed-hermes",
+      text: "Il est libre de 10 h à 11 h.",
+      data: { views: [{ type: "calendar", kind: "draft", source: "Google Agenda", draft: { title: "Migration des webhooks Stripe", start: `${day(1)}T10:00:00`, end: `${day(1)}T11:00:00`, location: "Meet", attendees: ["lucas@e-do.studio"], description: "Bascule de l'ancien handler et tests d'intégration." } }] },
+    },
+    { at: 70, me: "Qui est notre contact chez Stripe ?" },
+    {
+      at: 69,
+      bot: "seed-hermes",
+      text: "Deux personnes dans le CRM :",
+      data: { views: [{ type: "contacts", kind: "list", source: "HubSpot", items: [
+        { name: "Julie Bernard", company: "Stripe", email: "julie.bernard@stripe.com", phone: "+33 1 84 88 12 40" },
+        { name: "Marc Lefort", company: "Stripe", email: "marc.lefort@stripe.com" },
+      ] }] },
+    },
+    { at: 40, me: "On déjeune où avec Claire jeudi ? Pas loin du bureau." },
+    {
+      at: 39,
+      bot: "seed-hermes",
+      text: "Trois adresses à moins de dix minutes à pied :",
+      data: {
+        views: [
+          {
+            type: "other",
+            kind: "place",
+            source: "google-maps",
+            title: "Près du bureau",
+            places: [
+              { name: "Le Comptoir du Relais", address: "9 carrefour de l'Odéon, Paris 6e", lat: 48.8519, lng: 2.3389, note: "Bistrot, réservable", rating: 4.3, reviews: 2841 },
+              { name: "Café de Flore", address: "172 boulevard Saint-Germain, Paris 6e", lat: 48.8541, lng: 2.3326, note: "Terrasse", rating: 4.1, reviews: 18620 },
+              { name: "Semilla", address: "54 rue de Seine, Paris 6e", lat: 48.8545, lng: 2.3372, note: "Cuisine de saison", rating: 4.6, reviews: 1207 },
+            ],
+          },
+        ],
+      },
+    },
   ],
 });
 
@@ -557,10 +812,110 @@ await conv({
     { at: 7 * H, bot: "seed-garde", text: "⚠️ Le certificat de `facturation.e-do.studio` expire dans 9 jours. Je peux le renouveler maintenant ?" },
     { at: 7 * H - 3, me: "Vas-y." },
     { at: 7 * H - 4, bot: "seed-garde", text: "Renouvelé, valable jusqu'au 1er février 2027.", data: { approvals: [{ command: "certbot renew --cert-name facturation.e-do.studio", choice: "allow", by: owner.name }], tools: [{ name: "terminal", status: "done" }] } },
+
+    { at: 25, me: "Comment va la prod ?" },
+    {
+      at: 24,
+      bot: "seed-garde",
+      text: "Tout est vert. La latence a un peu monté jeudi pendant la migration, elle est redescendue.",
+      data: {
+        views: [
+          { type: "other", kind: "stats", source: "Grafana", title: "7 derniers jours", stats: [
+            { label: "Disponibilité", value: "99,98", unit: "%" },
+            { label: "Latence p95", value: 182, unit: "ms", note: "−14 ms" },
+            { label: "Erreurs", value: "0,02", unit: "%" },
+          ] },
+          { type: "other", kind: "chart", source: "Grafana", title: "Latence p95", chart: "area", unit: "ms", labels: ["Ven.", "Sam.", "Dim.", "Lun.", "Mar.", "Mer.", "Jeu."], series: [{ name: "API", values: [176, 170, 168, 181, 190, 214, 182] }, { name: "Web", values: [92, 90, 88, 95, 99, 104, 96] }] },
+        ],
+      },
+    },
   ],
 });
 
-await conv({ id: "seed-c-archiviste", kind: "direct", bots: ["seed-archiviste"], messages: [{ at: 9 * D, event: { type: "agent.ready", name: "Archiviste" } }] });
+await conv({
+  id: "seed-c-archiviste",
+  kind: "direct",
+  bots: ["seed-archiviste"],
+  messages: [
+    { at: 9 * D, event: { type: "agent.ready", name: "Archiviste" } },
+    { at: 2 * D, me: "Où en est la doc d'arrivée d'un nouveau bot ?" },
+    {
+      at: 2 * D - 2,
+      bot: "seed-archiviste",
+      text: [
+        "## Arrivée d'un bot",
+        "",
+        "La page est à jour sur le wiki, en trois temps :",
+        "",
+        "1. **Le créer** depuis Réglages › Agents, avec son nom et sa couleur.",
+        "2. **Lui donner ses outils** :",
+        "   - les connecteurs de l'équipe (Gmail, Linear, GitHub) ;",
+        "   - ses compétences, une par métier.",
+        "3. **L'ouvrir à l'équipe** dans Réglages › Accès.",
+        "",
+        "Ce qui reste à écrire :",
+        "",
+        "- [x] Créer et nommer le bot",
+        "- [x] Connecteurs et compétences",
+        "- [ ] Accès par salarié",
+        "- [ ] Routines du matin",
+        "",
+        "> Un bot qu'on ne présente pas à l'équipe ne sert à personne.",
+        "> — Marie Dupont",
+        "",
+        "Le détail est sur [la page du wiki](https://wiki.e-do.studio/agents/arrivee).",
+      ].join("\n"),
+    },
+    { at: 2 * D - 10, me: "Mets-moi la config d'un bot type." },
+    {
+      at: 2 * D - 11,
+      bot: "seed-archiviste",
+      text: [
+        "Celle de Trésorerie, sans ses secrets :",
+        "",
+        "```json",
+        "{",
+        "  \"name\": \"Trésorerie\",",
+        "  \"model\": \"claude-sonnet-4-5\",",
+        "  \"tools\": [\"stripe\", \"gmail\", \"code_session\"],",
+        "  \"routines\": [{ \"cron\": \"30 8 * * 1\", \"task\": \"Relances de la semaine\" }],",
+        "  \"approvals\": { \"stripe\": \"ask\", \"gmail\": \"allow\" }",
+        "}",
+        "```",
+        "",
+        "Pour la recharger après une modification :",
+        "",
+        "```bash",
+        "hermes agents reload tresorerie --restart",
+        "```",
+        "",
+        "---",
+        "",
+        "Les réglages qui comptent :",
+        "",
+        "| Réglage | Par défaut | Trésorerie |",
+        "| --- | --- | --- |",
+        "| Modèle | Sonnet | Sonnet |",
+        "| Validation Stripe | Demander | Demander |",
+        "| Routines | 0 | 1 |",
+      ].join("\n"),
+    },
+
+    { at: 3 * H, me: "Combien de messages par conversation ce mois-ci ?" },
+    {
+      at: 3 * H - 1,
+      bot: "seed-archiviste",
+      text: "Les cinq plus actives :",
+      data: { views: [{ type: "database", kind: "table", source: "Postgres", columns: ["Conversation", "Messages", "Bots", "Dernier message"], rows: [
+        ["Équipe produit", 184, 2, "aujourd'hui"],
+        ["Dev", 142, 1, "aujourd'hui"],
+        ["Trésorerie", 96, 1, "aujourd'hui"],
+        ["Compta & facturation", 61, 1, "hier"],
+        ["Revue", 48, 1, "hier"],
+      ] }] },
+    },
+  ],
+});
 
 await conv({
   id: "seed-c-marie",
@@ -600,6 +955,38 @@ await conv({
     { at: 3 * H, from: "seed-marie", text: "Maquettes du mode sombre prêtes : https://figma.com/design/XsudA2MFOeIeLFx3yvpWMP" },
     { at: 40, from: "seed-chloe", text: "Point rapide demain 10 h ? On a besoin de trancher le contraste des tuiles." },
     { at: 18, bot: "seed-atelier", text: "Je peux préparer deux variantes côte à côte pour la réunion : AA strict et teinte de la maquette." },
+    {
+      at: 12,
+      bot: "seed-atelier",
+      text: "J'ai préparé l'ordre du jour de demain, modifie-le directement si besoin.",
+      files: [
+        {
+          name: "ordre-du-jour-reunion-produit.docx",
+          mime: DOCX_MIME,
+          body: await docx("Réunion produit — v0.50", [
+            { heading: "Objectif", text: "Trancher le contraste des tuiles en mode sombre et caler la date de sortie." },
+            { heading: "Ordre du jour", numbered: true, items: ["Variantes de contraste (AA strict, teinte de la maquette)", "État de la migration Stripe", "Export PDF des factures", "Date de sortie de la v0.50"] },
+            { heading: "Participants", items: ["Chloé (animation)", "Marie (design)", "Lucas (dev)", "Dev et Atelier"] },
+          ]),
+        },
+      ],
+    },
+
+    {
+      at: 30,
+      bot: "seed-dev",
+      text: "Je récapitule ce qui reste pour la v0.50 :",
+      data: {
+        views: [
+          { type: "tasks", kind: "list", source: "Linear", items: [
+            { title: "Mode sombre du tableau de bord", status: "En cours", assignee: "Dev", due: day(1) },
+            { title: "Migration des webhooks Stripe", status: "En revue", assignee: "Lucas Martin", due: day(2) },
+            { title: "Export PDF des factures", status: "À faire", assignee: "Trésorerie", due: day(5) },
+          ] },
+          { type: "tasks", kind: "draft", source: "Linear", draft: { title: "Annoncer l'export PDF au support", description: "Deux clients l'ont demandé cette semaine.", assignee: "Chloé Petit", due: day(3), project: "v0.50" } },
+        ],
+      },
+    },
   ],
 });
 
@@ -627,6 +1014,92 @@ await conv({
     { at: 30 * H - 6, bot: "seed-dev", text: "Vérifié : 0042 s'applique en 380 ms sur la préproduction, aucun verrou long." },
   ],
 });
+
+/* ---------- Artifacts ---------- */
+
+// Pages the bots wrote, saved as a real reply would (files of the conversation + versions); one of
+// them rewritten twice, one shared with the organization, one by link (its link is printed at the end).
+// Written as the prompt asks (previews.ts): Agora's kit gives the look, the page's CSS only lays it out.
+const page = (title: string, body: string, script = "", layout = "") =>
+  `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title><style>${layout}</style></head><body><main class="ag-page">${body}</main>${script}</body></html>`;
+
+const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct"];
+const revenue = (months: number[], ink = "--chart-2") =>
+  page(
+    "Chiffre d'affaires — 2026",
+    `<header class="ag-header"><h1>Chiffre d'affaires 2026</h1><p>Factures émises, en euros HT, de janvier à ${MONTHS[months.length - 1]!.toLowerCase()}.</p></header>
+<div class="ag-grid">
+  <div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Total</span><span class="ag-stat-value" id="total"></span><span class="ag-stat-note">${months.length} mois</span></div></div>
+  <div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Meilleur mois</span><span class="ag-stat-value" id="bestMonth"></span><span class="ag-stat-note" id="bestAmount"></span></div></div>
+  <div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Moyenne mensuelle</span><span class="ag-stat-value" id="avg"></span><span class="ag-stat-note">HT</span></div></div>
+</div>
+<div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">Par mois</div><div class="ag-card-description">En euros HT</div><div class="ag-card-action"><span class="ag-badge ag-badge-outline"><span class="ag-dot" style="background:var(--success)"></span>À jour</span></div></div><div style="position:relative;height:240px"><canvas id="chart"></canvas></div></div>`,
+    `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script><script>
+const data=${JSON.stringify(months)};const labels=${JSON.stringify(MONTHS)}.slice(0,data.length);
+const eur=n=>n.toLocaleString("fr-FR",{style:"currency",currency:"EUR",maximumFractionDigits:0});
+const best=data.indexOf(Math.max(...data));
+total.textContent=eur(data.reduce((a,b)=>a+b,0));bestMonth.textContent=labels[best];bestAmount.textContent=eur(data[best]);avg.textContent=eur(data.reduce((a,b)=>a+b,0)/data.length);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+Chart.defaults.font.family=getComputedStyle(document.body).fontFamily;Chart.defaults.color=css("--muted-foreground");Chart.defaults.borderColor=css("--border");
+new Chart(chart,{type:"bar",data:{labels,datasets:[{data,backgroundColor:css("${ink}"),borderRadius:4,maxBarThickness:28}]},options:{maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>eur(c.parsed.y)}}},scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>eur(v)}}}}});
+</script>`,
+  );
+
+const contrast = page(
+  "Contraste des tuiles — deux variantes",
+  `<header class="ag-header"><h1>Contraste des tuiles</h1><p>La même tuile avec la légende de la maquette, puis avec celle qui passe AA.</p></header>
+<div class="ag-grid">
+  <div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">Maquette</div><div class="ag-card-description">Texte tertiaire</div><div class="ag-card-action"><span class="ag-badge ag-badge-outline"><span class="ag-dot" style="background:var(--warning)"></span>Sous AA</span></div></div><div class="ag-stat"><span class="ag-stat-label ag-subtle" style="color:var(--subtle-foreground)">Chiffre d'affaires</span><span class="ag-stat-value">38 620 €</span><span class="ag-stat-note">4,2:1</span></div></div>
+  <div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">AA strict</div><div class="ag-card-description">Texte secondaire</div><div class="ag-card-action"><span class="ag-badge ag-badge-outline"><span class="ag-dot" style="background:var(--success)"></span>AA</span></div></div><div class="ag-stat"><span class="ag-stat-label">Chiffre d'affaires</span><span class="ag-stat-value">38 620 €</span><span class="ag-stat-note">4,6:1</span></div></div>
+</div>
+<div class="ag-row"><div class="ag-tabs" role="tablist"><button aria-selected="true" data-pick="aa">Garder AA</button><button aria-selected="false" data-pick="maquette">Garder la maquette</button></div><span class="ag-muted" id="pick">Choix : AA strict</span></div>`,
+  `<script>document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-pick]").forEach(x=>x.setAttribute("aria-selected",x===b));pick.textContent="Choix : "+(b.dataset.pick==="aa"?"AA strict":"maquette")})</script>`,
+);
+
+const pricing = page(
+  "Simulateur de prix",
+  `<header class="ag-header"><h1>Simulateur de prix</h1><p>Combien coûte Agora pour votre équipe.</p></header>
+<div class="ag-card"><div class="ag-card-header ag-bordered"><div class="ag-card-title">Votre équipe</div><div class="ag-card-description">12 € par collègue, 9 € par bot, chaque mois</div></div>
+  <div class="fields"><label>Collègues<input id="seats" type="number" value="8" min="1"></label><label>Bots<input id="bots" type="number" value="4" min="0"></label><label>Facturation<select id="cycle"><option value="month">Mensuelle</option><option value="year">Annuelle (−15 %)</option></select></label></div>
+  <div class="ag-card-footer"><span class="ag-muted" id="detail"></span><button class="ag-button" id="copy">Copier le devis</button></div></div>
+<div class="ag-grid"><div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Par mois</span><span class="ag-stat-value" id="month"></span></div></div><div class="ag-card"><div class="ag-stat"><span class="ag-stat-label">Par an</span><span class="ag-stat-value" id="year"></span><span class="ag-stat-note" id="saving"></span></div></div></div>`,
+  `<script>const f=n=>n.toLocaleString("fr-FR",{style:"currency",currency:"EUR"});function go(){const m=Number(seats.value)*12+Number(bots.value)*9;const yearly=cycle.value==="year";month.textContent=f(yearly?m*0.85:m);year.textContent=f(m*12*(yearly?0.85:1));saving.textContent=yearly?f(m*12*0.15)+" économisés":"Sans engagement";detail.textContent=seats.value+" collègues, "+bots.value+" bots"}seats.oninput=bots.oninput=cycle.onchange=go;go();copy.onclick=()=>{copy.textContent="Copié";setTimeout(()=>copy.textContent="Copier le devis",1200)}</script>`,
+  ".fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}",
+);
+
+async function artifactReply(conversationId: string, bot: BotId, at: number, text: string, slug: string, html: string) {
+  const id = `seed-m${++n}`;
+  const [saved] = await savePreviews([{ title: previewTitle(html), html, done: true, slug }], { conversationId, turnId: `seed-turn-${n}`, directProfile: null });
+  if (!saved) throw new Error(`seed: artifact ${slug} not saved`);
+  const createdAt = ago(at);
+  await db.insert(message).values({
+    id,
+    conversationId,
+    kind: "bot",
+    authorAgentId: bot,
+    text,
+    data: { turn: { id: `seed-turn-${n}`, startedAt: new Date(createdAt.getTime() - 20_000).toISOString() }, attachments: [saved.attachment], previews: [saved.preview] },
+    createdAt,
+  });
+  // Changed when its reply was written, not when the seed ran: the Artefacts list keeps the thread's order.
+  await db.update(artifact).set({ updatedAt: createdAt }).where(eq(artifact.id, saved.preview.artifactId!));
+  await db.update(artifactVersion).set({ createdAt }).where(eq(artifactVersion.attachmentId, saved.attachment.id));
+  return saved.preview.artifactId!;
+}
+
+await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tresorerie", kind: "user", authorUserId: ME, text: "Fais-moi un tableau de bord du chiffre d'affaires de l'année.", createdAt: ago(3 * H) });
+await artifactReply("seed-c-tresorerie", "seed-tresorerie", 3 * H - 2, "Voici le tableau de bord, jusqu'à août.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500]));
+await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tresorerie", kind: "user", authorUserId: ME, text: "Ajoute septembre et octobre.", createdAt: ago(90) });
+await artifactReply("seed-c-tresorerie", "seed-tresorerie", 88, "C'est ajouté.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500, 37800, 38620]));
+await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-tresorerie", kind: "user", authorUserId: ME, text: "Les barres plus foncées, c'est plus lisible.", createdAt: ago(20) });
+const ca = await artifactReply("seed-c-tresorerie", "seed-tresorerie", 19, "Voilà, plus foncées.", "ca-2026", revenue([28400, 31200, 29800, 35600, 33100, 36900, 30200, 27500, 37800, 38620], "--chart-4"));
+await db.update(artifact).set({ shareMode: "org", updatedAt: ago(19) }).where(eq(artifact.id, ca));
+
+await artifactReply("seed-g-produit", "seed-atelier", 15, "Les deux variantes côte à côte pour la réunion de demain.", "contraste-tuiles", contrast);
+
+await db.insert(message).values({ id: `seed-m${++n}`, conversationId: "seed-c-atelier", kind: "user", authorUserId: ME, text: "Un simulateur de prix pour la page tarifs ?", createdAt: ago(6 * H) });
+const sim = await artifactReply("seed-c-atelier", "seed-atelier", 6 * H - 1, "Le voici : change le nombre de collègues et de bots.", "simulateur-prix", pricing);
+const [shared] = await db.update(artifact).set({ shareMode: "link", updatedAt: ago(6 * H - 1) }).where(eq(artifact.id, sim)).returning();
 
 /* ---------- Sessions ---------- */
 
@@ -729,5 +1202,6 @@ const usageRows = Array.from({ length: 60 }, (_, i) => {
 });
 await db.insert(usageEvent).values(usageRows);
 
-console.log(`seed: ${people.length} collègues, ${bots.length} bots, ${n} messages, ${sessions.length} sessions de code, ${tasks.length} tâches, ${usageRows.length} lignes de consommation, pour ${owner.email}.`);
+console.log(`seed: ${people.length} collègues, ${bots.length} bots, ${n} messages, ${sessions.length} sessions de code, ${tasks.length} tâches, 3 artefacts, ${usageRows.length} lignes de consommation, pour ${owner.email}.`);
+console.log(`seed: artefact partagé par lien → /s/${shared!.shareToken} (sur le port du web en dev)`);
 process.exit(0);

@@ -8,18 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
+import { DateTimePicker } from "@/components/DateTimePicker";
+import { ChannelInput, EmailsInput, LocationInput, PersonInput } from "@/components/TypedInputs";
 import { BlockFooter, StatusLine } from "./block";
-import { fromLocalInput, toLocalInput } from "./format";
 
 type AnyDraft = Drafts[DraftType];
 
 const ANSWER_TONE: Record<ViewActionKind, StatusTone> = { confirm: "success", revise: "warning", cancel: "neutral" };
 
-const list = (s: string) =>
-  s
-    .split(/[,;\n]/)
-    .map((x) => x.trim())
-    .filter(Boolean);
 
 /**
  * Draft proposed by a bot (mail, event, message, task): editable in place, then
@@ -75,14 +71,22 @@ export function DraftCard(props: {
     </Field>
   );
 
+  /** A field holding a dedicated input (addresses, a place, a channel, a person, a day). */
+  const field = (k: string, label: string, input: React.ReactNode) => (
+    <Field key={k}>
+      <FieldLabel htmlFor={id(k)}>{label}</FieldLabel>
+      {input}
+    </Field>
+  );
+
   const fields = () => {
     switch (props.view.type) {
       case "mail": {
         const d = draft as MailDraft;
         return (
           <>
-            {text("to", t.to, d.to.join(", "), (v) => set({ to: list(v) }))}
-            {(d.cc?.length || !locked) && text("cc", t.cc, d.cc?.join(", "), (v) => set({ cc: list(v) }))}
+            {field("to", t.to, <EmailsInput id={id("to")} value={d.to} readOnly={locked} onChange={(v) => set({ to: v })} />)}
+            {(d.cc?.length || !locked) && field("cc", t.cc, <EmailsInput id={id("cc")} value={d.cc ?? []} readOnly={locked} onChange={(v) => set({ cc: v })} />)}
             {text("subject", t.subject, d.subject, (v) => set({ subject: v }))}
             {text("body", t.body, d.body, (v) => set({ body: v }), { area: true, rows: 8, bare: true })}
           </>
@@ -94,11 +98,18 @@ export function DraftCard(props: {
           <>
             {text("title", t.title, d.title, (v) => set({ title: v }))}
             <div className="grid gap-4 sm:grid-cols-2">
-              {text("start", t.start, toLocalInput(d.start), (v) => set({ start: fromLocalInput(v) }), { type: "datetime-local" })}
-              {text("end", t.end, toLocalInput(d.end), (v) => set({ end: fromLocalInput(v) || undefined }), { type: "datetime-local" })}
+              {/* shadcn's date and time picker, not the browser's: the calendar, the hour under it. */}
+              <Field>
+                <FieldLabel htmlFor={id("start")}>{t.start}</FieldLabel>
+                <DateTimePicker id={id("start")} value={d.start} disabled={locked} onChange={(v) => set({ start: v })} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={id("end")}>{t.end}</FieldLabel>
+                <DateTimePicker id={id("end")} value={d.end} disabled={locked} onChange={(v) => set({ end: v })} />
+              </Field>
             </div>
-            {text("location", t.location, d.location, (v) => set({ location: v }))}
-            {text("attendees", t.attendees, d.attendees?.join(", "), (v) => set({ attendees: list(v) }))}
+            {field("location", t.location, <LocationInput id={id("location")} value={d.location} readOnly={locked} onChange={(v) => set({ location: v })} />)}
+            {field("attendees", t.attendees, <EmailsInput id={id("attendees")} value={d.attendees ?? []} readOnly={locked} onChange={(v) => set({ attendees: v })} />)}
             {(d.description || !locked) && text("description", t.description, d.description, (v) => set({ description: v }), { area: true, rows: 3 })}
           </>
         );
@@ -107,7 +118,7 @@ export function DraftCard(props: {
         const d = draft as ChatDraft;
         return (
           <>
-            {text("channel", t.channel, d.channel, (v) => set({ channel: v }))}
+            {field("channel", t.channel, <ChannelInput id={id("channel")} value={d.channel} readOnly={locked} onChange={(v) => set({ channel: v })} />)}
             {text("text", t.message, d.text, (v) => set({ text: v }), { area: true, rows: 4, bare: true })}
           </>
         );
@@ -119,8 +130,8 @@ export function DraftCard(props: {
             {text("title", t.title, d.title, (v) => set({ title: v }))}
             {(d.description || !locked) && text("description", t.description, d.description, (v) => set({ description: v }), { area: true, rows: 3 })}
             <div className="grid gap-4 sm:grid-cols-3">
-              {text("assignee", t.assignee, d.assignee, (v) => set({ assignee: v }))}
-              {text("due", t.due, d.due, (v) => set({ due: v }), { type: "date" })}
+              {field("assignee", t.assignee, <PersonInput id={id("assignee")} value={d.assignee} readOnly={locked} onChange={(v) => set({ assignee: v })} />)}
+              {field("due", t.due, <DateTimePicker id={id("due")} dateOnly value={d.due} disabled={locked} onChange={(v) => set({ due: v })} />)}
               {text("project", t.project, d.project, (v) => set({ project: v }))}
             </div>
           </>

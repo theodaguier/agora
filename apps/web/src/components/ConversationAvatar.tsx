@@ -2,7 +2,6 @@ import type { AgentSummary, Person } from "../lib/api";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "./AgentAvatar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { UsersIcon } from "@/components/icons";
 import { initials, othersOf, type Participant } from "@/lib/participants";
 import { defineMessages, useT } from "@/i18n";
 import { conversations } from "@agora/core/i18n";
@@ -22,16 +21,25 @@ const messages = defineMessages({
  */
 /** The stock Avatar size matching a `size-*` layout class, so the initials keep the right text size. */
 function avatarSize(className?: string): "sm" | "default" | "lg" {
-  const px = Number(/\bsize-(\d+)\b/.exec(className ?? "")?.[1] ?? 10);
-  // lg is exactly 40 px: any other size is the class itself, over the default.
-  return px <= 6 ? "sm" : px === 10 ? "lg" : "default";
+  const px = Number(/\bsize-(\d+(?:\.\d+)?)\b/.exec(className ?? "")?.[1] ?? 10);
+  // sm is exactly 24 px and lg 40 px: any other size is the class itself, over the default.
+  return px === 6 ? "sm" : px === 10 ? "lg" : "default";
 }
+/** Below 24 px the initials shrink with the face (Figma: 8 px in a 16 to 20 px avatar). */
+const tiny = (className?: string) => Number(/\bsize-(\d+(?:\.\d+)?)\b/.exec(className ?? "")?.[1] ?? 10) < 6;
+
+/** Figma « Atelier · Théo »: without a photo, a colleague's initials on a muted tint of their own. */
+const TINTS = ["#6b5485", "#4d6e80", "#78664d", "#4f735c", "#5c6173", "#80565a", "#4d6a8a", "#7a5f78", "#5d7550", "#86684a"];
+/** FNV-1a: close ids (« seed-u-1 », « seed-u-2 ») land far apart, so two colleagues side by side rarely share a tint. */
+const tintOf = (id: string) => TINTS[[...id].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261) % TINTS.length]!;
 
 export function PersonAvatar({ person, className, size }: { person: Person; className?: string; size?: "sm" | "default" | "lg" }) {
   return (
     <Avatar aria-hidden size={size ?? avatarSize(className)} className={cn(!size && !className && "size-10", className)}>
       {person.image && <AvatarImage src={person.image} alt="" />}
-      <AvatarFallback>{initials(person.name)}</AvatarFallback>
+      <AvatarFallback className={cn("font-semibold text-white/90", tiny(className) && "text-2xs")} style={{ backgroundColor: tintOf(person.id) }}>
+        {initials(person.name)}
+      </AvatarFallback>
     </Avatar>
   );
 }
@@ -114,15 +122,7 @@ export function ConversationAvatar({
   status?: string;
 }) {
   const others = othersOf(conversation, me);
-  // A named group: the group icon on a neutral disc (its initials, « C& », read as noise).
-  if (conversation.kind === "group" && conversation.title)
-    return (
-      <Avatar aria-hidden className={className ?? "size-10"}>
-        <AvatarFallback>
-          <UsersIcon size="55%" />
-        </AvatarFallback>
-      </Avatar>
-    );
+  // A group, named or not: who is in it, two faces (never a generic people icon nor its initials).
   if (conversation.kind !== "group" || others.length < 2) {
     const first = others[0];
     if (!first)

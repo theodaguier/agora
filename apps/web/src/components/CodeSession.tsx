@@ -64,14 +64,19 @@ import {
   StopIcon,
   TaskListIcon,
   TerminalIcon,
+  ToolIcon,
   TrashIcon,
   WarningIcon,
 } from "@/components/icons";
 import { PendingFiles, SentAttachments } from "@/components/Attachments";
 import { BesideButton, besideMessages } from "@/components/BesideButton";
 import { PaneHeader } from "@/components/PaneHeader";
-import { CodePriorityIcon, CodeStateIcon, IssueIcon } from "@/components/CodeSessionMarks";
-import { CodePriorityMenu, priorityOfKey, useSetCodeParked, useSetCodePriority } from "@/components/CodePriorityMenu";
+import { Shimmer } from "@/components/ai-elements/shimmer";
+import { TaskStatusIcon } from "@/components/Marks";
+import { CodePriorityIcon, CodeStateIcon, IssueIcon, STATE_TONE } from "@/components/CodeSessionMarks";
+import { PriorityIcon } from "@/components/Marks";
+import { matches as matchesShortcut, shortcuts, tabShortcut, type Shortcut } from "@/lib/shortcuts";
+import { CodePriorityItems, CodePriorityMenu, priorityOfKey, useSetCodeParked, useSetCodePriority } from "@/components/CodePriorityMenu";
 import { markCodeSessionSeen, useCodeSessionUnread } from "@/lib/code-seen";
 import { UserBubble } from "@/components/Bubbles";
 import { TabChip } from "@/components/TabChip";
@@ -85,7 +90,7 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import { Badge } from "@/components/ui/badge";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { QueueList } from "@/components/QueueList";
-import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -98,6 +103,9 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -181,7 +189,8 @@ const noSessions: CodeSession[] = [];
 
 const active = (s: CodeSessionStatus) => s === "running" || s === "waiting";
 
-const STATE_TEXT_TONE: Partial<Record<CodeSessionState, string>> = { waiting: "text-state-you", failed: "text-priority-urgent" };
+/** Its state in words takes the state's colour, except at rest. */
+const STATE_TEXT_TONE: Partial<Record<CodeSessionState, string>> = { ...STATE_TONE, idle: undefined, parked: undefined };
 
 /** Its state as a mark: one shape and one color per state. */
 function StatusIcon({ session, className }: { session: Pick<CodeSession, "status" | "question" | "git">; className?: string }) {
@@ -239,46 +248,46 @@ export function LiveSessionCard({ session, onOpen, className }: { session: CodeS
   const waiting = !!(session.approval || session.question);
   const running = session.status === "running" && !waiting;
   const done = session.todos.filter((x) => x.status === "completed").length;
-  const branch = session.git?.branch ?? session.worktree?.branch;
-  const where = [session.repo?.split("/")[1], branch].filter(Boolean).join(", ");
   return (
-    <Card size="sm" className={cn("w-full max-w-xl", className)}>
-      <CardHeader>
-        <CardTitle className="truncate">{session.title}</CardTitle>
-        {where && <CardDescription className="truncate">{where}</CardDescription>}
-        <CardAction>
-          <Badge variant="secondary">
-            <StatusIcon session={session} />
-            <StatusText session={session} />
-          </Badge>
-        </CardAction>
-      </CardHeader>
+    // Figma « Conversation · Dev »: one line that opens the session (a terminal tile, its title over its
+    // repository, its state); what it asks or does now under it.
+    <Card size="sm" className={cn("w-full gap-0 py-0", className)}>
+      <button type="button" onClick={onOpen} className="flex min-w-0 items-center gap-3 px-3.5 py-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        {/* Who codes: Claude Code or Codex, by its logo; its name for screen readers and on hover. */}
+        <span title={CODE_ENGINE_NAMES[session.engine]} className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent">
+          <ModelLogo provider={session.engine} />
+          <span className="sr-only">{CODE_ENGINE_NAMES[session.engine]}</span>
+        </span>
+        <span className="grid min-w-0 flex-1 gap-0.5">
+          <span className="truncate text-ui font-medium">{session.title}</span>
+          {session.repo && <span className="truncate font-mono text-xs text-subtle-foreground">{session.repo}</span>}
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <StatusIcon session={session} />
+          <StatusText session={session} />
+          <ChevronRightIcon className="size-3 text-subtle-foreground" />
+        </span>
+      </button>
       {waiting ? (
-        <CardContent>
+        <CardContent className="border-t py-3">
           <SessionDecision conversationId={session.conversationId} session={session} canAnswer={owner} inline />
         </CardContent>
       ) : running ? (
-        <CardContent className="flex min-w-0 items-center gap-2 text-sm">
-          <Spinner className="shrink-0 text-muted-foreground" />
-          <span className="typing-shimmer min-w-0 truncate">{session.activity || t.status.running}</span>
+        <CardContent className="flex min-w-0 items-center gap-2 border-t py-3 text-sm">
+          <Shimmer as="span" className="min-w-0 truncate text-ui">
+            {session.activity || t.status.running}
+          </Shimmer>
           {session.todos.length > 0 && <span className="ml-auto shrink-0 text-muted-foreground">{t.view.tasksCount(done, session.todos.length)}</span>}
         </CardContent>
       ) : session.git?.pr ? (
-        <CardContent>
+        <CardContent className="border-t py-3">
           <PullRequestStatus pr={session.git.pr} />
         </CardContent>
       ) : session.result ? (
-        <CardContent>
+        <CardContent className="border-t py-3">
           <p className="line-clamp-2 text-sm text-muted-foreground">{session.result}</p>
         </CardContent>
       ) : null}
-      <CardFooter className="justify-between gap-2">
-        <span className="text-xs text-muted-foreground tabular-nums">{listTime(new Date(session.updatedAt))}</span>
-        <Button variant="ghost" size="sm" onClick={onOpen}>
-          {t.open}
-          <ChevronRightIcon data-icon="inline-end" />
-        </Button>
-      </CardFooter>
     </Card>
   );
 }
@@ -355,6 +364,7 @@ export function CodeSessionsButton({
   onOpen,
   onOpenBeside,
   onDeleted,
+  asCount,
 }: {
   conversationId: string;
   current: string | null;
@@ -363,6 +373,8 @@ export function CodeSessionsButton({
   onOpenBeside?: (sessionId: string) => void;
   /** Its owner deleted it: its tab closes. */
   onDeleted?: (sessionId: string) => void;
+  /** Figma « Conversation · Dev »: the trigger is the count in grey beside the name, not an icon. */
+  asCount?: boolean;
 }) {
   const t = useT(messages);
   const beside = useT(besideMessages);
@@ -408,12 +420,22 @@ export function CodeSessionsButton({
         <TooltipTrigger
           render={
             <PopoverTrigger
-              render={<Button variant="ghost" size="icon-sm" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden lg:inline-flex" />}
+              render={
+                asCount ? (
+                  <Button variant="ghost" size="xs" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className={cn("-ml-1 px-1 text-ui font-normal text-subtle-foreground hover:text-muted-foreground", !sessions.length && "hidden")} />
+                ) : (
+                  <Button variant="ghost" size="icon-sm" aria-label={working ? t.sessionsWorking : t.sessions} aria-pressed={!!current} className="relative hidden lg:inline-flex" />
+                )
+              }
             />
           }
         >
-          {/* It hops while a session works: that is the sign, no badge. */}
-          <TerminalIcon className={cn(working && "code-working")} />
+          {asCount ? (
+            <span className={cn(working && "typing-shimmer")}>{t.sessionsCount(sessions.length)}</span>
+          ) : (
+            // It hops while a session works: that is the sign, no badge.
+            <TerminalIcon className={cn(working && "code-working")} />
+          )}
         </TooltipTrigger>
         <TooltipContent>{working ? t.sessionsWorking : t.sessions}</TooltipContent>
       </Tooltip>
@@ -440,34 +462,19 @@ export function CodeSessionsButton({
                     }}
                   />
                 }
-                className="flex-nowrap items-start text-left"
+                // Figma « 8 · Proposition — Sessions de code »: one line per session, as on the Sessions
+                // screen: priority, state (its words on hover), title, when.
+                title={codeStatusText(t, s)}
+                className="flex-nowrap text-left"
               >
-                <ItemMedia className="gap-1.5">
-                  <CodePriorityIcon priority={s.priority} />
+                <ItemMedia className="gap-2.5">
+                  <PriorityIcon priority={s.priority} />
                   <StatusIcon session={s} />
                 </ItemMedia>
                 <ItemContent className="min-w-0">
-                  <ItemTitle className="w-full truncate">{s.title}</ItemTitle>
-                  <ItemDescription className="flex min-w-0 items-center gap-2">
-                    <span className="shrink-0">
-                      <StatusText session={s} />
-                    </span>
-                    {s.issue && <IssueRef issue={s.issue} />}
-                    {s.git?.pr ? (
-                      <span className="flex shrink-0 items-center gap-1">
-                        PR #{s.git.pr.number}
-                        {s.git.pr.state === "open" && <ChecksMark checks={s.git.pr.checks} />}
-                      </span>
-                    ) : s.git?.branch && <span className="truncate">{s.git.branch}</span>}
-                    {s.worktree?.removedAt && <span className="shrink-0">{t.worktree.listGone}</span>}
-                    <span className="ml-auto shrink-0">{dividerLabel(new Date(s.updatedAt))}</span>
-                  </ItemDescription>
-                  {s.instruction && (
-                    <ItemDescription>
-                      {s.instruction.by ? t.instructedBy(s.instruction.by, s.instruction.text) : s.instruction.text}
-                    </ItemDescription>
-                  )}
+                  <ItemTitle className="w-full truncate font-normal">{s.title}</ItemTitle>
                 </ItemContent>
+                <span className="shrink-0 text-xs text-subtle-foreground tabular-nums">{listTime(new Date(s.updatedAt))}</span>
               </Item>
             );
             // A right click opens it beside the conversation, and lets its owner delete it.
@@ -655,13 +662,41 @@ function CodeSessionTabs({
   const order = [...byCodePriority(tabs.flatMap((id) => sessions.filter((s) => s.id === id))).map((s) => s.id), ...tabs.filter((id) => !sessions.some((s) => s.id === id))];
   // The ones set aside (Low) fold behind « De côté », so the tabs you focus on stay readable.
   const aside = order.filter((id) => id !== active && sessions.find((s) => s.id === id)?.priority === "low");
+  const shown = order.filter((id) => !aside.includes(id));
+  // ⌃1–⌃8 the session tab n, ⌃9 the last one, ⌃⌥→ and ⌃⌥← the next and previous one.
+  const latest = useRef({ shown, active, onSelect });
+  useLayoutEffect(() => {
+    latest.current = { shown, active, onSelect };
+  });
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const { shown, active, onSelect } = latest.current;
+      if (e.isComposing || !shown.length) return;
+      const at = shown.indexOf(active);
+      let to: number | null = null;
+      if (matchesShortcut(e, shortcuts.nextTab)) to = (at + 1) % shown.length;
+      else if (matchesShortcut(e, shortcuts.previousTab)) to = (Math.max(at, 0) - 1 + shown.length) % shown.length;
+      else for (let n = 1; n <= 9; n++) if (matchesShortcut(e, tabShortcut(n))) to = n === 9 ? shown.length - 1 : n - 1;
+      if (to === null) return;
+      e.preventDefault();
+      if (to < shown.length) onSelect(shown[to]!);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   return (
-    <div role="tablist" aria-label={t.sessions} className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b px-2">
-      {order
-        .filter((id) => !aside.includes(id))
-        .map((id) => (
-          <SessionTab key={id} id={id} session={sessions.find((s) => s.id === id)} active={id === active} onSelect={() => onSelect(id)} onClose={() => onCloseTab(id)} />
-        ))}
+    <div role="tablist" aria-label={t.sessions} className="flex h-11.5 shrink-0 items-center gap-1 overflow-x-auto border-b px-2">
+      {shown.map((id, i) => (
+        <SessionTab
+          key={id}
+          id={id}
+          session={sessions.find((s) => s.id === id)}
+          active={id === active}
+          shortcut={i < 8 ? tabShortcut(i + 1) : i === shown.length - 1 ? tabShortcut(9) : undefined}
+          onSelect={() => onSelect(id)}
+          onClose={() => onCloseTab(id)}
+        />
+      ))}
       {aside.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="shrink-0" />}>
@@ -705,19 +740,13 @@ function CodeSessionTabs({
             )}
             {canStart && others.length > 0 && <DropdownMenuSeparator />}
             {others.length > 0 && (
-              // Two lines per session, as in the Sessions popover: its title, then its state and when.
+              // One line per session: its state, its title, how long ago.
               <DropdownMenuGroup className="max-h-80 overflow-y-auto">
                 {others.map((s) => (
-                  <DropdownMenuItem key={s.id} onClick={() => onOpen(s.id)} className="items-start">
-                    <CodePriorityIcon priority={s.priority} />
+                  <DropdownMenuItem key={s.id} onClick={() => onOpen(s.id)}>
                     <StatusIcon session={s} />
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate">{s.title}</span>
-                      <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                        <StatusText session={s} />
-                        <span className="ml-auto shrink-0">{dividerLabel(new Date(s.updatedAt))}</span>
-                      </span>
-                    </span>
+                    <span className="min-w-0 flex-1 truncate">{s.title}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{listTime(new Date(s.updatedAt))}</span>
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuGroup>
@@ -729,8 +758,8 @@ function CodeSessionTabs({
   );
 }
 
-/** A session's tab: its priority, its state, its title; a blue dot when an answer waits to be read. */
-function SessionTab({ id, session, active, onSelect, onClose }: { id: string; session?: CodeSession; active: boolean; onSelect: () => void; onClose: () => void }) {
+/** A session's tab: its engine's logo, its title (state and priority are in the pane); a blue dot when an answer waits to be read. */
+function SessionTab({ id, session, active, shortcut, onSelect, onClose }: { id: string; session?: CodeSession; active: boolean; shortcut?: Shortcut; onSelect: () => void; onClose: () => void }) {
   const t = useT(messages);
   const c = useT(common);
   const unread = useCodeSessionUnread(session, active);
@@ -741,15 +770,13 @@ function SessionTab({ id, session, active, onSelect, onClose }: { id: string; se
       title={title}
       icon={
         session ? (
-          <>
-            <CodePriorityIcon priority={session.priority} />
-            <StatusIcon session={session} />
-          </>
+          <ModelLogo provider={session.engine} />
         ) : (
           <CodeIcon />
         )
       }
       active={active}
+      shortcut={shortcut}
       unread={unread}
       closeLabel={`${c.close} ${title}`}
       onSelect={onSelect}
@@ -879,6 +906,7 @@ function NewSessionView({
               </InputGroupAddon>
             )}
             <InputGroupTextarea
+              autoComplete="off"
               ref={area}
               rows={2}
               value={text}
@@ -914,7 +942,7 @@ function NewSessionView({
               <span className="flex-1" />
               {engines.length > 1 && <EnginePicker engines={engines} value={engine} onSelect={pickEngine} />}
               <CodeModelPicker conversationId={conversationId} engine={engine} value={model} onSelect={setModel} />
-              <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} disabled={!canSend}>
+              <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} aria-disabled={!canSend} className="aria-disabled:opacity-50">
                 {start.isPending ? <Spinner /> : <ArrowUpIcon />}
               </InputGroupButton>
             </InputGroupAddon>
@@ -1260,10 +1288,37 @@ function CodeSessionView({
       <PaneHeader
         media={<EngineTile engine={session?.engine} />}
         title={session?.title ?? t.codeSession}
-        // One line: its state, the engine said once, its issue, its branch, each with its mark.
+        // One line, who then where then what: the engine, its branch (opens on GitHub), its issue, then its state.
         description={
           session && (
-            <span className="flex min-w-0 items-center gap-2.5">
+            <span className="flex min-w-0 items-center gap-3.5">
+              <span className="shrink-0">{engineName}</span>
+              {branch && (
+                <>
+                  {session.repo ? (
+                    <a
+                      href={`https://github.com/${session.repo}/tree/${encodeURI(branch)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`${session.repo} · ${branch}`}
+                      className="flex min-w-0 items-center gap-1 rounded-sm outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <BranchIcon className="size-3.5 shrink-0" />
+                      <span className="truncate">{branch}</span>
+                    </a>
+                  ) : (
+                    <span className="flex min-w-0 items-center gap-1">
+                      <BranchIcon className="size-3.5 shrink-0" />
+                      <span className="truncate">{branch}</span>
+                    </span>
+                  )}
+                </>
+              )}
+              {session.issue && (
+                <>
+                  <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />
+                </>
+              )}
               {owner ? (
                 <StatusMenu session={session} />
               ) : (
@@ -1272,34 +1327,11 @@ function CodeSessionView({
                   <StatusText session={session} />
                 </span>
               )}
-              <span className="shrink-0">{engineName}</span>
-              {session.issue && <IssueMenu conversationId={conversationId} session={session} issue={session.issue} owner={owner} />}
-              {branch && (
-                <span className="flex min-w-0 items-center gap-1">
-                  <BranchIcon className="size-3.5 shrink-0" />
-                  <span className="truncate">{branch}</span>
-                </span>
-              )}
             </span>
           )
         }
         actions={
           <>
-            {session &&
-              (owner ? (
-                <CodePriorityMenu
-                  session={session}
-                  park={false}
-                  trigger={
-                    <Button variant="ghost" size="sm" aria-label={`${t.priority} ${t.priorities[session.priority]}`}>
-                      <CodePriorityIcon priority={session.priority} />
-                      {session.priority === "none" ? t.priority : t.priorities[session.priority]}
-                    </Button>
-                  }
-                />
-              ) : (
-                session.priority !== "none" && <CodePriorityIcon priority={session.priority} className="mx-2" />
-              ))}
             {session && <SessionDetails conversationId={conversationId} session={session} showModel={!owner} owner={owner} />}
             {onDetach && <BesideButton onClick={onDetach} />}
             {onClose && (
@@ -1438,11 +1470,11 @@ function IssueMenu({ conversationId, session, issue, owner }: { conversationId: 
   );
 }
 
-/** A session's tile: the terminal glyph, whatever the engine; its name in the title. */
+/** A session's tile: its engine's logo (Claude Code, Codex), as on its card in the thread; its name on hover. */
 function EngineTile({ engine, className }: { engine?: CodeEngine; className?: string }) {
   return (
-    <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background", className)} title={engine ? CODE_ENGINE_NAMES[engine] : undefined}>
-      <TerminalIcon className="size-5 text-muted-foreground" />
+    <span className={cn("flex size-6 shrink-0 items-center justify-center rounded-md bg-accent", className)} title={engine ? CODE_ENGINE_NAMES[engine] : undefined}>
+      {engine ? <ModelLogo provider={engine} className="size-3.5" /> : <TerminalIcon className="size-3.5 text-muted-foreground" />}
     </span>
   );
 }
@@ -1474,32 +1506,13 @@ function Overview({
   rail: boolean;
 }) {
   const t = useT(messages);
-  const v = t.view;
   const running = session.status === "running";
-  const done = session.todos.filter((x) => x.status === "completed").length;
   // What it does, as it does it: instructions, its words streaming, its actions; what it waits for at the end.
   return (
     <div className="flex flex-1 flex-col gap-6">
       {!rail && <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />}
       {!rail && session.todos.length > 0 && (
-        <Section title={<>{v.tasks}<Badge variant="secondary" className="ml-2">{v.tasksCount(done, session.todos.length)}</Badge></>}>
-          <ListCard size="sm">
-            <ListCardRows>
-              {session.todos.map((todo) => (
-                <Item key={todo.id} size="xs">
-                  <ItemMedia variant="icon">
-                    <TodoMark status={todo.status} running={running} />
-                  </ItemMedia>
-                  <ItemContent className="min-w-0">
-                    <ItemTitle className={cn("line-clamp-2", todo.status === "completed" && "text-muted-foreground")}>
-                      {todo.status === "in_progress" && todo.activeForm && running ? todo.activeForm : todo.content}
-                    </ItemTitle>
-                  </ItemContent>
-                </Item>
-              ))}
-            </ListCardRows>
-          </ListCard>
-        </Section>
+        <SessionTodos session={session} />
       )}
       {session.steps.length === 0 && !waiting ? (
         <Empty className="flex-1">
@@ -1514,7 +1527,11 @@ function Overview({
         <div className="flex flex-col gap-4">
           <Timeline steps={session.steps} running={running} />
           {/* While it works and waits for nobody: what it does now, a light passing over the words. */}
-          {running && !waiting && <p className="typing-shimmer text-sm">{session.activity || t.status.running}</p>}
+          {running && !waiting && (
+            <Shimmer as="p" className="text-ui">
+              {session.activity || t.status.running}
+            </Shimmer>
+          )}
         </div>
       )}
       {owner && session.worktree && <WorktreeBanner conversationId={conversationId} session={session} worktree={session.worktree} />}
@@ -1529,27 +1546,10 @@ function Overview({
 function ProgressRail({ conversationId, session, owner }: { conversationId: string; session: CodeSessionDetail; owner: boolean }) {
   const t = useT(messages);
   const v = t.view;
-  const running = session.status === "running";
-  const done = session.todos.filter((x) => x.status === "completed").length;
   return (
     <aside aria-label={v.overview} className="flex w-80 shrink-0 flex-col gap-6 overflow-y-auto border-l bg-sidebar px-4 py-4">
       {session.todos.length > 0 && (
-        <Section title={<>{v.tasks}<span className="ml-2 font-normal text-muted-foreground">{v.tasksCount(done, session.todos.length)}</span></>}>
-          <ItemGroup>
-            {session.todos.map((todo) => (
-              <Item key={todo.id} size="xs">
-                <ItemMedia variant="icon">
-                  <TodoMark status={todo.status} running={running} />
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <ItemTitle className={cn("line-clamp-2", todo.status === "completed" && "text-muted-foreground")}>
-                    {todo.status === "in_progress" && todo.activeForm && running ? todo.activeForm : todo.content}
-                  </ItemTitle>
-                </ItemContent>
-              </Item>
-            ))}
-          </ItemGroup>
-        </Section>
+        <SessionTodos session={session} />
       )}
       <ChangesView conversationId={conversationId} session={session} owner={owner && !session.worktree?.removedAt} />
     </aside>
@@ -1606,7 +1606,7 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
         </div>
       );
     case "text":
-      return <MessageText text={step.text} streaming={streaming} className="text-sm" />;
+      return <MessageText text={step.text} streaming={streaming} className="text-ui" />;
     case "git":
       return (
         <div className={cn("flex items-start gap-2 text-xs", step.ok ? "text-muted-foreground" : "text-destructive")}>
@@ -1631,10 +1631,11 @@ function StepView({ step, streaming }: { step: Exclude<CodeStep, ToolStepT>; str
           </Alert>
         );
       }
+      // A note on the run (interrupted, resumed…): one grey line in the flow, not a centred caption.
       return (
-        <div className="text-center text-xs text-muted-foreground">
+        <div className="flex flex-col gap-1.5 px-2 text-xs text-subtle-foreground">
           {t.notices[step.code]}
-          {step.text && <CodeBlock className="mt-1.5 text-left">{step.text}</CodeBlock>}
+          {step.text && <CodeBlock>{step.text}</CodeBlock>}
         </div>
       );
   }
@@ -1729,6 +1730,9 @@ function SubagentRow({ step, all, running }: { step: ToolStepT; all: CodeStep[];
 /** A path reads as its file name; the folders it sits in on the server say nothing. */
 const shortTitle = (title: string) => title.replace(/\S*\/([^\s/]+)/g, "$1");
 
+/** Tools whose target is code (a command, a file, a pattern): it reads in code type; the others' in words. */
+const CODE_ARGS = new Set(["Bash", "BashOutput", "Grep", "Glob", "Read", "Edit", "MultiEdit", "Write", "NotebookEdit"]);
+
 /** One action, named in words; unfolds to its input and result, and to a subagent's own steps. */
 function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const t = useT(messages);
@@ -1737,17 +1741,27 @@ function ToolRow({ step, all }: { step: ToolStepT; all: CodeStep[] }) {
   const expandable = !!(step.input || step.output || nested);
   const label = toolLabel(step.name, t.toolNames);
   const detail = step.title && step.title !== step.name ? shortTitle(step.title) : (label.action ?? "");
+  // One quiet line: the tool's mark, what it does (shimmering while it does it), on what, in code type.
   const row = (
     <>
-      <span className="shrink-0 text-muted-foreground">{label.name}</span>
-      <span className={cn("min-w-0 flex-1 truncate text-left", step.status === "running" && "typing-shimmer")}>{detail}</span>
-      {step.status === "running" ? <Spinner className="shrink-0" /> : step.status !== "done" && <CloseCircleIcon className="shrink-0 text-destructive" />}
+      <ToolIcon name={step.name} className="size-3.5 shrink-0 text-subtle-foreground" />
+      {step.status === "running" ? (
+        <Shimmer as="span" className="shrink-0 text-ui">
+          {label.name}
+        </Shimmer>
+      ) : (
+        <span className="shrink-0 text-ui text-muted-foreground">{label.name}</span>
+      )}
+      {detail && (
+        <span className={cn("min-w-0 flex-1 truncate text-left text-subtle-foreground", CODE_ARGS.has(step.name) ? "font-mono text-xs" : "text-ui")}>{detail}</span>
+      )}
+      {step.status !== "running" && step.status !== "done" && <CloseCircleIcon className="ml-auto size-3.5 shrink-0 text-destructive" />}
     </>
   );
-  if (!expandable) return <div className="flex h-6 items-center gap-2 px-2 text-xs">{row}</div>;
+  if (!expandable) return <div className="flex h-7 items-center gap-2 px-2">{row}</div>;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger render={<Button variant="ghost" size="xs" className="w-full justify-start" />}>{row}</CollapsibleTrigger>
+      <CollapsibleTrigger render={<Button variant="ghost" size="sm" className="h-7 w-full justify-start gap-2 px-2 font-normal" />}>{row}</CollapsibleTrigger>
       <CollapsibleContent className="ml-2 flex flex-col gap-2 border-l py-1.5 pr-2 pl-3">
         {step.input && (step.name === "ExitPlanMode" ? <MessageText text={step.input} className="text-sm" /> : <Detail label={t.input} text={step.input} />)}
         {nested && <Timeline steps={all} running={false} parentId={step.id} />}
@@ -1862,7 +1876,7 @@ function SessionDetails({ conversationId, session, showModel, owner }: { convers
     u ? { label: t.usage, value: `${t.estimated(f.cost(u.costUsd))}, ${usageTime(u)}`, title: t.costNote } : null,
   ].filter((x) => x !== null);
   const canSecrets = owner && !!session.repo;
-  if (!lines.length && !canSecrets) return null;
+  if (!lines.length && !canSecrets && !owner) return null;
   return (
     <>
       <DropdownMenu>
@@ -1883,7 +1897,24 @@ function SessionDetails({ conversationId, session, showModel, owner }: { convers
               ))}
             </DropdownMenuGroup>
           )}
-          {lines.length > 0 && canSecrets && <DropdownMenuSeparator />}
+          {owner && (
+            <>
+              {lines.length > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuGroup>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <CodePriorityIcon priority={session.priority} showNone />
+                    {t.priority}
+                    <span className="ml-auto text-muted-foreground">{t.priorities[session.priority]}</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-56">
+                    <CodePriorityItems session={session} />
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </DropdownMenuGroup>
+            </>
+          )}
+          {(lines.length > 0 || owner) && canSecrets && <DropdownMenuSeparator />}
           {canSecrets && (
             <DropdownMenuItem onClick={() => setCredentials(true)}>
               <KeyIcon />
@@ -2141,6 +2172,7 @@ function ChangesView({ conversationId, session, owner }: { conversationId: strin
             <div className="flex items-end gap-2">
               <InputGroup className="flex-1 items-end">
                 <InputGroupTextarea
+                  autoComplete="off"
                   rows={1}
                   value={message}
                   aria-label={t.message}
@@ -2677,6 +2709,7 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
           </InputGroupAddon>
         )}
         <InputGroupTextarea
+          autoComplete="off"
           ref={area}
           rows={1}
           value={text}
@@ -2722,7 +2755,7 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
               {stop.isPending ? <Spinner /> : <StopIcon />}
             </InputGroupButton>
           ) : (
-            <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} disabled={!canSend}>
+            <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} aria-disabled={!canSend} className="aria-disabled:opacity-50">
               <ArrowUpIcon />
             </InputGroupButton>
           )}
@@ -2880,10 +2913,48 @@ function ModePicker({ engine, value, onSelect, disabled }: { engine: CodeEngine;
 
 /* ---------- task list ---------- */
 
-function TodoMark({ status, running }: { status: CodeTodo["status"]; running: boolean }) {
-  if (status === "completed") return <CheckCircleIcon className="shrink-0 text-success" />;
-  if (status === "in_progress" && running) return <Spinner className="shrink-0" />;
-  return <CircleIcon className={cn("shrink-0", status === "in_progress" ? "text-foreground" : "text-muted-foreground")} />;
+/**
+ * A session's tasks, as Linear's sub-issues: « Tâches 2/3 » over a thin progress bar, then one tight
+ * line each with the app's task mark; the one under way shimmers while the session works.
+ */
+function SessionTodos({ session }: { session: CodeSession }) {
+  const t = useT(messages);
+  const running = session.status === "running";
+  const done = session.todos.filter((x) => x.status === "completed").length;
+  const total = session.todos.length;
+  return (
+    <section className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-2">
+        <p className="flex items-baseline gap-2 text-xs">
+          <span className="font-medium text-muted-foreground">{t.view.tasks}</span>
+          <span className="text-subtle-foreground tabular-nums">
+            {done}/{total}
+          </span>
+        </p>
+        <div className="h-1 overflow-hidden rounded-full bg-accent">
+          <div className="h-full rounded-full bg-state-merged transition-all duration-300" style={{ width: `${(done / total) * 100}%` }} />
+        </div>
+      </div>
+      <ul className="flex flex-col">
+        {session.todos.map((todo) => {
+          const now = todo.status === "in_progress" && running;
+          const text = now && todo.activeForm ? todo.activeForm : todo.content;
+          return (
+            <li key={todo.id} className="flex items-start gap-2.5 py-1.5 text-ui">
+              <TaskStatusIcon status={todo.status === "completed" ? "done" : todo.status === "in_progress" ? "in_progress" : "todo"} className="mt-0.5" />
+              {now ? (
+                <Shimmer as="span" className="min-w-0">
+                  {text}
+                </Shimmer>
+              ) : (
+                <span className={cn("min-w-0", todo.status === "completed" && "text-muted-foreground")}>{text}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 }
 
 /** The session's model, among the ones its owner may use. */

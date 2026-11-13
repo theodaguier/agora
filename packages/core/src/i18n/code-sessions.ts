@@ -6,6 +6,7 @@ export const codeSessions = defineMessages({
   en: {
     codeSession: "Code session",
     sessions: "Code sessions",
+    sessionsCount: (n: number) => (n === 1 ? "1 code session" : `${n} code sessions`),
     sessionsWorking: "Code sessions, one is working",
     none: "No session yet.",
     newSession: "New session",
@@ -179,6 +180,7 @@ export const codeSessions = defineMessages({
     board: {
       views: { active: "Active", parked: "Set aside", finished: "Over", all: "All" } as Record<CodeSessionView, string>,
       display: "Display",
+      view: "View",
       groupBy: "Group by",
       orderBy: "Order by",
       groupings: { state: "State", priority: "Priority", project: "Project" } as Record<CodeSessionGrouping, string>,
@@ -275,6 +277,7 @@ export const codeSessions = defineMessages({
   fr: {
     codeSession: "Session de code",
     sessions: "Sessions de code",
+    sessionsCount: (n: number) => (n === 1 ? "1 session de code" : `${n} sessions de code`),
     sessionsWorking: "Sessions de code, une session travaille",
     none: "Aucune session pour l'instant.",
     newSession: "Nouvelle session",
@@ -449,6 +452,7 @@ export const codeSessions = defineMessages({
     board: {
       views: { active: "Actives", parked: "De côté", finished: "Finies", all: "Toutes" },
       display: "Affichage",
+      view: "Vue",
       groupBy: "Grouper par",
       orderBy: "Trier par",
       groupings: { state: "État", priority: "Priorité", project: "Projet" },

@@ -121,6 +121,56 @@ export const PencilIcon = createIcon("pencil", {
   cut: <path d="M15 5l4 4" />,
 });
 
+/** Write something new (a conversation): a pen over a page, as Mail's and Linear's « new » button. */
+export const ComposeIcon = createIcon("square-pen", {
+  line: (
+    <>
+      <path d="M12 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V12" />
+      <path d="M18.4 3.6a2.1 2.1 0 0 1 3 3L12.5 15.5 9 16.5l1-3.5z" />
+    </>
+  ),
+});
+
+/** A place: a map pin. */
+export const MapPinIcon = createIcon("map-pin", {
+  line: (
+    <>
+      <path d="M20 10c0 4.99-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 14.99 4 10a8 8 0 0 1 16 0" />
+      <circle cx="12" cy="10" r="3" />
+    </>
+  ),
+});
+
+/** A web address: two links of a chain. */
+export const LinkIcon = createIcon("link", {
+  line: <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />,
+});
+
+/** A phone number: a handset. */
+export const PhoneIcon = createIcon("phone", {
+  line: (
+    <path d="M13.83 16.57a1 1 0 0 0 1.21-.3l.36-.47A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.47.35a1 1 0 0 0-.29 1.23 14 14 0 0 0 6.39 6.39" />
+  ),
+});
+
+/** A video call: a camera. */
+export const VideoIcon = createIcon("video", {
+  line: (
+    <>
+      <path d="m16 13 5.22 3.48a.5.5 0 0 0 .78-.42V7.87a.5.5 0 0 0-.75-.43L16 10.5" />
+      <rect x="2" y="6" width="14" height="12" rx="2" />
+    </>
+  ),
+});
+
+/** A channel: the hash. */
+export const HashIcon = createIcon("hash", { line: <path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18" /> });
+
+/** Fullscreen: four corners pushed out. */
+export const MaximizeIcon = createIcon("maximize", {
+  line: <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />,
+});
+
 /** Media controls, solid like StopIcon. */
 export const PlayIcon = createIcon("play", {
   solid: <path d="M7 5.6v12.8a1.6 1.6 0 0 0 2.45 1.36l10.2-6.4a1.6 1.6 0 0 0 0-2.72L9.45 4.24A1.6 1.6 0 0 0 7 5.6z" />,
@@ -525,6 +575,17 @@ export const PanelLeftIcon = createIcon("panel-left", {
   cut: <path d="M9 3v18" />,
 });
 
+/** The pane on the right: shows or hides an item's properties. */
+export const PanelRightIcon = createIcon("panel-right", {
+  fill: <rect x="2" y="3" width="20" height="18" rx="4.5" />,
+  cut: <path d="M15 3v18" />,
+});
+
+/** A paper clip: attach a file. */
+export const PaperclipIcon = createIcon("paperclip", {
+  line: <path d="m16 6-8.4 8.6a2 2 0 0 0 2.8 2.8l8.5-8.6a4 4 0 0 0-5.7-5.6l-8.4 8.6a6 6 0 0 0 8.5 8.4L21 13" />,
+});
+
 /** Two panes side by side: split view, opening beside. */
 export const SplitIcon = createIcon("split", {
   fill: <rect x="2" y="3" width="20" height="18" rx="4.5" />,
@@ -550,6 +611,11 @@ export const SlidersIcon = createIcon("sliders", {
 
 export const SmartphoneIcon = createIcon("smartphone", {
   fill: <rect x="5.5" y="2" width="13" height="20" rx="3.5" />,
+  cut: <path d="M10.5 18.5h3" />,
+});
+
+export const TabletIcon = createIcon("tablet", {
+  fill: <rect x="3.5" y="2" width="17" height="20" rx="3" />,
   cut: <path d="M10.5 18.5h3" />,
 });
 
@@ -685,3 +751,90 @@ export const ShieldAlertIcon = createIcon("shield-alert", {
     </>
   ),
 });
+
+// — Text formatting (the document editor's toolbar): letters and lines, so they stay strokes.
+
+export const BoldIcon = createIcon("bold", { line: <path d="M7 4.5h6a3.75 3.75 0 0 1 0 7.5H7zM7 12h7a3.75 3.75 0 0 1 0 7.5H7z" strokeWidth={2.5} /> });
+
+export const ItalicIcon = createIcon("italic", { line: <path d="M10 4.5h8M6 19.5h8M14.5 4.5l-5 15" /> });
+
+export const UnderlineIcon = createIcon("underline", { line: <path d="M7 4v6.5a5 5 0 0 0 10 0V4M5 20h14" /> });
+
+export const StrikeIcon = createIcon("strike", { line: <path d="M4 12h16M16.5 7.5C16 5.6 14.3 4.5 12 4.5c-2.5 0-4.5 1.3-4.5 3.4 0 1.3.8 2.3 2.5 3M7.5 16.5c.5 1.9 2.2 3 4.5 3 2.6 0 4.5-1.3 4.5-3.4 0-.9-.3-1.6-.9-2.1" /> });
+
+export const ListIcon = createIcon("list", {
+  solid: (
+    <>
+      <circle cx="4.5" cy="6" r="1.5" />
+      <circle cx="4.5" cy="12" r="1.5" />
+      <circle cx="4.5" cy="18" r="1.5" />
+    </>
+  ),
+  line: <path d="M9 6h11M9 12h11M9 18h11" />,
+});
+
+export const ListOrderedIcon = createIcon("list-ordered", { line: <path d="M10 6h10M10 12h10M10 18h10M4 4.5h1.5V9M4 9h3M4 14.5c.3-.6.9-1 1.6-1 .8 0 1.4.5 1.4 1.2 0 1.3-3 2-3 3.8h3" /> });
+
+export const QuoteIcon = createIcon("quote", { line: <path d="M4 5v14M9 7h11M9 12h11M9 17h7" /> });
+
+export const TextIcon = createIcon("text", { line: <path d="M5 6.5V5h14v1.5M12 5v14M9.5 19h5" /> });
+
+export const Heading1Icon = createIcon("heading-1", { line: <path d="M4 6v12M12 6v12M4 12h8M17 10.5l2.5-1.5v9" /> });
+
+export const Heading2Icon = createIcon("heading-2", { line: <path d="M4 6v12M12 6v12M4 12h8M16.5 11a2.25 2.25 0 0 1 4.5.3c0 1.7-4.5 3.4-4.5 6.7H21" /> });
+
+export const Heading3Icon = createIcon("heading-3", { line: <path d="M4 6v12M12 6v12M4 12h8M16.5 9.5h4l-2.25 3a2.4 2.4 0 1 1-2 3.7" /> });
+
+export const ListTodoIcon = createIcon("list-todo", {
+  fill: (
+    <>
+      <rect x="3" y="4" width="6" height="6" rx="1.5" />
+      <rect x="3" y="14" width="6" height="6" rx="1.5" />
+    </>
+  ),
+  line: <path d="M13 7h8M13 17h8M4.5 7l1.2 1.2L8 5.8" />,
+});
+
+export const ToggleListIcon = createIcon("toggle-list", { line: <path d="M4 5.5l3 2.5-3 2.5M11 8h10M11 13h10M11 18h7" /> });
+
+export const CodeBlockIcon = createIcon("code-block", {
+  fill: <rect x="3" y="3" width="18" height="18" rx="4.5" />,
+  cut: <path d="M10 9.5L7.5 12l2.5 2.5M14 9.5l2.5 2.5-2.5 2.5" />,
+});
+
+export const TableIcon = createIcon("table", {
+  fill: <rect x="3" y="4" width="18" height="16" rx="4" />,
+  cut: <path d="M3 9.5h18M3 14.5h18M10 9.5V20" />,
+});
+
+export const CalloutIcon = createIcon("callout", {
+  fill: <rect x="3" y="4" width="18" height="16" rx="4" />,
+  cut: <path d="M8 10h8M8 14h5" />,
+});
+
+export const DividerIcon = createIcon("divider", { line: <path d="M3 12h18M7 7.5h10M7 16.5h10" strokeOpacity={0.4} /> });
+
+export const GripIcon = createIcon("grip", {
+  solid: (
+    <>
+      <circle cx="9" cy="6" r="1.5" />
+      <circle cx="15" cy="6" r="1.5" />
+      <circle cx="9" cy="12" r="1.5" />
+      <circle cx="15" cy="12" r="1.5" />
+      <circle cx="9" cy="18" r="1.5" />
+      <circle cx="15" cy="18" r="1.5" />
+    </>
+  ),
+});
+
+export const HighlighterIcon = createIcon("highlighter", { line: <path d="M9 11l-5 5v3h6l5-5M14 6l4 4-6.5 6.5-4-4zM16 4l4 4" /> });
+
+export const AlignLeftIcon = createIcon("align-left", { line: <path d="M4 6h16M4 10h10M4 14h16M4 18h10" /> });
+
+export const AlignCenterIcon = createIcon("align-center", { line: <path d="M4 6h16M7 10h10M4 14h16M7 18h10" /> });
+
+export const AlignRightIcon = createIcon("align-right", { line: <path d="M4 6h16M10 10h10M4 14h16M10 18h10" /> });
+
+export const ArrowDownIcon = createIcon("arrow-down", { line: <path d="M12 4.5v15M6 13.5l6 6 6-6" /> });
+
+export const InlineCodeIcon = createIcon("inline-code", { line: <path d="M9 7l-5 5 5 5M15 7l5 5-5 5" /> });

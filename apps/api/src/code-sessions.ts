@@ -16,6 +16,7 @@ import { BUILTIN_COMMANDS as BUILTINS, linkSkills, skillsDirOf, teamProfiles, te
 import { claudeMcpConfig, teamMcp, type EngineMcp } from "./engine-mcp";
 import { publishToConversation } from "./events";
 import { cliEnv } from "./host";
+import { addHostForAgent, hostsFor, openSshForRun, sshNote, testHostForAgent, type SshAccess } from "./ssh";
 import { readLines } from "./lines";
 import { postEvent } from "./messages";
 import { INLINE_IMAGE, MAX_INLINE_IMAGES, type AttachmentRow } from "./prompt";
@@ -100,6 +101,8 @@ type Live = {
   vault: boolean;
   /** Its login requests (vault_use_login) waiting for the requester's answer on their card. */
   vaultWaits: Set<string>;
+  /** The Machines SSH of its running process: a machine it adds and tests (ssh_add_host) joins it. */
+  ssh: SshAccess | null;
   /** Moments its bot must hear of (a run ended, it failed, it asks a question), counted; see onCodeMilestone. */
   milestone: number;
   /** The last of them a report already gave the bot (it was waiting on the session): no need to wake it. */
@@ -201,7 +204,8 @@ function summary(s: Live): CodeSession {
     commands: r.commands,
     account: r.account,
     activity: s.activity,
-    ...(s.queued.length && { queued: s.queued.map((m) => ({ id: m.id, text: m.text, by: m.by, files: m.files?.length ?? 0 })) }),
+    // Always sent, even empty: clients merge summaries into what they hold, an absent key would keep the old queue.
+    queued: s.queued.map((m) => ({ id: m.id, text: m.text, by: m.by, files: m.files?.length ?? 0 })),
     limit: s.limit,
     approval: a && {
       id: a.id,
@@ -254,6 +258,7 @@ function fromRow(row: Row): Live {
     question: null,
     vault: false,
     vaultWaits: new Set(),
+    ssh: null,
     milestone: 0,
     delivered: 0,
     activity: null,
@@ -1641,6 +1646,10 @@ async function execute(s: Live, id: number): Promise<void> {
   // Its bot may read a vault of its requester: the vault tools, through the same cards as the bot's.
   s.vault = !headless && !!s.bot && !!r.agentId && (await hasReadableVault(r.agentId, r.requestedBy).catch(() => false));
   const ports = await portsOf(r.id);
+  // The Machines SSH its bot may reach (all of them for a session without bot): ssh in its shell, through
+  // an agent of its own opened just before the process starts (sshRun).
+  const machines = await hostsFor(r.agentId).catch((err) => (console.error("code session: ssh", err), []));
+  const sshRun = () => openSshForRun(machines, { agentId: r.agentId, userId: r.requestedBy, conversationId: r.conversationId });
   const appended = [
     portsNote(ports),
     env.CHROMIUM_PATH && browserNote(env.CHROMIUM_PATH),
@@ -1650,10 +1659,12 @@ async function execute(s: Live, id: number): Promise<void> {
     skills.length > 0 && skillsNote(r.engine, skills.length),
     s.vault && s.bot && vaultNote(s.bot),
     issueRepo(r) && !headless && issueNote(r.issue),
+    sshNote(machines),
+    !headless && sshAddNote,
   ]
     .filter(Boolean)
     .join("\n\n");
-  if (headless) return executeHeadless(s, id, headlessEngine(r.engine as Exclude<CodeEngine, "claude">), appended, connectors, ports);
+  if (headless) return executeHeadless(s, id, headlessEngine(r.engine as Exclude<CodeEngine, "claude">), appended, connectors, ports, sshRun);
   const own = agoraTools(s);
   const mcp = await claudeMcpConfig(connectors, own.length ? { [MCP_SERVER]: { type: "sdk", name: MCP_SERVER } } : {});
   const allowed = [...env.CLAUDE_CODE_ALLOWED_TOOLS.split(/[\s,]+/).filter(Boolean), ...r.permissions.allowedTools, ...own.map((t) => `mcp__${MCP_SERVER}__${t.name}`), ...mcp.allowed];
@@ -1687,7 +1698,7 @@ async function execute(s: Live, id: number): Promise<void> {
   ];
   // git and gh reach GitHub with the vault's token (the clone's credential helper reads it from there).
   // The browsers it launches show on the conversation's screen.
-  const spawnEnv = {
+  const baseEnv = {
     ...(await claudeCodeEnv()),
     ...githubEnv(await githubToken()),
     ...(await sessionEnv(r, ports)),
@@ -1699,20 +1710,26 @@ async function execute(s: Live, id: number): Promise<void> {
   const profile = (await claudeProfiles().catch(() => [])).find((p) => p.id === accountId);
   r.account = { id: accountId, email: profile?.email ?? null, plan: profile?.plan ?? null };
   touch(s, [], true);
+  const ssh = await sshRun();
+  s.ssh = ssh;
+  const spawnEnv = ssh ? ssh.env(baseEnv) : baseEnv;
   let proc: Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
     yieldToTheServer(proc.pid);
   } catch (err) {
-    await mcp.dispose();
+    await Promise.all([mcp.dispose(), ssh?.dispose()]);
     throw err;
   }
-  void proc.exited.finally(mcp.dispose);
+  void proc.exited.finally(() => {
+    if (s.ssh === ssh) s.ssh = null;
+    return Promise.all([mcp.dispose(), ssh?.dispose()]);
+  });
   s.proc = proc;
   // Stopped while it was starting.
   if (s.stopping) proc.kill();
   // Its slash commands and skills, with their descriptions, for the owner's field.
-  write(s, { type: "control_request", request_id: `${INITIALIZE}${id}`, request: { subtype: "initialize", ...(s.bot && { sdkMcpServers: [MCP_SERVER] }) } });
+  write(s, { type: "control_request", request_id: `${INITIALIZE}${id}`, request: { subtype: "initialize", ...(own.length && { sdkMcpServers: [MCP_SERVER] }) } });
   for (const m of s.outbox.splice(0)) deliver(s, m);
 
   let result: { text: string; isError: boolean } | null = null;
@@ -1851,7 +1868,7 @@ function account(s: Live, ev: Json) {
  * A run of a headless engine (Codex, Cursor): the instructions written so far in one prompt, its
  * output read until it exits. The next instruction resumes its thread in a new process.
  */
-async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, system: string, mcp: EngineMcp, ports: Ports): Promise<void> {
+async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, system: string, mcp: EngineMcp, ports: Ports, sshRun: () => Promise<SshAccess | null>): Promise<void> {
   const r = s.row;
   const bin = engineBin(r.engine);
   if (!bin) throw new Error(`${CODE_ENGINE_NAMES[r.engine]} is not installed on the server.`);
@@ -1864,16 +1881,19 @@ async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, syst
   r.account = await engine.account().catch(() => null);
   touch(s, [], true);
   // As Claude Code's: git and gh reach GitHub with the vault's token, its browsers show on the conversation's screen.
-  const spawnEnv = cliEnv(bin, { ...run.env, ...githubEnv(await githubToken()), ...(await sessionEnv(r, ports)) });
+  const cli = cliEnv(bin, { ...run.env, ...githubEnv(await githubToken()), ...(await sessionEnv(r, ports)) });
+  // Its Machines SSH: the wrappers come first in PATH.
+  const ssh = await sshRun();
+  const spawnEnv = ssh ? ssh.env(cli) : cli;
   let proc: Subprocess<"pipe", "pipe", "pipe">;
   try {
     proc = Bun.spawn(run.args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
     yieldToTheServer(proc.pid);
   } catch (err) {
-    await run.cleanup?.();
+    await Promise.all([run.cleanup?.(), ssh?.dispose()]);
     throw err;
   }
-  if (run.cleanup) void proc.exited.finally(run.cleanup);
+  void proc.exited.finally(() => Promise.all([run.cleanup?.(), ssh?.dispose()]));
   s.proc = proc;
   // Stopped while it was starting.
   if (s.stopping) proc.kill();
@@ -1968,7 +1988,7 @@ function accountHeadless(s: Live, usage: EngineUsage[], durationMs: number) {
 
 function onControlRequest(s: Live, ev: Json) {
   const req = ev.request ?? {};
-  if (req.subtype === "mcp_message" && req.server_name === MCP_SERVER && s.bot) {
+  if (req.subtype === "mcp_message" && req.server_name === MCP_SERVER) {
     onMcpMessage(s, String(ev.request_id), req.message ?? {});
     return;
   }
@@ -2221,6 +2241,7 @@ function agoraTools(s: Live): Json[] {
   return [
     ...(s.bot && r.engine === "claude" ? [askTool(s.bot)] : []),
     ...(s.vault && r.engine === "claude" ? vaultTools : []),
+    ...(r.engine === "claude" ? sshTools : []),
     ...(issueRepo(r)
       ? [
           {
@@ -2237,6 +2258,60 @@ function agoraTools(s: Live): Json[] {
         ]
       : []),
   ];
+}
+
+/* ---------- Machines SSH it sets up (ssh.ts) ---------- */
+
+const SSH_ADD = "ssh_add_host";
+const SSH_TEST = "ssh_test_host";
+
+const sshAddNote = [
+  `Pour donner à Agora une nouvelle machine SSH (pour toi et tous les autres agents) : mcp__${MCP_SERVER}__${SSH_ADD} crée la machine et sa clé, et rend la commande qui installe la clé publique sur la machine ;`,
+  `lance-la sur la machine avec l'accès que tu as déjà, ou donne-la à la personne, puis appelle mcp__${MCP_SERVER}__${SSH_TEST}. Dès que le test réussit, \`ssh <nom>\` marche dans ton shell. N'ajoute jamais une machine déjà listée.`,
+].join(" ");
+
+const sshTools = [
+  {
+    name: SSH_ADD,
+    description:
+      "Déclare une nouvelle machine SSH dans Agora, joignable par tous les agents et toutes les sessions une fois testée. Agora crée sa clé et rend la clé publique avec la commande qui l'installe dans ~/.ssh/authorized_keys. Ensuite : installe-la, puis ssh_test_host.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Nom court que les agents utiliseront : minuscules, chiffres et tirets (ex. prod-web)." },
+        host: { type: "string", description: "Nom d'hôte ou adresse IP, sans utilisateur ni port." },
+        username: { type: "string", description: "Le compte sur la machine." },
+        port: { type: "integer", description: "Port SSH (22 par défaut)." },
+        description: { type: "string", description: "Ce qui tourne dessus et ce que les agents peuvent y faire, en une ou deux phrases." },
+      },
+      required: ["name", "host", "username"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: SSH_TEST,
+    description:
+      "Se connecte à une machine avec la clé d'Agora. Le premier succès épingle son empreinte : la machine devient utilisable (ssh <nom> dans ton shell, et pour les autres agents). En cas d'échec, l'erreur dit quoi corriger.",
+    inputSchema: {
+      type: "object",
+      properties: { host: { type: "string", description: "Le nom de la machine." } },
+      required: ["host"],
+      additionalProperties: false,
+    },
+  },
+];
+
+async function sshCall(s: Live, name: string, args: Json): Promise<string> {
+  const r = s.row;
+  const actor = { agentId: r.agentId, userId: r.requestedBy, conversationId: r.conversationId };
+  if (name === SSH_ADD) return JSON.stringify(await addHostForAgent(actor, args), null, 2);
+  const host = typeof args.host === "string" ? args.host.trim() : "";
+  if (!host) throw new Error("host est requis.");
+  const { result, host: row } = await testHostForAgent(actor, host);
+  if (!result.ok) throw new Error(result.error);
+  // The running process reaches it right away.
+  if (row && s.ssh) await s.ssh.add(row);
+  return `Connexion réussie, empreinte épinglée (${result.fingerprint}). \`ssh ${host} 'commande'\` marche maintenant dans ton shell.`;
 }
 
 async function issueCall(s: Live, name: string, args: Json): Promise<string> {
@@ -2272,6 +2347,13 @@ function onMcpMessage(s: Live, requestId: string, msg: Json) {
     case "tools/call": {
       if (msg.params?.name === VAULT_SEARCH || msg.params?.name === VAULT_LOGIN || msg.params?.name === VAULT_ASK) {
         void vaultCall(s, msg.params.name, msg.params?.arguments ?? {}).then(
+          (text) => reply({ result: { content: [{ type: "text", text }] } }),
+          (err) => toolError(err instanceof Error ? err.message : String(err)),
+        );
+        return;
+      }
+      if (msg.params?.name === SSH_ADD || msg.params?.name === SSH_TEST) {
+        void sshCall(s, msg.params.name, msg.params?.arguments ?? {}).then(
           (text) => reply({ result: { content: [{ type: "text", text }] } }),
           (err) => toolError(err instanceof Error ? err.message : String(err)),
         );

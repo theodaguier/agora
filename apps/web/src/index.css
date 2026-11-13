@@ -2,8 +2,8 @@
 @import "tw-animate-css";
 @import "streamdown/styles.css";
 @import "shadcn/tailwind.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 
 @custom-variant dark (&:is(.dark *));
 @source "../node_modules/streamdown/dist/*.js";
@@ -35,6 +35,8 @@
   --muted: oklch(0.97 0 0);
   /* texte/secondaire */
   --muted-foreground: oklch(0.556 0 0);
+  /* texte/tertiaire: times, counts, placeholders */
+  --subtle-foreground: oklch(0.708 0 0);
   /* fond/sélection */
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
@@ -102,10 +104,12 @@
   --popover-foreground: #f2f2f2;
   --primary: #f2f2f2;
   --primary-foreground: #17181a;
-  --secondary: #27282b;
+  /* #27282b, written in oklch with its hue: the Secondaire hover mixes it in oklch, and from a hex Chrome drops the hue of a grey (none = 0°), so the hover turned pink. */
+  --secondary: oklch(0.277 0.0057 271.2);
   --secondary-foreground: #f2f2f2;
   --muted: #232427;
   --muted-foreground: #8b8d93;
+  --subtle-foreground: #5f6168;
   --accent: #27282b;
   --accent-foreground: #f2f2f2;
   --destructive: #e0786f;
@@ -144,11 +148,23 @@
 }
 
 
+/* The interface size of the Figma screens: 13 px on an 18 px line. */
+@theme {
+  --text-ui: 0.8125rem;
+  --text-ui--line-height: 1.125rem;
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.75rem;
+  /* Initials in a 16 to 20 px avatar. */
+  --text-2xs: 0.5rem;
+  --text-2xs--line-height: 1;
+}
+
 @theme inline {
-  /* SF Pro (Figma text styles): the system face on Apple platforms, the closest one elsewhere. */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  /* Geist and Geist Mono (Figma « Atelier · Théo », sections 5 to 8). */
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-heading: var(--font-sans);
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --color-subtle-foreground: var(--subtle-foreground);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -214,8 +230,8 @@
   }
   html {
     @apply font-sans antialiased;
-    /* A macOS app's density (body ≈ 12 px, titles 14 px): every rem of shadcn follows. */
-    font-size: 14px;
+    /* 16 px, so Tailwind's scale reads in the Figma frames' pixels (« Atelier · Théo »: 13 px text, 30 px rows). */
+    font-size: 16px;
   }
   body {
     @apply bg-background text-foreground;
@@ -262,6 +278,243 @@
 
 /* A message arriving while the conversation is open: rises into place. */
 @layer components {
+  /* The text editor's page: a document's typography, in the app's type. */
+  .rich-text {
+    font-size: 0.9375rem;
+    line-height: 1.65;
+    color: var(--foreground);
+    overflow-wrap: break-word;
+    & > * + * {
+      margin-top: 0.75em;
+    }
+    & h1 {
+      font-size: 1.75rem;
+      line-height: 1.25;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-top: 1.4em;
+    }
+    & h2 {
+      font-size: 1.3125rem;
+      line-height: 1.3;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-top: 1.3em;
+    }
+    & h3 {
+      font-size: 1.0625rem;
+      line-height: 1.4;
+      font-weight: 600;
+      margin-top: 1.2em;
+    }
+    & > :first-child {
+      margin-top: 0;
+    }
+    & ul {
+      list-style: disc;
+      padding-left: 1.5em;
+    }
+    & ol {
+      list-style: decimal;
+      padding-left: 1.5em;
+    }
+    & li > p {
+      margin: 0;
+    }
+    & li + li {
+      margin-top: 0.25em;
+    }
+    & blockquote {
+      border-left: 3px solid var(--border);
+      padding-left: 1em;
+      color: var(--muted-foreground);
+    }
+    & a {
+      color: var(--primary);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    & code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+      background: var(--muted);
+      border-radius: 4px;
+      padding: 0.1em 0.3em;
+    }
+    & pre {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      background: var(--muted);
+      border-radius: 8px;
+      padding: 0.75em 1em;
+      overflow-x: auto;
+      & code {
+        background: none;
+        padding: 0;
+      }
+    }
+    & hr {
+      border: 0;
+      border-top: 1px solid var(--border);
+      margin: 1.5em 0;
+    }
+    /* The hint of the empty line at the cursor ("/" for blocks), Notion's. */
+    & .is-empty::before {
+      content: attr(data-placeholder);
+      color: var(--muted-foreground);
+      opacity: 0.7;
+      float: left;
+      height: 0;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    /* A table cell stays blank, as in Notion: the hint wouldn't fit in it. */
+    & :is(td, th) .is-empty::before {
+      content: none;
+    }
+    & mark {
+      color: inherit;
+      border-radius: 3px;
+      padding: 0 0.1em;
+    }
+    /* To-dos: the box, then the text, struck through once done. */
+    & ul[data-type="taskList"] {
+      list-style: none;
+      padding-left: 0.1em;
+      & li {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.55em;
+      }
+      & li > label {
+        flex-shrink: 0;
+        margin-top: 0.28em;
+        user-select: none;
+        display: flex;
+      }
+      & li > label input {
+        width: 1.05em;
+        height: 1.05em;
+        accent-color: var(--primary);
+        cursor: pointer;
+      }
+      & li > div {
+        flex: 1;
+        min-width: 0;
+      }
+      & li[data-checked="true"] > div {
+        color: var(--muted-foreground);
+        text-decoration: line-through;
+      }
+    }
+    /* Tables: plain grid, the header row tinted, columns resizable. */
+    & .tableWrapper {
+      overflow-x: auto;
+    }
+    & table {
+      border-collapse: collapse;
+      table-layout: fixed;
+      width: 100%;
+      margin: 0;
+    }
+    & td,
+    & th {
+      position: relative;
+      min-width: 4em;
+      border: 1px solid var(--border);
+      padding: 0.4em 0.65em;
+      vertical-align: top;
+      text-align: left;
+      & > p {
+        margin: 0;
+      }
+    }
+    & th {
+      background: var(--muted);
+      font-weight: 600;
+    }
+    & .selectedCell::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: color-mix(in oklab, var(--primary) 14%, transparent);
+      pointer-events: none;
+    }
+    & .column-resize-handle {
+      position: absolute;
+      top: 0;
+      right: -2px;
+      bottom: -1px;
+      width: 4px;
+      background: var(--primary);
+      pointer-events: none;
+    }
+    &.resize-cursor {
+      cursor: col-resize;
+    }
+    /* Toggle lists: a caret that turns, the content shown once open. */
+    & .details {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.3em;
+      & > button {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.4em;
+        height: 1.65em;
+        border-radius: 4px;
+        color: var(--muted-foreground);
+        cursor: pointer;
+        &:hover {
+          background: var(--accent);
+        }
+        &::before {
+          content: "";
+          border-left: 0.42em solid currentColor;
+          border-top: 0.3em solid transparent;
+          border-bottom: 0.3em solid transparent;
+          transition: transform 150ms var(--ease-out);
+        }
+      }
+      &.is-open > button::before {
+        transform: rotate(90deg);
+      }
+      & > div {
+        flex: 1;
+        min-width: 0;
+        & > * + * {
+          margin-top: 0.4em;
+        }
+      }
+      & summary {
+        list-style: none;
+        font-weight: 500;
+        &::-webkit-details-marker {
+          display: none;
+        }
+      }
+    }
+    /* Callouts: a tinted box. */
+    & .callout {
+      background: var(--muted);
+      border-radius: 8px;
+      padding: 0.8em 1em;
+      & > * + * {
+        margin-top: 0.5em;
+      }
+    }
+    & .ProseMirror-selectednode {
+      outline: 2px solid color-mix(in oklab, var(--primary) 45%, transparent);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    & hr {
+      cursor: pointer;
+    }
+  }
+
   .chat-arrive {
     transition:
       opacity 200ms var(--ease-out),
@@ -387,4 +640,13 @@
   from {
     opacity: 0;
   }
+}
+
+/*
+ * A status icon (data-tone) keeps its colour in a highlighted menu or select row: shadcn's items
+ * recolour every descendant on focus (focus:**:text-accent-foreground), the paths of an SVG
+ * included, so they inherit the icon's own colour here.
+ */
+[data-tone] * {
+  color: inherit !important;
 }

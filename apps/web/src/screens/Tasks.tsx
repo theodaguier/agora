@@ -1,13 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { useState } from "react";
-import { ChevronLeftIcon } from "@/components/icons";
+import { ChevronLeftIcon, MoreIcon, PlusIcon, SlidersIcon } from "@/components/icons";
 import { QuickAddTask } from "@/components/QuickAddTask";
-import { ShortcutTooltip } from "@/components/Shortcuts";
 import { TaskList } from "@/components/TaskList";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { defineMessages, useT } from "@/i18n";
-import { isOverdue } from "@/lib/dates";
 import { useOrgTitle } from "@/lib/org";
 import { tasksQuery } from "@/lib/queries";
 import { useShortcut } from "@/lib/shortcuts";
@@ -18,8 +17,10 @@ const messages = defineMessages({
     title: "My tasks",
     back: "Back",
     newTask: "New task",
-    doneThisWeek: (n: number) => `${n} done this week`,
-    overdue: (n: number) => `${n} overdue`,
+    open: (n: number) => `${n} open`,
+    display: "Display",
+    showDone: "Show done tasks",
+    more: "More",
     noTasksTitle: "Nothing to do",
     noTasks: "Tasks assigned to you, by a colleague or an agent, show up here.",
   },
@@ -27,67 +28,73 @@ const messages = defineMessages({
     title: "Mes tâches",
     back: "Retour",
     newTask: "Nouvelle tâche",
-    doneThisWeek: (n: number) => `${n} terminée${n > 1 ? "s" : ""} cette semaine`,
-    overdue: (n: number) => `${n} en retard`,
+    open: (n: number) => `${n} ouverte${n > 1 ? "s" : ""}`,
+    display: "Affichage",
+    showDone: "Afficher les terminées",
+    more: "Plus",
     noTasksTitle: "Rien à faire",
     noTasks: "Les tâches qu'un collègue ou un agent t'assigne arrivent ici.",
   },
 });
 
 const NEW_TASK = { key: "n", typing: false } as const;
-const WEEK = 7 * 86_400_000;
 
-/** My tasks: the title and what's new this week, « Nouvelle tâche » (N) opens the quick add, then the groups. */
+/**
+ * Figma « Mes tâches · 1440 »: the title and how many are open, display and more on the right; then
+ * the groups (in progress, to do, done) as Linear's issues. « Nouvelle tâche » (N) opens the quick add.
+ */
 export function Tasks() {
   const { user } = useRouteContext({ from: "/app" });
   const t = useT(messages);
   const [adding, setAdding] = useState(false);
+  const [showDone, setShowDone] = useState(true);
   useOrgTitle(t.title);
   // Tabs stay mounted behind the one in front: only the one in front listens.
   useShortcut(NEW_TASK, () => setAdding(true), useTabPlace().current);
   const { data: tasks = [] } = useQuery(tasksQuery(user.id));
-  const doneThisWeek = tasks.filter((x) => x.status === "done" && x.completedAt && Date.now() - new Date(x.completedAt).getTime() < WEEK).length;
-  const overdue = tasks.filter((x) => x.status !== "done" && isOverdue(x.dueOn)).length;
+  const open = tasks.filter((x) => x.status !== "done" && x.assignees.some((a) => a.id === user.id)).length;
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      <header className="flex h-11.5 shrink-0 items-center gap-2 border-b pr-3.5 pl-3 md:pl-5">
+        <Button variant="ghost" size="icon-sm" nativeButton={false} render={<Link to="/" aria-label={t.back} />} className="md:hidden">
+          <ChevronLeftIcon />
+        </Button>
+        <h1 className="text-ui font-medium">{t.title}</h1>
+        {open > 0 && <span className="text-ui text-subtle-foreground tabular-nums">{t.open(open)}</span>}
+        <span className="flex-1" />
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.display} className="text-muted-foreground" />}>
+            <SlidersIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuGroup>
+              <DropdownMenuCheckboxItem checked={showDone} onCheckedChange={setShowDone}>
+                {t.showDone}
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.more} className="text-muted-foreground" />}>
+            <MoreIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => setAdding(true)}>
+                <PlusIcon /> {t.newTask}
+                <DropdownMenuShortcut>N</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-5xl flex-col px-4 pt-6 pb-12 md:pt-10">
-          <Button
-            variant="ghost"
-            size="icon"
-            nativeButton={false}
-            render={<Link to="/" aria-label={t.back} />}
-            className="-ml-2 mb-2 md:hidden"
-          >
-            <ChevronLeftIcon />
-          </Button>
-          {/* The title, the week under it, the action on the right. */}
-          <header className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl font-medium">{t.title}</h1>
-              {(doneThisWeek > 0 || overdue > 0) && (
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {doneThisWeek > 0 && t.doneThisWeek(doneThisWeek)}
-                  {doneThisWeek > 0 && overdue > 0 && ", "}
-                  {overdue > 0 && <span className="text-destructive">{t.overdue(overdue)}</span>}
-                </p>
-              )}
-            </div>
-            <ShortcutTooltip label={t.newTask} shortcut={NEW_TASK}>
-              <Button onClick={() => setAdding(true)}>
-                {t.newTask}
-              </Button>
-            </ShortcutTooltip>
-          </header>
-          {adding && (
-            <div className="mt-4">
-              <QuickAddTask autoFocus onCancel={() => setAdding(false)} />
-            </div>
-          )}
-          <div className="mt-5">
-            <TaskList userId={user.id} empty={t.noTasks} emptyTitle={t.noTasksTitle} table />
+        {adding && (
+          <div className="border-b px-5 py-3">
+            <QuickAddTask autoFocus onCancel={() => setAdding(false)} />
           </div>
-        </div>
+        )}
+        <TaskList userId={user.id} empty={t.noTasks} emptyTitle={t.noTasksTitle} table showDone={showDone} onAdd={() => setAdding(true)} />
       </div>
     </section>
   );

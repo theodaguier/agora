@@ -13,7 +13,6 @@ import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemGroup, ItemTitle } from "@/components/ui/item";
 import { Alert, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
@@ -30,6 +29,7 @@ import { setupQuery } from "@/lib/org";
 import { adminAgentsQuery, agentsQuery } from "@/lib/queries";
 import { defineMessages, getLocale, setLocale, tr, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
+import { StatusLine } from "@/components/views/block";
 
 type Step = "welcome" | "account" | "provider" | "agent" | "done";
 const STEPS: Step[] = ["welcome", "account", "provider", "agent"];
@@ -456,7 +456,7 @@ function ProviderStep({ onNext }: { onNext: () => void }) {
                 </ItemContent>
                 {p.configured && (
                   <ItemActions>
-                    <Badge variant="secondary">{t.configured}</Badge>
+                    <StatusLine tone="success">{t.configured}</StatusLine>
                   </ItemActions>
                 )}
               </Item>

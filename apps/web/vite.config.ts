@@ -23,7 +23,11 @@ export default defineConfig(({ command, mode }) => {
     },
     server: {
       port: 5173,
-      proxy: { "/api": "http://localhost:3001" },
+      proxy: {
+        "/api": "http://localhost:3001",
+        // Artifact share links, as Caddy serves them in production.
+        "/s/": { target: "http://localhost:3001", rewrite: (path) => `/api${path}` },
+      },
     },
   };
 });

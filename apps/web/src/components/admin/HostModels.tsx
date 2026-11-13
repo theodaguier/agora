@@ -6,6 +6,7 @@ import { FormLabel } from "@/components/FormLabel";
 import { ModelLogo } from "@/components/ProviderLogo";
 import { providerName } from "@/lib/providers";
 import { Badge } from "@/components/ui/badge";
+import { StatusLine } from "@/components/views/block";
 import { Button } from "@/components/ui/button";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { CardAction, CardContent, CardDescription, CardTitle } from "@/components/ui/card";
@@ -207,7 +208,7 @@ export function LocalModels() {
                 </ItemContent>
                 {m.loaded && (
                   <ItemActions>
-                    <Badge variant="secondary">{t.loaded}</Badge>
+                    <StatusLine tone="success">{t.loaded}</StatusLine>
                   </ItemActions>
                 )}
               </Item>
@@ -365,11 +366,13 @@ function SubscriptionAccountRows({ engine }: { engine: EngineId }) {
       id: null,
       title: t.machine,
       description: machine.loggedIn ? [machine.email, machine.plan && capitalize(machine.plan)].filter(Boolean).join(", ") || t.signedIn : t.notSignedIn,
+      signedOut: !machine.loggedIn,
     },
     ...data.accounts.map((a) => ({
       id: a.id,
       title: a.email,
       description: a.loggedIn ? [a.plan && capitalize(a.plan), t.added(day.format(new Date(a.addedAt)))].filter(Boolean).join(", ") : t.signedOut,
+      signedOut: !a.loggedIn,
     })),
   ];
 
@@ -381,11 +384,11 @@ function SubscriptionAccountRows({ engine }: { engine: EngineId }) {
           <Item variant="muted" size="sm">
             <ItemContent>
               <ItemTitle>{r.title}</ItemTitle>
-              <ItemDescription>{r.description}</ItemDescription>
+              <ItemDescription className={r.signedOut ? "text-warning-foreground" : undefined}>{r.description}</ItemDescription>
             </ItemContent>
             <ItemActions>
               {data.active === r.id ? (
-                <Badge variant="secondary">{t.inUse}</Badge>
+                <StatusLine tone="success">{t.inUse}</StatusLine>
               ) : (
                 <Button variant="outline" size="sm" disabled={activate.isPending} onClick={() => activate.mutate(r.id)}>
                   {t.use}

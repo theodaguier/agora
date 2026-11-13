@@ -163,7 +163,8 @@ export function MemoryGraph(props: {
       x1 = Math.max(x1, n.x! + n.r);
       y1 = Math.max(y1, n.y! + n.r);
     }
-    const k = Math.min(1.8, Math.max(0.2, Math.min((width - 120) / (x1 - x0 || 1), (height - 72) / (y1 - y0 || 1))));
+    // The graph fills its pane (a margin for the labels), rather than a small knot in the middle.
+    const k = Math.min(3, Math.max(0.2, Math.min((width - 160) / (x1 - x0 || 1), (height - 96) / (y1 - y0 || 1))));
     s.view = { k, x: (-(x0 + x1) / 2) * k, y: (-(y0 + y1) / 2) * k };
     s.draw();
   };

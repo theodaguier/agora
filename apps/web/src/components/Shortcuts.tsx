@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { useNavigate, useParams, useRouteContext } from "@tanstack/react-router";
-import { KeyboardIcon, TaskListIcon, PlusIcon, SlidersIcon, UserIcon } from "@/components/icons";
+import { KeyboardIcon, TaskListIcon, PlusIcon, SettingsIcon, UserIcon } from "@/components/icons";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
 import { conversationTitle } from "@/lib/participants";
 import { OrgLogo } from "@/components/OrgLogo";
@@ -48,6 +48,10 @@ const messages = defineMessages({
     mention: "Mention someone",
     command: "Skills, connectors and routines",
     cancelReply: "Cancel the reply",
+    tabs: "Code session tabs",
+    nextTab: "Next tab",
+    previousTab: "Previous tab",
+    goToTab: "Tab 1 to 8, 9 for the last",
   },
   fr: {
     palette: "Palette de commandes",
@@ -79,6 +83,10 @@ const messages = defineMessages({
     mention: "Mentionner quelqu'un",
     command: "Compétences, connecteurs et routines",
     cancelReply: "Annuler la réponse",
+    tabs: "Onglets des sessions de code",
+    nextTab: "Onglet suivant",
+    previousTab: "Onglet précédent",
+    goToTab: "Onglet 1 à 8, 9 pour le dernier",
   },
 });
 
@@ -158,7 +166,7 @@ function Palette({ open }: { open: boolean }) {
   const actions: PaletteAction[] = [
     { id: "new", label: t.newConversation, icon: <PlusIcon />, shortcut: shortcuts.newConversation, onSelect: () => navigate({ to: "/new" }) },
     { id: "tasks", label: t.tasks, icon: <TaskListIcon />, onSelect: () => navigate({ to: "/tasks" }) },
-    { id: "settings", label: t.settings, icon: <SlidersIcon />, shortcut: shortcuts.settings, onSelect: () => openSettings() },
+    { id: "settings", label: t.settings, icon: <SettingsIcon />, shortcut: shortcuts.settings, onSelect: () => openSettings() },
     { id: "profile", label: t.profile, icon: <UserIcon />, onSelect: () => openProfile(user.id) },
     { id: "help", label: t.help, icon: <KeyboardIcon />, shortcut: shortcuts.help, onSelect: () => setOverlay("help"), keepOpen: true },
   ];
@@ -271,6 +279,14 @@ function Help({ open }: { open: boolean }) {
         [t.searchConversation, shortcuts.searchConversation],
         [t.settings, shortcuts.settings],
         [t.help, shortcuts.help],
+      ],
+    },
+    {
+      title: t.tabs,
+      rows: [
+        [t.nextTab, shortcuts.nextTab],
+        [t.previousTab, shortcuts.previousTab],
+        [t.goToTab, { key: "1–9", ctrl: true }],
       ],
     },
     {
