@@ -1,10 +1,11 @@
 import { common } from "@agora/core/i18n";
 import { useMutation } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Button, Card, LinkButton, Typography, useToast } from "heroui-native";
+import { Button, Card, useToast } from "heroui-native";
 import { View } from "react-native";
-import { CheckIcon, CloseIcon } from "@/components/icons";
-import { CodeBlock } from "@/components/views/block";
+import { ChevronDownIcon, ShieldCheckIcon, TerminalIcon } from "@/components/icons";
+import { TapMenu } from "@/components/menus";
+import { BlockHeader, blockCard, CodeBlock } from "@/components/views/block";
 import { api, conversationPath } from "@/lib/api";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
@@ -17,8 +18,9 @@ type Choice = PendingApproval["choices"][number];
 
 const messages = defineMessages({
   en: {
-    choices: { once: "Allow", session: "Allow for this conversation", always: "Always allow", deny: "Deny" } as Record<Choice, string>,
-    short: { once: "Allow", session: "This conversation", always: "Always", deny: "Deny" } as Record<Choice, string>,
+    choices: { once: "Allow once", session: "For this conversation", always: "Always allow", deny: "Deny" } as Record<Choice, string>,
+    allow: "Allow",
+    more: "Other permissions",
     wantsToRun: (bot: string) => `${bot} wants to run a command`,
     requestedBy: (bot: string) => `Approval requested by ${bot}`,
     asks: (bot: string) => `${bot} is asking for your approval`,
@@ -27,8 +29,9 @@ const messages = defineMessages({
     allowed: "Allowed",
   },
   fr: {
-    choices: { once: "Autoriser", session: "Autoriser pour la conversation", always: "Toujours autoriser", deny: "Refuser" },
-    short: { once: "Autoriser", session: "Cette conversation", always: "Toujours", deny: "Refuser" },
+    choices: { once: "Autoriser une fois", session: "Pour cette conversation", always: "Toujours autoriser", deny: "Refuser" },
+    allow: "Autoriser",
+    more: "Autres autorisations",
     wantsToRun: (bot: string) => `${bot} veut exécuter une commande`,
     requestedBy: (bot: string) => `Autorisation demandée par ${bot}`,
     asks: (bot: string) => `${bot} demande ton autorisation`,
@@ -38,12 +41,17 @@ const messages = defineMessages({
   },
 });
 
-/** The agent is waiting for approval before running a sensitive action: one card, the request, the command, the answers. */
+/** Each broader permission as an SF Symbol in its menu. */
+const CHOICE_ICON: Record<Exclude<Choice, "deny" | "once">, string> = { always: "checkmark.shield", session: "bubble.left.and.bubble.right" };
+
+/**
+ * The agent is waiting for approval before running a sensitive action (web: ApprovalCard): what it asks
+ * and its command; « Refuser » on the left, « Autoriser » on the right with the broader permissions behind its arrow.
+ */
 export function ApprovalCard(props: { conversationId: string; turnId: string; botName: string; approval: PendingApproval; canAnswer: boolean }) {
   const { conversationId, turnId, botName, approval, canAnswer } = props;
   const t = messages;
   const co = tr(common);
-  const labels = t.choices;
   const { toast } = useToast();
   const answer = useMutation({
     mutationFn: (choice: string) =>
@@ -54,63 +62,62 @@ export function ApprovalCard(props: { conversationId: string; turnId: string; bo
     onSuccess: (_, choice) => {
       clearApproval(conversationId, turnId, approval.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.show(choice === "deny" ? { variant: "default", label: t.denied } : { variant: "success", label: t.allowed, description: labels[choice as Choice] });
+      toast.show(choice === "deny" ? { variant: "default", label: t.denied } : { variant: "success", label: t.allowed, description: t.choices[choice as Choice] });
     },
     onError: (error) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       toast.show({ variant: "danger", label: error.message });
     },
   });
-  // Figma « Carte d'autorisation »: Refuser, Toujours (grey), Autoriser (the accent: the bot's colour).
-  const row = (["deny", "always", "once"] as const).filter((c) => approval.choices.includes(c));
-  const choice = (c: Choice) => (
-    <Button key={c} size="sm" variant={c === "once" ? "primary" : "secondary"} className="flex-1" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(c))}>
-      <Button.Label numberOfLines={1}>{answer.isPending && answer.variables === c ? co.inProgress : t.short[c]}</Button.Label>
-    </Button>
-  );
+  const choices = approval.choices;
+  const broader = choices.filter((c): c is Exclude<Choice, "deny" | "once"> => c !== "deny" && c !== "once");
+  const label = (c: Choice) => (answer.isPending && answer.variables === c ? co.inProgress : c === "once" ? t.allow : t.choices[c]);
 
   return (
-    <Card role="alert" accessibilityLabel={t.requestedBy(botName)} className="w-full gap-3 rounded-[14px] border border-border bg-background px-4 py-3.5">
-      <Card.Body className="gap-3">
-        <Typography>{approval.command ? t.wantsToRun(botName) : t.asks(botName)}</Typography>
-        {!!approval.command && <CodeBlock>{approval.command}</CodeBlock>}
-      </Card.Body>
-      <Card.Footer className="gap-2">
-        {canAnswer ? (
-          <>
-            <View className="flex-row gap-2">{row.map(choice)}</View>
-            {approval.choices.includes("session") && (
-              <LinkButton size="sm" className="self-center" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate("session"))}>
-                {labels.session}
-              </LinkButton>
-            )}
-          </>
-        ) : (
-          <Typography.Paragraph type="body-sm" color="muted">
-            {t.waiting}
-          </Typography.Paragraph>
-        )}
-      </Card.Footer>
+    <Card role="alert" accessibilityLabel={t.requestedBy(botName)} className={blockCard}>
+      <BlockHeader
+        icon={approval.command ? <TerminalIcon size={16} className="text-muted" /> : <ShieldCheckIcon size={16} className="text-muted" />}
+        title={approval.command ? t.wantsToRun(botName) : t.asks(botName)}
+        description={!canAnswer ? t.waiting : approval.description || undefined}
+      />
+      {!!approval.command && (
+        <Card.Body>
+          <CodeBlock>{approval.command}</CodeBlock>
+        </Card.Body>
+      )}
+      {canAnswer && (
+        <Card.Footer className="flex-row items-center justify-between gap-2">
+          {choices.includes("deny") ? (
+            <Button size="sm" variant="secondary" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate("deny"))}>
+              {label("deny")}
+            </Button>
+          ) : (
+            <View />
+          )}
+          {choices.includes("once") ? (
+            <View className="flex-row items-center gap-1">
+              <Button size="sm" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate("once"))}>
+                {label("once")}
+              </Button>
+              {broader.length > 0 && (
+                <TapMenu accessibilityLabel={t.more} actions={broader.map((c) => ({ label: t.choices[c], icon: CHOICE_ICON[c], onPress: () => answer.mutate(c) }))}>
+                  <Button isIconOnly size="sm" isDisabled={answer.isPending} accessibilityLabel={t.more}>
+                    <ChevronDownIcon size={16} className="text-accent-foreground" />
+                  </Button>
+                </TapMenu>
+              )}
+            </View>
+          ) : (
+            <View className="flex-row flex-wrap justify-end gap-2">
+              {broader.map((c) => (
+                <Button key={c} size="sm" variant="secondary" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(c))}>
+                  {label(c)}
+                </Button>
+              ))}
+            </View>
+          )}
+        </Card.Footer>
+      )}
     </Card>
-  );
-}
-
-/** Figma « Trace »: a decided command, one grey line in the history (check, the command, the answer). */
-export function ApprovalLog({ approvals }: { approvals: { command: string; choice: string }[] }) {
-  const t = messages;
-  return (
-    <View className="gap-0.5">
-      {approvals.map((a, i) => (
-        <View key={i} className="min-w-0 flex-row items-center gap-1.5 pl-3">
-          {a.choice === "deny" ? <CloseIcon size={14} className="text-subtle" /> : <CheckIcon size={14} className="text-subtle" />}
-          <Typography.Code numberOfLines={1} className="shrink text-muted">
-            {a.command}
-          </Typography.Code>
-          <Typography type="body-xs" className="shrink-0 text-subtle">
-            · {a.choice === "deny" ? t.denied.toLowerCase() : t.allowed.toLowerCase()}
-          </Typography>
-        </View>
-      ))}
-    </View>
   );
 }

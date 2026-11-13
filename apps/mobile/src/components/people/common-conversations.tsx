@@ -12,11 +12,11 @@ import { conversationsQuery } from "@/lib/queries";
 
 const messages = defineMessages({
   en: {
-    common: (n: number) => `Conversations in common · ${n}`,
+    common: (n: number) => `Conversations in common (${n})`,
     members: (n: number) => `${n} members`,
   },
   fr: {
-    common: (n: number) => `Conversations en commun · ${n}`,
+    common: (n: number) => `Conversations en commun (${n})`,
     members: (n: number) => `${n} membres`,
   },
 });

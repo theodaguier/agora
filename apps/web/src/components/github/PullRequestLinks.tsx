@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import type { GitHubPullRequest } from "@agora/core";
+import { pullRequestLinks, type GitHubPullRequest } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { blockedReason, defaultMergeMethod, PullRequestItem, pullRequestMessages } from "@/components/github/PullRequestCard";
 import { Button } from "@/components/ui/button";
@@ -8,24 +8,6 @@ import { confirmAction } from "@/lib/confirm";
 import { githubPullQuery, mergeGithubPull } from "@/lib/queries";
 import { defineMessages, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
-
-const PULL_URL = /https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)/gi;
-
-/** The pull requests a text links to, once each, in order (three at most). */
-export function pullRequestLinks(text: string): { repo: string; number: number }[] {
-  const seen = new Set<string>();
-  const out: { repo: string; number: number }[] = [];
-  for (const m of text.matchAll(PULL_URL)) {
-    const repo = `${m[1]}/${m[2]}`;
-    const number = Number(m[3]);
-    const key = `${repo.toLowerCase()}#${number}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ repo, number });
-    if (out.length === 3) break;
-  }
-  return out;
-}
 
 /** After a merge: the code sessions (one may work on that pull request) are read again. */
 export const invalidateSessions = (qc: QueryClient) => void qc.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("code-session") });

@@ -113,7 +113,7 @@ export default function Search() {
                 href={{ pathname: "/people/[userId]", params: { userId: person.id } }}
                 avatar={<Avatar p={{ kind: "user", person }} />}
                 title={person.name}
-                subtitle={[person.title, person.username && `@${person.username}`].filter(Boolean).join(" · ")}
+                subtitle={[person.title, person.username && `@${person.username}`].filter(Boolean).join(", ")}
               />
             ))}
           </Section>
