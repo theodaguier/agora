@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.61.2 — 2026-11-13
+
+### Fixes
+- **release**: construire l'app web sur la plateforme native du runner
+- **updater**: ne proposer une version qu'une fois ses trois images publiées
+
 ## v0.61.1 — 2026-11-13
 
 ### Fixes
