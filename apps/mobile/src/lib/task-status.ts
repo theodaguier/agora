@@ -8,6 +8,14 @@ export const TASK_STATUSES: TaskStatus[] = ["todo", "in_progress", "done"];
 /** Most pressing first. */
 export const TASK_PRIORITIES: TaskPriority[] = ["urgent", "high", "normal", "low"];
 
+/** A priority's SF Symbol in the native menus. */
+export const PRIORITY_SYMBOL: Record<TaskPriority, string> = {
+  urgent: "exclamationmark.3",
+  high: "exclamationmark.2",
+  normal: "exclamationmark",
+  low: "minus",
+};
+
 type ChipColor = "accent" | "default" | "success" | "warning" | "danger";
 
 /** One color per status: blue to do, amber in progress, green done. */

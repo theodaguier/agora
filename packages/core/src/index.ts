@@ -35,3 +35,4 @@ export * from "./agent-colors";
 export * from "./attachments";
 export * from "./vaults";
 export * from "./ssh";
+export * from "./person-avatar";

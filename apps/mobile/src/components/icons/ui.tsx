@@ -33,6 +33,8 @@ export const CloseCircleIcon = createIcon("close-circle", {
   cut: <Path d="M14.5 9.5l-5 5m0-5l5 5" />,
 });
 
+export const MinusIcon = createIcon("minus", { line: <Path d="M5 12h14" /> });
+
 export const PlusIcon = createIcon("plus", { line: <Path d="M12 4.5v15M4.5 12h15" /> });
 
 export const MoreIcon = createIcon("more", {

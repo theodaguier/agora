@@ -6,6 +6,7 @@ import { initials, othersOf, type Participant } from "@/lib/participants";
 import { defineMessages, useT } from "@/i18n";
 import { conversations } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
+import { personTint } from "@agora/core";
 import { presenceLabel } from "@/lib/dates";
 import { availabilityLabel, availabilityTitle, isAway, useAvailability } from "@/lib/availability";
 import { presenceQuery, useAgentWorking, useMinuteTick, usePresence } from "@/lib/presence";
@@ -28,16 +29,11 @@ function avatarSize(className?: string): "sm" | "default" | "lg" {
 /** Below 24 px the initials shrink with the face (Figma: 8 px in a 16 to 20 px avatar). */
 const tiny = (className?: string) => Number(/\bsize-(\d+(?:\.\d+)?)\b/.exec(className ?? "")?.[1] ?? 10) < 6;
 
-/** Figma « Atelier · Théo »: without a photo, a colleague's initials on a muted tint of their own. */
-const TINTS = ["#6b5485", "#4d6e80", "#78664d", "#4f735c", "#5c6173", "#80565a", "#4d6a8a", "#7a5f78", "#5d7550", "#86684a"];
-/** FNV-1a: close ids (« seed-u-1 », « seed-u-2 ») land far apart, so two colleagues side by side rarely share a tint. */
-const tintOf = (id: string) => TINTS[[...id].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261) % TINTS.length]!;
-
 export function PersonAvatar({ person, className, size }: { person: Person; className?: string; size?: "sm" | "default" | "lg" }) {
   return (
     <Avatar aria-hidden size={size ?? avatarSize(className)} className={cn(!size && !className && "size-10", className)}>
       {person.image && <AvatarImage src={person.image} alt="" />}
-      <AvatarFallback className={cn("font-semibold text-white/90", tiny(className) && "text-2xs")} style={{ backgroundColor: tintOf(person.id) }}>
+      <AvatarFallback className={cn("font-semibold text-white/90", tiny(className) && "text-2xs")} style={{ backgroundColor: personTint(person.id) }}>
         {initials(person.name)}
       </AvatarFallback>
     </Avatar>

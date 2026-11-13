@@ -521,3 +521,30 @@ export function placeCodeSessions(text: string, sessions: CodeSessionRef[] = [])
   if (rest) parts.push({ kind: "text", text: rest });
   return [...before, ...parts];
 }
+
+export const CODE_MERGE_METHODS: CodeMergeMethod[] = ["squash", "merge", "rebase"];
+
+/** A pull request's state as it reads: an open one may be a draft. */
+export type PullRequestState = "open" | "draft" | "merged" | "closed";
+export const pullRequestState = (pr: CodePullRequest): PullRequestState => (pr.state === "open" && pr.draft ? "draft" : pr.state);
+
+/** The merge methods its repository allows (all three when GitHub didn't say). */
+export const mergeMethods = (pr: CodePullRequest): CodeMergeMethod[] => (pr.methods?.length ? pr.methods : CODE_MERGE_METHODS);
+
+/** Squash when the repository allows it, as GitHub suggests; else its first allowed method. */
+export const defaultMergeMethod = (pr: CodePullRequest): CodeMergeMethod => {
+  const methods = mergeMethods(pr);
+  return methods.includes("squash") ? "squash" : methods[0]!;
+};
+
+/** Why merging is not possible right now (a key of `pullRequests.blocked`), or null. Failing CI does not block: it asks before. */
+export type MergeBlock = "draft" | "dirty" | "blocked" | "behind" | "computing" | "other";
+export function mergeBlock(pr: CodePullRequest): MergeBlock | null {
+  if (pr.draft) return "draft";
+  if (pr.mergeable === false) {
+    const s = pr.mergeableState;
+    return s === "dirty" || s === "blocked" || s === "behind" ? s : "other";
+  }
+  if (pr.mergeable === null) return "computing";
+  return null;
+}

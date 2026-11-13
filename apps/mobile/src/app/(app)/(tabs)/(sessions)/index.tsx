@@ -1,6 +1,7 @@
 import {
   CODE_ENGINE_NAMES,
   codeSessionState,
+  codeStatusText,
   groupCodeSessions,
   type CodePriority,
   type CodeSession,
@@ -16,8 +17,8 @@ import { ListGroup, Separator, Skeleton, Typography } from "heroui-native";
 import { useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { useAdminToast } from "@/components/admin/ui";
-import { AgentAvatar } from "@/components/agent-avatar";
-import { codeSessionHref, ENGINE_PROVIDER, priorityEntries, useDeleteCodeSession, useRefreshCodeSessionsGit, useSetCodePriority } from "@/components/code-session";
+import { BrandLogo } from "@/components/brand-logo";
+import { codeSessionHref, ENGINE_PROVIDER, LiveSessionCard, PRIORITY_ICONS, priorityEntries, useDeleteCodeSession, useRefreshCodeSessionsGit, useSetCodePriority } from "@/components/code-session";
 import { CodeStateIcon, PriorityMark } from "@/components/code-session-marks";
 import { EmptyState } from "@/components/empty-state";
 import { BranchIcon, TerminalIcon, WarningIcon } from "@/components/icons";
@@ -29,15 +30,14 @@ import { allCodeSessionsQuery, applyCodeSession, setCodeSessionParked, stopCodeS
 import { listTime } from "@/lib/dates";
 import { usePullToRefresh, withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
-import { conversationsQuery } from "@/lib/queries";
 
 /*
  * apps/web/src/screens/Sessions.tsx (Figma « Sessions de code »): every code session of your
- * conversations, as Linear lists issues. What waits for your answer first; then the groups (by state,
- * priority or project), each a band (its mark, its name, its count in grey) and its lines: priority,
- * state, title, where it works (repository · branch, in mono), the agent that started it, the engine,
- * when. « Affichage » holds the view, the grouping, the order and the stopped sessions (shown by default).
- * A line opens the session; its owner's « … » is a long press.
+ * conversations, as Linear lists issues. What waits for your answer first, as cards you decide in;
+ * then the groups (by state, priority or project), each a band (its mark, its name, its count in grey)
+ * and its lines at a phone's width: priority, state, title, the engine, when, its owner's « … ».
+ * « Affichage » holds the view, the grouping, the order and the stopped sessions (shown by default).
+ * A line opens the session.
  */
 
 const messages = defineMessages({
@@ -59,7 +59,14 @@ const VIEWS: CodeSessionView[] = ["active", "parked", "finished", "all"];
 const GROUPINGS: CodeSessionGrouping[] = ["state", "priority", "project"];
 const ORDERINGS: CodeSessionOrdering[] = ["priority", "updated", "created"];
 
-type Agent = { name: string; avatar: { color: string; shape?: string } };
+/** Leading marks of the grouping and ordering options (web displayIcon), as SF Symbols for the native menu. */
+const DISPLAY_ICONS: Record<CodeSessionGrouping | CodeSessionOrdering, string> = {
+  state: "circle",
+  priority: "exclamationmark.3",
+  project: "folder",
+  updated: "clock.arrow.circlepath",
+  created: "clock",
+};
 
 export default function SessionsScreen() {
   const t = tr(codeSessions);
@@ -69,7 +76,6 @@ export default function SessionsScreen() {
   const [display, setDisplay] = useState<Display>({ view: "all", group: "state", order: "priority", showStopped: true });
   const update = (patch: Partial<Display>) => setDisplay((d) => ({ ...d, ...patch }));
   const { data: sessions, isPending, isError, refetch } = useQuery(allCodeSessionsQuery);
-  const { data: conversations = [] } = useQuery(conversationsQuery);
   const pull = usePullToRefresh(refetch);
   useRefreshCodeSessionsGit(sessions);
 
@@ -82,8 +88,7 @@ export default function SessionsScreen() {
     all.filter((s) => !toDecide.includes(s)),
     display,
   );
-  const agentOf = (s: CodeSession): Agent | undefined => (s.agentId ? conversations.find((x) => x.id === s.conversationId)?.agents.find((a) => a.id === s.agentId) : undefined);
-  const row = (s: CodeSession, grouping: CodeSessionGrouping | null) => <SessionRow key={s.id} session={s} owner={s.requestedBy === me.id} agent={agentOf(s)} showState={grouping !== "state"} />;
+  const row = (s: CodeSession, grouping: CodeSessionGrouping) => <SessionRow key={s.id} session={s} owner={s.requestedBy === me.id} showState={grouping !== "state"} />;
 
   return (
     <>
@@ -97,9 +102,9 @@ export default function SessionsScreen() {
               actions={[
                 { title: b.view, actions: VIEWS.map((v) => ({ label: `${b.views[v]} (${count(v)})`, checked: display.view === v, onPress: () => update({ view: v }) })) },
                 "divider",
-                { title: b.groupBy, actions: GROUPINGS.map((g) => ({ label: b.groupings[g], checked: display.group === g, onPress: () => update({ group: g }) })) },
+                { title: b.groupBy, actions: GROUPINGS.map((g) => ({ label: b.groupings[g], icon: DISPLAY_ICONS[g], checked: display.group === g, onPress: () => update({ group: g }) })) },
                 "divider",
-                { title: b.orderBy, actions: ORDERINGS.map((o) => ({ label: b.orderings[o], checked: display.order === o, onPress: () => update({ order: o }) })) },
+                { title: b.orderBy, actions: ORDERINGS.map((o) => ({ label: b.orderings[o], icon: DISPLAY_ICONS[o], checked: display.order === o, onPress: () => update({ order: o }) })) },
                 "divider",
                 { label: b.showStopped, checked: display.showStopped, onPress: () => update({ showStopped: !display.showStopped }) },
               ]}
@@ -125,7 +130,13 @@ export default function SessionsScreen() {
             {toDecide.length > 0 && (
               <View accessibilityLabel={t.stateGroups.waiting}>
                 <ListBand mark={<CodeStateIcon state="waiting" size={14} />} label={t.stateGroups.waiting} count={toDecide.length} />
-                {toDecide.map((s) => row(s, "state"))}
+                {/* What waits for an answer stays a card you decide in, without opening it. */}
+                <View className="gap-3 px-4 py-3">
+                  {toDecide.map((s) => (
+                    <LiveSessionCard key={s.id} session={s} onOpen={() => router.push(codeSessionHref(s.conversationId, s.id))} />
+                  ))}
+                </View>
+                <Separator />
               </View>
             )}
             {groups.map((g) => (
@@ -146,7 +157,7 @@ function GroupBand({ grouping, groupKey, count }: { grouping: CodeSessionGroupin
   const t = tr(codeSessions);
   if (grouping === "state") return <ListBand mark={<CodeStateIcon state={groupKey as CodeSessionState} size={14} />} label={t.stateGroups[groupKey as CodeSessionState]} count={count} />;
   if (grouping === "priority") return <ListBand mark={<PriorityMark priority={groupKey as CodePriority} />} label={t.priorities[groupKey as CodePriority]} count={count} />;
-  return <ListBand mark={<BranchIcon size={14} className="text-muted" />} label={(groupKey.split("/").pop() ?? groupKey) || t.board.noProject} count={count} />;
+  return <ListBand mark={<BrandLogo domain="github.com" fallback={<BranchIcon size={14} className="text-muted" />} className="size-3.5" />} label={(groupKey.split("/").pop() ?? groupKey) || t.board.noProject} count={count} />;
 }
 
 /** Sets a session aside (out of the active ones until its next instruction), or brings it back. */
@@ -165,12 +176,12 @@ function useSetCodeParked() {
 }
 
 /**
- * One session (web SessionRow): its priority (a tap, for its owner: the priorities and setting it
- * aside), its state unless the group says it, its title, the engine's logo and when; under the title,
- * where it works in mono and the agent that started it. A long press: its owner's « … » (priority, set
- * aside or bring back, stop while it works, delete).
+ * One session (web SessionRow at a phone's width, where its repository, branch and agent columns are
+ * hidden): its priority (a tap, for its owner: the priorities and setting it aside), its state unless
+ * the group says it, its title, the engine's logo, when, then its owner's « … » (priority, set aside or
+ * bring back, stop while it works, delete), also on a long press.
  */
-function SessionRow({ session: s, owner, agent, showState }: { session: CodeSession; owner: boolean; agent?: Agent; showState: boolean }) {
+function SessionRow({ session: s, owner, showState }: { session: CodeSession; owner: boolean; showState: boolean }) {
   const t = tr(codeSessions);
   const setPriority = useSetCodePriority();
   const park = useSetCodeParked();
@@ -184,14 +195,13 @@ function SessionRow({ session: s, owner, agent, showState }: { session: CodeSess
   });
   const state = codeSessionState(s);
   const working = state === "running" || state === "waiting";
-  const branch = s.git?.branch ?? s.worktree?.branch;
   const priorities = priorityEntries(s, (priority) => setPriority.mutate({ conversationId: s.conversationId, id: s.id, priority }));
-  const parkEntry: MenuEntry = !working && { label: s.parked ? t.unpark : t.park, mark: <CodeStateIcon state={s.parked ? "idle" : "parked"} />, onPress: () => park.mutate(s) };
+  const parkEntry: MenuEntry = !working && { label: s.parked ? t.unpark : t.park, icon: s.parked ? "circle" : "circle.dashed", onPress: () => park.mutate(s) };
   const actions: MenuEntry[] = owner
     ? [
-        { submenu: t.priority, actions: priorities },
+        { submenu: t.priority, icon: PRIORITY_ICONS[s.priority], actions: priorities },
         parkEntry,
-        working && { label: stop.isPending ? t.stopping : t.stop, mark: <CodeStateIcon state="stopped" />, disabled: stop.isPending, onPress: () => stop.mutate() },
+        working && { label: stop.isPending ? t.stopping : t.stop, icon: "stop.circle", disabled: stop.isPending, onPress: () => stop.mutate() },
         "divider",
         { label: t.deleteSession, icon: "trash", destructive: true, onPress: () => void confirmDelete(s) },
       ]
@@ -204,8 +214,8 @@ function SessionRow({ session: s, owner, agent, showState }: { session: CodeSess
   return (
     <>
       <LongPressMenu actions={actions}>
-        <ListGroup.Item onPress={withTap(() => router.push(codeSessionHref(s.conversationId, s.id)))} className="items-start gap-3 px-4 py-2">
-          <ListGroup.ItemPrefix className="flex-row items-center gap-1">
+        <ListGroup.Item onPress={withTap(() => router.push(codeSessionHref(s.conversationId, s.id)))} accessibilityLabel={`${s.title}, ${codeStatusText(t, s)}`} className="gap-2 py-1.5 pr-2 pl-3">
+          <ListGroup.ItemPrefix className="flex-row items-center">
             {owner ? (
               <TapMenu actions={[...priorities, parkEntry && "divider", parkEntry]} accessibilityLabel={`${t.priority} ${t.priorities[s.priority]}`}>
                 {mark}
@@ -219,47 +229,19 @@ function SessionRow({ session: s, owner, agent, showState }: { session: CodeSess
               </View>
             )}
           </ListGroup.ItemPrefix>
-          <ListGroup.ItemContent className="gap-0.5 pt-1">
+          <ListGroup.ItemContent>
             <Typography type="body-sm" numberOfLines={1}>
               {s.title}
             </Typography>
-            <View className="min-w-0 flex-row items-center gap-2.5">
-              {s.repo ? (
-                <View className="min-w-0 shrink flex-row items-center gap-2">
-                  <Typography type="body-xs" color="muted" className="shrink-0 font-mono">
-                    {s.repo.split("/").pop()}
-                  </Typography>
-                  {!!branch && (
-                    <View className="min-w-0 shrink flex-row items-center gap-1">
-                      <BranchIcon size={12} className="text-subtle" />
-                      <Typography type="body-xs" numberOfLines={1} className="min-w-0 shrink font-mono text-subtle">
-                        {branch}
-                      </Typography>
-                    </View>
-                  )}
-                </View>
-              ) : (
-                <Typography type="body-xs" className="text-subtle">
-                  {t.noRepo}
-                </Typography>
-              )}
-              {agent && (
-                <View className="max-w-32 shrink-0 flex-row items-center gap-1.5">
-                  <AgentAvatar agent={agent} size={14} />
-                  <Typography type="body-xs" color="muted" numberOfLines={1} className="shrink">
-                    {agent.name}
-                  </Typography>
-                </View>
-              )}
-            </View>
           </ListGroup.ItemContent>
-          <ListGroup.ItemSuffix className="flex-row items-center gap-2 pt-1.5">
+          <ListGroup.ItemSuffix className="flex-row items-center gap-3">
             <View accessibilityLabel={CODE_ENGINE_NAMES[s.engine]}>
               <ModelLogo provider={ENGINE_PROVIDER[s.engine]} model={s.engine === "cursor" ? undefined : s.engine} size={14} />
             </View>
-            <Typography type="body-xs" className="text-subtle">
+            <Typography type="body-xs" className="w-12 text-right text-subtle">
               {listTime(new Date(s.updatedAt))}
             </Typography>
+            {owner && <MenuButton icon="ellipsis" label={t.actions} actions={actions} />}
           </ListGroup.ItemSuffix>
         </ListGroup.Item>
       </LongPressMenu>

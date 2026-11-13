@@ -10,3 +10,5 @@ export { conversations } from "./conversations";
 export { integrations } from "./integrations";
 export { connectors } from "./connectors";
 export { codeSessions } from "./code-sessions";
+export { pullRequests } from "./pull-requests";
+export { queue } from "./queue";

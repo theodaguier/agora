@@ -1,4 +1,5 @@
 import MaskedView from "@react-native-masked-view/masked-view";
+import { initials, personTint } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { Avatar } from "heroui-native";
@@ -7,7 +8,6 @@ import { Animated, View } from "react-native";
 import Svg, { Circle, Defs, Mask, Path, Rect } from "react-native-svg";
 import { useResolveClassNames } from "uniwind";
 import { AgentAvatar, useSize } from "@/components/agent-avatar";
-import { Marble } from "@/components/marble";
 import { apiUrl, authHeaders } from "@/lib/api";
 import { availabilityLabel, isAway, useAvailability } from "@/lib/availability";
 import { presenceLabel } from "@/lib/dates";
@@ -19,8 +19,14 @@ import { Participant, othersOf } from "@/components/participants";
 
 /* apps/web/src/components/ConversationAvatar.tsx */
 
-/** Colleague: photo if there is one (HeroUI Avatar.Image), otherwise a marble generated from their id (Avatar.Fallback). */
-export function PersonAvatar({ person, className, size: px }: { person: Person; className?: string; size?: number }) {
+/** Initials size for an avatar of `size` pt (web: text-2xs below 24 px, text-xs at 24, text-sm up to 40). */
+export const initialsSize = (size: number) => (size < 24 ? 8 : size <= 28 ? 12 : size <= 44 ? 14 : Math.round(size * 0.36));
+
+/**
+ * Colleague: photo if there is one (HeroUI Avatar.Image), otherwise their initials on a muted tint
+ * of their own, as on the web (apps/web/src/components/ConversationAvatar.tsx PersonAvatar).
+ */
+export function PersonAvatar({ person, className, size: px }: { person: Pick<Person, "id" | "name" | "image">; className?: string; size?: number }) {
   const resolved = useSize(className ?? "size-10", 40);
   const size = px ?? resolved;
   return (
@@ -30,8 +36,12 @@ export function PersonAvatar({ person, className, size: px }: { person: Person; 
           <Image style={{ width: "100%", height: "100%" }} contentFit="cover" cachePolicy="disk" />
         </Avatar.Image>
       )}
-      <Avatar.Fallback animation="disabled">
-        <Marble name={person.id} size={size} />
+      <Avatar.Fallback
+        animation="disabled"
+        classNames={{ text: "font-semibold" }}
+        styles={{ container: { backgroundColor: personTint(person.id) }, text: { color: "rgba(255,255,255,0.9)", fontSize: initialsSize(size) } }}
+      >
+        {initials(person.name)}
       </Avatar.Fallback>
     </Avatar>
   );
@@ -191,7 +201,7 @@ export function ConversationAvatar({
 function GroupAvatar({ others, agentIds, size, status }: { others: Participant[]; agentIds: string[]; size: number; status?: boolean }) {
   const dot = useGroupDot(status ? agentIds : []);
   // The back avatar is cut along the silhouette of the front one, widened by a thin border.
-  const small = size * 0.7;
+  const small = (size * 2) / 3;
   const front = others[1]!;
   // Every avatar is a disc now (the agents' mascots too).
   const d = circlePath;
@@ -204,7 +214,7 @@ function GroupAvatar({ others, agentIds, size, status }: { others: Participant[]
             <Defs>
               <Mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
                 <Rect width="100" height="100" fill="white" />
-                <Path d={d} transform="translate(42.9 42.9) scale(3.125)" fill="black" stroke="black" strokeWidth={5} strokeLinejoin="round" />
+                <Path d={d} transform="translate(50 50) scale(3.125)" fill="black" stroke="black" strokeWidth={5} strokeLinejoin="round" />
               </Mask>
             </Defs>
             <Rect width="100" height="100" fill="black" mask="url(#cut)" />
