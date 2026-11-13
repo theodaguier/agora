@@ -284,7 +284,7 @@ export function codeStatusText(
 }
 
 /** What it waits for, in one line: the action and its target, or the question, or the plan's title. */
-export const codeApprovalLine = (a: CodeApproval) => (a.kind === "question" || a.kind === "plan" ? a.title : `${a.tool} · ${a.title}`);
+export const codeApprovalLine = (a: CodeApproval) => a.title;
 
 /** Its line under its title: what it waits for, or what it is doing while it works. */
 export function codeDetailLine(session: { status: CodeSessionStatus; approval: CodeApproval | null; question?: CodeBotQuestion | null; activity: string | null }) {

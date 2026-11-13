@@ -32,6 +32,7 @@ export const codeSessions = defineMessages({
     placeholderIdle: "Give it a new instruction",
     placeholderIdleCommands: "Give it a new instruction, or type / for its skills",
     placeholderAnswer: "Answer its question",
+    placeholderAnswerOther: "Or answer otherwise",
     send: "Send",
     attachFiles: "Attach files",
     drop: (engine: string) => `Drop your files to send them to ${engine}`,
@@ -104,7 +105,7 @@ export const codeSessions = defineMessages({
     botQuestion: {
       title: (bot: string) => `The session asks ${bot}`,
       help: (bot: string) => `Your next message answers it, in place of ${bot}. Without an answer within 15 minutes, it goes on with its best judgment.`,
-      pick: (bot: string, first: string) => `Answer in place of ${bot}. Without an answer within 15 minutes, it goes with “${first}”.`,
+      pick: (bot: string, first: string) => `For ${bot}. Without an answer within 15 minutes, it goes with “${first}”.`,
       waiting: (bot: string) => `Waiting for ${bot}'s answer, or the answer of the person who started it.`,
     },
     plan: {
@@ -304,6 +305,7 @@ export const codeSessions = defineMessages({
     placeholderIdle: "Donne-lui une nouvelle instruction",
     placeholderIdleCommands: "Donne-lui une nouvelle instruction, ou tape / pour ses skills",
     placeholderAnswer: "Réponds à sa question",
+    placeholderAnswerOther: "Ou réponds autrement",
     send: "Envoyer",
     attachFiles: "Joindre des fichiers",
     drop: (engine: string) => `Dépose tes fichiers pour les envoyer à ${engine}`,
@@ -377,7 +379,7 @@ export const codeSessions = defineMessages({
     botQuestion: {
       title: (bot: string) => `La session demande à ${bot}`,
       help: (bot: string) => `Ton prochain message y répond, à la place de ${bot}. Sans réponse dans les 15 minutes, il continue avec son meilleur jugement.`,
-      pick: (bot: string, first: string) => `Réponds à la place de ${bot}. Sans réponse dans les 15 minutes, il retient « ${first} ».`,
+      pick: (bot: string, first: string) => `Pour ${bot}. Sans réponse dans les 15 minutes, il retient « ${first} ».`,
       waiting: (bot: string) => `En attente de la réponse de ${bot}, ou de la personne qui l'a lancée.`,
     },
     plan: {

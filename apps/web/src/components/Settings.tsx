@@ -248,13 +248,20 @@ function SettingsNav({ tabs: visible, tab, onSelect }: { tabs: typeof tabs; tab:
   );
 }
 
-/** The open tab, in a centred column; the memory graph fills the pane instead of scrolling it. */
+/** The open tab, in a centred column; the memory graph fills the whole pane instead. */
 function SettingsContent({ tab }: { tab: SettingsTab }) {
   const { user } = useRouteContext({ from: "/app" });
   const isAdmin = user.role === "admin";
+  // The memory graph takes the whole pane, under its own header, outside the column and its padding.
+  if (tab === "memory")
+    return (
+      <div className="flex h-full min-h-0 flex-1 flex-col">
+        <WikiMemory />
+      </div>
+    );
   return (
-    <div className={cn("h-full min-h-0 flex-1 overflow-y-auto", tab === "memory" && "flex flex-col")}>
-      <div className={cn("mx-auto px-4 pt-6 sm:px-10 sm:pt-16", tab === "memory" ? "flex w-full flex-1 flex-col" : "flex max-w-2xl flex-col gap-8 pb-16")}>
+    <div className="h-full min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 pt-6 pb-16 sm:px-10 sm:pt-16">
         <RestartProvider>
           {/* Each tab: its header, then its cards (shadcn Card), one gap between them. */}
           {tab === "general" && <General />}
@@ -288,7 +295,6 @@ function SettingsContent({ tab }: { tab: SettingsTab }) {
           )}
           {tab === "updates" && <Updates />}
           {tab === "machines" && <Machines />}
-          {tab === "memory" && <WikiMemory />}
           {tab === "digest" && <DigestSettings />}
         </RestartProvider>
       </div>

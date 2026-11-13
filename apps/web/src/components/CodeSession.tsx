@@ -90,7 +90,7 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import { Badge } from "@/components/ui/badge";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
 import { QueueList } from "@/components/QueueList";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -243,6 +243,7 @@ export function CodeSessionCard({
  */
 export function LiveSessionCard({ session, onOpen, className }: { session: CodeSession; onOpen: () => void; className?: string }) {
   const t = useT(messages);
+  const prT = useT(pullRequestMessages);
   const { user } = useRouteContext({ from: "/app" });
   const owner = session.requestedBy === user.id;
   const waiting = !!(session.approval || session.question);
@@ -280,9 +281,16 @@ export function LiveSessionCard({ session, onOpen, className }: { session: CodeS
           {session.todos.length > 0 && <span className="ml-auto shrink-0 text-muted-foreground">{t.view.tasksCount(done, session.todos.length)}</span>}
         </CardContent>
       ) : session.git?.pr ? (
-        <CardContent className="border-t py-3">
-          <PullRequestStatus pr={session.git.pr} />
-        </CardContent>
+        // Its pull request: the whole line opens it on GitHub.
+        <a
+          href={session.git.pr.url}
+          target="_blank"
+          rel="noreferrer"
+          title={prT.openOnGithub}
+          className="flex min-w-0 border-t px-3.5 py-3 text-sm outline-none hover:bg-muted focus-visible:bg-muted"
+        >
+          <PullRequestStatus pr={session.git.pr} className="w-full" />
+        </a>
       ) : session.result ? (
         <CardContent className="border-t py-3">
           <p className="line-clamp-2 text-sm text-muted-foreground">{session.result}</p>
@@ -1429,7 +1437,7 @@ function CodeSessionView({
           </div>
 
           <div className="flex shrink-0 flex-col gap-3 px-4 pt-2 pb-4">
-            {pending && <div className="max-h-96 overflow-y-auto">{pending}</div>}
+            {pending}
             {owner ? <SessionComposer ref={composer} conversationId={conversationId} session={session} /> : <p className="text-sm text-muted-foreground">{t.readOnly}</p>}
           </div>
           </div>
@@ -2347,13 +2355,19 @@ function DecisionShell({ inline, label, title, description, children, footer }: 
     );
   }
   return (
-    <Card size="sm" role="region" aria-label={label}>
+    // One white card: its actions end it on the same surface, never in a grey band of their own. Pinned
+    // above the field, a long one scrolls inside its own border rather than being cut by the pane.
+    <Card size="sm" role="region" aria-label={label} className="max-h-[50vh] overflow-y-auto">
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
-      {children && <CardContent className="flex flex-col gap-3">{children}</CardContent>}
-      {footer && <CardFooter className="flex-wrap gap-2">{footer}</CardFooter>}
+      {(children || footer) && (
+        <CardContent className="flex flex-col gap-3">
+          {children}
+          {footer && <div className="flex flex-wrap items-center gap-2">{footer}</div>}
+        </CardContent>
+      )}
     </Card>
   );
 }
@@ -2410,76 +2424,38 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer, inline }:
  */
 function BotQuestionBlock({ conversationId, session, question, canAnswer, inline }: { conversationId: string; session: CodeSession; question: CodeBotQuestion; canAnswer: boolean; inline?: boolean }) {
   const t = useT(messages);
-  const c = useT(common);
   const qc = useQueryClient();
-  const [choice, setChoice] = useState<Choice>({ picked: [], other: "" });
   const answer = useMutation({
     mutationFn: (text: string) => sendToCodeSession(conversationId, session.id, text),
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { success: t.question.answered },
   });
-  const options = question.options?.length
-    ? [...question.options.map((o) => ({ value: o.label, label: o.label, description: o.description })), { value: OTHER_ANSWER, label: t.question.other, description: undefined }]
-    : [];
-  const value = answerOf(choice);
+  const options = question.options ?? [];
   const help = !canAnswer ? t.botQuestion.waiting(question.bot) : options.length ? t.botQuestion.pick(question.bot, options[0]!.label) : t.botQuestion.help(question.bot);
-  const id = (i: number) => `bot-q-${i}`;
+  // The question is the title; who it's for and what happens without an answer, one grey line. Each
+  // option is one row that answers on click: no radio, no « Autre » (the field below answers otherwise).
   return (
-    <form
-      className="contents"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (value && !answer.isPending) answer.mutate(value);
-      }}
-    >
-      <DecisionShell
-        inline={inline}
-        label={t.botQuestion.title(question.bot)}
-        title={t.botQuestion.title(question.bot)}
-        description={help}
-        footer={
-          canAnswer &&
-          options.length > 0 && (
-            <Button type="submit" size="sm" disabled={!value || answer.isPending} className="ml-auto">
-              {answer.isPending ? c.inProgress : t.question.answer}
-            </Button>
-          )
-        }
-      >
-        <div className="flex flex-col gap-2">
-          <MessageText text={question.text} className="text-sm font-medium" />
-          {question.context && (
-            <div className="max-h-48 overflow-y-auto text-muted-foreground">
-              <MessageText text={question.context} className="text-sm" />
-            </div>
-          )}
-        </div>
-        {options.length > 0 && (
-          <FieldSet disabled={!canAnswer || answer.isPending} aria-label={question.text}>
-            <RadioGroup value={choice.picked[0] ?? ""} onValueChange={(v) => setChoice((all) => ({ ...all, picked: [String(v)] }))}>
-              {options.map((o, i) => (
-                <Field key={o.value} orientation="horizontal">
-                  <RadioGroupItem value={o.value} id={id(i)} />
-                  <FieldContent>
-                    <FieldLabel htmlFor={id(i)}>{o.label}</FieldLabel>
-                    {o.description && <FieldDescription>{o.description}</FieldDescription>}
-                  </FieldContent>
-                </Field>
-              ))}
-            </RadioGroup>
-            {choice.picked.includes(OTHER_ANSWER) && (
-              <Input
-                autoFocus
-                aria-label={t.question.other}
-                placeholder={t.question.otherPlaceholder}
-                value={choice.other}
-                onChange={(e) => setChoice((all) => ({ ...all, other: e.target.value }))}
-              />
-            )}
-          </FieldSet>
-        )}
-      </DecisionShell>
-    </form>
+    <DecisionShell inline={inline} label={question.text} title={<MessageText text={question.text} />} description={help}>
+      {question.context && <MessageText text={question.context} className="text-sm text-muted-foreground" />}
+      {options.length > 0 && (
+        // Plain rows (no box inside the box), grey under the pointer, inset from the card's border.
+        <ItemGroup className="-mx-1.5 w-auto gap-0.5">
+          {options.map((o) => (
+            <Item
+              key={o.label}
+              size="sm"
+              className="px-1.5 py-2 text-left hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+              render={<button type="button" disabled={!canAnswer || answer.isPending} onClick={() => answer.mutate(o.label)} />}
+            >
+              <ItemContent>
+                <ItemTitle>{o.label}</ItemTitle>
+                {o.description && <ItemDescription>{o.description}</ItemDescription>}
+              </ItemContent>
+            </Item>
+          ))}
+        </ItemGroup>
+      )}
+    </DecisionShell>
   );
 }
 
@@ -2737,7 +2713,9 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
           aria-autocomplete="list"
           placeholder={
             session.question
-              ? t.placeholderAnswer
+              ? session.question.options?.length
+                ? t.placeholderAnswerOther
+                : t.placeholderAnswer
               : active(session.status)
                 ? t.placeholderRunning
                 : slash.available

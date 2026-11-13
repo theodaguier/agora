@@ -1,9 +1,9 @@
-import { ArrowUpIcon, ChatQuestionIcon, ChevronRightIcon, CloseIcon } from "@/components/icons";
+import { ArrowUpIcon, ChatQuestionIcon, CloseIcon } from "@/components/icons";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CardContent, CardFooter } from "@/components/ui/card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import { BlockCard, BlockHeader } from "@/components/views/block";
 import type { Choices } from "@/lib/api";
 import { defineMessages, useT } from "@/i18n";
@@ -52,16 +52,19 @@ export function ChoiceCard(props: { choices: Choices; onAnswer: (text: string) =
         }
       />
       <CardContent>
-        <ItemGroup aria-label={t.options}>
+        {/* Plain rows (no box inside the box, no chevron), grey under the pointer, inset from the border. */}
+        <ItemGroup aria-label={t.options} className="-mx-1.5 w-auto gap-0.5">
           {choices.options.map((o, i) => (
-            <Item key={o.label} variant="outline" render={<button type="button" title={t.key(letters[i]!)} aria-keyshortcuts={letters[i]} onClick={() => onAnswer(o.label)} />}>
+            <Item
+              key={o.label}
+              size="sm"
+              className="px-1.5 py-2 text-left hover:bg-muted"
+              render={<button type="button" title={t.key(letters[i]!)} aria-keyshortcuts={letters[i]} onClick={() => onAnswer(o.label)} />}
+            >
               <ItemContent>
                 <ItemTitle>{o.label}</ItemTitle>
                 {o.description && <ItemDescription>{o.description}</ItemDescription>}
               </ItemContent>
-              <ItemActions>
-                <ChevronRightIcon className="text-muted-foreground" />
-              </ItemActions>
             </Item>
           ))}
         </ItemGroup>
@@ -78,7 +81,7 @@ export function ChoiceCard(props: { choices: Choices; onAnswer: (text: string) =
           <InputGroup>
             <InputGroupInput value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={t.placeholder} aria-label={t.own} />
             <InputGroupAddon align="inline-end">
-              <InputGroupButton type="submit" variant="default" size="icon-xs" aria-label={t.send} disabled={!custom.trim()}>
+              <InputGroupButton type="submit" variant="default" size="icon-xs" aria-label={t.send} aria-disabled={!custom.trim()} className="aria-disabled:opacity-50">
                 <ArrowUpIcon />
               </InputGroupButton>
             </InputGroupAddon>

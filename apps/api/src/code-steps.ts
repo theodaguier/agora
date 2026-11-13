@@ -358,7 +358,8 @@ export function describeTool(name: string, input: Json, cwd: string): { title: s
     case "TaskCreate":
       return { title: firstLine(String(input.subject || name)), input: detail(String(input.description ?? "")) };
     case "TaskUpdate":
-      return { title: [`#${String(input.taskId ?? "?")}`, input.status, input.subject && firstLine(String(input.subject))].filter(Boolean).join(" · ") };
+      // Its subject when it has one; never its raw status (« completed ») joined with « · ».
+      return { title: input.subject ? firstLine(String(input.subject)) : `#${String(input.taskId ?? "?")}` };
     case "TaskGet":
       return { title: `#${String(input.taskId ?? "?")}` };
     case "ToolSearch":

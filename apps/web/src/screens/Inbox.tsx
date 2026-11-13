@@ -393,7 +393,7 @@ function InboxItemView({ item }: { item: InboxItem }) {
                   <Face author={item.actor} />
                   <span className="font-medium">{item.actor?.name ?? t.someone}</span>
                   <span className="text-muted-foreground">{t.created(item.kind === "task.assigned")}</span>
-                  <span className="text-subtle-foreground">· {ageLabel(new Date(item.createdAt))}</span>
+                  <span className="ml-1.5 text-subtle-foreground">{ageLabel(new Date(item.createdAt))}</span>
                 </p>
               )}
               {said && (
@@ -546,7 +546,7 @@ function Reply({ conversationId, mention }: { conversationId: string; mention?: 
           <InputGroupButton size="icon-xs" aria-label={t.attach} onClick={() => picker.current?.click()} className="text-muted-foreground">
             <PaperclipIcon />
           </InputGroupButton>
-          <InputGroupButton type="submit" variant={ready ? "default" : "secondary"} size="icon-sm" className="rounded-full disabled:opacity-100 disabled:text-subtle-foreground" aria-label={t.send} disabled={!ready}>
+          <InputGroupButton type="submit" variant={ready ? "default" : "secondary"} size="icon-sm" className="rounded-full aria-disabled:text-subtle-foreground" aria-label={t.send} aria-disabled={!ready}>
             <ArrowUpIcon />
           </InputGroupButton>
         </InputGroupAddon>

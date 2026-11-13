@@ -173,7 +173,7 @@ describe("describeTool", () => {
       describeTool("AskUserQuestion", { questions: [{ question: "Which color?", header: "Color", options: [{ label: "Red", description: "Warm" }, { label: "Blue" }] }] }, CWD),
     ).toEqual({ title: "Which color?", input: "Which color?\n- Red — Warm\n- Blue" });
     expect(describeTool("ExitPlanMode", { plan: "# Add the login page\n\n1. Route" }, CWD)).toEqual({ title: "Add the login page", input: "# Add the login page\n\n1. Route" });
-    expect(describeTool("TaskUpdate", { taskId: "2", status: "completed" }, CWD)).toEqual({ title: "#2 · completed" });
+    expect(describeTool("TaskUpdate", { taskId: "2", status: "completed" }, CWD)).toEqual({ title: "#2" });
     // Its usual sections are not its title.
     expect(describeTool("ExitPlanMode", { plan: "# Context\nWhy.\n# Plan\n1. Do" }, CWD).title).toBe("ExitPlanMode");
     expect(describeTool("ExitPlanMode", { plan: "## Context\n## Rename the API routes" }, CWD).title).toBe("Rename the API routes");
