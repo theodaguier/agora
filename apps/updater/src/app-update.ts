@@ -65,9 +65,13 @@ export async function updateApp(to: string, trigger: UpdateRun["trigger"]) {
   } catch (err) {
     const error = errorInfo(err);
     await step("failed", `Échec : ${error.message}`, false, { error });
-    const state = await loadState();
-    state.rejected.app = [...new Set([...state.rejected.app, to])];
-    await saveState();
+    // Refused only once it touched production (backup taken): a pull that failed, or an image not
+    // there yet, says nothing of the version itself, and the next check tries it again.
+    if (entry.backup) {
+      const state = await loadState();
+      state.rejected.app = [...new Set([...state.rejected.app, to])];
+      await saveState();
+    }
     if (!entry.backup) return (await finish("failed"), entry);
     try {
       const current = await run(["docker", "inspect", "--format", "{{.Id}}", containerName("api")]);
