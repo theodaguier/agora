@@ -16,17 +16,28 @@ export async function hermesVersions(): Promise<string[]> {
   return tags;
 }
 
+/** The images an app version is made of: an update pulls all three. */
+const APP_IMAGES = ["app", "web", "updater"] as const;
+
 /**
- * Published app versions. With a registry (ghcr.io/…), read its tags;
- * without one, look at locally built images (`./agora build`).
+ * Published app versions: those whose three images are all there. The release builds them in
+ * parallel after pushing its tag, so for a few minutes a version has its app image and not yet its
+ * web one; offered then, its update failed on the pull (0.60.0, 2026-11-13).
+ * With a registry (ghcr.io/…), read its tags; without one, look at locally built images (`./agora build`).
  */
 export async function appVersions(): Promise<string[]> {
+  const lists = await Promise.all(APP_IMAGES.map((kind) => imageTags(kind)));
+  const [first, ...rest] = lists.map((tags) => new Set(tags.map((t) => t.replace(/^v/, "")).filter((t) => parseVersion(t))));
+  return [...first!].filter((v) => rest.every((tags) => tags.has(v)));
+}
+
+async function imageTags(kind: (typeof APP_IMAGES)[number]): Promise<string[]> {
   if (!usesRegistry()) {
-    const r = await run(["docker", "image", "ls", `${config.imagePrefix}-app`, "--format", "{{.Tag}}"]);
-    return r.stdout.split("\n").filter((t) => parseVersion(t));
+    const r = await run(["docker", "image", "ls", `${config.imagePrefix}-${kind}`, "--format", "{{.Tag}}"]);
+    return r.stdout.split("\n").filter(Boolean);
   }
   const [host, ...rest] = config.imagePrefix.split("/");
-  const repo = `${rest.join("/")}-app`;
+  const repo = `${rest.join("/")}-${kind}`;
   const basic = config.registryToken ? `Basic ${btoa(`${config.registryUser || "token"}:${config.registryToken}`)}` : undefined;
   const tokenRes = await fetch(`https://${host}/token?scope=repository:${repo}:pull`, {
     headers: basic ? { Authorization: basic } : {},
@@ -45,5 +56,5 @@ export async function appVersions(): Promise<string[]> {
     const next = res.headers.get("link")?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
     url = next ? new URL(next, `https://${host}`).href : null;
   }
-  return tags.map((t) => t.replace(/^v/, "")).filter((t) => parseVersion(t));
+  return tags;
 }
