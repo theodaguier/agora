@@ -1,6 +1,6 @@
 import { common } from "@agora/core/i18n";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
-import { Button as NativeButton, type ButtonProps as NativeButtonProps, Divider, Host, Menu as NativeMenu, Rectangle, Section, Toggle } from "@expo/ui/swift-ui";
+import { Button as NativeButton, type ButtonProps as NativeButtonProps, Divider, Host, Image as NativeImage, Menu as NativeMenu, Rectangle, Section, Text, Toggle } from "@expo/ui/swift-ui";
 import { accessibilityLabel as a11yLabel, buttonStyle, disabled as nativeDisabled, foregroundStyle, frame, menuIndicator } from "@expo/ui/swift-ui/modifiers";
 import * as Haptics from "expo-haptics";
 // The native view behind expo-router's Link.Menu: a UIContextMenuInteraction on one RN view. Without a
@@ -140,6 +140,8 @@ export type MenuAction = {
   disabled?: boolean;
   /** The current choice (a checkmark). */
   checked?: boolean;
+  /** A line under the title (what a mode or a method does). */
+  description?: string;
 };
 
 /** Actions under a section title. */
@@ -192,6 +194,7 @@ function contextItems(entries: MenuEntry[], key: string): ReactNode[] {
           destructive={e.destructive}
           disabled={e.disabled}
           isOn={e.checked}
+          subtitle={e.description}
           onSelected={e.onPress}
         />
       );
@@ -238,9 +241,23 @@ function pullDownItems(entries: MenuEntry[], key: string): ReactNode[] {
           </Section>
         );
       const modifiers = e.disabled ? [nativeDisabled(true)] : undefined;
+      // With a description, the label is two Texts: iOS draws the second as the item's subtitle.
+      const lines = e.description ? [<Text key="t">{e.label}</Text>, <Text key="d">{e.description}</Text>] : undefined;
       if (e.checked !== undefined)
-        return <Toggle key={id} label={e.label} systemImage={sf(e.icon)} isOn={e.checked} onIsOnChange={() => e.onPress()} modifiers={modifiers} />;
-      return <NativeButton key={id} label={e.label} systemImage={sf(e.icon)} role={e.destructive ? "destructive" : undefined} onPress={e.onPress} modifiers={modifiers} />;
+        return lines ? (
+          <Toggle key={id} systemImage={sf(e.icon)} isOn={e.checked} onIsOnChange={() => e.onPress()} modifiers={modifiers}>
+            {lines}
+          </Toggle>
+        ) : (
+          <Toggle key={id} label={e.label} systemImage={sf(e.icon)} isOn={e.checked} onIsOnChange={() => e.onPress()} modifiers={modifiers} />
+        );
+      return lines ? (
+        <NativeButton key={id} role={e.destructive ? "destructive" : undefined} onPress={e.onPress} modifiers={modifiers}>
+          {[...lines, ...(e.icon ? [<NativeImage key="i" systemName={sf(e.icon)} />] : [])]}
+        </NativeButton>
+      ) : (
+        <NativeButton key={id} label={e.label} systemImage={sf(e.icon)} role={e.destructive ? "destructive" : undefined} onPress={e.onPress} modifiers={modifiers} />
+      );
     });
     return gi < all.length - 1 ? [...items, <Divider key={`${key}.${gi}-`} />] : items;
   });
