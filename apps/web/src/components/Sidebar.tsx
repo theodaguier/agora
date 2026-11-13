@@ -1,4 +1,5 @@
 import { defineMessages, useT } from "@/i18n";
+import { plainPreview } from "@agora/core";
 import { auth, common, conversations } from "@agora/core/i18n";
 import { useEventText } from "@/i18n/events";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -808,12 +809,3 @@ function DndMenu({ userId }: { userId: string }) {
     </DropdownMenuSub>
   );
 }
-
-/** A message as one line of preview: markdown links kept as their words, bare addresses and markup left out. */
-const plainPreview = (text: string) =>
-  text
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/https?:\/\/\S+/g, "")
-    .replace(/[*_`#>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();

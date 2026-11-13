@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.64.0 — 2026-11-13
+
+### Features
+- **mobile**: balayage profil, réglages, admin, agents et marketplace à l'image du web
+- **mobile**: conversations alignées sur le web Geist
+
+### Fixes
+- **mobile**: boîte de réception et tâches alignées sur le web
+
+## v0.63.1 — 2026-11-13
+
+### Fixes
+- **mobile**: en-tête de conversation lisible sur deux lignes
+
+## v0.63.0 — 2026-11-13
+
+### Features
+- **mobile**: descriptions sous les options des menus natifs (modes, fusion, estimation du coût)
+
 ## v0.62.0 — 2026-11-13
 
 ### Features

@@ -140,7 +140,7 @@ export default function Profile() {
   const appVersion = [Application.nativeApplicationVersion, Application.nativeBuildVersion && `(${Application.nativeBuildVersion})`].filter(Boolean).join(" ");
   const admin = me.role === "admin";
   const notifications = useNotificationStatus();
-  const subtitle = [me.title, admin ? t.admin : null].filter(Boolean).join(" · ");
+  const subtitle = [me.title, admin ? t.admin : null].filter(Boolean).join(", ");
   const unread = (show: boolean) =>
     show ? (
       <Chip size="sm" variant="primary" color="accent">

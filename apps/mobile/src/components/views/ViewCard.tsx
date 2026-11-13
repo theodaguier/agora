@@ -67,7 +67,7 @@ export function ViewCard(props: {
   };
 
   // One muted line under the title: what the view is (its subtitle, else its type) and how many rows it has.
-  const line = [view.subtitle || (view.title ? t.types[view.type] : null), count != null && count > 0 ? String(count) : null].filter(Boolean).join(" · ");
+  const line = [view.subtitle || (view.title ? t.types[view.type] : null), count != null && count > 0 ? String(count) : null].filter(Boolean).join(", ");
 
   return (
     <Card className={blockCard}>

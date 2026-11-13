@@ -1,4 +1,4 @@
-import { Alert } from "heroui-native";
+import { Typography } from "heroui-native";
 import { View } from "react-native";
 import { MoonIcon } from "@/components/icons";
 import { availabilityLabel, useAvailability } from "@/lib/availability";
@@ -19,7 +19,7 @@ const messages = defineMessages({
 export function AwayNotice({ people }: { people: { id: string; name: string }[] }) {
   if (!people.length) return null;
   return (
-    <View className="gap-2" accessibilityLiveRegion="polite">
+    <View className="gap-1 px-1" accessibilityLiveRegion="polite">
       {people.map((p) => (
         <AwayAlert key={p.id} person={p} />
       ))}
@@ -27,22 +27,23 @@ export function AwayNotice({ people }: { people: { id: string; name: string }[] 
   );
 }
 
-/** One alert per colleague: whether they're away is read per person (a hook), so each one decides to show. */
+/**
+ * One grey line per colleague, as the web's (no box over the composer): the moon, their first name,
+ * why in brackets, then that the message waits. Whether they're away is read per person (a hook).
+ */
 function AwayAlert({ person }: { person: { id: string; name: string } }) {
   const t = messages;
   const label = availabilityLabel(useAvailability(person.id));
   if (!label) return null;
   return (
-    <Alert className="items-center">
-      <Alert.Indicator>
-        <MoonIcon className="size-[18px] text-muted" />
-      </Alert.Indicator>
-      <Alert.Content>
-        <Alert.Title>
-          {person.name.split(" ")[0]} · {label}
-        </Alert.Title>
-        <Alert.Description>{t.later}</Alert.Description>
-      </Alert.Content>
-    </Alert>
+    <View className="flex-row items-start gap-2">
+      <MoonIcon size={16} className="mt-0.5 text-muted" />
+      <Typography type="body-sm" color="muted" className="flex-1">
+        <Typography type="body-sm" weight="medium">
+          {person.name.split(" ")[0]}
+        </Typography>{" "}
+        ({label}). {t.later}
+      </Typography>
+    </View>
   );
 }

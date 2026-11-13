@@ -30,10 +30,10 @@ const t = defineMessages({
     installingFor: (name?: string) => `Installing for ${name}…`,
     enablingPlugin: "Enabling the plugin…",
     installingPlugin: "Installing the plugin…",
-    mcpSubtitle: "MCP connector · installed for the whole instance",
-    registrySubtitle: (remote: boolean) => `MCP registry · ${remote ? "remote server" : "runs on the Hermes machine"}`,
-    skillSubtitle: (source: string) => `Skill · ${source}`,
-    pluginSubtitle: "Hermes plugin · loaded by the whole instance",
+    mcpSubtitle: "MCP connector, installed for the whole instance",
+    registrySubtitle: (remote: boolean) => `MCP registry, ${remote ? "remote server" : "runs on the Hermes machine"}`,
+    skillSubtitle: (source: string) => `Skill from ${source}`,
+    pluginSubtitle: "Hermes plugin, loaded by the whole instance",
     skillInstalled: "Skill installed.",
     added: "Added. Restart Hermes (banner above) so agents load it.",
     verdict: (verdict: string) =>
@@ -65,10 +65,10 @@ const t = defineMessages({
     installingFor: (name?: string) => `Installation pour ${name}…`,
     enablingPlugin: "Activation du plugin…",
     installingPlugin: "Installation du plugin…",
-    mcpSubtitle: "Connecteur MCP · installé pour toute l'instance",
-    registrySubtitle: (remote: boolean) => `Registre MCP · ${remote ? "serveur distant" : "exécuté sur la machine Hermes"}`,
-    skillSubtitle: (source: string) => `Skill · ${source}`,
-    pluginSubtitle: "Plugin Hermes · chargé par toute l'instance",
+    mcpSubtitle: "Connecteur MCP, installé pour toute l'instance",
+    registrySubtitle: (remote: boolean) => `Registre MCP, ${remote ? "serveur distant" : "exécuté sur la machine Hermes"}`,
+    skillSubtitle: (source: string) => `Skill de ${source}`,
+    pluginSubtitle: "Plugin Hermes, chargé par toute l'instance",
     skillInstalled: "Skill installé.",
     added: "Ajouté. Redémarre Hermes (bandeau ci-dessus) pour que les agents le chargent.",
     verdict: (verdict: string) =>
@@ -102,7 +102,8 @@ export default function AddScreen() {
   const item = openedItem(key);
   return (
     <>
-      <Stack.Screen options={{ title: item?.name ?? "" }} />
+      {/* Its name is the sheet's heading, under its tile: not repeated in the header. */}
+      <Stack.Screen options={{ title: "" }} />
       {/* Opened from the list only: after a reload, the item is gone. */}
       <AdminGate>{item ? <AddItem item={item} /> : <Redirect href={marketplaceHref} />}</AdminGate>
     </>

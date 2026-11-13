@@ -125,7 +125,7 @@ export default function Availability() {
                     key={a.id}
                     icon={CalendarClockIcon}
                     title={absenceMessages.kinds[a.kind]}
-                    description={[absenceDays(a), a.note].filter(Boolean).join(" · ")}
+                    description={[absenceDays(a), a.note].filter(Boolean).join(", ")}
                     onPress={() => router.push({ pathname: "/profile/absence", params: { id: a.id, ...(!self && { userId }) } })}
                   />
                 ))

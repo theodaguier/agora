@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { router, useLocalSearchParams } from "expo-router";
-import { Button, Card, Input, LinkButton, Spinner, Surface, Typography } from "heroui-native";
+import { router, Stack, useLocalSearchParams } from "expo-router";
+import { Button, Card, Input, LinkButton, Spinner, Surface, Typography, useToast } from "heroui-native";
 import { useState, type ReactNode } from "react";
 import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -13,6 +13,7 @@ import { PersonAvatar } from "@/components/conversation-avatar";
 import { EmptyState } from "@/components/empty-state";
 import { ArrowUpIcon, MailIcon, TerminalIcon } from "@/components/icons";
 import { Face, inboxMessages, useInboxItem } from "@/components/inbox-item";
+import { MenuButton } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { ModelLogo } from "@/components/model-logo";
 import { conversationTitle } from "@/components/participants";
@@ -54,7 +55,8 @@ function ItemView({ item }: { item: InboxItem }) {
   const me = useMe();
   const status = statusMessages;
   const mentionables = useMentionables(noAgents);
-  const { onTask, place, title, open } = useInboxItem(item);
+  const { onTask, place, title, open, setRead } = useInboxItem(item);
+  const { toast } = useToast();
   const { data: task } = useQuery({ ...userTasksQuery(me.id), enabled: onTask && !!item.task, select: (list) => list.find((x) => x.id === item.task?.id) });
   // A task's notification may not say where it came from; the task does.
   const conversationId = item.conversationId ?? task?.conversationId ?? null;
@@ -77,8 +79,30 @@ function ItemView({ item }: { item: InboxItem }) {
   const showConversation = onTask && !!convName && !!conversationId;
   const hasProperties = !!item.task || (!!task && task.assignees.length > 0) || (!!session && !!conversationId) || showConversation;
   const crumb = onTask ? t.tasks : place;
+  // The web's "…" of the opened item: where it was said, and read or unread.
+  const toggleRead = () => {
+    const read = !item.read;
+    setRead(read).then(
+      () => toast.show({ variant: "success", label: read ? t.markedRead : t.markedUnread }),
+      () => toast.show({ variant: "danger", label: t.markFailed }),
+    );
+  };
+  const opens = onTask || !!item.conversationId;
 
   return (
+    <>
+    <Stack.Toolbar placement="right">
+      <Stack.Toolbar.View>
+        <MenuButton
+          icon="ellipsis"
+          label={t.actions}
+          actions={[
+            opens && { label: onTask ? (item.task ? t.openTask : t.openTasks) : t.openConversation, icon: onTask ? "checklist" : "bubble.left", onPress: open },
+            { label: item.read ? t.markUnread : t.markRead, icon: item.read ? "envelope.badge" : "envelope.open", onPress: toggleRead },
+          ]}
+        />
+      </Stack.Toolbar.View>
+    </Stack.Toolbar>
     <KeyboardAwareScrollView
       bottomOffset={24}
       contentInsetAdjustmentBehavior="automatic"
@@ -161,8 +185,8 @@ function ItemView({ item }: { item: InboxItem }) {
             <Typography type="body-sm" color="muted">
               {t.created(item.kind === "task.assigned")}
             </Typography>
-            <Typography type="body-sm" className="text-subtle">
-              · {ageLabel(new Date(item.createdAt))}
+            <Typography type="body-sm" className="pl-1 text-subtle">
+              {ageLabel(new Date(item.createdAt))}
             </Typography>
           </View>
         )}
@@ -183,6 +207,7 @@ function ItemView({ item }: { item: InboxItem }) {
         {conversationId && <Reply conversationId={conversationId} mention={item.actor?.kind === "agent" ? item.actor.id : undefined} />}
       </View>
     </KeyboardAwareScrollView>
+    </>
   );
 }
 

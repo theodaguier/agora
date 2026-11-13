@@ -10,7 +10,7 @@ import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboar
 import { ScopedVariables } from "uniwind";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { ApprovalCard, ApprovalLog } from "@/components/approval-card";
+import { ApprovalCard } from "@/components/approval-card";
 import { FileCard, SentAttachments } from "@/components/attachments";
 import { DayDivider, FlatText, Post, ThreadEvent, ToolLine, TypingBubble, TypingLine, type PostHead } from "@/components/bubbles";
 import { ChoiceCard } from "@/components/choice-card";
@@ -24,6 +24,8 @@ import { conversationTitle, othersOf } from "@/components/participants";
 import { ConversationPanel, PinnedBar, usePanelLabels, usePins, type PanelKind } from "@/components/conversation-panels";
 import { ForwardDialog } from "@/components/forward-dialog";
 import { McpRequestCard } from "@/components/mcp-request-card";
+import { GitHubMergeCard, PullRequestLinks } from "@/components/github-merge-card";
+import { VaultRequestCard } from "@/components/vault-request-card";
 import { ChatMessage, MessageRow, PendingRow, useDeleteMessage } from "@/components/message-parts";
 import { QuestionsCard } from "@/components/questions-card";
 import { useMe } from "@/components/server-scope";
@@ -705,6 +707,9 @@ const ThreadMessage = memo(function ThreadMessage({
   const lastOfMine = fromMe && !(next && authorKey(next.author) === authorKey(m.author) && clockTime(entryTime(next)) === clockTime(at));
   const event = m.kind === "event" ? m.data?.event : undefined;
   const codeStarted = event?.type === "code.started" ? event : null;
+  /** A bot asking to use a login of the vault, or to merge a pull request: its card instead of the event line. */
+  const vaultRequest = event?.type === "vault.request" ? event : null;
+  const githubMerge = event?.type === "github.merge" ? event : null;
   if (codeStarted && sessionShown && !divider) return null;
   const row = (wide: boolean, children: ReactNode, onDelete?: () => void) => (
     <MessageRow
@@ -748,17 +753,18 @@ const ThreadMessage = memo(function ThreadMessage({
                 {clockTime(at)}
               </Typography>
             )}
+            <PullRequestLinks text={m.text} conversationId={conversationId} align="end" className="mt-1.5" />
           </View>
         ) : (
           <Post head={postHead} className={gap}>
             {row(true, chat)}
+            <PullRequestLinks text={m.text} conversationId={conversationId} />
           </Post>
         ))}
       {m.kind === "bot" && (
         <Post head={postHead} className={gap}>
           {/* What it used, before what it says: as while it works (the live reply starts with it). */}
-          {m.data?.tools && <ToolLine tools={m.data.tools} />}
-          {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
+          {(m.data?.tools || m.data?.approvals) && <ToolLine tools={m.data.tools ?? []} approvals={m.data.approvals} />}
           {(!!m.text || !!m.data?.codeSessions?.length) &&
             row(
               true,
@@ -793,6 +799,7 @@ const ThreadMessage = memo(function ThreadMessage({
             const files = (m.data?.attachments ?? []).filter((a) => !m.data?.previews?.some((p) => p.id === a.id));
             return files.length > 0 && <SentAttachments items={files} align="start" />;
           })()}
+          <PullRequestLinks text={m.text} conversationId={conversationId} />
           {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
           {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
           {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}
@@ -804,7 +811,19 @@ const ThreadMessage = memo(function ThreadMessage({
         </View>
       )}
       {event?.type === "bot.failed" && <FailureLine conversationId={conversationId} label={renderEvent(event, locale)} retry={last} />}
-      {m.kind === "event" && !codeStarted && event?.type !== "bot.failed" && <ThreadEvent label={event ? renderEvent(event, locale) : m.text} />}
+      {vaultRequest && (
+        <View className="mt-3 pl-7">
+          <VaultRequestCard id={vaultRequest.requestId} />
+        </View>
+      )}
+      {githubMerge && (
+        <View className="mt-3 pl-7">
+          <GitHubMergeCard id={githubMerge.requestId} bot={githubMerge.bot} repo={githubMerge.repo} number={githubMerge.number} />
+        </View>
+      )}
+      {m.kind === "event" && !codeStarted && !vaultRequest && !githubMerge && event?.type !== "bot.failed" && (
+        <ThreadEvent label={event ? renderEvent(event, locale) : m.text} conversationId={event?.type === "relay.group" ? event.conversationId : undefined} />
+      )}
     </View>
   );
 });

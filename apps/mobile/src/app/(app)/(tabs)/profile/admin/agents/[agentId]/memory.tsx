@@ -20,9 +20,9 @@ const t = defineMessages({
     memoryIntro:
       "What the agent has remembered about itself over conversations. One entry per block, separated by a “§” line. You can correct or erase them.",
     notes: "Agent notes",
-    notesHint: "Facts, conventions, things learned (MEMORY.md).",
+    notesHint: "Facts, conventions, things learned.",
     users: "User profiles",
-    usersHint: "What it knows about employees, shared by all (USER.md).",
+    usersHint: "What it knows about employees, shared by all.",
   },
   fr: {
     title: "Mémoire",
@@ -31,9 +31,9 @@ const t = defineMessages({
     memoryIntro:
       "Ce que l'agent a retenu de lui-même au fil des conversations. Une entrée par bloc, séparées par une ligne « § ». Tu peux corriger ou effacer.",
     notes: "Notes de l'agent",
-    notesHint: "Faits, conventions, choses apprises (MEMORY.md).",
+    notesHint: "Faits, conventions, choses apprises.",
     users: "Profils des utilisateurs",
-    usersHint: "Ce qu'il sait des salariés, commun à tous (USER.md).",
+    usersHint: "Ce qu'il sait des salariés, commun à tous.",
   },
 });
 

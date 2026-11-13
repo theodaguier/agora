@@ -1,3 +1,4 @@
+import { modelName } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -21,7 +22,7 @@ export default function UsagePrice() {
   const row = matches.find((r) => r.source === "admin") ?? matches[0];
   return (
     <>
-      <Stack.Screen options={{ title: model ?? "" }} />
+      <Stack.Screen options={{ title: model ? modelName(model) : "" }} />
       <AdminGate>
         {row ? (
           <PriceForm key={`${row.provider}::${row.model}::${row.source}`} row={row} />
@@ -76,7 +77,7 @@ function PriceForm({ row }: { row: ModelPriceRow }) {
         <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={save.isPending ? t.saving : t.save} disabled={!dirty || !valid || save.isPending} variant="prominent" onPress={withTap(() => save.mutate())} />
       </Stack.Toolbar>
       <SettingsScroll>
-        <Intro>{`${providerName(row.provider)} · ${t.priceSource[row.source]}\n${t.pricesIntro}`}</Intro>
+        <Intro>{`${providerName(row.provider)}, ${t.priceSource[row.source].toLowerCase()}\n${t.pricesIntro}`}</Intro>
         <Section footer={row.source === "engine" ? t.engineNote : undefined}>
           {PRICE_FIELDS.map((k) => (
             <FieldRow key={k} label={t[k]} invalid={invalid(k)}>

@@ -11,7 +11,6 @@ import { defineMessages, tr } from "@/lib/i18n";
 import { usePeople } from "@/lib/people";
 import { parseTags, splitTags, suggestPeople, tagAtCaret, useCreateTasks, type Candidate, type TaskPriority } from "@/lib/tasks";
 import { MentionFieldText } from "@/components/mention";
-import { CheckIcon, CloseIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 import { useAdminToast } from "@/components/admin/ui";

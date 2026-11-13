@@ -14,11 +14,10 @@ import type { ConversationDetail } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /*
- * The title of the conversation's native header, as iOS draws a title with its subtitle: the face and
- * the name, centred; under them, what they are doing in its colour, a group's members as a small pile.
- * Held to the room between the back button and the two glass buttons. A tap opens the info screen (members of a group, the
- * colleague's profile, the bot's page). The code sessions started here follow as their count in grey,
- * which opens their list.
+ * The title of the conversation's native header (web: the 46 px header of screens/Conversation.tsx,
+ * Figma « Conversation · Dev »), on two lines for a phone: the face and the name, then in small type
+ * what they are doing in its colour (a group's members as a small pile) and the count of the code
+ * sessions started here, which opens their list. A tap on the name opens the info screen.
  */
 
 const messages = defineMessages({
@@ -51,6 +50,9 @@ export function HeaderTitle({
   const other = conv && !group ? othersOf(conv, me)[0] : undefined;
   const everyone = conv && group ? othersOf(conv, "") : [];
   const href = conv ? infoHref(conv, me) : null;
+  const sessions = conv && onSessions ? <SessionsCount conversationId={conv.id} onPress={onSessions} /> : null;
+  // A phone's header is too narrow for the web's single line: the name on top, what is going on
+  // under it in small type, both centred, as iOS stacks a title and its subtitle.
   const width = useHeaderTitleWidth(2);
   return (
     <View style={{ maxWidth: width }} className="items-center">
@@ -59,24 +61,16 @@ export function HeaderTitle({
         onPress={withTap(() => href && router.push(href))}
         accessibilityRole="button"
         accessibilityLabel={label}
-        className="max-w-full flex-row items-center gap-1.5"
+        className="min-w-0 max-w-full flex-row items-center gap-1.5"
       >
-        {/* A group's members are the pile under its name: no tile repeating them. */}
         {conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-5" />}
         <Typography type="body-sm" weight="semibold" numberOfLines={1} className="shrink">
           {title}
         </Typography>
       </PressableFeedback>
-      <View className="max-w-full flex-row items-center gap-3">
-        {waiting ? (
-          <Typography type="body-xs" numberOfLines={1} className="shrink text-warning">
-            {t.waitingYou}
-          </Typography>
-        ) : (
-          other && <HeaderStatus p={other} />
-        )}
+      <View className="max-w-full flex-row items-center gap-2">
         {everyone.length > 0 && (
-          <View className="flex-row items-center">
+          <PressableFeedback isDisabled={!href} onPress={withTap(() => href && router.push(href))} accessibilityElementsHidden className="flex-row items-center">
             {everyone.slice(0, FACEPILE).map((p, i) => (
               <View key={p.kind === "agent" ? `a:${p.agent.id}` : `u:${p.person.id}`} className={cn(i > 0 && "-ml-1")}>
                 <ParticipantAvatar p={p} size={14} />
@@ -87,9 +81,16 @@ export function HeaderTitle({
                 +{everyone.length - FACEPILE}
               </Typography>
             )}
-          </View>
+          </PressableFeedback>
         )}
-        {conv && onSessions && <SessionsCount conversationId={conv.id} onPress={onSessions} />}
+        {waiting ? (
+          <Typography type="body-xs" numberOfLines={1} className="shrink text-warning">
+            {t.waitingYou}
+          </Typography>
+        ) : (
+          other && <HeaderStatus p={other} />
+        )}
+        {sessions}
       </View>
     </View>
   );
@@ -114,7 +115,7 @@ function SessionsCount({ conversationId, onPress }: { conversationId: string; on
   const working = sessions.some((s) => s.status === "running");
   const count = t.sessionsCount(sessions.length);
   return (
-    <PressableFeedback onPress={withTap(onPress)} accessibilityRole="button" accessibilityLabel={working ? t.sessionsWorking : t.sessions} className="shrink-0">
+    <PressableFeedback onPress={withTap(onPress)} accessibilityRole="button" accessibilityLabel={working ? t.sessionsWorking : t.sessions} className="shrink">
       {working ? (
         <Shimmer type="body-xs">{count}</Shimmer>
       ) : (

@@ -1,12 +1,13 @@
-import { conversations } from "@agora/core/i18n";
+import { common, conversations } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import { Skeleton } from "heroui-native";
+import { Skeleton, Typography } from "heroui-native";
 import { useMemo, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { TaskStatusIcon } from "@/components/code-session-marks";
 import { EmptyState } from "@/components/empty-state";
 import { headerIcon } from "@/components/header-button";
+import { WarningIcon } from "@/components/icons";
 import { ListBand } from "@/components/list-band";
 import { MenuButton } from "@/components/menus";
 import { useMe } from "@/components/server-scope";
@@ -19,7 +20,8 @@ import { newTaskHref, userTasksQuery, type TaskStatus } from "@/lib/tasks";
 /*
  * apps/web/src/screens/Tasks.tsx + TaskList.tsx `table` (Figma « Mes tâches »): the tasks given to you
  * (the ones you gave others are theirs), in groups as Linear's issues: in progress, to do, done. Each
- * group a band (its mark, its name, its count in grey), then its 40 px lines. « Affichage » hides the
+ * group a band (its mark, its name, its count in grey), then its 40 px lines. The web's « 3 ouvertes »
+ * beside the title sits under it here, as iOS stacks a title and its subtitle. « Affichage » hides the
  * done ones; « + » adds a task.
  */
 
@@ -30,6 +32,9 @@ const messages = defineMessages({
     showDone: "Show done tasks",
     noTasksTitle: "Nothing to do",
     noTasks: "Tasks assigned to you, by a colleague or an agent, show up here.",
+    open: (n: number) => `${n} open`,
+    errorTitle: "Tasks unavailable",
+    error: "Tasks can't be reached right now.",
     group: { todo: "To do", in_progress: "In progress", done: "Done" } as Record<TaskStatus, string>,
   },
   fr: {
@@ -38,6 +43,9 @@ const messages = defineMessages({
     showDone: "Afficher les terminées",
     noTasksTitle: "Rien à faire",
     noTasks: "Les tâches qu'un collègue ou un agent t'assigne arrivent ici.",
+    open: (n: number) => `${n} ouverte${n > 1 ? "s" : ""}`,
+    errorTitle: "Tâches indisponibles",
+    error: "Les tâches sont injoignables pour le moment.",
     group: { todo: "À faire", in_progress: "En cours", done: "Terminées" },
   },
 });
@@ -48,18 +56,20 @@ export default function TasksScreen() {
   const me = useMe();
   const router = useRouter();
   const [showDone, setShowDone] = useState(true);
-  const { data: tasks, isPending, refetch } = useQuery(userTasksQuery(me.id));
+  const { data: tasks, isPending, isError, refetch } = useQuery(userTasksQuery(me.id));
   const pull = usePullToRefresh(refetch);
   const people = usePeople();
   const mentionables = useMemo(() => personMentionables(people), [people]);
 
   // My tasks: only the ones given to me.
   const mine = (tasks ?? []).filter((x) => x.assignees.some((a) => a.id === me.id));
+  const open = mine.filter((x) => x.status !== "done").length;
+  const title = tr(conversations).tasks;
   const groups = GROUPS.map((status) => ({ status, items: status === "done" && !showDone ? [] : mine.filter((x) => x.status === status) })).filter((g) => g.items.length);
 
   return (
     <>
-      <Stack.Screen.Title>{tr(conversations).tasks}</Stack.Screen.Title>
+      <Stack.Screen options={{ title, headerTitle: () => <HeaderTitle title={title} subtitle={open > 0 ? messages.open(open) : undefined} /> }} />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.View>
           <MenuButton icon="slider.horizontal.3" label={messages.display} actions={[{ label: messages.showDone, checked: showDone, onPress: () => setShowDone((v) => !v) }]} />
@@ -78,6 +88,8 @@ export default function TasksScreen() {
               <Skeleton key={i} className="h-10 w-full rounded-lg" />
             ))}
           </View>
+        ) : isError ? (
+          <EmptyState icon={WarningIcon} title={messages.errorTitle} description={messages.error} action={{ label: tr(common).retry, onPress: () => void refetch() }} className="mt-8" />
         ) : !groups.length ? (
           <EmptyState mascot="green" title={messages.noTasksTitle} description={messages.noTasks} />
         ) : (
@@ -92,5 +104,21 @@ export default function TasksScreen() {
         )}
       </ScrollView>
     </>
+  );
+}
+
+/** The title, how many are still open in small grey type under it, both centred. */
+function HeaderTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <View className="max-w-60 items-center">
+      <Typography weight="semibold" numberOfLines={1}>
+        {title}
+      </Typography>
+      {!!subtitle && (
+        <Typography type="body-xs" color="muted" numberOfLines={1} style={{ fontVariant: ["tabular-nums"] }}>
+          {subtitle}
+        </Typography>
+      )}
+    </View>
   );
 }

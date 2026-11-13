@@ -3,10 +3,10 @@ import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { Stack, useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { Button, Description, FieldError, Input, ListGroup, TextArea } from "heroui-native";
+import { Button, Description, FieldError, Input, ListGroup, TextArea, Typography } from "heroui-native";
 import { useState } from "react";
 import { AdminGate, ErrorAlert, FieldRow, Intro, LoadingRows, Section, SettingsRow, SettingsScroll, useAdminToast } from "@/components/admin/ui";
-import { machineHref, machinesMessages, useTestMachine } from "@/components/admin/machines";
+import { machineHref, machinesMessages, probeState, sshStatusQuery, useTestMachine } from "@/components/admin/machines";
 import { EmptyState } from "@/components/empty-state";
 import { headerIcon } from "@/components/header-button";
 import { ServerIcon } from "@/components/icons";
@@ -107,7 +107,8 @@ function MachineForm({ host }: { host?: SshHostDto }) {
       <SettingsScroll>
         <Intro>{t.dialogText}</Intro>
 
-        {host && <PublicKey host={host} />}
+        {/* Not yet reached: putting its key on the machine is the next step, first. */}
+        {host && !host.hostKeyFingerprint && <PublicKey host={host} />}
 
         <Section>
           <FieldRow label={t.name} required invalid={nameError}>
@@ -141,40 +142,49 @@ function MachineForm({ host }: { host?: SshHostDto }) {
 
         <AgentTargets legend={t.bots} hint={t.botsHelp} value={allowed} onChange={(ids) => setExcluded(agents.filter((a) => !ids.includes(a.id)).map((a) => a.id))} />
 
+        {host?.hostKeyFingerprint && <PublicKey host={host} />}
         {host && <UsageLog host={host} />}
       </SettingsScroll>
     </>
   );
 }
 
-/** The key to add on the machine, and the test that pins its fingerprint. */
+/** The command that puts its key on the machine, and the test that pins the machine's identity (the web's PublicKey). */
 function PublicKey({ host }: { host: SshHostDto }) {
   const t = machinesMessages;
   const toast = useAdminToast();
   const test = useTestMachine();
-  const copy = (text: string) =>
-    withTap(async () => {
-      await Clipboard.setStringAsync(text);
-      haptic.success();
-      toast.info(t.copied);
-    });
+  const { data: status } = useQuery(sshStatusQuery);
+  const command = sshAuthorizeCommand(host.publicKey);
+  const live = host.hostKeyFingerprint ? probeState(status?.[host.id]) : undefined;
   return (
-    <Section footer={t.keyHelp}>
-      <SettingsRow label={t.keyTitle} hint={host.publicKey}>
-        <Button size="sm" variant="secondary" onPress={copy(host.publicKey)}>
+    <Section title={t.keyTitle} footer={t.keyHelp}>
+      <SettingsRow label={t.command} hint={command}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onPress={withTap(async () => {
+            await Clipboard.setStringAsync(command);
+            haptic.success();
+            toast.info(t.copied);
+          })}
+        >
           {t.copy}
         </Button>
       </SettingsRow>
-      <SettingsRow label={t.command} hint={sshAuthorizeCommand(host.publicKey)}>
-        <Button size="sm" variant="secondary" onPress={copy(sshAuthorizeCommand(host.publicKey))}>
-          {t.copy}
-        </Button>
-      </SettingsRow>
-      <SettingsRow label={host.hostKeyFingerprint ? t.verified : t.untested} hint={host.hostKeyFingerprint}>
+      <ListGroup.Item disabled>
+        <ListGroup.ItemContent>
+          <ListGroup.ItemTitle className={host.hostKeyFingerprint ? "text-success" : "text-warning"}>{host.hostKeyFingerprint ? t.connected : t.untested}</ListGroup.ItemTitle>
+          {live && (
+            <ListGroup.ItemDescription numberOfLines={2} className={live.className}>
+              {[live.label, live.detail].filter(Boolean).join(", ")}
+            </ListGroup.ItemDescription>
+          )}
+        </ListGroup.ItemContent>
         <Button size="sm" variant="outline" isDisabled={test.isPending} onPress={withTap(() => test.mutate(host.id))}>
           {test.isPending ? t.testing : t.test}
         </Button>
-      </SettingsRow>
+      </ListGroup.Item>
     </Section>
   );
 }
@@ -185,16 +195,24 @@ function UsageLog({ host }: { host: SshHostDto }) {
   if (isPending) return <LoadingRows rows={2} avatar={false} />;
   return (
     <Section title={t.log} footer={entries?.length ? undefined : t.logEmpty}>
-      {entries?.map((e) => (
-        <ListGroup.Item key={e.id} disabled>
-          <ListGroup.ItemContent>
-            <ListGroup.ItemTitle numberOfLines={1}>{e.command ?? t.session}</ListGroup.ItemTitle>
-            <ListGroup.ItemDescription numberOfLines={1}>
-              {[e.agentName, e.userName, ageLabel(new Date(e.at)), e.exitCode !== null && e.exitCode !== 0 && `exit ${e.exitCode}`].filter(Boolean).join(" · ")}
-            </ListGroup.ItemDescription>
-          </ListGroup.ItemContent>
-        </ListGroup.Item>
-      ))}
+      {entries?.map((e) => {
+        const failed = e.exitCode !== null && e.exitCode !== 0;
+        return (
+          <ListGroup.Item key={e.id} disabled>
+            <ListGroup.ItemContent>
+              <ListGroup.ItemTitle numberOfLines={1} className={e.command ? "font-mono text-sm" : undefined}>
+                {e.command ?? t.session}
+              </ListGroup.ItemTitle>
+              <ListGroup.ItemDescription numberOfLines={1}>{[e.agentName, e.userName, ageLabel(new Date(e.at))].filter(Boolean).join(", ")}</ListGroup.ItemDescription>
+              {failed && (
+                <Typography.Paragraph type="body-sm" className="text-danger">
+                  {t.failed(e.exitCode!)}
+                </Typography.Paragraph>
+              )}
+            </ListGroup.ItemContent>
+          </ListGroup.Item>
+        );
+      })}
     </Section>
   );
 }

@@ -1,4 +1,4 @@
-import type { BotWebhookStatus, CodeSessionRef, ConversationEvent, IntegrationType, PreviewRef, ViewAction, ViewBlock } from "@agora/core";
+import type { CodeSessionRef, ConversationEvent, IntegrationType, PreviewRef, ViewAction, ViewBlock } from "@agora/core";
 import { defineMessages, getLocale, tr } from "@/i18n";
 
 const messages = defineMessages({
@@ -343,7 +343,7 @@ export type Toolset = {
 };
 
 /** A bot's trigger, without its address: only its creation returns that. */
-export type BotWebhook = { id: string; name: string; instructions: string; dedupeField: string | null; autoMerge: boolean; enabled: boolean; lastReceivedAt: string | null; lastStatus: BotWebhookStatus | null; owner: string };
+export type { BotWebhook } from "@agora/core";
 
 export type Skill = { name: string; description: string; category?: string; enabled: boolean; provenance?: string };
 

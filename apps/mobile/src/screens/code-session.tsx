@@ -344,17 +344,18 @@ function DetailsMenu({ conversationId, session, owner }: { conversationId: strin
   const t = tr(codeSessions);
   const set = useSetCodePriority();
   const u = session.usage;
-  const lines = [
+  type Line = { label: string; value: string; icon: string; note?: string };
+  const lines = ([
     { label: t.engine, value: CODE_ENGINE_NAMES[session.engine], icon: "terminal" },
     !owner && session.model ? { label: t.model, value: modelName(session.model), icon: "cpu" } : null,
     owner && session.account?.email ? { label: t.account, value: session.account.email, icon: "person" } : null,
-    u ? { label: t.usage, value: `${t.estimated(format.cost(u.costUsd))}, ${usageTime(u)}`, icon: "chart.bar" } : null,
-  ].filter((x) => x !== null);
+    u ? { label: t.usage, value: `${t.estimated(format.cost(u.costUsd))}, ${usageTime(u)}`, icon: "chart.bar", note: t.costNote } : null,
+  ] as (Line | null)[]).filter((x): x is Line => x !== null);
   const canSecrets = owner && !!session.repo;
   if (!lines.length && !owner) return null;
   const actions: MenuEntry[] = [
     // Read, not chosen: each line its label over its value.
-    ...lines.map((l): MenuEntry => ({ title: l.label, actions: [{ label: l.value, icon: l.icon, disabled: true, onPress: () => {} }] })),
+    ...lines.map((l): MenuEntry => ({ title: l.label, actions: [{ label: l.value, icon: l.icon, description: l.note, disabled: true, onPress: () => {} }] })),
     lines.length > 0 && owner && "divider",
     owner && { submenu: `${t.priority} : ${t.priorities[session.priority]}`, icon: PRIORITY_ICONS[session.priority], actions: priorityEntries(session, (priority) => set.mutate({ conversationId, id: session.id, priority })) },
     canSecrets && "divider",
@@ -1125,7 +1126,7 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
               actions={[
                 {
                   title: t.mode,
-                  actions: codeEngineModes(session.engine).map((m) => ({ label: t.modes[m], icon: MODE_ICONS[m], checked: m === session.mode, onPress: () => m !== session.mode && mode.mutate(m) })),
+                  actions: codeEngineModes(session.engine).map((m) => ({ label: t.modes[m], icon: MODE_ICONS[m], description: t.modeHelp[m], checked: m === session.mode, onPress: () => m !== session.mode && mode.mutate(m) })),
                 },
               ]}
             >

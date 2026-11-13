@@ -2,9 +2,9 @@ import { sshAddress, type SshHostDto } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useRouter, type Href } from "expo-router";
-import { ListGroup } from "heroui-native";
+import { ListGroup, Typography } from "heroui-native";
 import { AdminGate, ErrorAlert, Intro, LoadingRows, PressableRow, RowMenu, Section, SettingTile, SettingsScroll, useAdminToast } from "@/components/admin/ui";
-import { machineHref, machinesMessages, useTestMachine } from "@/components/admin/machines";
+import { machineHref, machinesMessages, probeState, sshStatusQuery, useTestMachine } from "@/components/admin/machines";
 import { confirmAction } from "@/components/confirm-action";
 import { EmptyState } from "@/components/empty-state";
 import { headerIcon } from "@/components/header-button";
@@ -54,16 +54,15 @@ function Machines() {
     onSettled: invalidate,
   });
   const test = useTestMachine();
+  const { data: status } = useQuery({ ...sshStatusQuery, enabled: !!hosts.data?.length });
 
-  const summary = (h: SshHostDto) =>
-    [
-      sshAddress(h),
-      h.hostKeyFingerprint ? t.verified : t.untested,
-      h.excludedAgentIds.length ? t.someBots(h.excludedAgentIds.length) : t.allBots,
-      h.lastUsedAt && t.usedAgo(ageLabel(new Date(h.lastUsedAt))),
-    ]
+  // The web's facts: its address, the bots left out, when it was last used.
+  const facts = (h: SshHostDto) =>
+    [sshAddress(h), h.excludedAgentIds.length ? t.someBots(h.excludedAgentIds.length) : null, h.lastUsedAt && t.usedAgo(ageLabel(new Date(h.lastUsedAt)))]
       .filter(Boolean)
-      .join(" · ");
+      .join(", ");
+  // Its live state once its key is in place; before that, the next step (amber: waiting on you).
+  const state = (h: SshHostDto) => (h.hostKeyFingerprint ? probeState(status?.[h.id]) : { label: t.untested, className: "text-warning" });
 
   return (
     <SettingsScroll onRefresh={hosts.refetch}>
@@ -104,7 +103,10 @@ function Machines() {
                 <SettingTile icon={ServerIcon} />
                 <ListGroup.ItemContent>
                   <ListGroup.ItemTitle numberOfLines={1}>{h.name}</ListGroup.ItemTitle>
-                  <ListGroup.ItemDescription numberOfLines={2}>{summary(h)}</ListGroup.ItemDescription>
+                  <Typography.Paragraph type="body-sm" numberOfLines={1} className={state(h).className}>
+                    {state(h).label}
+                  </Typography.Paragraph>
+                  <ListGroup.ItemDescription numberOfLines={1}>{facts(h)}</ListGroup.ItemDescription>
                 </ListGroup.ItemContent>
                 <ListGroup.ItemSuffix />
               </PressableRow>

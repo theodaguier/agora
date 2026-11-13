@@ -16,14 +16,14 @@ import { SearchIcon } from "@/components/icons";
 const t = defineMessages({
   en: {
     title: "Agents",
-    text: "Each agent is a Hermes profile with its own model, tools and skills.",
+    text: "Each agent has its own model, tools and skills.",
     newAgent: "New agent",
     search: "Search agents",
     noMatch: "No agent matches.",
   },
   fr: {
     title: "Agents",
-    text: "Chaque agent est un profil Hermes : son modèle, ses outils et ses skills lui sont propres.",
+    text: "Chaque agent a son propre modèle, ses outils et ses skills.",
     newAgent: "Nouvel agent",
     search: "Chercher un agent",
     noMatch: "Aucun agent ne correspond.",
@@ -48,7 +48,7 @@ export default function AgentsScreen() {
 function Agents() {
   const [q, setQ] = useState("");
   const agents = useQuery(adminAgentsQuery);
-  const list = (agents.data ?? []).filter((a) => `${a.name} ${a.hermesProfile}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const list = (agents.data ?? []).filter((a) => a.name.toLowerCase().includes(q.trim().toLowerCase()));
 
   return (
     <>
@@ -81,11 +81,10 @@ function AgentRow({ agent: a }: { agent: AdminAgent }) {
       <Link.Trigger>
         <PressableRow>
           <ListGroup.ItemPrefix>
-            <AgentAvatar agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }} size={40} />
+            <AgentAvatar agent={{ avatar: { shape: a.avatarShape, color: a.avatarColor } }} size={32} />
           </ListGroup.ItemPrefix>
           <ListGroup.ItemContent>
             <ListGroup.ItemTitle numberOfLines={1}>{a.name}</ListGroup.ItemTitle>
-            <ListGroup.ItemDescription numberOfLines={1}>{a.hermesProfile}</ListGroup.ItemDescription>
           </ListGroup.ItemContent>
           <ListGroup.ItemSuffix />
         </PressableRow>

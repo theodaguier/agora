@@ -28,6 +28,10 @@ export const inboxMessages = defineMessages({
     markFailed: "Couldn't update the inbox.",
     someone: "Someone",
     unread: "Unread",
+    actions: "Actions",
+    openConversation: "Open the conversation",
+    openTask: "Open the task",
+    openTasks: "Open my tasks",
     action: {
       mention: (who: string) => `${who} mentioned you`,
       reply: (who: string) => `${who} replied to you`,
@@ -67,6 +71,10 @@ export const inboxMessages = defineMessages({
     markFailed: "Mise à jour impossible.",
     someone: "Quelqu’un",
     unread: "Non lu",
+    actions: "Actions",
+    openConversation: "Ouvrir la conversation",
+    openTask: "Ouvrir la tâche",
+    openTasks: "Ouvrir les tâches",
     action: {
       mention: (who: string) => `${who} t’a mentionné`,
       reply: (who: string) => `${who} t’a répondu`,

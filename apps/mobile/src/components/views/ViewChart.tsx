@@ -150,7 +150,7 @@ function CartesianView({ view, dark }: { view: ChartView; dark: boolean }) {
             const v = s.values[shown];
             return v == null ? [] : [`${view.series.length > 1 ? `${s.name} ` : ""}${withUnit(exact.format(v), view.unit, v)}`];
           }),
-        ].join(" · ");
+        ].join(", ");
   const ticks = new Set([0, Math.floor((n - 1) / 2), n - 1]);
 
   return (
@@ -271,7 +271,7 @@ function PieView({ view, dark }: { view: ChartView; dark: boolean }) {
               {s.label}
             </Typography.Paragraph>
             <Typography.Paragraph type="body-sm" color="muted" className="tabular-nums">
-              {`${withUnit(exact.format(s.value), view.unit, s.value)} · ${percent.format(total ? s.value / total : 0)}`}
+              {`${withUnit(exact.format(s.value), view.unit, s.value)} (${percent.format(total ? s.value / total : 0)})`}
             </Typography.Paragraph>
           </View>
         ))}
@@ -300,7 +300,7 @@ function BarRows({ view, dark }: { view: ChartView; dark: boolean }) {
       {withUnit(exact.format(st.value), view.unit, st.value)}
       {funnel && j > 0 && (
         <Typography.Paragraph type={type} color="muted">
-          {` · ${t.ofStart(whole.format(st.ofFirst))}`}
+          {` (${t.ofStart(whole.format(st.ofFirst))})`}
         </Typography.Paragraph>
       )}
     </Typography.Paragraph>
