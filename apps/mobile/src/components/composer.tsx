@@ -256,7 +256,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             kind: "skill",
             agentId: bot.id,
             name: s.name,
-            description: `${bot.name} · ${s.description}`,
+            description: `${bot.name} – ${s.description}`,
             media: <AgentAvatar agent={bot} className="size-6" />,
           },
         ];

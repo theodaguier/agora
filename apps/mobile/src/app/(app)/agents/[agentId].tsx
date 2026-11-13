@@ -10,9 +10,10 @@ import { AgentOrb } from "@/components/agent-orb";
 import { headerIcon } from "@/components/header-button";
 import { TaskSection } from "@/components/people/task-section";
 import { useMe } from "@/components/server-scope";
+import { useStatus } from "@/components/conversation-avatar";
 import { agentHref } from "@/lib/agents-admin";
 import { defineMessages, locale, tr } from "@/lib/i18n";
-import { agentProfileQuery, useOpenDirect } from "@/lib/profile";
+import { agentProfileQuery, useOpenDirect, type AgentProfile } from "@/lib/profile";
 import { withTap } from "@/lib/haptics";
 import { dateFormat } from "@/lib/intl";
 import { EmptyState } from "@/components/empty-state";
@@ -29,7 +30,7 @@ const messages = defineMessages({
     unavailable: "Profile unavailable.",
     message: "Message",
     openFailed: "Couldn't open the conversation.",
-    botSince: (date: string) => `Bot · since ${date}`,
+    botSince: (date: string) => `Bot since ${date}`,
     botTasks: "Tasks it created",
     noBotTasks: "It hasn't created any tasks yet.",
     edit: "Edit",
@@ -38,7 +39,7 @@ const messages = defineMessages({
     unavailable: "Profil indisponible.",
     message: "Écrire",
     openFailed: "Impossible d'ouvrir la conversation.",
-    botSince: (date: string) => `Bot · depuis ${date}`,
+    botSince: (date: string) => `Bot depuis ${date}`,
     botTasks: "Tâches qu'il a créées",
     noBotTasks: "Il n'a encore créé aucune tâche.",
     edit: "Modifier",
@@ -84,7 +85,7 @@ export default function BotProfile() {
                     {agent.name}
                   </Typography.Heading>
                   <Typography type="body-sm" color="muted" numberOfLines={1}>
-                    {t.botSince(dateFormat(locale, { month: "long", year: "numeric" }).format(new Date(agent.createdAt)))}
+                    <BotSince agent={agent} />
                   </Typography>
                 </View>
                 <View className="flex-row flex-wrap gap-2">
@@ -129,4 +130,10 @@ export default function BotProfile() {
       </ScrollView>
     </>
   );
+}
+
+/** Since when the bot exists and, while it works, that it does (the web's BotHeader description). */
+function BotSince({ agent }: { agent: AgentProfile }) {
+  const status = useStatus({ kind: "agent", agent });
+  return <>{[messages.botSince(dateFormat(locale, { month: "long", year: "numeric" }).format(new Date(agent.createdAt))), status?.label].filter(Boolean).join(", ")}</>;
 }

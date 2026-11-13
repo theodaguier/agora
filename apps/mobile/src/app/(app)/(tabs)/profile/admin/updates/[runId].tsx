@@ -41,7 +41,7 @@ export default function RunScreen() {
                       {run.target === "hermes" ? "Hermes" : "Agora"} {run.from} → {run.to}
                     </ListGroup.ItemTitle>
                     <ListGroup.ItemDescription>
-                      {t.trigger[run.trigger]} · {time.format(new Date(run.startedAt))}
+                      {t.trigger[run.trigger]}, {time.format(new Date(run.startedAt))}
                     </ListGroup.ItemDescription>
                   </ListGroup.ItemContent>
                   <ListGroup.ItemSuffix>

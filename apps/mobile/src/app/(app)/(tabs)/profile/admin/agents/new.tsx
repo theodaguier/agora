@@ -41,7 +41,7 @@ const t = defineMessages({
     cancel: "Cancel",
     defaultModel: "Default model",
     personality: "Personality",
-    soulIntro: "The agent's identity, role and tone (the SOUL.md file of its Hermes profile). Leave empty to keep the default profile's.",
+    soulIntro: "The agent's identity, role and tone, written in its Hermes profile. Leave empty to keep the default profile's.",
     fromTemplate: "Start from the template",
   },
   fr: {
@@ -57,7 +57,7 @@ const t = defineMessages({
     cancel: "Annuler",
     defaultModel: "Modèle par défaut",
     personality: "Personnalité",
-    soulIntro: "Identité, rôle et ton de l'agent (fichier SOUL.md de son profil Hermes). Laisse vide pour garder celui du profil par défaut.",
+    soulIntro: "Identité, rôle et ton de l'agent, écrits dans son profil Hermes. Laisse vide pour garder celui du profil par défaut.",
     fromTemplate: "Partir du modèle",
   },
 });

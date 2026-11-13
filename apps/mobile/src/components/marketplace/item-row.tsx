@@ -16,12 +16,12 @@ const t = defineMessages({
   fr: { enabled: "Activé", added: "Ajouté" },
 });
 
-/** Tile of an item: a connector shows its integration type, a skill or plugin its initial. */
+/** Tile of an item: a connector shows its integration type, a skill or plugin its kind. */
 export function ItemTile({ item, size = "md" }: { item: Item; size?: "md" | "lg" }) {
   return item.kind === "mcp" || item.kind === "registry" ? (
     <IntegrationTile type={item.type ?? guessIntegrationType(item.name, item.description)} server={item.name} size={size} />
   ) : (
-    <InitialTile name={item.name} size={size} />
+    <InitialTile kind={item.kind === "plugin" ? "plugin" : "skill"} size={size} />
   );
 }
 

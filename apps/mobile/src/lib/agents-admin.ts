@@ -1,4 +1,4 @@
-import { AGENT_COLORS } from "@agora/core";
+import { AGENT_COLORS, type BotWebhook } from "@agora/core";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import type { Href } from "expo-router";
 import { useMe } from "@/components/server-scope";
@@ -46,7 +46,7 @@ export type AgentMcp = { name: string; url?: string; command?: string; instanceE
 export type AgentModelOptions = { provider: string; defaultModel: string; models: { id: string; reasoning: boolean }[] };
 
 /** Screens of the bots admin (routes under profile/admin/agents). */
-export type AgentSection = "profile" | "soul" | "model" | "tools" | "skills" | "memory" | "access";
+export type AgentSection = "profile" | "soul" | "model" | "tools" | "skills" | "triggers" | "memory" | "access";
 
 export const agentsHref = "/profile/admin/agents" as Href;
 export const newAgentHref = "/profile/admin/agents/new" as Href;
@@ -98,6 +98,14 @@ export const skillsQuery = (agentId: string) =>
 
 export const soulQuery = (agentId: string) =>
   queryOptions({ queryKey: ["hermes", "soul", agentId], queryFn: () => api<{ value: string }>(`/admin/hermes/agents/${agentId}/soul`) });
+
+/** The agent's triggers (apps/web/src/components/admin/AgentWebhooks.tsx). */
+export const agentTriggersQuery = (agentId: string) =>
+  queryOptions({ queryKey: ["agents", agentId, "webhooks"], queryFn: () => api<BotWebhook[]>(`/agents/${agentId}/webhooks`) });
+
+/** A trigger's form: an existing one, or "new". */
+export const agentTriggerHref = (agentId: string, triggerId = "new") =>
+  `/profile/admin/agents/${encodeURIComponent(agentId)}/triggers/${encodeURIComponent(triggerId)}` as Href;
 
 export const agentMemoryQuery = (agentId: string) =>
   queryOptions({

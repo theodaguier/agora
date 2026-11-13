@@ -1,6 +1,7 @@
 import { connectorName } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
-import { Separator, Spinner, Surface, Typography } from "heroui-native";
+import { router } from "expo-router";
+import { PressableFeedback, Separator, Spinner, Surface, Typography } from "heroui-native";
 import { useEffect, type ReactNode } from "react";
 import { View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
@@ -8,6 +9,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import { brandsQuery, toolServer } from "@/components/brand-logos";
 import { CheckIcon } from "@/components/icons";
 import { MessageText } from "@/components/message-text";
+import { withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
 import type { Mentionable } from "@/lib/mentions";
 import { cn } from "@/lib/utils";
@@ -30,6 +32,7 @@ const messages = defineMessages({
       send_message: "Message", mixture_of_agents: "Several models", skill: "Skill", thinking: "Thinking",
     } as Record<string, string>,
     typing: (names: string, n: number) => `${names} ${n > 1 ? "are" : "is"} typing…`,
+    denied: (n: number) => `${n} command${n > 1 ? "s" : ""} denied`,
   },
   fr: {
     using: "Utilise",
@@ -42,6 +45,7 @@ const messages = defineMessages({
       send_message: "Message", mixture_of_agents: "Plusieurs modèles", skill: "Compétence", thinking: "Réflexion",
     } as Record<string, string>,
     typing: (names: string, n: number) => `${names} ${n > 1 ? "écrivent" : "écrit"}…`,
+    denied: (n: number) => `${n} commande${n > 1 ? "s" : ""} refusée${n > 1 ? "s" : ""}`,
   },
 });
 
@@ -148,12 +152,24 @@ function useToolWords() {
 /**
  * Tools used by the agent during a reply (hermes.tool.progress events): one quiet line, « A utilisé
  * Recherche web, Lecture de page », a connector with its logo. Code sessions are told by their card.
+ * The commands it was allowed to run are that same Terminal, not a second line (web: ToolLine): only
+ * a denial is said out loud.
  */
-export function ToolLine({ tools, running }: { tools: { name: string; status: string }[]; running?: boolean }) {
+export function ToolLine({
+  tools,
+  approvals = [],
+  running,
+}: {
+  tools: { name: string; status: string }[];
+  approvals?: { command: string; choice: string }[];
+  running?: boolean;
+}) {
   const t = messages;
   const words = useToolWords();
   const seen = new Map<string, ReturnType<typeof words>>();
-  for (const tool of tools) {
+  const terminal = words("terminal");
+  const denied = approvals.filter((a) => a.choice === "deny").length;
+  for (const tool of [...tools, ...(approvals.length ? [{ name: "terminal", status: "" }] : [])]) {
     // Its reasoning isn't a tool it used.
     if (tool.name.startsWith("claude_code_") || tool.name === "code_session" || /^(thinking|réflexion)$/i.test(tool.name)) continue;
     const w = words(tool.name);
@@ -172,6 +188,7 @@ export function ToolLine({ tools, running }: { tools: { name: string; status: st
           {w.server && <BrandLogo server={w.server} fallback={null} className="size-3 rounded-[3px]" />}
           <Typography type="body-xs" color="muted">
             {w.label}
+            {w.key === terminal.key && denied > 0 && ` (${t.denied(denied)})`}
             {i < list.length - 1 && ","}
           </Typography>
         </View>
@@ -193,11 +210,24 @@ export function DayDivider({ label }: { label: string }) {
   );
 }
 
-/** What happened in the conversation (joined, renamed…): in the thread's flow on the left, in grey, no centred banner. */
-export function ThreadEvent({ label, className }: { label: string; className?: string }) {
-  return (
-    <Typography type="body-xs" className={cn("mt-3 pl-7 text-subtle", className)}>
+/**
+ * What happened in the conversation (joined, renamed…): in the thread's flow on the left, in grey, no
+ * centred banner. `conversationId`: the event points at another conversation (a relay), which it opens.
+ */
+export function ThreadEvent({ label, conversationId, className }: { label: string; conversationId?: string; className?: string }) {
+  const text = (
+    <Typography type="body-xs" className={cn("text-subtle", conversationId && "underline")}>
       {label}
     </Typography>
+  );
+  if (!conversationId) return <View className={cn("mt-3 pl-7", className)}>{text}</View>;
+  return (
+    <PressableFeedback
+      accessibilityRole="link"
+      onPress={withTap(() => router.push({ pathname: "/c/[conversationId]", params: { conversationId } }))}
+      className={cn("mt-3 self-start pl-7", className)}
+    >
+      {text}
+    </PressableFeedback>
   );
 }

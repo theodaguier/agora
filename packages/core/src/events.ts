@@ -1,6 +1,19 @@
 /** What became of a webhook's last call: a turn started, or why not. */
 export type BotWebhookStatus = "accepted" | "duplicate" | "rate_limited" | "no_access";
 
+/** An agent's trigger (Settings › Agents › Triggers), as GET /agents/:id/webhooks lists it. */
+export type BotWebhook = {
+  id: string;
+  name: string;
+  instructions: string;
+  dedupeField: string | null;
+  autoMerge: boolean;
+  enabled: boolean;
+  lastReceivedAt: string | null;
+  lastStatus: BotWebhookStatus | null;
+  owner: string;
+};
+
 /**
  * System events posted in a conversation ("Théo added Legal"). They are stored
  * with their parameters so every member reads them in their own language; the

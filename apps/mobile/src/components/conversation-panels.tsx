@@ -308,7 +308,7 @@ function search(list: Message[], query: string): Hit[] {
     const m = list[i]!;
     if (m.kind === "event") continue;
     const text = plain(m.text);
-    const files = (m.data?.attachments ?? []).map((a) => a.name).join(" · ");
+    const files = (m.data?.attachments ?? []).map((a) => a.name).join(", ");
     // Folding keeps one character per character for Latin text, so offsets still line up.
     let at = fold(text).indexOf(q);
     let shown = text;
@@ -457,7 +457,7 @@ function FilesPanel({ conversationId, onJump }: { conversationId: string; onJump
     items.length > 0 && (
       <View className="mb-4">
         <SectionTitle>
-          {title} · {t.files_(items.length)}
+          {title} ({t.files_(items.length)})
         </SectionTitle>
         <Rows>
           {items.map((e) => {
@@ -522,7 +522,7 @@ function FileItem({
             <ListGroup.ItemContent>
               <ListGroup.ItemTitle numberOfLines={1}>{file.name}</ListGroup.ItemTitle>
               <ListGroup.ItemDescription numberOfLines={1}>
-                {description ?? `${formatSize(file.size)} · ${message.author?.name ?? "?"} · ${dividerLabel(new Date(message.createdAt))}`}
+                {description ?? `${formatSize(file.size)}, ${message.author?.name ?? "?"}, ${dividerLabel(new Date(message.createdAt))}`}
               </ListGroup.ItemDescription>
             </ListGroup.ItemContent>
           </ListGroup.Item>

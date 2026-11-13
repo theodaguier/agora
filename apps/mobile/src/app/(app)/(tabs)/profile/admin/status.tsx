@@ -190,7 +190,7 @@ function StatusReport() {
                       <Accordion.Content>
                         <View className="items-start gap-3">
                           <Typography.Paragraph type="body-sm" color="muted" selectable>
-                            {[check.detail, check.state !== "off" && check.latencyMs !== undefined ? `${check.latencyMs} ms` : null].filter(Boolean).join(" · ") ||
+                            {[check.detail, check.state !== "off" && check.latencyMs !== undefined ? `${check.latencyMs} ms` : null].filter(Boolean).join(", ") ||
                               t.states[check.state]}
                           </Typography.Paragraph>
                           {!!check.restart && (

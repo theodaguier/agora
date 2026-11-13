@@ -12,7 +12,7 @@ import { Section } from "@/components/people/section";
 import { api, conversationPath } from "@/lib/api";
 import { defineMessages, tr } from "@/lib/i18n";
 import { agentsQuery, conversationQuery, conversationsQuery, usersQuery } from "@/lib/queries";
-import { CheckIcon, SearchIcon, UsersIcon } from "@/components/icons";
+import { SearchIcon, UsersIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 import { EmptyState } from "@/components/empty-state";

@@ -9,13 +9,11 @@ import { AgentAvatar } from "@/components/agent-avatar";
 import { confirmAction } from "@/components/confirm-action";
 import { PersonAvatar } from "@/components/conversation-avatar";
 import { useMe } from "@/components/server-scope";
-import { rowMessages, taskMeta } from "@/components/tasks/task-meta";
+import { rowMessages, taskFrom } from "@/components/tasks/task-meta";
 import { AssigneesRow, DueRow, PriorityRow, StatusRow } from "@/components/tasks/task-fields";
 import { defineMessages, tr } from "@/lib/i18n";
-import { isOverdue, taskQuery, useDeleteTask, useTaskPatch, userTasksQuery, useWorkingOn, type Task, type TaskPatch } from "@/lib/tasks";
-import { cn } from "@/lib/utils";
+import { taskQuery, useDeleteTask, useTaskPatch, userTasksQuery, useWorkingOn, type Task, type TaskPatch } from "@/lib/tasks";
 import { MentionFieldText } from "@/components/mention";
-import { CheckIcon, CloseIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 import { useAdminToast } from "@/components/admin/ui";
@@ -26,6 +24,7 @@ const messages = defineMessages({
   en: {
     task: "Task",
     title: "Task",
+    edit: "Edit task",
     titlePlaceholder: "What needs to be done",
     description: "Details",
     people: "Working on it",
@@ -37,6 +36,7 @@ const messages = defineMessages({
   fr: {
     task: "Tâche",
     title: "Tâche",
+    edit: "Modifier la tâche",
     titlePlaceholder: "Ce qu'il y a à faire",
     description: "Détails",
     people: "Sur la tâche",
@@ -105,8 +105,7 @@ function TaskForm({ task }: { task: Task }) {
   const dirty = Object.keys(changes).length > 0;
 
   const mine = task.assignees.find((a) => a.id === me.id);
-  const meta = taskMeta(task);
-  const late = task.status !== "done" && isOverdue(task.dueOn);
+  const from = taskFrom(task);
 
   const openConversation = (id: string) => {
     router.back();
@@ -115,7 +114,8 @@ function TaskForm({ task }: { task: Task }) {
 
   return (
     <>
-      <Stack.Screen.Title>{messages.task}</Stack.Screen.Title>
+      {/* As the web's dialog: « Modifier la tâche » for the one who wrote it, « Tâche » for the others. */}
+      <Stack.Screen.Title>{reword ? messages.edit : messages.task}</Stack.Screen.Title>
       <Stack.Toolbar placement="left">
         <Stack.Toolbar.Button icon={headerIcon.close} iconRenderingMode="template" accessibilityLabel={c.close} onPress={withTap(() => router.back())} />
       </Stack.Toolbar>
@@ -166,7 +166,7 @@ function TaskForm({ task }: { task: Task }) {
                   </ListGroup.ItemPrefix>
                   <ListGroup.ItemContent>
                     <ListGroup.ItemTitle>{a.id === me.id ? `${a.name} (${c.you})` : a.name}</ListGroup.ItemTitle>
-                    {a.current && <ListGroup.ItemDescription className="text-warning">{messages.now}</ListGroup.ItemDescription>}
+                    {a.current && <ListGroup.ItemDescription className="text-brand">{messages.now}</ListGroup.ItemDescription>}
                   </ListGroup.ItemContent>
                 </ListGroup.Item>
               </Fragment>
@@ -178,12 +178,12 @@ function TaskForm({ task }: { task: Task }) {
               </>
             )}
           </ListGroup>
-          {!!meta && (
+          {!!from && (
             <View className="flex-row items-center gap-1.5 px-4">
               {task.assignedBy?.kind === "agent" && <AgentAvatar agent={task.assignedBy} size={16} />}
               {task.assignedBy?.kind === "user" && <PersonAvatar person={task.assignedBy} size={16} />}
-              <Typography type="body-xs" color="muted" className={cn("flex-1", late && "text-danger")}>
-                {meta}
+              <Typography type="body-xs" color="muted" className="flex-1">
+                {from}
               </Typography>
             </View>
           )}

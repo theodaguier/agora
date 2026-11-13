@@ -548,3 +548,22 @@ export function mergeBlock(pr: CodePullRequest): MergeBlock | null {
   if (pr.mergeable === null) return "computing";
   return null;
 }
+
+/**
+ * The GitHub pull requests a text links to, once each, in order (three at most): shown as cards under
+ * the message. Looped with `exec`, not `matchAll`, which Hermes (the phone's engine) can't be trusted with.
+ */
+export function pullRequestLinks(text: string): { repo: string; number: number }[] {
+  const re = /https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)/gi;
+  const seen = new Set<string>();
+  const out: { repo: string; number: number }[] = [];
+  for (let m = re.exec(text); m && out.length < 3; m = re.exec(text)) {
+    const repo = `${m[1]}/${m[2]}`;
+    const number = Number(m[3]);
+    const key = `${repo.toLowerCase()}#${number}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ repo, number });
+  }
+  return out;
+}

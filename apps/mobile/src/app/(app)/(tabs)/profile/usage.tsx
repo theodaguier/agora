@@ -278,13 +278,13 @@ function Timeline({ report }: { report: UsageReport }) {
           }
           detail={(p) =>
             metric === "tokens"
-              ? KINDS.map((k) => `${kindLabel[k.key]} ${f.compact(p[k.key])}`).join(" · ")
+              ? KINDS.map((k) => `${kindLabel[k.key]} ${f.compact(p[k.key])}`).join(", ")
               : stacked
                 ? bots
                     .filter((a) => (p.costByAgent?.[a.id ?? ""] ?? 0) > 0)
                     .map((a) => `${botLabel(a)} ${f.cost(p.costByAgent?.[a.id ?? ""] ?? 0)}`)
-                    .join(" · ") || f.cost(p.cost)
-                : `${f.cost(p.cost)} · ${f.compact(p.tokens)} ${t.tokens.toLowerCase()}`
+                    .join(", ") || f.cost(p.cost)
+                : `${f.cost(p.cost)}, ${f.compact(p.tokens)} ${t.tokens.toLowerCase()}`
           }
         />
         {legend.length > 0 && (

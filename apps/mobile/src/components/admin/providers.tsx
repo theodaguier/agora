@@ -1,3 +1,4 @@
+import { modelName } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useRouter, type Href } from "expo-router";
@@ -19,8 +20,8 @@ export const providersMessages = defineMessages({
     noneText: "Agents can't reply until you add a provider.",
     defaultModel: "Default model",
     notChosen: "Not chosen: agents without a provider can't reply",
-    viaKey: (n: number) => (n === 1 ? "API key · 1 model" : `API key · ${n} models`),
-    viaServer: (n: number) => (n === 1 ? "Signed in on the server · 1 model" : `Signed in on the server · ${n} models`),
+    viaKey: (n: number) => (n === 1 ? "API key, 1 model" : `API key, ${n} models`),
+    viaServer: (n: number) => (n === 1 ? "Signed in on the server, 1 model" : `Signed in on the server, ${n} models`),
     add: "Add",
     replaceKey: "Replace key",
     remove: "Remove",
@@ -54,8 +55,8 @@ export const providersMessages = defineMessages({
     noneText: "Les agents ne peuvent pas répondre tant que tu n'as pas ajouté de fournisseur.",
     defaultModel: "Modèle par défaut",
     notChosen: "Pas choisi : les agents sans fournisseur ne peuvent pas répondre",
-    viaKey: (n: number) => `Clé API · ${n} modèle${n > 1 ? "s" : ""}`,
-    viaServer: (n: number) => `Connecté sur le serveur · ${n} modèle${n > 1 ? "s" : ""}`,
+    viaKey: (n: number) => `Clé API, ${n} modèle${n > 1 ? "s" : ""}`,
+    viaServer: (n: number) => `Connecté sur le serveur, ${n} modèle${n > 1 ? "s" : ""}`,
     add: "Ajouter",
     replaceKey: "Remplacer la clé",
     remove: "Retirer",
@@ -139,7 +140,7 @@ export function Providers() {
           <PressableRow onPress={() => router.push(defaultModelHref())}>
             <ListGroup.ItemContent>
               <ListGroup.ItemTitle>{t.defaultModel}</ListGroup.ItemTitle>
-              <ListGroup.ItemDescription numberOfLines={1}>{current ? `${providerName(current.slug)} · ${data.current.model}` : t.notChosen}</ListGroup.ItemDescription>
+              <ListGroup.ItemDescription numberOfLines={1}>{current ? `${providerName(current.slug)}, ${modelName(data.current.model)}` : t.notChosen}</ListGroup.ItemDescription>
             </ListGroup.ItemContent>
             <ListGroup.ItemSuffix />
           </PressableRow>

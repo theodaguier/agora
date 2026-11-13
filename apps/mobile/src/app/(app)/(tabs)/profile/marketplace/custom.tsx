@@ -251,7 +251,7 @@ function CustomConnector() {
             {title.trim() || t.title}
           </Typography.Heading>
           <Typography.Paragraph type="body-sm" color="muted">
-            {i.types[shownType]} · {t.subtitle}
+            {i.types[shownType]}, {t.subtitle}
           </Typography.Paragraph>
         </View>
       </View>

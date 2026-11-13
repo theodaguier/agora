@@ -208,7 +208,7 @@ export function EventList({ items }: { items: EventItem[] }) {
                     <ListGroup.ItemTitle>{e.title}</ListGroup.ItemTitle>
                     {!!(e.location || e.attendees?.length) && (
                       <ListGroup.ItemDescription numberOfLines={1}>
-                        {[e.location, e.attendees?.map(displayName).join(", ")].filter(Boolean).join(" · ")}
+                        {[e.location, e.attendees?.map(displayName).join(", ")].filter(Boolean).join(", ")}
                       </ListGroup.ItemDescription>
                     )}
                   </ListGroup.ItemContent>
@@ -234,7 +234,7 @@ export function ChatList({ items }: { items: ChatItem[] }) {
               {!!m.channel && (
                 <Typography color="muted" weight="normal">
                   {" "}
-                  · {m.channel}
+                  {m.channel}
                 </Typography>
               )}
             </ListGroup.ItemTitle>
@@ -259,7 +259,7 @@ export function TaskItems({ items }: { items: TaskItem[] }) {
             {!!(task.assignee || task.due) && (
               <ListGroup.ItemDescription numberOfLines={1}>
                 {task.assignee}
-                {!!task.assignee && !!task.due && " · "}
+                {!!task.assignee && !!task.due && ", "}
                 {!!task.due &&
                   (isPastDue(task.due) && statusTone(task.status) !== "success" ? (
                     <Typography type="body-sm" weight="medium" className="text-danger">
@@ -293,7 +293,7 @@ export function FileList({ items }: { items: FileItem[] }) {
                 {f.name}
               </ListGroup.ItemTitle>
             </ListGroup.ItemContent>
-            <Meta>{[f.size != null && formatSize(f.size), f.modified && shortDate(f.modified)].filter(Boolean).join(" · ")}</Meta>
+            <Meta>{[f.size != null && formatSize(f.size), f.modified && shortDate(f.modified)].filter(Boolean).join(", ")}</Meta>
           </Row>
         );
       }}
@@ -313,13 +313,13 @@ export function ContactList({ items }: { items: ContactItem[] }) {
               {!!p.company && (
                 <Typography color="muted" weight="normal">
                   {" "}
-                  · {p.company}
+                  {p.company}
                 </Typography>
               )}
             </ListGroup.ItemTitle>
             {!!(p.email || p.phone) && (
               <ListGroup.ItemDescription numberOfLines={1}>
-                {[p.email, p.phone].filter(Boolean).join(" · ")}
+                {[p.email, p.phone].filter(Boolean).join(", ")}
               </ListGroup.ItemDescription>
             )}
           </ListGroup.ItemContent>
@@ -338,7 +338,7 @@ export function FinanceList({ items }: { items: FinanceItem[] }) {
             <ListGroup.ItemTitle>{f.label}</ListGroup.ItemTitle>
             {!!(f.counterparty || f.date) && (
               <ListGroup.ItemDescription numberOfLines={1}>
-                {[f.counterparty, f.date && shortDate(f.date)].filter(Boolean).join(" · ")}
+                {[f.counterparty, f.date && shortDate(f.date)].filter(Boolean).join(", ")}
               </ListGroup.ItemDescription>
             )}
           </ListGroup.ItemContent>
@@ -370,7 +370,7 @@ export function CodeList({ items }: { items: CodeItem[] }) {
             </ListGroup.ItemTitle>
             {!!(c.repo || c.author) && (
               <ListGroup.ItemDescription numberOfLines={1}>
-                {[c.repo, c.author].filter(Boolean).join(" · ")}
+                {[c.repo?.split("/").pop(), c.author].filter(Boolean).join(", ")}
               </ListGroup.ItemDescription>
             )}
           </ListGroup.ItemContent>

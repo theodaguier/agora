@@ -12,12 +12,12 @@ import type { Task, TaskStatus } from "@/lib/types";
 
 const messages = defineMessages({
   en: {
-    done: (n: number) => `Done · ${n}`,
+    done: (n: number) => `Done (${n})`,
     status: { todo: "To do", in_progress: "In progress", done: "Done" } as Record<TaskStatus, string>,
     now: "Working on it now",
   },
   fr: {
-    done: (n: number) => `Terminées · ${n}`,
+    done: (n: number) => `Terminées (${n})`,
     status: { todo: "À faire", in_progress: "En cours", done: "Terminée" },
     now: "En ce moment",
   },

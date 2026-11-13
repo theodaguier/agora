@@ -1,8 +1,9 @@
 import * as Haptics from "expo-haptics";
 import { common } from "@agora/core/i18n";
 import { Button, ListGroup, Select, Separator, Switch } from "heroui-native";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
+import { PriorityMark, TaskStatusIcon } from "@/components/code-session-marks";
 import { PersonAvatar } from "@/components/conversation-avatar";
 import { DayPicker } from "@/components/profile/native-pickers";
 import { useMe } from "@/components/server-scope";
@@ -23,7 +24,8 @@ const messages = defineMessages({
 });
 
 /**
- * A HeroUI Select listing `options`, its trigger a ghost button showing the current value. Dialog
+ * A HeroUI Select listing `options`, its trigger a ghost button showing the current value after its
+ * mark (the state's ring, the priority's bars, as the web's pickers draw them). Dialog
  * presentation: the task sheets are native form sheets, where a popover would be shifted.
  */
 function OptionSelect<T extends string>({
@@ -32,12 +34,14 @@ function OptionSelect<T extends string>({
   onChange,
   disabled,
   label,
+  mark,
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
   disabled?: boolean;
   label: string;
+  mark?: ReactNode;
 }) {
   const selected = options.find((o) => o.value === value);
   return (
@@ -54,6 +58,7 @@ function OptionSelect<T extends string>({
     >
       <Select.Trigger variant="unstyled" asChild>
         <Button size="sm" variant="ghost" isDisabled={disabled} accessibilityLabel={label}>
+          {mark}
           <Select.Value placeholder={label} />
           <Select.TriggerIndicator />
         </Button>
@@ -80,6 +85,7 @@ export function StatusRow({ value, onChange, disabled }: { value: TaskStatus; on
       <ListGroup.ItemSuffix>
         <OptionSelect
           label={statusMessages.status}
+          mark={<TaskStatusIcon status={value} />}
           value={value}
           disabled={disabled}
           onChange={onChange}
@@ -99,6 +105,7 @@ export function PriorityRow({ value, onChange, disabled }: { value: TaskPriority
       <ListGroup.ItemSuffix>
         <OptionSelect
           label={priorityMessages.priority}
+          mark={<PriorityMark priority={value} />}
           value={value}
           disabled={disabled}
           onChange={onChange}

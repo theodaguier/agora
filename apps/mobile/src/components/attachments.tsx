@@ -262,7 +262,7 @@ export function FileCard({ a, className }: { a: Shown; className?: string }) {
             <Card.Title numberOfLines={1} className="text-sm">
               {a.name}
             </Card.Title>
-            <Card.Description className="text-footnote">{[extension(a.name), formatSize(a.size)].filter(Boolean).join(" · ")}</Card.Description>
+            <Card.Description className="text-footnote">{[extension(a.name), formatSize(a.size)].filter(Boolean).join(", ")}</Card.Description>
           </View>
         </Card.Body>
       </Card>
