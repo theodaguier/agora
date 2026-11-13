@@ -7,6 +7,7 @@ import { ConversationAvatar, ParticipantAvatar, useStatus } from "@/components/c
 import { infoHref } from "@/components/conversation/info-href";
 import { othersOf, type Participant } from "@/components/participants";
 import { Shimmer } from "@/components/shimmer";
+import { useHeaderTitleWidth } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
 import type { ConversationDetail } from "@/lib/types";
@@ -52,8 +53,9 @@ export function HeaderTitle({
   const sessions = conv && onSessions ? <SessionsCount conversationId={conv.id} onPress={onSessions} /> : null;
   // A phone's header is too narrow for the web's single line: the name on top, what is going on
   // under it in small type, both centred, as iOS stacks a title and its subtitle.
+  const width = useHeaderTitleWidth(2);
   return (
-    <View className="max-w-60 items-center">
+    <View style={{ maxWidth: width }} className="items-center">
       <PressableFeedback
         isDisabled={!href}
         onPress={withTap(() => href && router.push(href))}
@@ -62,7 +64,7 @@ export function HeaderTitle({
         className="min-w-0 max-w-full flex-row items-center gap-1.5"
       >
         {conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-5" />}
-        <Typography weight="semibold" numberOfLines={1} className="shrink">
+        <Typography type="body-sm" weight="semibold" numberOfLines={1} className="shrink">
           {title}
         </Typography>
       </PressableFeedback>
