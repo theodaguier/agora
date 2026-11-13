@@ -766,7 +766,7 @@ function CodeSessionTabs({
   );
 }
 
-/** A session's tab: its engine's logo, its title (state and priority are in the pane); a blue dot when an answer waits to be read. */
+/** A session's tab: its state (coloured, as in every list of sessions), its title; a blue dot when an answer waits to be read. */
 function SessionTab({ id, session, active, shortcut, onSelect, onClose }: { id: string; session?: CodeSession; active: boolean; shortcut?: Shortcut; onSelect: () => void; onClose: () => void }) {
   const t = useT(messages);
   const c = useT(common);
@@ -778,7 +778,7 @@ function SessionTab({ id, session, active, shortcut, onSelect, onClose }: { id: 
       title={title}
       icon={
         session ? (
-          <ModelLogo provider={session.engine} />
+          <StatusIcon session={session} />
         ) : (
           <CodeIcon />
         )
