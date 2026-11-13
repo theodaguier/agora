@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.65.0 — 2026-11-13
+
+### Features
+- **web**: la décision d'une session de code au bout de son flux
+
+### Fixes
+- **mobile**: en-têtes de conversation et de session bornés entre les boutons
+
 ## v0.64.0 — 2026-11-13
 
 ### Features
