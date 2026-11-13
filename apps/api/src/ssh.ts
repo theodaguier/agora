@@ -1,7 +1,7 @@
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { SSH_NAME, type SshHostDto, type SshLogEntry, type SshTestResult } from "@agora/core";
+import { SSH_NAME, type SshHostDto, type SshLogEntry, type SshProbe, type SshTestResult } from "@agora/core";
 import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "./db";
@@ -457,6 +457,65 @@ function explain(out: Out) {
   if (/Connection refused/i.test(err)) return "Connection refused on this port.";
   if (/timed out/i.test(err)) return "The connection timed out.";
   return err.trim().split("\n").pop() || `ssh exited with ${out.code}`;
+}
+
+/** Opens a TCP connection to the server and reads its SSH banner (`SshProbe`); never authenticates. */
+export async function probe(host: string, port: number, timeoutMs = 5000): Promise<SshProbe> {
+  if (!HOST.test(host) || !Number.isInteger(port) || port < 1 || port > 65535) return { online: false, error: "Invalid address." };
+  const start = performance.now();
+  return new Promise<SshProbe>((resolve) => {
+    let done = false;
+    let buffer = "";
+    let socket: { end: () => void } | null = null;
+    const finish = (r: SshProbe) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      socket?.end();
+      resolve(r);
+    };
+    const timer = setTimeout(() => finish({ online: false, error: buffer ? "The server answered but isn't an SSH server." : "The server didn't answer in time." }), timeoutMs);
+    Bun.connect({
+      hostname: host,
+      port,
+      socket: {
+        open(s) {
+          socket = s;
+        },
+        data(_s, chunk) {
+          buffer += new TextDecoder().decode(chunk);
+          const line = buffer.split(/\r?\n/).find((l) => l.startsWith("SSH-"));
+          if (line) finish({ online: true, banner: line.trim().slice(0, 200), latencyMs: Math.round(performance.now() - start) });
+          else if (buffer.length > 4096) finish({ online: false, error: "The server answered but isn't an SSH server." });
+        },
+        close() {
+          finish({ online: false, error: "The server closed the connection." });
+        },
+        connectError(_s, err) {
+          const code = (err as { code?: string }).code ?? "";
+          finish({
+            online: false,
+            error: /ENOTFOUND|EAI_|DNS/i.test(code + err.message) ? "Unknown host name." : /REFUSED/i.test(code + err.message) ? "Connection refused on this port." : err.message,
+          });
+        },
+        error(_s, err) {
+          finish({ online: false, error: err.message });
+        },
+      },
+    }).catch((err: Error & { code?: string }) =>
+      finish({
+        online: false,
+        error: /ENOTFOUND|EAI_|DNS/i.test(`${err.code ?? ""}${err.message}`) ? "Unknown host name." : /REFUSED/i.test(`${err.code ?? ""}${err.message}`) ? "Connection refused on this port." : err.message,
+      }),
+    );
+  });
+}
+
+/** Every machine's server status, probed in parallel. */
+export async function hostsStatus(): Promise<Record<string, SshProbe>> {
+  const rows = await db.select({ id: sshHost.id, host: sshHost.host, port: sshHost.port }).from(sshHost);
+  const results = await Promise.all(rows.map(async (h) => [h.id, await probe(h.host, h.port)] as const));
+  return Object.fromEntries(results);
 }
 
 export async function hostLog(id: string, limit = 30): Promise<SshLogEntry[]> {

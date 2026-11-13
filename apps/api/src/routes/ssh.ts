@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { turnOfHermesSession } from "../bot-runner";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
-import { addHostForAgent, botHosts, createHost, deleteHost, forgetHostKey, hostInput, hostLog, hostPatch, listHosts, runOnHost, SshError, testHost, testHostForAgent, updateHost } from "../ssh";
+import { addHostForAgent, botHosts, createHost, deleteHost, forgetHostKey, hostInput, hostLog, hostPatch, hostsStatus, listHosts, probe, runOnHost, SshError, testHost, testHostForAgent, updateHost } from "../ssh";
 import { sshInternalToken } from "../ssh-plugin";
 
 const fail = (c: Context, err: unknown) => {
@@ -24,6 +24,14 @@ export const sshHosts = new Hono<AppEnv>()
     return c.json({ error: "internal" }, 500);
   })
   .get("/", async (c) => c.json(await listHosts()))
+  /** Whether each machine's server answers (TCP + SSH banner, no login). */
+  .get("/status", async (c) => c.json(await hostsStatus()))
+  /** The same for an address not saved yet: the dialog's test before creating. */
+  .post("/probe", async (c) => {
+    const body = await parse(c, z.object({ host: z.string().trim().min(1).max(253), port: z.number().int().min(1).max(65535) }));
+    if (!body) return c.json({ error: "invalid" }, 400);
+    return c.json(await probe(body.host, body.port));
+  })
   .post("/", async (c) => {
     const body = await parse(c, hostInput);
     if (!body) return c.json({ error: "invalid" }, 400);

@@ -9,7 +9,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSPropert
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { agentAccent } from "@/lib/agent-avatar";
 import { DateDivider, FlatText, ToolLine, TypingBubble, TypingLine } from "@/components/Bubbles";
-import { ApprovalCard, ApprovalLog } from "@/components/ApprovalCard";
+import { ApprovalCard } from "@/components/ApprovalCard";
 import { ChoiceCard } from "@/components/ChoiceCard";
 import { McpRequestCard } from "@/components/McpRequestCard";
 import { QuestionsCard } from "@/components/QuestionsCard";
@@ -1071,8 +1071,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                   {m.kind === "bot" && (
                     <Post className={gap || undefined} head={postHead}>
                       {/* What it used, before what it says: as while it works (the live turn starts with it). */}
-                      {m.data?.tools && <ToolLine tools={m.data.tools} />}
-                      {m.data?.approvals && <ApprovalLog approvals={m.data.approvals} />}
+                      {(m.data?.tools || m.data?.approvals) && <ToolLine tools={m.data.tools ?? []} approvals={m.data.approvals} />}
                       {(m.text || !!m.data?.codeSessions?.length) && (
                         <MessageRow
                           id={m.id}

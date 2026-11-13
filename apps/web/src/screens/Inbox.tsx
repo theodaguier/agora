@@ -54,7 +54,6 @@ const messages = defineMessages({
     assignees: "Assigned to",
     conversation: "Conversation",
     session: "Session",
-    from: "From",
     toggleProperties: "Show or hide the properties",
     comment: "Leave a comment…",
     removeFile: (name: string) => `Remove ${name}`,
@@ -101,7 +100,6 @@ const messages = defineMessages({
     assignees: "Assignée à",
     conversation: "Conversation",
     session: "Session",
-    from: "De",
     toggleProperties: "Afficher ou masquer les propriétés",
     comment: "Laisser un commentaire…",
     removeFile: (name: string) => `Retirer ${name}`,
@@ -353,6 +351,9 @@ function InboxItemView({ item }: { item: InboxItem }) {
   const { data: sessions } = useQuery({ ...codeSessionsQuery(conversationId ?? ""), enabled: !!session && !!conversationId });
   const engine = session ? sessions?.find((x) => x.id === session.id)?.engine : undefined;
   const [properties, setProperties] = useState(true);
+  // Only what the page doesn't already say: who wrote it is on its card, a message's conversation is its title.
+  const showConversation = onTask && !!convName && !!conversationId;
+  const hasProperties = !!item.task || (!!task && task.assignees.length > 0) || (!!session && !!conversationId) || showConversation;
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-11.5 shrink-0 items-center gap-2 border-b pr-3.5 pl-12">
@@ -375,9 +376,11 @@ function InboxItemView({ item }: { item: InboxItem }) {
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="ghost" size="icon-sm" aria-label={t.toggleProperties} aria-pressed={properties} onClick={() => setProperties((v) => !v)} className="hidden text-muted-foreground xl:inline-flex">
-          <PanelRightIcon />
-        </Button>
+        {hasProperties && (
+          <Button variant="ghost" size="icon-sm" aria-label={t.toggleProperties} aria-pressed={properties} onClick={() => setProperties((v) => !v)} className="hidden text-muted-foreground xl:inline-flex">
+            <PanelRightIcon />
+          </Button>
+        )}
       </header>
       <div className="flex min-h-0 flex-1">
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-12 pt-11 pb-10">
@@ -407,53 +410,47 @@ function InboxItemView({ item }: { item: InboxItem }) {
             </section>
           </div>
         </div>
-        <aside className={cn("hidden w-68 shrink-0 flex-col border-l px-5 pt-11.5", properties && "xl:flex")} aria-label={t.properties}>
-          <h3 className="pb-2 text-xs font-medium text-subtle-foreground">{t.properties}</h3>
-          {item.task && (
-            <Property label={t.status}>
-              <Mark>
-                <TaskStatusIcon status={item.task.status} />
-              </Mark>
-              <span className="truncate">{t.statusLabel[item.task.status]}</span>
-            </Property>
-          )}
-          {task && task.assignees.length > 0 && (
-            <Property label={t.assignees}>
-              <span className="flex min-w-0 flex-col">
-                {task.assignees.map((a) => (
-                  <span key={a.id} className="flex h-8 min-w-0 items-center gap-2">
-                    <Mark>
-                      <PersonAvatar person={{ id: a.id, name: a.name, image: a.image }} className="size-4" />
-                    </Mark>
-                    <span className="truncate">{a.name}</span>
-                  </span>
-                ))}
-              </span>
-            </Property>
-          )}
-          {!onTask && item.actor && (
-            <Property label={t.from}>
-              <Mark>
-                <Face author={item.actor} />
-              </Mark>
-              <span className="truncate">{item.actor.name}</span>
-            </Property>
-          )}
-          {session && conversationId ? (
-            <Property label={t.session}>
-              <Mark>{engine ? <ModelLogo provider={engine} className="size-3.5" /> : <TerminalIcon className="size-3.5 text-muted-foreground" />}</Mark>
-              <Link to="/c/$conversationId/code/$sessionId" params={{ conversationId, sessionId: session.id }} title={session.title} className="truncate hover:underline">
-                {session.title}
-              </Link>
-            </Property>
-          ) : convName && conversationId && (
-            <Property label={t.conversation}>
-              <Link to="/c/$conversationId" params={{ conversationId }} className="truncate hover:underline">
-                {convName}
-              </Link>
-            </Property>
-          )}
-        </aside>
+        {hasProperties && (
+          <aside className={cn("hidden w-68 shrink-0 flex-col border-l px-5 pt-11.5", properties && "xl:flex")} aria-label={t.properties}>
+            <h3 className="pb-2 text-xs font-medium text-subtle-foreground">{t.properties}</h3>
+            {item.task && (
+              <Property label={t.status}>
+                <Mark>
+                  <TaskStatusIcon status={item.task.status} />
+                </Mark>
+                <span className="truncate">{t.statusLabel[item.task.status]}</span>
+              </Property>
+            )}
+            {task && task.assignees.length > 0 && (
+              <Property label={t.assignees}>
+                <span className="flex min-w-0 flex-col">
+                  {task.assignees.map((a) => (
+                    <span key={a.id} className="flex h-8 min-w-0 items-center gap-2">
+                      <Mark>
+                        <PersonAvatar person={{ id: a.id, name: a.name, image: a.image }} className="size-4" />
+                      </Mark>
+                      <span className="truncate">{a.name}</span>
+                    </span>
+                  ))}
+                </span>
+              </Property>
+            )}
+            {session && conversationId ? (
+              <Property label={t.session}>
+                <Mark>{engine ? <ModelLogo provider={engine} className="size-3.5" /> : <TerminalIcon className="size-3.5 text-muted-foreground" />}</Mark>
+                <Link to="/c/$conversationId/code/$sessionId" params={{ conversationId, sessionId: session.id }} title={session.title} className="truncate hover:underline">
+                  {session.title}
+                </Link>
+              </Property>
+            ) : showConversation && (
+              <Property label={t.conversation}>
+                <Link to="/c/$conversationId" params={{ conversationId: conversationId! }} className="truncate hover:underline">
+                  {convName}
+                </Link>
+              </Property>
+            )}
+          </aside>
+        )}
       </div>
     </div>
   );

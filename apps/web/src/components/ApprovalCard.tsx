@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { ChatIntegrationIcon, CheckIcon, ChevronDownIcon, CloseIcon, ShieldCheckIcon, TerminalIcon } from "@/components/icons";
+import { ChatIntegrationIcon, CheckIcon, ChevronDownIcon, ShieldCheckIcon, TerminalIcon } from "@/components/icons";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -10,7 +10,6 @@ import { api, conversationPath, type AgentSummary, type PendingApproval } from "
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 import { clearApproval } from "@/lib/realtime";
-import { contentKeys } from "@/lib/utils";
 
 const messages = defineMessages({
   en: {
@@ -19,8 +18,6 @@ const messages = defineMessages({
     wantsToRun: (bot: string) => `${bot} wants to run a command`,
     requestedBy: (bot: string) => `Approval requested by ${bot}`,
     waiting: "Waiting for the person who started the request.",
-    denied: "denied",
-    allowed: "allowed",
     allow: "Allow",
     more: "Other permissions",
   },
@@ -30,8 +27,6 @@ const messages = defineMessages({
     wantsToRun: (bot: string) => `${bot} veut exécuter une commande`,
     requestedBy: (bot: string) => `Autorisation demandée par ${bot}`,
     waiting: "En attente de la personne qui a lancé la demande.",
-    denied: "refusé",
-    allowed: "autorisé",
     allow: "Autoriser",
     more: "Autres autorisations",
   },
@@ -128,21 +123,5 @@ export function ApprovalCard(props: { conversationId: string; turnId: string; bo
         </BlockFooter>
       )}
     </BlockCard>
-  );
-}
-
-/** A decided command, one muted line in the history (check, the command, the answer). */
-export function ApprovalLog({ approvals }: { approvals: { command: string; choice: string }[] }) {
-  const t = useT(messages);
-  return (
-    <div className="flex flex-col gap-0.5">
-      {contentKeys(approvals, (a) => `${a.choice}:${a.command}`).map(([key, a]) => (
-        <p key={key} className="flex min-w-0 items-center gap-1.5 pl-3 text-xs text-muted-foreground">
-          {a.choice === "deny" ? <CloseIcon className="size-3.5 shrink-0" /> : <CheckIcon className="size-3.5 shrink-0" />}
-          <code className="truncate font-mono">{a.command}</code>
-          <span className="shrink-0">({a.choice === "deny" ? t.denied : t.allowed})</span>
-        </p>
-      ))}
-    </div>
   );
 }

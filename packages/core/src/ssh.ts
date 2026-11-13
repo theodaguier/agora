@@ -28,6 +28,12 @@ export type SshHostDto = {
 
 export type SshTestResult = { ok: true; fingerprint: string } | { ok: false; error: string };
 
+/**
+ * Whether the server answers on its address, without Agora's key: a TCP connection and the SSH banner
+ * it sends (SSH-2.0-OpenSSH_9.6…). Says the machine is up, not that Agora may log in (that is the test).
+ */
+export type SshProbe = { online: true; banner: string; latencyMs: number } | { online: false; error: string };
+
 export type SshLogEntry = {
   id: string;
   agentId: string | null;

@@ -11,13 +11,11 @@ const messages = defineMessages({
   en: {
     you: (title: string) => `You're working on “${title}”`,
     them: (title: string) => `Working on “${title}”`,
-    nothingYou: "Not working on anything. Start a task to show it here.",
     stop: "Stop",
   },
   fr: {
     you: (title: string) => `Tu travailles sur « ${title} »`,
     them: (title: string) => `Travaille sur « ${title} »`,
-    nothingYou: "Tu ne travailles sur rien. Passe une tâche en cours pour l'afficher ici.",
     stop: "Arrêter",
   },
 });
@@ -45,8 +43,8 @@ export function WorkingOn({ userId, className }: { userId: string; className?: s
   const set = useWorkingOn();
   const self = userId === user.id;
   const current = data?.currentTask;
-  if (!data || (!current && !self)) return null;
-  if (!current) return <p className={cn("text-sm text-muted-foreground", className)}>{t.nothingYou}</p>;
+  // Nothing in progress: nothing said (no line telling you how to fill it).
+  if (!current) return null;
   return (
     <div className={cn("flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-sm", statusTone.in_progress, className)}>
       <span className="min-w-0 flex-1 truncate font-medium">{self ? t.you(current.title) : t.them(current.title)}</span>

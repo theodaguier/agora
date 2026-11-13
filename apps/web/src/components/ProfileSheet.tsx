@@ -20,7 +20,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, type AgentProfile, type UserProfile } from "@/lib/api";
-import { linkClass } from "@/lib/links";
 import { closeProfile, useProfileTarget } from "@/lib/profile";
 import { agentActivityQuery, agentProfileQuery, conversationsQuery, userProfileQuery, type AgentActivity } from "@/lib/queries";
 import { dividerLabel } from "@/lib/dates";
@@ -426,7 +425,7 @@ export function Details({ person }: { person: UserProfile }) {
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
         <dt className="text-muted-foreground">{t.email}</dt>
         <dd className="min-w-0 truncate">
-          <a href={`mailto:${person.email}`} className={linkClass}>
+          <a href={`mailto:${person.email}`} className="underline-offset-2 hover:underline">
             {person.email}
           </a>
         </dd>

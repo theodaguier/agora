@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { SSH_NAME, type SshHostDto, type SshLogEntry, type SshTestResult } from "@agora/core";
+import { SSH_NAME, type SshHostDto, type SshLogEntry, type SshProbe, type SshTestResult } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { FormLabel } from "@/components/FormLabel";
 import { CheckCircleIcon, MoreIcon, RefreshIcon, ServerIcon, TrashIcon } from "@/components/icons";
@@ -21,9 +21,13 @@ import { confirmAction } from "@/lib/confirm";
 import { ageLabel } from "@/lib/dates";
 import { copyText } from "@/lib/feedback";
 import { adminAgentsQuery } from "@/lib/queries";
+import { toneDot, toneText } from "@/components/views/tone";
+import { cn } from "@/lib/utils";
 import { ErrorText, LoadError, Loading, SectionHeader, SettingTile } from "./ui";
 
 const hostsQuery = { queryKey: ["admin", "ssh"], queryFn: () => api<SshHostDto[]>("/admin/ssh") };
+// Probed again every 30 s while the page is open: the servers' status, not Agora's access to them.
+const statusQuery = { queryKey: ["admin", "ssh", "status"], queryFn: () => api<Record<string, SshProbe>>("/admin/ssh/status"), refetchInterval: 30_000 };
 
 const messages = defineMessages({
   en: {
@@ -67,6 +71,20 @@ const messages = defineMessages({
     copy: "Copy",
     command: "Command",
     testOk: (fp: string) => `Connected. Host key fingerprint: ${fp}`,
+    online: "Online",
+    offline: "Offline",
+    checking: "Checking…",
+    latency: (ms: number) => `${ms} ms`,
+    probe: "Test the server",
+    probeHelp: "Checks that the server answers on this address and port. Logging in is tested once the key is on the machine.",
+    errors: {
+      "Invalid address.": "Invalid address.",
+      "Unknown host name.": "Unknown host name.",
+      "Connection refused on this port.": "Connection refused on this port.",
+      "The server didn't answer in time.": "The server didn't answer in time.",
+      "The server answered but isn't an SSH server.": "The server answered but isn't an SSH server.",
+      "The server closed the connection.": "The server closed the connection.",
+    } as Record<string, string>,
     log: "Recent use",
     logEmpty: "Never used.",
     session: "code session",
@@ -113,6 +131,20 @@ const messages = defineMessages({
     copy: "Copier",
     command: "Commande",
     testOk: (fp: string) => `Connexion réussie. Empreinte de la machine : ${fp}`,
+    online: "En ligne",
+    offline: "Hors ligne",
+    checking: "Vérification…",
+    latency: (ms: number) => `${ms} ms`,
+    probe: "Tester le serveur",
+    probeHelp: "Vérifie que le serveur répond à cette adresse et sur ce port. La connexion se teste une fois la clé posée sur la machine.",
+    errors: {
+      "Invalid address.": "Adresse invalide.",
+      "Unknown host name.": "Nom d'hôte inconnu.",
+      "Connection refused on this port.": "Connexion refusée sur ce port.",
+      "The server didn't answer in time.": "Le serveur n'a pas répondu à temps.",
+      "The server answered but isn't an SSH server.": "Le serveur répond, mais ce n'est pas un serveur SSH.",
+      "The server closed the connection.": "Le serveur a fermé la connexion.",
+    },
     log: "Utilisations récentes",
     logEmpty: "Jamais utilisée.",
     session: "session de code",
@@ -142,6 +174,7 @@ export function Machines() {
     meta: { success: t.forgot },
   });
   const test = useTest();
+  const { data: status } = useQuery({ ...statusQuery, enabled: !!hosts?.length });
 
   const summary = (h: SshHostDto) =>
     [
@@ -182,7 +215,10 @@ export function Machines() {
                 </SettingTile>
                 <ItemContent className="min-w-0">
                   <ItemTitle>{h.name}</ItemTitle>
-                  <ItemDescription className="truncate">{summary(h)}</ItemDescription>
+                  <ItemDescription className="flex min-w-0 items-center gap-1.5">
+                    <ServerStatus probe={status?.[h.id]} />
+                    <span className="truncate">· {summary(h)}</span>
+                  </ItemDescription>
                 </ItemContent>
                 <ItemActions>
                   <Button variant="outline" size="sm" onClick={() => setEditing(h.id)}>
@@ -266,6 +302,14 @@ function MachineDialog({ host, onCreated, onClose }: { host?: SshHostDto; onCrea
   const [description, setDescription] = useState(host?.description ?? "");
   // Kept as the bots left out: every other bot, including one made later, reaches it.
   const [excluded, setExcluded] = useState<string[]>(host?.excludedAgentIds ?? []);
+  // The test mode: probes the address as typed, saved or not.
+  const probe = useMutation({
+    mutationFn: () => api<SshProbe>("/admin/ssh/probe", { method: "POST", body: JSON.stringify({ host: hostname.trim(), port: Number(port) }) }),
+    meta: { error: false },
+  });
+  const { data: status } = useQuery({ ...statusQuery, enabled: !!host });
+  const shown = probe.isPending ? undefined : (probe.data ?? (host && hostname === host.host && Number(port) === host.port ? status?.[host.id] : undefined));
+  const probed = probe.isPending || !!shown;
   const allowed = agents.filter((a) => !excluded.includes(a.id)).map((a) => a.id);
   const save = useMutation({
     mutationFn: () => {
@@ -292,7 +336,8 @@ function MachineDialog({ host, onCreated, onClose }: { host?: SshHostDto; onCrea
 
   const nameError = name && !SSH_NAME.test(name) ? t.nameInvalid : null;
   const portNumber = Number(port);
-  const valid = !!name && !nameError && !!hostname.trim() && !!username.trim() && Number.isInteger(portNumber) && portNumber > 0 && portNumber < 65536;
+  const portValid = Number.isInteger(portNumber) && portNumber > 0 && portNumber < 65536;
+  const valid = !!name && !nameError && !!hostname.trim() && !!username.trim() && portValid;
 
   return (
     <DialogContent className="sm:max-w-lg">
@@ -330,14 +375,31 @@ function MachineDialog({ host, onCreated, onClose }: { host?: SshHostDto; onCrea
               <FormLabel htmlFor="ssh-host" required>
                 {t.host}
               </FormLabel>
-              <Input id="ssh-host" autoComplete="off" spellCheck={false} value={hostname} onChange={(e) => setHostname(e.target.value)} />
-              <FieldDescription>{t.hostHelp}</FieldDescription>
+              <Input
+                id="ssh-host"
+                autoComplete="off"
+                spellCheck={false}
+                value={hostname}
+                onChange={(e) => {
+                  setHostname(e.target.value);
+                  probe.reset();
+                }}
+              />
+              <FieldDescription>{probed ? <ServerStatus probe={shown} detailed /> : t.hostHelp}</FieldDescription>
             </Field>
             <Field>
               <FormLabel htmlFor="ssh-port" required>
                 {t.port}
               </FormLabel>
-              <Input id="ssh-port" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))} />
+              <Input
+                id="ssh-port"
+                inputMode="numeric"
+                value={port}
+                onChange={(e) => {
+                  setPort(e.target.value.replace(/\D/g, ""));
+                  probe.reset();
+                }}
+              />
             </Field>
           </div>
           <Field>
@@ -353,10 +415,21 @@ function MachineDialog({ host, onCreated, onClose }: { host?: SshHostDto; onCrea
           </Field>
           {agents.length > 0 && <AgentTargets legend={t.bots} hint={t.botsHelp} value={allowed} onChange={(ids) => setExcluded(agents.filter((a) => !ids.includes(a.id)).map((a) => a.id))} />}
           {host && <UsageLog host={host} />}
+          <ErrorText error={probe.error} />
           <ErrorText error={save.error} />
         </FieldGroup>
       </form>
       <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          className="sm:mr-auto"
+          title={t.probeHelp}
+          disabled={!hostname.trim() || !portValid || probe.isPending}
+          onClick={() => probe.mutate()}
+        >
+          {probe.isPending ? t.testing : t.probe}
+        </Button>
         <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
         <Button type="submit" form="ssh-machine" disabled={!valid || save.isPending}>
           {save.isPending ? c.saving : host ? c.save : c.create}
@@ -398,6 +471,21 @@ function PublicKey({ host }: { host: SshHostDto }) {
         {host.hostKeyFingerprint && <span className="truncate font-mono text-xs text-muted-foreground">{host.hostKeyFingerprint}</span>}
       </div>
     </FieldSet>
+  );
+}
+
+/** A server's status: a coloured dot and its word; `detailed` adds why it is offline, or what answered. */
+function ServerStatus({ probe, detailed }: { probe?: SshProbe; detailed?: boolean }) {
+  const t = useT(messages);
+  const tone = !probe ? "neutral" : probe.online ? "success" : "danger";
+  const label = !probe ? t.checking : probe.online ? `${t.online} · ${t.latency(probe.latencyMs)}` : t.offline;
+  const detail = detailed && probe && (probe.online ? probe.banner : (t.errors[probe.error] ?? probe.error));
+  return (
+    <span className="inline-flex min-w-0 shrink-0 items-center gap-1.5" title={probe && !probe.online ? (t.errors[probe.error] ?? probe.error) : undefined}>
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", toneDot[tone])} />
+      <span className={toneText[tone]}>{label}</span>
+      {detail && <span className="truncate">· {detail}</span>}
+    </span>
   );
 }
 

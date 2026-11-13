@@ -1,7 +1,7 @@
 import { ChoiceOption } from "@/components/QuestionsCard";
 import { modelName } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouteContext } from "@tanstack/react-router";
+import { useCanGoBack, useRouteContext, useRouter } from "@tanstack/react-router";
 import { createContext, Fragment, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from "react";
 import {
   CODE_ENGINE_NAMES,
@@ -787,6 +787,16 @@ function SessionTab({ id, session, active, shortcut, onSelect, onClose }: { id: 
   );
 }
 
+/**
+ * Back where the session was opened from (Sessions, the thread, the inbox): the previous page, which a
+ * workspace tab shows again in place; the thread when it was opened directly (a link, a reload).
+ */
+function useBack(conversationId: string) {
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
+  return () => (canGoBack ? router.history.back() : router.navigate({ to: "/c/$conversationId", params: { conversationId } }));
+}
+
 /** A session as a workspace tab: the whole pane for its steps. A new one becomes the session its first instruction starts (`onStarted`). */
 export function CodeSessionPage({
   conversationId,
@@ -799,12 +809,13 @@ export function CodeSessionPage({
   onClose?: () => void;
   onStarted: (sessionId: string) => void;
 }) {
+  const onBack = useBack(conversationId);
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       {isNewCodeSession(sessionId) ? (
-        <NewSessionView conversationId={conversationId} onStarted={onStarted} onClose={onClose} page />
+        <NewSessionView conversationId={conversationId} onStarted={onStarted} onClose={onClose} onBack={onBack} page />
       ) : (
-        <CodeSessionView conversationId={conversationId} sessionId={sessionId} onClose={onClose} page />
+        <CodeSessionView conversationId={conversationId} sessionId={sessionId} onClose={onClose} onBack={onBack} page />
       )}
     </section>
   );
@@ -818,12 +829,14 @@ function NewSessionView({
   conversationId,
   onStarted,
   onClose,
+  onBack,
   onDetach,
   page,
 }: {
   conversationId: string;
   onStarted: (sessionId: string) => void;
   onClose?: () => void;
+  onBack?: () => void;
   onDetach?: () => void;
   /** A tab of its own: the close button closes it. */
   page?: boolean;
@@ -869,6 +882,8 @@ function NewSessionView({
   return (
     <FileDropPanel onFiles={files.add} label={t.dropNew}>
       <PaneHeader
+        onBack={onBack}
+        backLabel={c.back}
         title={t.newSession}
         actions={
           <>
@@ -1212,12 +1227,14 @@ function CodeSessionView({
   conversationId,
   sessionId,
   onClose,
+  onBack,
   onDetach,
   page,
 }: {
   conversationId: string;
   sessionId: string;
   onClose?: () => void;
+  onBack?: () => void;
   onDetach?: () => void;
   page?: boolean;
 }) {
@@ -1286,6 +1303,8 @@ function CodeSessionView({
         }}
       >
       <PaneHeader
+        onBack={onBack}
+        backLabel={c.back}
         media={<EngineTile engine={session?.engine} />}
         title={session?.title ?? t.codeSession}
         // One line, who then where then what: the engine, its branch (opens on GitHub), its issue, then its state.

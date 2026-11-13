@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
-import { CloseIcon } from "@/components/icons";
+import { ChevronLeftIcon, CloseIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * Header of a pane beside the conversation, or of a tab of its own (a Claude Code session, a mockup):
  * one line as tall as the conversation's header (46 px), so their hairlines meet. Its tile, its title,
  * what it is at in grey after it, then its buttons. `children` go on the same line, after the description.
+ * `onBack` puts a back button first, for a page opened from another (a code session from Sessions).
  */
 export function PaneHeader({
   media,
@@ -13,15 +15,24 @@ export function PaneHeader({
   description,
   actions,
   children,
+  onBack,
+  backLabel,
 }: {
   media?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
+  onBack?: () => void;
+  backLabel?: string;
 }) {
   return (
-    <header className="@container flex h-11.5 shrink-0 items-center gap-2.5 border-b pr-3 pl-4">
+    <header className={cn("@container flex h-11.5 shrink-0 items-center gap-2.5 border-b pr-3", onBack ? "pl-2" : "pl-4")}>
+      {onBack && (
+        <Button variant="ghost" size="icon-sm" aria-label={backLabel} title={backLabel} onClick={onBack} className="-mr-1">
+          <ChevronLeftIcon />
+        </Button>
+      )}
       {media && <span className="flex shrink-0">{media}</span>}
       <h2 className="min-w-0 shrink truncate text-ui font-medium">{title}</h2>
       {/* Narrow (a pane beside a conversation): the title first, what it is at only when there's room. */}
