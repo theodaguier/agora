@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.61.1 — 2026-11-13
+
+### Fixes
+- **web**: nettoyage anti-slop du second cerveau, des blocs de question, des Machines SSH et du panneau Groupe
+
 ## v0.61.0 — 2026-11-13
 
 ### Features
