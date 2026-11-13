@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.60.0 — 2026-11-13
+
+### Features
+- **mobile**: app alignée sur la refonte Geist du web
+
 ## v0.59.0 — 2026-11-13
 
 ### Features
