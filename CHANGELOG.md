@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.63.0 — 2026-11-13
+
+### Features
+- **mobile**: descriptions sous les options des menus natifs (modes, fusion, estimation du coût)
+
 ## v0.62.0 — 2026-11-13
 
 ### Features
