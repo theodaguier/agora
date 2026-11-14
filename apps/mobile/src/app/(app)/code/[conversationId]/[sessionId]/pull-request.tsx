@@ -1,10 +1,10 @@
 import { codeSessions, common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Description, FieldError, Input, Label, Spinner, TextArea, TextField } from "heroui-native";
+import { Description, FieldError, Spinner } from "heroui-native";
 import { useState } from "react";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { useAdminToast } from "@/components/admin/ui";
+import { FormField, FormInput, FormTextArea, useAdminToast } from "@/components/admin/ui";
 import { headerIcon } from "@/components/header-button";
 import { applyCodeSession, codeSessionQuery, runCodeGit } from "@/lib/code-sessions";
 import { withTap } from "@/lib/haptics";
@@ -76,14 +76,12 @@ function PullRequestForm(props: { conversationId: string; sessionId: string; bra
         contentContainerClassName="gap-6 p-4 pb-12"
       >
         <Description className="px-4">{t.prHelp(props.branch, props.base)}</Description>
-        <TextField isRequired>
-          <Label>{t.title}</Label>
-          <Input value={title} onChangeText={setTitle} autoFocus />
-        </TextField>
-        <TextField>
-          <Label>{t.body}</Label>
-          <TextArea value={body} onChangeText={setBody} className="max-h-72" />
-        </TextField>
+        <FormField label={t.title} required>
+          <FormInput value={title} onChangeText={setTitle} autoFocus />
+        </FormField>
+        <FormField label={t.body}>
+          <FormTextArea value={body} onChangeText={setBody} className="max-h-72" />
+        </FormField>
         <FieldError isInvalid={!!open.error}>{open.error?.message}</FieldError>
       </KeyboardAwareScrollView>
     </>

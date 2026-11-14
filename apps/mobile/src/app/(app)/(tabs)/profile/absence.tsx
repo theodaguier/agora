@@ -2,9 +2,9 @@ import { ABSENCE_KINDS, type AbsenceKind } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { Button, Description, Input } from "heroui-native";
+import { Button, Description } from "heroui-native";
 import { useState } from "react";
-import { FieldRow, Intro, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { FieldRow, FormInput, Intro, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
 import { absenceMessages } from "@/components/profile/absences";
 import { DayPicker } from "@/components/profile/native-pickers";
@@ -96,8 +96,8 @@ function AbsenceForm({ userId, existing }: { userId: string; existing?: Schedule
             <DayPicker key={toDay(start)} label={t.lastDay} value={end < start ? start : end} from={start} onChange={setEnd} />
           </FieldRow>
           <FieldRow label={t.note}>
-            <Input variant="secondary" value={note} onChangeText={setNote} maxLength={200} />
-            <Description>{t.noteHelp}</Description>
+            <FormInput value={note} onChangeText={setNote} maxLength={200} />
+            <Description className="px-4 pb-2">{t.noteHelp}</Description>
           </FieldRow>
         </Section>
 

@@ -1,8 +1,9 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { Alert, Button, ControlField, Description, Input, InputGroup, Label, TextField, useToast } from "heroui-native";
+import { Alert, Button, ControlField, Description, Label, useToast } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
+import { FormField, FormInput } from "@/components/admin/ui";
 import { defineMessages } from "@/lib/i18n";
 import { OAuthClientValue } from "@/components/marketplace/oauth-client";
 
@@ -94,31 +95,24 @@ export function OAuthClientFields(props: {
           ) : (
             <Description>{t.intro}</Description>
           )}
-          <TextField>
-            <Label>{t.redirect}</Label>
-            <InputGroup>
-              <InputGroup.Input value={props.redirectUri} editable={false} selectTextOnFocus {...mono} />
-              <InputGroup.Suffix>
-                <Button variant="ghost" size="sm" onPress={copy}>
-                  {t.copy}
-                </Button>
-              </InputGroup.Suffix>
-            </InputGroup>
-          </TextField>
-          <TextField isRequired={props.required} isDisabled={props.disabled}>
-            <Label>{t.clientId}</Label>
-            <Input value={props.value.client_id} onChangeText={(v) => set({ client_id: v })} {...mono} />
-          </TextField>
-          <TextField isDisabled={props.disabled}>
-            <Label>{t.clientSecret}</Label>
-            <Input value={props.value.client_secret} onChangeText={(v) => set({ client_secret: v })} secureTextEntry {...mono} />
-            <Description>{t.secretHelp}</Description>
-          </TextField>
-          <TextField isDisabled={props.disabled}>
-            <Label>{t.scope}</Label>
-            <Input value={props.value.scope} onChangeText={(v) => set({ scope: v })} {...mono} />
-            <Description>{t.scopeHelp}</Description>
-          </TextField>
+          {/* The read-only address and its copy button share the row of the group, as iOS puts a row's action at its end. */}
+          <FormField label={t.redirect}>
+            <View className="flex-row items-center pr-2">
+              <FormInput value={props.redirectUri} editable={false} selectTextOnFocus containerClassName="flex-1" {...mono} />
+              <Button variant="ghost" size="sm" onPress={copy}>
+                {t.copy}
+              </Button>
+            </View>
+          </FormField>
+          <FormField label={t.clientId} required={props.required}>
+            <FormInput value={props.value.client_id} onChangeText={(v) => set({ client_id: v })} isDisabled={props.disabled} {...mono} />
+          </FormField>
+          <FormField label={t.clientSecret} help={t.secretHelp}>
+            <FormInput value={props.value.client_secret} onChangeText={(v) => set({ client_secret: v })} isDisabled={props.disabled} secureTextEntry {...mono} />
+          </FormField>
+          <FormField label={t.scope} help={t.scopeHelp}>
+            <FormInput value={props.value.scope} onChangeText={(v) => set({ scope: v })} isDisabled={props.disabled} {...mono} />
+          </FormField>
         </>
       )}
     </View>

@@ -3,9 +3,10 @@ import { common } from "@agora/core/i18n";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
-import { Alert, Avatar, Button, Input, InputGroup, Label, LinkButton, Spinner, TextArea, TextField } from "heroui-native";
+import { Alert, Avatar, Button, LinkButton, Spinner } from "heroui-native";
 import { useEffect, useRef, useState } from "react";
 import { View, type TextInput } from "react-native";
+import { FieldRow, FormInput, FormTextArea, Section } from "@/components/admin/ui";
 import { AuthLinkStep } from "@/components/auth-link-step";
 import { AuthScreen } from "@/components/auth-screen";
 import { LoginField } from "@/components/login-field";
@@ -16,7 +17,6 @@ import { readLocalFile } from "@/lib/files";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, locale, tr } from "@/lib/i18n";
 import { useServers } from "@/lib/servers";
-import { AtIcon, LockIcon, MailIcon } from "@/components/icons";
 import { TapMenu, type MenuEntry } from "@/components/menus";
 
 /* apps/web/src/screens/Invite.tsx (with ProfileFields.tsx's fields), on the instance named by the link. */
@@ -241,35 +241,23 @@ function InvitationForm({ server, token, org, email }: { server: string; token: 
         </TapMenu>
       </View>
 
-      <View className="mt-6 gap-4">
-        <TextField isDisabled>
-          <Label>{t.email}</Label>
-          <InputGroup>
-            <InputGroup.Prefix isDecorative>
-              <MailIcon size={16} className="text-field-placeholder" />
-            </InputGroup.Prefix>
-            <InputGroup.Input value={email} editable={false} />
-          </InputGroup>
-        </TextField>
-        <TextField isRequired>
-          <Label>{t.firstName}</Label>
-          <Input value={form.firstName} onChangeText={set("firstName")} maxLength={60} autoComplete="given-name" textContentType="givenName" />
-        </TextField>
-        <TextField isRequired>
-          <Label>{t.lastName}</Label>
-          <Input value={form.lastName} onChangeText={set("lastName")} maxLength={60} autoComplete="family-name" textContentType="familyName" />
-        </TextField>
-        <TextField isRequired>
-          <Label>{t.role}</Label>
-          <Input value={form.title} onChangeText={set("title")} maxLength={60} placeholder={t.rolePlaceholder} textContentType="jobTitle" />
-        </TextField>
-        <TextField isRequired>
-          <Label>{t.username}</Label>
-          <InputGroup>
-            <InputGroup.Prefix isDecorative>
-              <AtIcon size={16} className="text-field-placeholder" />
-            </InputGroup.Prefix>
-            <InputGroup.Input
+      {/* The profile as iOS Contacts draws it: one group, each field a row with its name on the left. */}
+      <View className="mt-6 gap-6">
+        <Section>
+          <FieldRow label={t.email}>
+            <FormInput value={email} isDisabled editable={false} />
+          </FieldRow>
+          <FieldRow label={t.firstName} required>
+            <FormInput value={form.firstName} onChangeText={set("firstName")} maxLength={60} autoComplete="given-name" textContentType="givenName" />
+          </FieldRow>
+          <FieldRow label={t.lastName} required>
+            <FormInput value={form.lastName} onChangeText={set("lastName")} maxLength={60} autoComplete="family-name" textContentType="familyName" />
+          </FieldRow>
+          <FieldRow label={t.role} required>
+            <FormInput value={form.title} onChangeText={set("title")} maxLength={60} placeholder={t.rolePlaceholder} textContentType="jobTitle" />
+          </FieldRow>
+          <FieldRow label={t.username} required>
+            <FormInput
               value={form.username}
               onChangeText={set("username")}
               maxLength={30}
@@ -278,15 +266,13 @@ function InvitationForm({ server, token, org, email }: { server: string; token: 
               autoCorrect={false}
               spellCheck={false}
             />
-          </InputGroup>
-        </TextField>
-        <TextField>
-          <Label>{t.bio}</Label>
-          <TextArea value={form.bio} onChangeText={set("bio")} maxLength={500} placeholder={t.bioPlaceholder} />
-        </TextField>
+          </FieldRow>
+          <FieldRow label={t.bio} top>
+            <FormTextArea value={form.bio} onChangeText={set("bio")} maxLength={500} placeholder={t.bioPlaceholder} className="min-h-20" />
+          </FieldRow>
+        </Section>
         <LoginField
           label={t.password}
-          icon={LockIcon}
           description={t.passwordPlaceholder}
           value={password}
           onChangeText={setPassword}
@@ -300,7 +286,6 @@ function InvitationForm({ server, token, org, email }: { server: string; token: 
         <LoginField
           ref={confirmRef}
           label={t.confirm}
-          icon={LockIcon}
           value={confirm}
           onChangeText={setConfirm}
           error={error?.on === "confirm" ? error.message : null}

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Description, Input, Label, LinkButton, TextField, Typography } from "heroui-native";
+import { Button, LinkButton, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import {
@@ -16,10 +16,9 @@ import {
   type FieldSpec,
   type IntegrationId,
 } from "@/components/admin/integrations";
-import { AdminGate, ErrorAlert, LoadingRows, SecretInput, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, LoadingRows, SecretInput, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { api } from "@/lib/api";
 import { tr } from "@/lib/i18n";
-import { CheckIcon, CloseIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 
@@ -109,11 +108,9 @@ function IntegrationForm({ integration }: { integration: AppIntegration }) {
             onSubmitEditing: last ? submit : undefined,
           };
           return (
-            <TextField key={f.name} isRequired={required(f)}>
-              <Label>{t.fields[f.name]!}</Label>
-              {f.secret ? <SecretInput {...props} showLabel={t.show} hideLabel={t.hide} /> : <Input {...props} />}
-              <Description>{preview ? t.keep(preview) : t.help[f.name]}</Description>
-            </TextField>
+            <FormField key={f.name} label={t.fields[f.name]!} required={required(f)} help={preview ? t.keep(preview) : t.help[f.name]}>
+              {f.secret ? <SecretInput {...props} showLabel={t.show} hideLabel={t.hide} /> : <FormInput {...props} />}
+            </FormField>
           );
         })}
 

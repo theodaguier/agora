@@ -1,10 +1,10 @@
 import { common, connectors } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Description, Input, Label, Tabs, TextField, Typography } from "heroui-native";
+import { Button, Description, Label, Tabs, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
-import { AdminGate, ErrorAlert, LoadingRows, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, LoadingRows, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { ConnectorField } from "@/components/connector-field";
 import { OAuthClientFields } from "@/components/marketplace/oauth-client-fields";
 import { EMPTY_OAUTH_CLIENT, needsOwnClient, oauthClientOf } from "@/components/marketplace/oauth-client";
@@ -110,11 +110,9 @@ function Form({ req }: { req: McpRequest }) {
             <Description>{t.remoteNoFiles}</Description>
           </View>
           {auth === "header" && (
-            <TextField isRequired>
-              <Label>{t.token}</Label>
-              <Input value={token} onChangeText={setToken} secureTextEntry autoCapitalize="none" autoCorrect={false} />
-              <Description>{t.secretsNote}</Description>
-            </TextField>
+            <FormField label={t.token} required help={t.secretsNote}>
+              <FormInput value={token} onChangeText={setToken} secureTextEntry autoCapitalize="none" autoCorrect={false} />
+            </FormField>
           )}
           {auth === "oauth" && (
             <OAuthClientFields

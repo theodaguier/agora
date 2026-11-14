@@ -1,9 +1,9 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { Description, FieldError, Label, TextArea, TextField } from "heroui-native";
+import { FieldError } from "heroui-native";
 import { useState } from "react";
-import { AdminGate, ErrorAlert, SettingsScroll, Intro, LoadingRows, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormTextArea, SettingsScroll, SectionFooter, Intro, LoadingRows, useAdminToast } from "@/components/admin/ui";
 import { agentMemoryQuery } from "@/lib/agents-admin";
 import { api } from "@/lib/api";
 import { defineMessages, tr } from "@/lib/i18n";
@@ -81,13 +81,20 @@ function MemoryEditor({ agentId, saved }: { agentId: string; saved: { notes: str
   });
 
   const field = (label: string, hint: string, value: string, set: (v: string) => void, limit: number) => (
-    // Past the advised length, the count turns into the field's error (the web shows it in warning color).
-    <TextField isInvalid={value.length > limit}>
-      <Label>{label}</Label>
-      <Description>{hint}</Description>
-      <TextArea value={value} onChangeText={set} placeholder={t.empty} autoCorrect={false} scrollEnabled={false} />
-      {value.length > limit ? <FieldError>{t.advised(value.length, limit)}</FieldError> : <Description>{t.advised(value.length, limit)}</Description>}
-    </TextField>
+    // Past the advised length, the count turns into the field's error (the web shows it in warning color);
+    // the hint stays above it either way, so it goes through `help` rather than `error`.
+    <FormField
+      label={label}
+      invalid={value.length > limit}
+      help={
+        <>
+          <SectionFooter>{hint}</SectionFooter>
+          {value.length > limit ? <FieldError className="px-4">{t.advised(value.length, limit)}</FieldError> : <SectionFooter>{t.advised(value.length, limit)}</SectionFooter>}
+        </>
+      }
+    >
+      <FormTextArea value={value} onChangeText={set} placeholder={t.empty} autoCorrect={false} scrollEnabled={false} />
+    </FormField>
   );
 
   return (

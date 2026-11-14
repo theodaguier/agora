@@ -1,9 +1,9 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Label, ListGroup, TextField, Typography } from "heroui-native";
+import { ListGroup, Typography } from "heroui-native";
 import { useState } from "react";
-import { AdminGate, ErrorAlert, Intro, LoadingRows, PressableRow, SearchBox, SecretInput, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, Intro, LoadingRows, PressableRow, SearchBox, SecretInput, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { defaultModelHref, providersMessages as t, refreshProviders } from "@/components/admin/providers";
 import { headerIcon } from "@/components/header-button";
 import { api } from "@/lib/api";
@@ -106,10 +106,9 @@ function KeyForm({ provider, next }: { provider: AiProvider; next: boolean }) {
       </Stack.Toolbar>
       <SettingsScroll>
         <Intro>{save.isPending ? t.checking : t.keyText}</Intro>
-        <TextField isRequired isDisabled={save.isPending}>
-          <Label>{t.apiKey(provider.keyEnv!)}</Label>
-          <SecretInput value={value} onChangeText={setValue} autoFocus onSubmitEditing={() => valid && save.mutate()} />
-        </TextField>
+        <FormField label={t.apiKey(provider.keyEnv!)} required>
+          <SecretInput value={value} onChangeText={setValue} isDisabled={save.isPending} autoFocus onSubmitEditing={() => valid && save.mutate()} />
+        </FormField>
       </SettingsScroll>
     </>
   );

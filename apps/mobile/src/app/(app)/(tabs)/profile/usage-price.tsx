@@ -2,9 +2,9 @@ import { modelName } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Button, FieldError, Input } from "heroui-native";
+import { Button, FieldError } from "heroui-native";
 import { useState } from "react";
-import { AdminGate, ErrorAlert, FieldRow, Intro, LoadingRows, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FieldRow, FormInput, Intro, LoadingRows, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
 import { providerName } from "@/components/profile/usage-format";
 import { PRICE_FIELDS, pricesMessages, pricesQuery, type ModelPriceRow, type Price } from "@/components/profile/usage-prices";
@@ -81,8 +81,7 @@ function PriceForm({ row }: { row: ModelPriceRow }) {
         <Section footer={row.source === "engine" ? t.engineNote : undefined}>
           {PRICE_FIELDS.map((k) => (
             <FieldRow key={k} label={t[k]} invalid={invalid(k)}>
-              <Input
-                variant="secondary"
+              <FormInput
                 value={draft[k]}
                 onChangeText={(v) => setDraft((d) => ({ ...d, [k]: v }))}
                 placeholder={row.catalogue ? String(row.catalogue[k]) : "0"}

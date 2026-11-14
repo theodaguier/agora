@@ -2,10 +2,10 @@ import { auth, common } from "@agora/core/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import { Stack } from "expo-router";
-import { Avatar, Button, FieldError, Input, ListGroup, TextArea } from "heroui-native";
+import { Avatar, Button, FieldError, ListGroup } from "heroui-native";
 import { useState } from "react";
 import { PersonAvatar } from "@/components/conversation-avatar";
-import { FieldRow, Intro, Section, SettingsRow, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { FieldRow, FormInput, FormTextArea, Intro, Section, SettingsRow, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { deleteAvatar, refreshProfile, saveProfile, uploadAvatar, useMeProfile } from "@/components/profile/me";
 import { useSignOut } from "@/components/profile/organizations";
 import { useServer } from "@/components/server-scope";
@@ -178,17 +178,16 @@ export default function General() {
             </ListGroup.Item>
           </TapMenu>
           <FieldRow label={t.firstName} required>
-            <Input variant="secondary" value={form.firstName} onChangeText={set("firstName")} maxLength={60} autoComplete="given-name" textContentType="givenName" />
+            <FormInput value={form.firstName} onChangeText={set("firstName")} maxLength={60} autoComplete="given-name" textContentType="givenName" />
           </FieldRow>
           <FieldRow label={t.lastName} required>
-            <Input variant="secondary" value={form.lastName} onChangeText={set("lastName")} maxLength={60} autoComplete="family-name" textContentType="familyName" />
+            <FormInput value={form.lastName} onChangeText={set("lastName")} maxLength={60} autoComplete="family-name" textContentType="familyName" />
           </FieldRow>
           <FieldRow label={t.role} required>
-            <Input variant="secondary" value={form.title} onChangeText={set("title")} maxLength={60} placeholder={t.rolePlaceholder} textContentType="jobTitle" />
+            <FormInput value={form.title} onChangeText={set("title")} maxLength={60} placeholder={t.rolePlaceholder} textContentType="jobTitle" />
           </FieldRow>
           <FieldRow label={t.username} required invalid={usernameInvalid}>
-            <Input
-              variant="secondary"
+            <FormInput
               value={form.username}
               onChangeText={set("username")}
               maxLength={30}
@@ -198,10 +197,10 @@ export default function General() {
               spellCheck={false}
               textContentType="username"
             />
-            <FieldError>{t.usernameHint}</FieldError>
+            <FieldError className="px-4 pb-2">{t.usernameHint}</FieldError>
           </FieldRow>
           <FieldRow label={t.bio} top>
-            <TextArea variant="secondary" value={form.bio} onChangeText={set("bio")} maxLength={500} placeholder={t.bioPlaceholder} className="min-h-20" />
+            <FormTextArea value={form.bio} onChangeText={set("bio")} maxLength={500} placeholder={t.bioPlaceholder} className="min-h-20" />
           </FieldRow>
         </Section>
 

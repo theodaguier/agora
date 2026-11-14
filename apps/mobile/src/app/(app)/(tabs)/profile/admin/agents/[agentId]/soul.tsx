@@ -2,10 +2,9 @@ import { soulTemplate } from "@agora/core";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { Label, TextArea, TextField } from "heroui-native";
 import { useState } from "react";
 import { confirmAction } from "@/components/confirm-action";
-import { AdminGate, ErrorAlert, SettingsScroll, Intro, LoadingRows, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormTextArea, SettingsScroll, Intro, LoadingRows, useAdminToast } from "@/components/admin/ui";
 import { adminAgentsQuery, orgQuery, soulQuery, type AdminAgent } from "@/lib/agents-admin";
 import { api } from "@/lib/api";
 import { defineMessages, tr } from "@/lib/i18n";
@@ -93,9 +92,8 @@ function SoulEditor({ agent, saved }: { agent: AdminAgent; saved: string }) {
       </Stack.Toolbar>
       <SettingsScroll>
         <Intro>{t.soulIntro}</Intro>
-        <TextField>
-          <Label>{t.title}</Label>
-          <TextArea
+        <FormField label={t.title}>
+          <FormTextArea
             value={value}
             onChangeText={setDraft}
             maxLength={20_000}
@@ -104,7 +102,7 @@ function SoulEditor({ agent, saved }: { agent: AdminAgent; saved: string }) {
             spellCheck={false}
             scrollEnabled={false}
           />
-        </TextField>
+        </FormField>
       </SettingsScroll>
     </>
   );

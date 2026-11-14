@@ -319,8 +319,8 @@ export function Conversation({ conversationId, focus }: { conversationId: string
       title={title}
       counterpart={(directPerson ?? directBot)?.name}
       waiting={turns.some((turn) => !!turn.approval)}
-      // Started ones are counted in the title, which opens them; the menu offers the first one.
-      startCode={canStartCode && !codeSessions}
+      // The menu opens the sessions started here, or offers the first one (the title has no room for their count).
+      startCode={canStartCode || !!codeSessions?.length}
       onPanel={setPanel}
     />
   );
@@ -588,7 +588,7 @@ function ConversationHeader({
           // iOS 26 gives the screen's scroll view an edge effect, and the thread is flipped (scaleY -1): its bottom
           // edge, as tall as the keyboard and the composer, was drawn over the top of the thread, blurring every message.
           scrollEdgeEffects: { top: "hidden", bottom: "hidden", left: "hidden", right: "hidden" },
-          headerTitle: () => <HeaderTitle conversation={conv} me={me} title={title} label={infoLabel || undefined} waiting={waiting} onSessions={() => onPanel("code")} />,
+          headerTitle: () => <HeaderTitle conversation={conv} me={me} title={title} label={infoLabel || undefined} waiting={waiting} />,
         }}
       />
       {conv && (

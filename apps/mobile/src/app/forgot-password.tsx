@@ -5,7 +5,6 @@ import { Alert, Button, LinkButton } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { AuthScreen } from "@/components/auth-screen";
-import { MailIcon } from "@/components/icons";
 import { LoginField } from "@/components/login-field";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, locale, tr } from "@/lib/i18n";
@@ -102,7 +101,6 @@ export default function ForgotPassword() {
       <AuthScreen title={t.title} hint={t.hint} logo={logo}>
         <LoginField
           label={t.email}
-          icon={MailIcon}
           value={email}
           onChangeText={setEmail}
           placeholder={t.emailPlaceholder}

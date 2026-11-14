@@ -1,22 +1,25 @@
 import { common } from "@agora/core/i18n";
-import { Redirect } from "expo-router";
+import { Redirect, Stack } from "expo-router";
 import {
   Alert,
   Button,
+  FieldError,
+  Input,
   InputGroup,
   Label,
   ListGroup,
   Popover,
   PressableFeedback,
-  SearchField,
   Separator,
   SkeletonGroup,
   Spinner,
   Surface,
   Switch,
+  TextArea,
   TextField,
   Typography,
   useToast,
+  type InputRef,
 } from "heroui-native";
 import { Children, forwardRef, Fragment, useEffect, useMemo, useState, type ComponentProps, type ElementRef, type ReactElement, type ReactNode } from "react";
 import { RefreshControl, View, type AccessibilityActionEvent, type AccessibilityActionInfo } from "react-native";
@@ -36,6 +39,9 @@ const messages = defineMessages({
   en: { show: "Show", hide: "Hide", help: "More information" },
   fr: { show: "Afficher", hide: "Masquer", help: "En savoir plus" },
 });
+
+/** Strips a field's own box: in a form it is drawn by the group it sits in (FormField, FieldRow). */
+const BARE_FIELD = "border-transparent bg-transparent shadow-none ios:outline-transparent ios:focus:outline-transparent android:border-transparent android:focus:border-transparent";
 
 /** "i" in a circle, in the house icon style: the trigger of a help popover. */
 const InfoIcon = createIcon("info", {
@@ -303,8 +309,8 @@ export function SettingsRow({ label, hint, value, children }: { label: string; h
  */
 export function FieldRow({ label, required, invalid, top, children }: { label: string; required?: boolean; invalid?: boolean; top?: boolean; children: ReactNode }) {
   return (
-    <TextField isRequired={required} isInvalid={invalid} className={cn("flex-row gap-4 px-4 py-2.5", top ? "items-start" : "items-center")}>
-      <Label className={cn("w-24", top && "pt-2.5")}>{label}</Label>
+    <TextField isRequired={required} isInvalid={invalid} className={cn("flex-row gap-2 pl-4", top ? "items-start" : "items-center")}>
+      <Label className={cn("w-24", top && "pt-3")}>{label}</Label>
       <View className="flex-1 gap-1">{children}</View>
     </TextField>
   );
@@ -388,7 +394,7 @@ export function useAdminToast() {
   );
 }
 
-/** A secret value: the input-group example's password field, with its show / hide button. */
+/** A secret value: the input-group example's password field, with its show / hide button; bare in its form group. */
 export function SecretInput({
   showLabel = messages.show,
   hideLabel = messages.hide,
@@ -397,8 +403,8 @@ export function SecretInput({
   const [shown, setShown] = useState(false);
   return (
     <InputGroup>
-      <InputGroup.Input autoCapitalize="none" autoCorrect={false} spellCheck={false} textContentType="none" {...props} secureTextEntry={!shown} />
-      <InputGroup.Suffix>
+      <InputGroup.Input autoCapitalize="none" autoCorrect={false} spellCheck={false} textContentType="none" background={null} {...props} className={cn(BARE_FIELD, "pl-4", props.className)} secureTextEntry={!shown} />
+      <InputGroup.Suffix className="pr-4">
         <PressableFeedback hitSlop={20} accessibilityRole="button" accessibilityLabel={shown ? hideLabel : showLabel} onPress={withTap(() => setShown((s) => !s))}>
           {shown ? <EyeOffIcon size={16} className="text-field-placeholder" /> : <EyeIcon size={16} className="text-field-placeholder" />}
         </PressableFeedback>
@@ -407,16 +413,70 @@ export function SecretInput({
   );
 }
 
-/** A search field over a list (the search-field example: icon, input, clear button). */
-export function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+/**
+ * A search over a list, as iOS does it: the navigation bar's own search field (UISearchController),
+ * under the screen's title, never a box in the page. `value` stays the caller's state.
+ */
+export function SearchBox({ onChange, placeholder }: { value?: string; onChange: (value: string) => void; placeholder: string }) {
   return (
-    <SearchField value={value} onChange={onChange}>
-      <SearchField.Group>
-        <SearchField.SearchIcon />
-        <SearchField.Input placeholder={placeholder} accessibilityLabel={placeholder} autoCorrect={false} returnKeyType="search" />
-        <SearchField.ClearButton />
-      </SearchField.Group>
-    </SearchField>
+    <Stack.SearchBar
+      placeholder={placeholder}
+      autoCapitalize="none"
+      hideWhenScrolling={false}
+      onChangeText={(e) => onChange(e.nativeEvent.text)}
+      onCancelButtonPress={() => onChange("")}
+    />
+  );
+}
+
+/*
+ * Forms as iOS draws them (Settings, Contacts): each field sits bare in the white card of its group,
+ * its name above the group, its help or its error under it. Never a bordered box inside a card.
+ */
+
+
+/** A one-line field inside a form group (FormField, FieldRow). */
+export const FormInput = forwardRef<InputRef, ComponentProps<typeof Input>>(function FormInput({ className, ...props }, ref) {
+  return <Input ref={ref} background={null} className={cn(BARE_FIELD, "px-4", className)} {...props} />;
+});
+
+/** A multi-line field inside a form group. */
+export const FormTextArea = forwardRef<InputRef, ComponentProps<typeof TextArea>>(function FormTextArea({ className, ...props }, ref) {
+  return <TextArea ref={ref} background={null} className={cn(BARE_FIELD, "min-h-28 px-4 py-3", className)} {...props} />;
+});
+
+/**
+ * A field as an iOS form group: its name (an asterisk when required) above the white card that holds
+ * it, then its error in red or its help in grey. Children: a FormInput / FormTextArea / SecretInput
+ * (bare), or several rows separated by hairlines.
+ */
+export function FormField({
+  label,
+  required,
+  invalid,
+  error,
+  help,
+  children,
+}: {
+  label?: string;
+  required?: boolean;
+  invalid?: boolean;
+  error?: ReactNode;
+  help?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <TextField isRequired={required} isInvalid={invalid} className="gap-2">
+      {!!label && <SectionTitle>{required ? `${label} *` : label}</SectionTitle>}
+      <ListGroup>{children}</ListGroup>
+      {invalid && error ? (
+        <FieldError className="px-4">{error}</FieldError>
+      ) : typeof help === "string" ? (
+        <SectionFooter>{help}</SectionFooter>
+      ) : (
+        help
+      )}
+    </TextField>
   );
 }
 

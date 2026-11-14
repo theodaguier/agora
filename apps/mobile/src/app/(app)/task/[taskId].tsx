@@ -1,7 +1,7 @@
 import { common } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Button, FieldError, Input, Label, ListGroup, Separator, Spinner, TextArea, TextField, Typography } from "heroui-native";
+import { Button, FieldError, ListGroup, Separator, Spinner, Typography } from "heroui-native";
 import { Fragment, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -16,7 +16,7 @@ import { taskQuery, useDeleteTask, useTaskPatch, userTasksQuery, useWorkingOn, t
 import { MentionFieldText } from "@/components/mention";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
-import { useAdminToast } from "@/components/admin/ui";
+import { FormField, FormInput, FormTextArea, useAdminToast } from "@/components/admin/ui";
 
 /* apps/web/src/components/TaskDialog.tsx, and the actions of the web's task row, as one sheet of the (app) stack. */
 
@@ -125,23 +125,19 @@ function TaskForm({ task }: { task: Task }) {
         </Stack.Toolbar>
       )}
       <KeyboardAwareScrollView bottomOffset={24} contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="gap-6 px-4 pb-10 pt-4" keyboardDismissMode="interactive">
-        <View className="gap-4">
-          <TextField isRequired isDisabled={!reword} isInvalid={!title}>
-            <Label>{messages.title}</Label>
-            {/* The text as children, not `value`: mentions in it are highlighted. */}
-            <Input onChangeText={(v) => set("title", v)} maxLength={200} placeholder={messages.titlePlaceholder}>
-              <MentionFieldText text={draft.title} />
-            </Input>
-          </TextField>
-          {(reword || !!task.description) && (
-            <TextField isDisabled={!reword}>
-              <Label>{messages.description}</Label>
-              <TextArea onChangeText={(v) => set("description", v)} maxLength={2000}>
-                <MentionFieldText text={draft.description} />
-              </TextArea>
-            </TextField>
-          )}
-        </View>
+        <FormField label={messages.title} required invalid={!title}>
+          {/* The text as children, not `value`: mentions in it are highlighted. */}
+          <FormInput isDisabled={!reword} onChangeText={(v) => set("title", v)} maxLength={200} placeholder={messages.titlePlaceholder}>
+            <MentionFieldText text={draft.title} />
+          </FormInput>
+        </FormField>
+        {(reword || !!task.description) && (
+          <FormField label={messages.description}>
+            <FormTextArea isDisabled={!reword} onChangeText={(v) => set("description", v)} maxLength={2000}>
+              <MentionFieldText text={draft.description} />
+            </FormTextArea>
+          </FormField>
+        )}
 
         <ListGroup>
           <StatusRow value={draft.status} disabled={!task.canEdit} onChange={(v) => set("status", v)} />

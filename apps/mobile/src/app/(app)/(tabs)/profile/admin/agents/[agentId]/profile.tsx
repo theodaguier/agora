@@ -1,12 +1,11 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Description, FieldError, Input, Label, TextField } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { AvatarPicker } from "@/components/agents-admin/avatar-picker";
-import { AdminGate, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, FormField, FormInput, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { adminAgentsQuery, type AdminAgent } from "@/lib/agents-admin";
 import { api } from "@/lib/api";
 import { defineMessages, tr } from "@/lib/i18n";
@@ -74,11 +73,9 @@ function AgentProfile({ agent }: { agent: AdminAgent }) {
         <View className="items-center pt-2">
           <AgentAvatar agent={{ avatar: { shape, color } }} size={88} />
         </View>
-        <TextField isRequired isInvalid={!name.trim()}>
-          <Label>{t.name}</Label>
-          <Input value={name} onChangeText={setName} maxLength={60} returnKeyType="done" />
-          {name.trim() ? <Description>{t.profile(agent.hermesProfile)}</Description> : <FieldError>{t.nameRequired}</FieldError>}
-        </TextField>
+        <FormField label={t.name} required invalid={!name.trim()} error={t.nameRequired} help={t.profile(agent.hermesProfile)}>
+          <FormInput value={name} onChangeText={setName} maxLength={60} returnKeyType="done" />
+        </FormField>
         <AvatarPicker shape={shape} color={color} onShapeChange={setShape} onColorChange={setColor} />
       </SettingsScroll>
     </>

@@ -2,10 +2,10 @@ import { common } from "@agora/core/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { Stack, useRouter } from "expo-router";
-import { Button, Description, Input, Label, TextField } from "heroui-native";
+import { Button } from "heroui-native";
 import { useEffect, useRef } from "react";
 import { Linking } from "react-native";
-import { AdminGate, ErrorAlert, Intro, LoadingRows, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, Intro, LoadingRows, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { accountsSaved, ENGINES } from "@/components/admin/models";
 import { modelsMessages as t } from "@/components/admin/models-summary";
 import { headerIcon } from "@/components/header-button";
@@ -89,11 +89,9 @@ function DeviceLogin() {
           <LoadingRows rows={2} avatar={false} />
         ) : (
           <>
-            <TextField>
-              <Label>{t.oneTimeCode}</Label>
-              <Input value={shown.code} editable={false} selectTextOnFocus className="font-mono text-2xl" />
-              <Description>{t.waiting}</Description>
-            </TextField>
+            <FormField label={t.oneTimeCode} help={t.waiting}>
+              <FormInput value={shown.code} editable={false} selectTextOnFocus className="font-mono text-2xl" />
+            </FormField>
             <Button
               variant="tertiary"
               size="sm"
