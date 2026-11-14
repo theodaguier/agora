@@ -3,9 +3,9 @@ import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { Stack, useLocalSearchParams, useRouter, type Href } from "expo-router";
-import { Button, Description, FieldError, Input, ListGroup, TextArea, Typography } from "heroui-native";
+import { Button, Description, FieldError, ListGroup, Typography } from "heroui-native";
 import { useState } from "react";
-import { AdminGate, ErrorAlert, FieldRow, Intro, LoadingRows, Section, SettingsRow, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FieldRow, FormInput, FormTextArea, Intro, LoadingRows, Section, SettingsRow, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { machineHref, machinesMessages, probeState, sshStatusQuery, useTestMachine } from "@/components/admin/machines";
 import { EmptyState } from "@/components/empty-state";
 import { headerIcon } from "@/components/header-button";
@@ -112,8 +112,7 @@ function MachineForm({ host }: { host?: SshHostDto }) {
 
         <Section>
           <FieldRow label={t.name} required invalid={nameError}>
-            <Input
-              variant="secondary"
+            <FormInput
               value={form.name}
               onChangeText={(v) => set("name")(v.toLowerCase())}
               maxLength={40}
@@ -121,22 +120,22 @@ function MachineForm({ host }: { host?: SshHostDto }) {
               autoCorrect={false}
               spellCheck={false}
             />
-            <Description hideOnInvalid>{t.nameHelp}</Description>
-            <FieldError>{t.nameInvalid}</FieldError>
+            <Description hideOnInvalid className="px-4 pb-2">{t.nameHelp}</Description>
+            <FieldError className="px-4 pb-2">{t.nameInvalid}</FieldError>
           </FieldRow>
           <FieldRow label={t.host} required>
-            <Input variant="secondary" value={form.host} onChangeText={set("host")} autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType="url" />
-            <Description>{t.hostHelp}</Description>
+            <FormInput value={form.host} onChangeText={set("host")} autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType="url" />
+            <Description className="px-4 pb-2">{t.hostHelp}</Description>
           </FieldRow>
           <FieldRow label={t.port} required>
-            <Input variant="secondary" value={form.port} onChangeText={(v) => set("port")(v.replace(/\D/g, ""))} keyboardType="number-pad" maxLength={5} />
+            <FormInput value={form.port} onChangeText={(v) => set("port")(v.replace(/\D/g, ""))} keyboardType="number-pad" maxLength={5} />
           </FieldRow>
           <FieldRow label={t.username} required>
-            <Input variant="secondary" value={form.username} onChangeText={set("username")} autoCapitalize="none" autoCorrect={false} spellCheck={false} />
+            <FormInput value={form.username} onChangeText={set("username")} autoCapitalize="none" autoCorrect={false} spellCheck={false} />
           </FieldRow>
           <FieldRow label={t.description} top>
-            <TextArea variant="secondary" value={form.description} onChangeText={set("description")} className="min-h-20" />
-            <Description>{t.descriptionHelp}</Description>
+            <FormTextArea value={form.description} onChangeText={set("description")} className="min-h-20" />
+            <Description className="px-4 pb-2">{t.descriptionHelp}</Description>
           </FieldRow>
         </Section>
 

@@ -4,10 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import * as Linking from "expo-linking";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, Button, Card, Description, Input, Label, LinkButton, TextField, Typography } from "heroui-native";
+import { Alert, Button, Card, LinkButton, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
-import { AdminGate, ErrorAlert, SettingsScroll, Section, SwitchRow } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, SettingsScroll, Section, SwitchRow } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
 import { AgentTargets } from "@/components/marketplace/agent-targets";
 import { IntegrationTypeSection } from "@/components/marketplace/integration-type";
@@ -267,9 +267,8 @@ function AddItem({ item }: { item: Item }) {
                 {t.configuration}
               </Typography.Paragraph>
               {env.map((k) => (
-                <TextField key={k} isRequired>
-                  <Label>{k}</Label>
-                  <Input
+                <FormField key={k} label={k} required>
+                  <FormInput
                     value={values[k] ?? ""}
                     onChangeText={(v) => set(k, v)}
                     onBlur={() => complete(k)}
@@ -277,7 +276,7 @@ function AddItem({ item }: { item: Item }) {
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
-                </TextField>
+                </FormField>
               ))}
             </View>
           )}
@@ -298,9 +297,8 @@ function AddItem({ item }: { item: Item }) {
                 {t.configuration}
               </Typography.Paragraph>
               {reg.env.map((e) => (
-                <TextField key={e.name} isRequired={e.required}>
-                  <Label>{e.name}</Label>
-                  <Input
+                <FormField key={e.name} label={e.name} required={e.required} help={e.description || undefined}>
+                  <FormInput
                     value={values[e.name] ?? ""}
                     onChangeText={(v) => set(e.name, v)}
                     onBlur={() => complete(e.name)}
@@ -309,23 +307,20 @@ function AddItem({ item }: { item: Item }) {
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
-                  {!!e.description && <Description>{e.description}</Description>}
-                </TextField>
+                </FormField>
               ))}
             </View>
           )}
           {reg?.bearer && (
-            <TextField isRequired>
-              <Label>{t.token}</Label>
-              <Input
+            <FormField label={t.token} required help={t.tokenHelp}>
+              <FormInput
                 value={values.bearer_token ?? ""}
                 onChangeText={(v) => set("bearer_token", v)}
                 secureTextEntry
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <Description>{t.tokenHelp}</Description>
-            </TextField>
+            </FormField>
           )}
           {reg?.transport === "remote" && !reg.bearer && (
             <Section>

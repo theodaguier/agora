@@ -1,16 +1,14 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack } from "expo-router";
-import { Label, TextArea, TextField } from "heroui-native";
 import { useState } from "react";
 import { confirmAction } from "@/components/confirm-action";
-import { AdminGate, ErrorAlert, SettingsScroll, Intro, LoadingRows, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormTextArea, SettingsScroll, Intro, LoadingRows, useAdminToast } from "@/components/admin/ui";
 import { RestartBanner } from "@/components/marketplace/restart-banner";
 import { api } from "@/lib/api";
 import { defineMessages, tr } from "@/lib/i18n";
 import { flagRestart } from "@/lib/marketplace";
 import { envNames, vaultQuery, type RawResult } from "@/lib/memory";
-import { CheckIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { MenuButton } from "@/components/menus";
 import { withTap } from "@/lib/haptics";
@@ -102,9 +100,8 @@ export default function VaultRawScreen() {
             <LoadingRows rows={4} avatar={false} />
           ) : (
             !raw.error && (
-              <TextField>
-                <Label>{t.devLabel}</Label>
-                <TextArea
+              <FormField label={t.devLabel}>
+                <FormTextArea
                   value={text}
                   onChangeText={setDraft}
                   placeholder="OPENAI_API_KEY=sk-…"
@@ -114,7 +111,7 @@ export default function VaultRawScreen() {
                   scrollEnabled={false}
                   className="min-h-72"
                 />
-              </TextField>
+              </FormField>
             )
           )}
         </SettingsScroll>

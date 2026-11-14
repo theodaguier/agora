@@ -19,7 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { Stack, router, useFocusEffect, type Href } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { Accordion, Alert, Button, Card, Description, Input, LinkButton, ListGroup, Separator, Spinner, Surface, TextArea, TextField, Typography } from "heroui-native";
+import { Accordion, Alert, Button, Card, Description, LinkButton, ListGroup, Separator, Spinner, Surface, TextArea, TextField, Typography } from "heroui-native";
 import { Fragment, useCallback, useLayoutEffect, useRef, useState, type ComponentRef } from "react";
 import { AppState, View } from "react-native";
 import { KeyboardChatScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
@@ -28,14 +28,16 @@ import { useAdminToast } from "@/components/admin/ui";
 import { SentAttachments } from "@/components/attachments";
 import { BrandLogo } from "@/components/brand-logo";
 import { AttachMenu } from "@/components/composer/attach-menu";
+import { ComposerCard, ComposerInput, MicButton, SendButton } from "@/components/composer/composer-card";
+import { useDictation } from "@/components/composer/dictation";
 import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
-import { UserBubble } from "@/components/bubbles";
+import { Post, UserBubble } from "@/components/bubbles";
 import { ENGINE_PROVIDER, isActive, PRIORITY_ICONS, priorityEntries, useSetCodePriority } from "@/components/code-session";
 import { CodeBlock, SessionDecision } from "@/components/code-session-decision";
 import { CodeStateIcon, codeStateTone, IssueIcon, ProgressMark, TaskStatusIcon } from "@/components/code-session-marks";
 import { Shimmer } from "@/components/shimmer";
 import { confirmAction } from "@/components/confirm-action";
-import { ArrowUpIcon, BranchIcon, CheckCircleIcon, ChevronDownIcon, CloseCircleIcon, BanIcon, SparklesIcon, StopIcon, ToolIcon } from "@/components/icons";
+import { BranchIcon, CheckCircleIcon, ChevronDownIcon, CloseCircleIcon, BanIcon, SparklesIcon, ToolIcon } from "@/components/icons";
 import { MenuButton, TapMenu, type MenuEntry } from "@/components/menus";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
@@ -129,7 +131,8 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
           </Stack.Toolbar.View>
         </Stack.Toolbar>
       )}
-      <Surface className="flex-1 p-0">
+      {/* The conversation's ground (screens/conversation.tsx): the same chat, not a card. */}
+      <Surface variant="transparent" className="flex-1 bg-background p-0">
         {!session ? (
           <View className="flex-1 items-center justify-center gap-3 px-4">
             {error ? (
@@ -189,7 +192,7 @@ export function CodeSessionScreen({ conversationId, sessionId }: { conversationI
                   </Button>
                 </View>
               )}
-              <Surface className="gap-2 px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
+              <Surface variant="transparent" className="gap-2 overflow-visible bg-background px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
                 {owner ? (
                   <SessionComposer conversationId={conversationId} session={session} onSent={() => toEnd(true)} />
                 ) : (
@@ -383,9 +386,13 @@ function Overview({ conversationId, session, owner, waiting }: { conversationId:
         </View>
       ) : (
         <View className="gap-4">
-          <Timeline steps={session.steps} running={running} />
+          <Timeline steps={session.steps} running={running} engine={session.engine} />
           {/* While it works and waits for nobody: what it does now, a light passing over the words. */}
-          {running && !waiting && <Shimmer>{session.activity || t.status.running}</Shimmer>}
+          {running && !waiting && (
+            <View className="pl-7">
+              <Shimmer>{session.activity || t.status.running}</Shimmer>
+            </View>
+          )}
         </View>
       )}
       {/* What waits for an answer ends the stream, right above the field. */}
@@ -785,21 +792,45 @@ function blocks(steps: CodeStep[]): Block[] {
   return out;
 }
 
-/** The steps of one level (the session's, or a subagent's), each subagent call holding its own. */
-function Timeline({ steps, running, parentId }: { steps: CodeStep[]; running: boolean; parentId?: string }) {
+/**
+ * The steps of one level (the session's, or a subagent's), each subagent call holding its own. At the
+ * session's level it reads as its conversation: each instruction a bubble on the right, and what the
+ * engine did after it one post under its logo and name, as a bot's reply in a thread.
+ */
+function Timeline({ steps, running, parentId, engine }: { steps: CodeStep[]; running: boolean; parentId?: string; engine?: CodeSession["engine"] }) {
   const own = steps.filter((s) => parentOf(s) === parentId);
   const last = own.at(-1);
+  const render = (b: Block) =>
+    b.kind === "agents" ? (
+      <SubagentBlock key={b.steps[0]!.id} steps={b.steps} all={steps} running={running} />
+    ) : b.kind === "tools" ? (
+      <ToolBlock key={b.steps[0]!.id} steps={b.steps} all={steps} />
+    ) : (
+      <StepView key={b.step.id} step={b.step} streaming={running && b.step === last} />
+    );
+  const all = blocks(own);
+  if (!engine) return <View className="gap-3">{all.map(render)}</View>;
+  // Turns: an instruction alone, then the run of everything the engine did until the next one.
+  const turns: Block[][] = [];
+  for (const b of all) {
+    const user = b.kind === "step" && b.step.kind === "user";
+    const prev = turns.at(-1);
+    const prevUser = prev?.[0]?.kind === "step" && prev[0].step.kind === "user";
+    if (user || !prev || prevUser) turns.push([b]);
+    else prev.push(b);
+  }
+  const head = { avatar: <ModelLogo provider={ENGINE_PROVIDER[engine]} model={engine === "cursor" ? undefined : engine} size={20} />, name: CODE_ENGINE_NAMES[engine] };
   return (
-    <View className="gap-3">
-      {blocks(own).map((b) =>
-        b.kind === "agents" ? (
-          <SubagentBlock key={b.steps[0]!.id} steps={b.steps} all={steps} running={running} />
-        ) : b.kind === "tools" ? (
-          <ToolBlock key={b.steps[0]!.id} steps={b.steps} all={steps} />
-        ) : (
-          <StepView key={b.step.id} step={b.step} streaming={running && b.step === last} />
-        ),
-      )}
+    <View className="gap-5.5">
+      {turns.map((turn) => {
+        const first = turn[0]!;
+        if (first.kind === "step" && first.step.kind === "user") return render(first);
+        return (
+          <Post key={first.kind === "step" ? first.step.id : first.steps[0]!.id} head={head}>
+            {turn.map(render)}
+          </Post>
+        );
+      })}
     </View>
   );
 }
@@ -1047,6 +1078,7 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
   const toast = useAdminToast();
   const [text, setText] = useState("");
   const [attachOpen, setAttachOpen] = useState(false);
+  const dictation = useDictation(setText);
   const { files, setFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
   const ids = files.flatMap((f) => (f.status === "ready" && f.attachment ? [f.attachment.id] : []));
   const send = useMutation({
@@ -1083,7 +1115,10 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
   const stoppable = isActive(session.status) && !text.trim() && !files.length;
   const canSend = !send.isPending && !files.some((f) => f.status === "uploading") && (!!text.trim() || ids.length > 0);
   const submit = () => {
-    if (canSend) send.mutate({ value: text.trim(), attachmentIds: ids });
+    if (!canSend) return;
+    // What is still being said would land in the emptied field.
+    dictation.abort();
+    send.mutate({ value: text.trim(), attachmentIds: ids });
   };
   const queueDone = (s: CodeSession) => applyCodeSession(qc, s);
   const placeholder = session.question
@@ -1109,44 +1144,51 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
             <SlashMenu items={items} onPick={(item) => setText(`/${item.name} `)} />
           </View>
         )}
-        <Surface variant="secondary" className="gap-1 p-2">
-          <PendingFiles items={files} onRemove={removeFile} />
-          <Input
-            multiline
+        {/* The conversation's composer card (components/composer/composer-card.tsx): the same chat, its mode and model as tools. */}
+        <ComposerCard
+          header={files.length > 0 && <PendingFiles items={files} onRemove={removeFile} />}
+          tools={
+            <>
+              <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
+              <TapMenu
+                accessibilityLabel={`${t.mode}: ${t.modes[session.mode]}`}
+                actions={[
+                  {
+                    title: t.mode,
+                    actions: codeEngineModes(session.engine).map((m) => ({ label: t.modes[m], icon: MODE_ICONS[m], description: t.modeHelp[m], checked: m === session.mode, onPress: () => m !== session.mode && mode.mutate(m) })),
+                  },
+                ]}
+              >
+                <Button variant="ghost" size="sm" isDisabled={mode.isPending} className="max-w-[150px]">
+                  <Button.Label numberOfLines={1}>{t.modes[session.mode]}</Button.Label>
+                </Button>
+              </TapMenu>
+            </>
+          }
+          trailing={
+            <>
+              <SessionModelPicker conversationId={conversationId} session={session} />
+              <MicButton listening={dictation.listening} onPress={() => (dictation.listening ? dictation.stop() : dictation.start(text))} />
+              <SendButton
+                canSend={canSend}
+                label={t.send}
+                onSend={withTap(submit)}
+                stop={stoppable ? { label: stop.isPending ? t.stopping : t.stop, pending: stop.isPending, onPress: () => stop.mutate() } : null}
+              />
+            </>
+          }
+        >
+          <ComposerInput
             value={text}
-            onChangeText={setText}
+            onChangeText={(value) => {
+              // Typing takes over from dictation (the text it writes itself is not an edit).
+              if (dictation.listening && value !== text) dictation.stop();
+              setText(value);
+            }}
             placeholder={placeholder}
             accessibilityLabel={t.instruction}
-            className="max-h-[152px] bg-transparent px-2 pt-2.5 pb-1.5 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
           />
-          <View className="flex-row items-center gap-2">
-            <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
-            <TapMenu
-              accessibilityLabel={`${t.mode}: ${t.modes[session.mode]}`}
-              actions={[
-                {
-                  title: t.mode,
-                  actions: codeEngineModes(session.engine).map((m) => ({ label: t.modes[m], icon: MODE_ICONS[m], description: t.modeHelp[m], checked: m === session.mode, onPress: () => m !== session.mode && mode.mutate(m) })),
-                },
-              ]}
-            >
-              <Button variant="ghost" size="sm" isDisabled={mode.isPending} className="max-w-[150px]">
-                <Button.Label numberOfLines={1}>{t.modes[session.mode]}</Button.Label>
-              </Button>
-            </TapMenu>
-            <View className="flex-1" />
-            <SessionModelPicker conversationId={conversationId} session={session} />
-            {stoppable ? (
-              <Button isIconOnly size="sm" variant="primary" accessibilityLabel={stop.isPending ? t.stopping : t.stop} isDisabled={stop.isPending} onPress={withTap(() => stop.mutate())}>
-                {stop.isPending ? <Spinner size="sm" /> : <StopIcon className="size-[18px] text-accent-foreground" />}
-              </Button>
-            ) : (
-              <Button isIconOnly size="sm" variant="primary" accessibilityLabel={t.send} isDisabled={!canSend} onPress={withTap(submit)}>
-                <ArrowUpIcon className="size-[18px] text-accent-foreground" strokeWidth={2.25} />
-              </Button>
-            )}
-          </View>
-        </Surface>
+        </ComposerCard>
       </View>
     </View>
   );

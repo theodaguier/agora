@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 import { View, type TextInput } from "react-native";
 import { AuthLinkStep } from "@/components/auth-link-step";
 import { AuthScreen } from "@/components/auth-screen";
-import { LockIcon } from "@/components/icons";
 import { LoginField } from "@/components/login-field";
 import { ApiError, findOrg, type Org } from "@/lib/api";
 import { errorCode, publicRequest, readAuthParams } from "@/lib/auth-links";
@@ -122,7 +121,6 @@ function NewPassword({ server, token }: { server: string; token: string }) {
       <View className="gap-4">
         <LoginField
           label={t.password}
-          icon={LockIcon}
           description={t.passwordPlaceholder}
           value={password}
           onChangeText={setPassword}
@@ -138,7 +136,6 @@ function NewPassword({ server, token }: { server: string; token: string }) {
         <LoginField
           ref={confirmRef}
           label={t.confirm}
-          icon={LockIcon}
           value={confirm}
           onChangeText={setConfirm}
           error={error?.on === "confirm" ? error.message : null}

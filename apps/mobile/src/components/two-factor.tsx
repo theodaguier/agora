@@ -1,10 +1,10 @@
 import { auth, common } from "@agora/core/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
-import { Button, Description, FieldError, Input, InputOTP, Label, LinkButton, Surface, TextField, Typography } from "heroui-native";
+import { Button, FieldError, InputOTP, Label, LinkButton, Surface, Typography } from "heroui-native";
 import { useState } from "react";
 import { Linking, Share, View } from "react-native";
-import { SecretInput, useAdminToast } from "@/components/admin/ui";
+import { FormField, FormInput, SecretInput, useAdminToast } from "@/components/admin/ui";
 import { AuthScreen } from "@/components/auth-screen";
 import { useSignOut } from "@/components/profile/organizations";
 import { useServer } from "@/components/server-scope";
@@ -154,11 +154,9 @@ function PasswordStep({ intent, onNext, onDone }: { intent: TwoFactorIntent; onN
 
   return (
     <View className="gap-6">
-      <TextField isRequired isInvalid={!!error} isDisabled={pending}>
-        <Label>{t.password}</Label>
-        <SecretInput value={password} onChangeText={setPassword} autoFocus autoComplete="current-password" textContentType="password" returnKeyType="go" onSubmitEditing={submit} />
-        {error ? <FieldError>{error}</FieldError> : <Description>{t.passwordHelp}</Description>}
-      </TextField>
+      <FormField label={t.password} required invalid={!!error} error={error} help={t.passwordHelp}>
+        <SecretInput value={password} onChangeText={setPassword} isDisabled={pending} autoFocus autoComplete="current-password" textContentType="password" returnKeyType="go" onSubmitEditing={submit} />
+      </FormField>
       <Button variant={intent === "disable" ? "danger" : "primary"} isDisabled={!password || pending} onPress={withTap(submit)}>
         {pending ? c.inProgress : intent === "disable" ? t.turnOff : t.continue}
       </Button>
@@ -200,11 +198,9 @@ function ScanStep({ totpURI, onVerified }: { totpURI: string; onVerified: () => 
       <Button variant="secondary" onPress={withTap(() => Linking.openURL(totpURI).catch(() => toast.info(t.noApp)))}>
         {t.openApp}
       </Button>
-      <TextField>
-        <Label>{t.setupKey}</Label>
-        <Input value={secret.replace(/(.{4})(?=.)/g, "$1 ")} editable={false} selectTextOnFocus />
-        <Description>{t.setupKeyHelp}</Description>
-      </TextField>
+      <FormField label={t.setupKey} help={t.setupKeyHelp}>
+        <FormInput value={secret.replace(/(.{4})(?=.)/g, "$1 ")} editable={false} selectTextOnFocus />
+      </FormField>
       <Button
         size="sm"
         variant="tertiary"

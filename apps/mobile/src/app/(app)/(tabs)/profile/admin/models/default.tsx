@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Description, Input, Label, ListGroup, Separator, TextField } from "heroui-native";
+import { ListGroup, Separator } from "heroui-native";
 import { Fragment, useState } from "react";
 import { ModelList } from "@/components/agents-admin/model-list";
-import { AdminGate, ErrorAlert, Intro, LoadingRows, SearchBox, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, Intro, LoadingRows, SearchBox, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { providersMessages as t, refreshProviders } from "@/components/admin/providers";
 import { headerIcon } from "@/components/header-button";
 import { CheckIcon } from "@/components/icons";
@@ -106,11 +106,9 @@ function DefaultModelForm({ data, initial }: { data: AiProviders; initial?: stri
           {models.length > 8 && <SearchBox value={q} onChange={setQ} placeholder={t.searchModel} />}
           <ModelList models={shown.map((id) => ({ id, reasoning: false }))} value={model} onChange={setModel} disabled={apply.isPending} />
         </Section>
-        <TextField isDisabled={apply.isPending}>
-          <Label>{t.baseUrl}</Label>
-          <Input value={baseUrl} onChangeText={setBaseUrl} placeholder="https://…/v1" autoCapitalize="none" autoCorrect={false} keyboardType="url" />
-          <Description>{t.baseUrlHelp}</Description>
-        </TextField>
+        <FormField label={t.baseUrl} help={t.baseUrlHelp}>
+          <FormInput value={baseUrl} onChangeText={setBaseUrl} isDisabled={apply.isPending} placeholder="https://…/v1" autoCapitalize="none" autoCorrect={false} keyboardType="url" />
+        </FormField>
       </SettingsScroll>
     </>
   );

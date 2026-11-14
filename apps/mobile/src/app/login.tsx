@@ -5,7 +5,6 @@ import { Alert, Button, LinkButton } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View, type TextInput } from "react-native";
 import { AuthScreen } from "@/components/auth-screen";
-import { KeyIcon, LockIcon, MailIcon } from "@/components/icons";
 import { LoginField } from "@/components/login-field";
 import { ApiError, signIn, verifyTwoFactor, type Org } from "@/lib/api";
 import { publicRequest } from "@/lib/auth-links";
@@ -105,7 +104,6 @@ export default function Login() {
         <LoginField
           key={backup ? "backup" : "totp"}
           label={backup ? t.backupCode : t.code}
-          icon={KeyIcon}
           value={code}
           onChangeText={setCode}
           placeholder={backup ? "xxxxx-xxxxx" : "123456"}
@@ -166,7 +164,6 @@ export default function Login() {
       <View className="gap-4">
         <LoginField
           label={t.email}
-          icon={MailIcon}
           value={email}
           onChangeText={setEmail}
           placeholder={t.emailPlaceholder}
@@ -183,7 +180,6 @@ export default function Login() {
         <LoginField
           ref={passwordRef}
           label={t.password}
-          icon={LockIcon}
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"

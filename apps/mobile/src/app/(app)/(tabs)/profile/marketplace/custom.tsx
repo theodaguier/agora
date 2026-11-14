@@ -3,10 +3,10 @@ import { common, integrations } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
-import { Alert, Button, Card, ControlField, Description, FieldError, Input, Label, Tabs, TextArea, TextField, Typography } from "heroui-native";
+import { Alert, Button, Card, ControlField, Description, Label, ListGroup, Separator, Tabs, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
-import { AdminGate, ErrorAlert, SettingsScroll } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, FormTextArea, SettingsScroll } from "@/components/admin/ui";
 import { CloseIcon } from "@/components/icons";
 import { AgentTargets } from "@/components/marketplace/agent-targets";
 import { IntegrationTile, IntegrationTypeSection } from "@/components/marketplace/integration-type";
@@ -272,26 +272,22 @@ function CustomConnector() {
         <>
           <Typography.Paragraph className="px-1">{t.intro}</Typography.Paragraph>
 
-          <TextField isRequired>
-            <Label>{t.displayName}</Label>
-            <Input value={title} onChangeText={setTitle} maxLength={80} autoCorrect={false} />
-          </TextField>
+          <FormField label={t.displayName} required>
+            <FormInput value={title} onChangeText={setTitle} maxLength={80} autoCorrect={false} />
+          </FormField>
           <IntegrationTypeSection value={shownType} onChange={setType} />
-          <TextField isRequired isInvalid={nameInvalid}>
-            <Label>{t.serverName}</Label>
-            <Input
+          <FormField label={t.serverName} required invalid={nameInvalid} error={t.serverNameInvalid} help={t.serverNameHelp(serverName)}>
+            <FormInput
               value={serverName}
               onChangeText={(v) => setName(v.toLowerCase())}
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
             />
-            {nameInvalid ? <FieldError>{t.serverNameInvalid}</FieldError> : <Description>{t.serverNameHelp(serverName)}</Description>}
-          </TextField>
-          <TextField>
-            <Label>{t.description}</Label>
-            <TextArea value={description} onChangeText={setDescription} maxLength={500} className="min-h-20" />
-          </TextField>
+          </FormField>
+          <FormField label={t.description}>
+            <FormTextArea value={description} onChangeText={setDescription} maxLength={500} className="min-h-20" />
+          </FormField>
 
           <View className="gap-2">
             <Label isRequired>{t.transport}</Label>
@@ -310,9 +306,8 @@ function CustomConnector() {
 
           {transport === "remote" ? (
             <>
-              <TextField isRequired isInvalid={urlInvalid}>
-                <Label>{t.url}</Label>
-                <Input
+              <FormField label={t.url} required invalid={urlInvalid} error={t.urlInvalid}>
+                <FormInput
                   value={url}
                   onChangeText={setUrl}
                   onBlur={() => setUrl((u) => withHttps(u))}
@@ -321,8 +316,7 @@ function CustomConnector() {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-                {urlInvalid && <FieldError>{t.urlInvalid}</FieldError>}
-              </TextField>
+              </FormField>
               <View className="gap-2">
                 <Label isRequired>{t.auth}</Label>
                 <Tabs value={auth} onValueChange={(v) => (haptic.select(), setAuth(v as Auth))}>
@@ -347,11 +341,9 @@ function CustomConnector() {
                 />
               )}
               {auth === "header" && (
-                <TextField isRequired>
-                  <Label>{t.token}</Label>
-                  <Input value={token} onChangeText={setToken} secureTextEntry autoCapitalize="none" autoCorrect={false} />
-                  <Description>{t.tokenHelp}</Description>
-                </TextField>
+                <FormField label={t.token} required help={t.tokenHelp}>
+                  <FormInput value={token} onChangeText={setToken} secureTextEntry autoCapitalize="none" autoCorrect={false} />
+                </FormField>
               )}
             </>
           ) : (
@@ -362,13 +354,11 @@ function CustomConnector() {
                   <Alert.Description>{t.stdioWarning}</Alert.Description>
                 </Alert.Content>
               </Alert>
-              <TextField isRequired>
-                <Label>{t.command}</Label>
-                <Input value={command} onChangeText={setCommand} placeholder="npx" autoCapitalize="none" autoCorrect={false} />
-              </TextField>
-              <TextField>
-                <Label>{t.args}</Label>
-                <TextArea
+              <FormField label={t.command} required>
+                <FormInput value={command} onChangeText={setCommand} placeholder="npx" autoCapitalize="none" autoCorrect={false} />
+              </FormField>
+              <FormField label={t.args} help={t.argsHelp}>
+                <FormTextArea
                   value={args}
                   onChangeText={setArgs}
                   placeholder={"-y\npackage@1.0.0"}
@@ -376,42 +366,42 @@ function CustomConnector() {
                   autoCorrect={false}
                   className="min-h-24"
                 />
-                <Description>{t.argsHelp}</Description>
-              </TextField>
+              </FormField>
               <View className="gap-3">
                 <Label>{t.env}</Label>
                 {env.map((row) => (
-                  <Card key={row.key} variant="secondary">
-                    <Card.Body className="gap-2">
-                      <View className="flex-row items-center gap-2">
-                        <Input
-                          accessibilityLabel={t.envName}
-                          placeholder="API_KEY"
-                          value={row.name}
-                          onChangeText={(v) => editRow(row.key, { name: v.toUpperCase() })}
-                          autoCapitalize="characters"
-                          autoCorrect={false}
-                          containerClassName="flex-1"
-                        />
-                        <Button isIconOnly variant="ghost" size="sm" accessibilityLabel={t.removeVariable(row.name)} onPress={withTap(() => setEnv((xs) => xs.filter((x) => x.key !== row.key)))}>
-                          <CloseIcon className="size-5 text-muted" />
-                        </Button>
-                      </View>
-                      <Input
-                        accessibilityLabel={t.envValue}
-                        placeholder={t.envValue}
-                        value={row.value}
-                        onChangeText={(v) => editRow(row.key, { value: v })}
-                        secureTextEntry={row.secret}
-                        autoCapitalize="none"
+                  // One white group per variable (name, value, secret), its fields bare in it: no box in a card.
+                  <ListGroup key={row.key}>
+                    <View className="flex-row items-center pr-2">
+                      <FormInput
+                        accessibilityLabel={t.envName}
+                        placeholder="API_KEY"
+                        value={row.name}
+                        onChangeText={(v) => editRow(row.key, { name: v.toUpperCase() })}
+                        autoCapitalize="characters"
                         autoCorrect={false}
+                        containerClassName="flex-1"
                       />
-                      <ControlField className="self-start" isSelected={row.secret} onSelectedChange={(v) => (haptic.select(), editRow(row.key, { secret: v }))}>
-                        <ControlField.Indicator variant="checkbox" />
-                        <Label>{t.secret}</Label>
-                      </ControlField>
-                    </Card.Body>
-                  </Card>
+                      <Button isIconOnly variant="ghost" size="sm" accessibilityLabel={t.removeVariable(row.name)} onPress={withTap(() => setEnv((xs) => xs.filter((x) => x.key !== row.key)))}>
+                        <CloseIcon className="size-5 text-muted" />
+                      </Button>
+                    </View>
+                    <Separator className="mx-4" />
+                    <FormInput
+                      accessibilityLabel={t.envValue}
+                      placeholder={t.envValue}
+                      value={row.value}
+                      onChangeText={(v) => editRow(row.key, { value: v })}
+                      secureTextEntry={row.secret}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    <Separator className="mx-4" />
+                    <ControlField className="self-start px-4 py-3" isSelected={row.secret} onSelectedChange={(v) => (haptic.select(), editRow(row.key, { secret: v }))}>
+                      <ControlField.Indicator variant="checkbox" />
+                      <Label>{t.secret}</Label>
+                    </ControlField>
+                  </ListGroup>
                 ))}
                 <Button
                   variant="secondary"
@@ -426,11 +416,9 @@ function CustomConnector() {
             </>
           )}
 
-          <TextField isInvalid={docsInvalid}>
-            <Label>{t.docs}</Label>
-            <Input value={docs} onChangeText={setDocs} onBlur={() => setDocs((d) => withHttps(d))} placeholder="https://" keyboardType="url" autoCapitalize="none" autoCorrect={false} />
-            {docsInvalid && <FieldError>{t.docsInvalid}</FieldError>}
-          </TextField>
+          <FormField label={t.docs} invalid={docsInvalid} error={t.docsInvalid}>
+            <FormInput value={docs} onChangeText={setDocs} onBlur={() => setDocs((d) => withHttps(d))} placeholder="https://" keyboardType="url" autoCapitalize="none" autoCorrect={false} />
+          </FormField>
 
           <AgentTargets legend={t.enableForAgents} hint={t.defaultProfile} value={targets} onChange={setTargets} withoutDefault />
 

@@ -1,19 +1,18 @@
 import { common } from "@agora/core/i18n";
 import { Stack, useRouter } from "expo-router";
-import { FieldError, Input, ListGroup, Separator, TextField, Typography } from "heroui-native";
+import { FieldError, ListGroup, Separator, Typography } from "heroui-native";
 import { Fragment, useMemo, useState } from "react";
-import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { PersonAvatar } from "@/components/conversation-avatar";
 import { useMe } from "@/components/server-scope";
 import { DueRow, PriorityRow } from "@/components/tasks/task-fields";
 import { defineMessages, tr } from "@/lib/i18n";
 import { usePeople } from "@/lib/people";
-import { parseTags, splitTags, suggestPeople, tagAtCaret, useCreateTasks, type Candidate, type TaskPriority } from "@/lib/tasks";
+import { parseTags, suggestPeople, tagAtCaret, useCreateTasks, type Candidate, type TaskPriority } from "@/lib/tasks";
 import { MentionFieldText } from "@/components/mention";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
-import { useAdminToast } from "@/components/admin/ui";
+import { FormField, FormInput, useAdminToast } from "@/components/admin/ui";
 
 /*
  * apps/web/src/components/QuickAddTask.tsx as a sheet: type the title, "@username" assigns it
@@ -92,32 +91,34 @@ export default function NewTaskSheet() {
         <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={c.add} disabled={!title || add.isPending} variant="prominent" onPress={withTap(submit)} />
       </Stack.Toolbar>
       <KeyboardAwareScrollView bottomOffset={24} contentInsetAdjustmentBehavior="automatic" keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" className="bg-background" contentContainerClassName="gap-5 px-4 pb-10 pt-4">
-        <View className="gap-2">
-          <TextField>
-            <Input
-              autoFocus
-              selection={selection}
-              onChangeText={(v) => {
-                setText(v);
-                setSelection(undefined);
-              }}
-              onSelectionChange={(e) => setCaret(e.nativeEvent.selection.end)}
-              onSubmitEditing={submit}
-              submitBehavior="blurAndSubmit"
-              returnKeyType="done"
-              maxLength={300}
-              placeholder={messages.placeholder}
-              accessibilityLabel={messages.title}>
-              {/* The text as children, not `value`: every mention in it is highlighted, as the web draws them over its field. */}
-              <MentionFieldText text={text} />
-            </Input>
-          </TextField>
-          {!!title && (
-            <Typography type="body-xs" color="muted" className="px-1" truncate>
-              {forYou ? messages.forYou : messages.forPeople(targets.map((p) => (p.id === me.id ? p.name.split(" ")[0] : p.name)).join(", "))}
-            </Typography>
-          )}
-        </View>
+        {/* Who gets the task, under the field as its help (one line: the names are cut, not wrapped). */}
+        <FormField
+          help={
+            !!title && (
+              <Typography type="body-xs" color="muted" className="px-4" truncate>
+                {forYou ? messages.forYou : messages.forPeople(targets.map((p) => (p.id === me.id ? p.name.split(" ")[0] : p.name)).join(", "))}
+              </Typography>
+            )
+          }
+        >
+          <FormInput
+            autoFocus
+            selection={selection}
+            onChangeText={(v) => {
+              setText(v);
+              setSelection(undefined);
+            }}
+            onSelectionChange={(e) => setCaret(e.nativeEvent.selection.end)}
+            onSubmitEditing={submit}
+            submitBehavior="blurAndSubmit"
+            returnKeyType="done"
+            maxLength={300}
+            placeholder={messages.placeholder}
+            accessibilityLabel={messages.title}>
+            {/* The text as children, not `value`: every mention in it is highlighted, as the web draws them over its field. */}
+            <MentionFieldText text={text} />
+          </FormInput>
+        </FormField>
 
         {suggestions.length > 0 && (
           <ListGroup>

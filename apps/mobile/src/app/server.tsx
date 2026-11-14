@@ -5,7 +5,6 @@ import { useState } from "react";
 import { View } from "react-native";
 import { AuthScreen } from "@/components/auth-screen";
 import { LoginField } from "@/components/login-field";
-import { GlobeIcon } from "@/components/icons";
 import { findOrg } from "@/lib/api";
 import { withTap } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
@@ -76,7 +75,6 @@ export default function ServerStep() {
     >
       <LoginField
         label={t.address}
-        icon={GlobeIcon}
         value={address}
         onChangeText={setAddress}
         placeholder={t.placeholder}

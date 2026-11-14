@@ -1,13 +1,12 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack } from "expo-router";
-import { Description, Label, Spinner, TextArea, TextField } from "heroui-native";
+import { Spinner } from "heroui-native";
 import { useState } from "react";
-import { AdminGate, ErrorAlert, SettingsScroll, Intro, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormTextArea, SettingsScroll, Intro, useAdminToast } from "@/components/admin/ui";
 import { api } from "@/lib/api";
 import { defineMessages, tr } from "@/lib/i18n";
 import { companyMemoryQuery } from "@/lib/memory";
-import { CheckIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 
@@ -74,11 +73,9 @@ function Editor({ saved, max }: { saved: string; max: number }) {
       </Stack.Toolbar>
       <SettingsScroll>
         <Intro>{t.intro}</Intro>
-        <TextField>
-          <Label>{t.title}</Label>
-          <TextArea value={value} onChangeText={setDraft} placeholder={t.placeholder} maxLength={max} scrollEnabled={false} className="min-h-72" />
-          <Description>{t.count(value.length, max)}</Description>
-        </TextField>
+        <FormField label={t.title} help={t.count(value.length, max)}>
+          <FormTextArea value={value} onChangeText={setDraft} placeholder={t.placeholder} maxLength={max} scrollEnabled={false} className="min-h-72" />
+        </FormField>
       </SettingsScroll>
     </>
   );

@@ -2,13 +2,13 @@ import { leastUsedAgentColor, soulTemplate } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
-import { Button, Description, FieldError, Input, Label, TextArea, TextField, Typography } from "heroui-native";
+import { Button, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { AvatarPicker } from "@/components/agents-admin/avatar-picker";
 import { ModelList } from "@/components/agents-admin/model-list";
-import { AdminGate, SettingsScroll, Section, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, FormField, FormInput, FormTextArea, SettingsScroll, Section, useAdminToast } from "@/components/admin/ui";
 import {
   adminAgentsQuery,
   agentHref,
@@ -144,13 +144,11 @@ function CreateAgent() {
         </View>
 
         <View className="gap-4">
-          <TextField isRequired>
-            <Label>{t.agentName}</Label>
-            <Input value={name} onChangeText={setName} maxLength={60} autoFocus returnKeyType="next" />
-          </TextField>
-          <TextField isRequired isInvalid={profileInvalid}>
-            <Label>{t.profile}</Label>
-            <Input
+          <FormField label={t.agentName} required>
+            <FormInput value={name} onChangeText={setName} maxLength={60} autoFocus returnKeyType="next" />
+          </FormField>
+          <FormField label={t.profile} required invalid={profileInvalid} error={t.profilePattern} help={t.profileHelp}>
+            <FormInput
               value={hermesProfile}
               onChangeText={(v) => setProfile(v.toLowerCase())}
               placeholder={t.profilePlaceholder}
@@ -158,8 +156,7 @@ function CreateAgent() {
               autoCorrect={false}
               spellCheck={false}
             />
-            {profileInvalid ? <FieldError>{t.profilePattern}</FieldError> : <Description>{t.profileHelp}</Description>}
-          </TextField>
+          </FormField>
         </View>
 
         <AvatarPicker shape={shape} color={color} onShapeChange={setShape} onColorChange={setColor} />
@@ -170,9 +167,8 @@ function CreateAgent() {
           </Section>
         )}
 
-        <TextField>
-          <Label>{t.personality}</Label>
-          <TextArea
+        <FormField label={t.personality} help={t.soulIntro}>
+          <FormTextArea
             value={soul}
             onChangeText={setSoul}
             maxLength={20_000}
@@ -180,8 +176,7 @@ function CreateAgent() {
             autoCorrect={false}
             className="min-h-48"
           />
-          <Description>{t.soulIntro}</Description>
-        </TextField>
+        </FormField>
         {!soul.trim() && !!name.trim() && (
           <Button
             variant="secondary"

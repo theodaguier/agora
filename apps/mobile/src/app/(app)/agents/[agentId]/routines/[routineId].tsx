@@ -2,10 +2,11 @@ import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { Chip, Description, Input, Label, ListGroup, Radio, RadioGroup, Separator, SkeletonGroup, Surface, TextField, Typography, useToast } from "heroui-native";
+import { Chip, Label, ListGroup, Radio, RadioGroup, Separator, SkeletonGroup, Surface, Typography, useToast } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { FormField, FormInput } from "@/components/admin/ui";
 import { Section } from "@/components/people/section";
 import { api } from "@/lib/api";
 import { defineMessages, tr } from "@/lib/i18n";
@@ -13,7 +14,7 @@ import { refreshRoutines, routinePath } from "@/lib/profile";
 import { routinesQuery, type Routine } from "@/lib/queries";
 import { parseFrequency, scheduleOf, weekdays, type Frequency } from "@/lib/routines";
 import { OptionPicker } from "@/components/menus";
-import { CheckIcon, ClockIcon, CloseIcon } from "@/components/icons";
+import { ClockIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { haptic, withTap } from "@/lib/haptics";
 import { EmptyState } from "@/components/empty-state";
@@ -134,10 +135,9 @@ function RoutineForm({ conversationId, routine }: { conversationId: string; rout
         <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={c.save} disabled={!valid || save.isPending} variant="prominent" onPress={withTap(submit)} />
       </Stack.Toolbar>
       <KeyboardAwareScrollView bottomOffset={24} contentInsetAdjustmentBehavior="automatic" keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" className="bg-background" contentContainerClassName="gap-6 p-4 pb-12">
-        <TextField isRequired>
-          <Label>{t.name}</Label>
-          <Input value={name} onChangeText={setName} maxLength={120} autoFocus returnKeyType="done" onSubmitEditing={submit} />
-        </TextField>
+        <FormField label={t.name} required>
+          <FormInput value={name} onChangeText={setName} maxLength={120} autoFocus returnKeyType="done" onSubmitEditing={submit} />
+        </FormField>
 
         {/* One frequency among four: a HeroUI RadioGroup, as its example (Surface, items, Separators). */}
         <View className="gap-2">
@@ -184,11 +184,9 @@ function RoutineForm({ conversationId, routine }: { conversationId: string; rout
         )}
 
         {mode === "custom" ? (
-          <TextField isRequired>
-            <Label>{t.expr}</Label>
-            <Input value={expr} onChangeText={setExpr} maxLength={120} autoCapitalize="none" autoCorrect={false} />
-            <Description>{t.exprHint}</Description>
-          </TextField>
+          <FormField label={t.expr} required help={t.exprHint}>
+            <FormInput value={expr} onChangeText={setExpr} maxLength={120} autoCapitalize="none" autoCorrect={false} />
+          </FormField>
         ) : (
           <Section>
             <ListGroup.Item disabled>

@@ -1,7 +1,7 @@
 import { common } from "@agora/core/i18n";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { Button as NativeButton, type ButtonProps as NativeButtonProps, Divider, Host, Image as NativeImage, Menu as NativeMenu, Rectangle, Section, Text, Toggle } from "@expo/ui/swift-ui";
-import { accessibilityLabel as a11yLabel, buttonStyle, disabled as nativeDisabled, foregroundStyle, frame, menuIndicator } from "@expo/ui/swift-ui/modifiers";
+import { accessibilityLabel as a11yLabel, buttonStyle, disabled as nativeDisabled, foregroundStyle, frame, menuIndicator, menuStyle } from "@expo/ui/swift-ui/modifiers";
 import * as Haptics from "expo-haptics";
 // The native view behind expo-router's Link.Menu: a UIContextMenuInteraction on one RN view. Without a
 // next screen it is a plain iOS context menu (what Link.Menu does on iPad).
@@ -278,7 +278,9 @@ function PullDown({ actions, label, children }: { actions: MenuEntry[]; label?: 
             // Almost transparent: a fully clear shape takes no touches.
             <Rectangle modifiers={[foregroundStyle("#00000002"), frame({ maxWidth: Number.MAX_VALUE, maxHeight: Number.MAX_VALUE })]} />
           }
-          modifiers={[buttonStyle("plain"), menuIndicator("hidden"), ...(label ? [a11yLabel(label)] : [])]}
+          // menuStyle("button") + plain + no indicator: the label alone is the trigger. Without the menu style,
+          // iOS drew its own grey chrome behind every trigger (the composer's paperclip, the header's state).
+          modifiers={[menuStyle("button"), buttonStyle("plain"), menuIndicator("hidden"), ...(label ? [a11yLabel(label)] : [])]}
         >
           {pullDownItems(actions, "root")}
         </NativeMenu>

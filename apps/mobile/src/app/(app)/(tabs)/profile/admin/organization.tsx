@@ -3,19 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { Stack } from "expo-router";
-import { Avatar, Description, FieldError, Input, Label, LinkButton, ListGroup, TextField } from "heroui-native";
+import { Avatar, LinkButton, ListGroup } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { zoneLabel } from "@/components/profile/timezone";
 import { TimeZoneSheet } from "@/components/time-zone-sheet";
-import { AdminGate, ErrorAlert, LoadingRows, PressableRow, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, LoadingRows, PressableRow, Section, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { OrgLogo } from "@/components/org-logo";
 import { useServer } from "@/components/server-scope";
 import { api } from "@/lib/api";
 import { adminOrgQuery, uploadImage, type Org } from "@/lib/admin";
 import { defineMessages, tr } from "@/lib/i18n";
 import { TapMenu, OptionPicker, type MenuEntry } from "@/components/menus";
-import { CheckIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 
@@ -164,11 +163,9 @@ function OrgForm() {
           </TapMenu>
         </View>
 
-        <TextField isRequired isInvalid={!form.name.trim()}>
-          <Label>{t.name}</Label>
-          <Input value={form.name} maxLength={80} onChangeText={(name) => setForm({ ...form, name })} returnKeyType="done" />
-          {form.name.trim() ? <Description>{t.nameHelp}</Description> : <FieldError>{t.nameRequired}</FieldError>}
-        </TextField>
+        <FormField label={t.name} required invalid={!form.name.trim()} error={t.nameRequired} help={t.nameHelp}>
+          <FormInput value={form.name} maxLength={80} onChangeText={(name) => setForm({ ...form, name })} returnKeyType="done" />
+        </FormField>
 
         <Section footer={t.localeHelp}>
           <ListGroup.Item disabled>

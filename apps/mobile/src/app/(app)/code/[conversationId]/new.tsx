@@ -2,10 +2,11 @@ import { CODE_PERMISSION_MODES, type CodePermissionMode } from "@agora/core";
 import { codeSessions, common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Description, FieldError, Label, TextArea, TextField } from "heroui-native";
+import { Description, FieldError } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { FormField, FormTextArea, Section, SettingsRow } from "@/components/admin/ui";
 import { codeSessionHref } from "@/components/code-session";
 import { AttachMenu } from "@/components/composer/attach-menu";
 import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
@@ -78,35 +79,36 @@ export default function NewCodeSessionSheet() {
       </Stack.Toolbar>
       <KeyboardAwareScrollView
         bottomOffset={24}
+        // A sheet's header floats over its content (lib/navigation.ts sheetOptions): the form starts under it.
+        contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         className="bg-background"
-        contentContainerClassName="gap-6 p-4 pb-12"
+        contentContainerClassName="gap-6 px-4 pt-2 pb-12"
       >
         <Description className="px-4">{t.newHint}</Description>
-        <TextField isRequired>
-          <Label>{t.instruction}</Label>
-          <TextArea value={text} onChangeText={setText} placeholder={t.placeholderNew("Claude Code")} autoFocus />
-          <View className="flex-row items-center gap-2">
+        {/* The attachments belong to the instruction: in its card, under the text. */}
+        <FormField label={t.instruction} required>
+          <FormTextArea value={text} onChangeText={setText} placeholder={t.placeholderNew("Claude Code")} autoFocus />
+          <View className="flex-row items-center gap-2 px-4 pb-3">
             <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
             <PendingFiles items={files} onRemove={removeFile} />
           </View>
-        </TextField>
-        <TextField>
-          <Label>{t.repo}</Label>
-          <OptionPicker value={repo} options={repoOptions} onChange={setRepo} label={t.repo} />
-        </TextField>
-        <TextField>
-          <Label>{t.mode}</Label>
-          <OptionPicker value={mode} options={CODE_PERMISSION_MODES.map((m) => ({ value: m, label: t.modes[m] }))} onChange={setMode} label={t.mode} />
-          <Description>{t.modeHelp[mode]}</Description>
-        </TextField>
-        {models.length > 0 && (
-          <TextField>
-            <Label>{t.model}</Label>
-            <OptionPicker value={model} options={models.map((m) => ({ value: m.id, label: m.label ?? m.id }))} onChange={setModel} label={t.model} />
-          </TextField>
-        )}
+        </FormField>
+        {/* Where and how it runs: settings rows, the pickers on the right, as iOS Settings. */}
+        <Section footer={t.modeHelp[mode]}>
+          <SettingsRow label={t.repo}>
+            <OptionPicker value={repo} options={repoOptions} onChange={setRepo} label={t.repo} />
+          </SettingsRow>
+          <SettingsRow label={t.mode}>
+            <OptionPicker value={mode} options={CODE_PERMISSION_MODES.map((m) => ({ value: m, label: t.modes[m] }))} onChange={setMode} label={t.mode} />
+          </SettingsRow>
+          {models.length > 0 && (
+            <SettingsRow label={t.model}>
+              <OptionPicker value={model} options={models.map((m) => ({ value: m.id, label: m.label ?? m.id }))} onChange={setModel} label={t.model} />
+            </SettingsRow>
+          )}
+        </Section>
         <FieldError isInvalid={!!start.error}>{start.error?.message}</FieldError>
       </KeyboardAwareScrollView>
     </>

@@ -1,10 +1,10 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, router, Stack, useLocalSearchParams } from "expo-router";
-import { Button, Card, Description, Input, Label, ListGroup, TextField, Typography } from "heroui-native";
+import { Button, Card, Description, ListGroup, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
-import { AdminGate, ErrorAlert, LoadingRows, PressableRow, Section, SectionTitle, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, LoadingRows, PressableRow, Section, SectionTitle, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { AccessChoice } from "@/components/admin/users";
 import { confirmAction } from "@/components/confirm-action";
 import { usersMessages } from "@/components/admin/users-messages";
@@ -114,10 +114,9 @@ function UserDetail({ user: u }: { user: AdminUser }) {
         </Typography.Paragraph>
       </View>
 
-      <TextField>
-        <Label>{t.roleTitle}</Label>
-        <Input value={title} maxLength={60} placeholder={t.addRole} onChangeText={setTitle} onBlur={saveTitle} onSubmitEditing={saveTitle} returnKeyType="done" />
-      </TextField>
+      <FormField label={t.roleTitle}>
+        <FormInput value={title} maxLength={60} placeholder={t.addRole} onChangeText={setTitle} onBlur={saveTitle} onSubmitEditing={saveTitle} returnKeyType="done" />
+      </FormField>
 
       <View className="gap-2">
         <SectionTitle>{t.access}</SectionTitle>

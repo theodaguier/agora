@@ -1,4 +1,5 @@
 import type { StatusTone, VaultRequestDto, VaultRequestStatus } from "@agora/core";
+import { CardFields } from "@/components/admin/ui";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -219,6 +220,8 @@ function AskLoginCard({ req, mine, person }: { req: VaultRequestDto; mine: boole
   const vault = vaults.find((v) => v.id === vaultId);
 
   return (
+    // A card of the thread: its fields keep their own box (CardFields), no white group inside the card.
+    <CardFields>
     <Card className={blockCard}>
       <BlockHeader
         icon={<KeyIcon size={16} className="text-muted" />}
@@ -291,5 +294,6 @@ function AskLoginCard({ req, mine, person }: { req: VaultRequestDto; mine: boole
         </Card.Footer>
       )}
     </Card>
+    </CardFields>
   );
 }

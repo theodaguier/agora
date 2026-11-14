@@ -1,17 +1,16 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ControlField, Description, FieldError, Input, Label, LinkButton, ListGroup, TextField, Typography } from "heroui-native";
+import { ControlField, LinkButton, ListGroup, Typography } from "heroui-native";
 import { View } from "react-native";
 import { useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { AdminGate, SettingsScroll, Intro, LoadingRows, SecretInput, Section, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, FormField, FormInput, SettingsScroll, Intro, LoadingRows, SecretInput, Section, useAdminToast } from "@/components/admin/ui";
 import { adminAgentsQuery, isDefaultProfile, type AdminAgent } from "@/lib/agents-admin";
 import { api } from "@/lib/api";
 import { defineMessages, tr } from "@/lib/i18n";
 import { flagRestart } from "@/lib/marketplace";
 import { VAULT_KEY, vaultQuery, type Secret } from "@/lib/memory";
-import { CheckIcon, CloseIcon } from "@/components/icons";
 import { headerIcon } from "@/components/header-button";
 import { haptic, withTap } from "@/lib/haptics";
 
@@ -133,9 +132,8 @@ function SecretForm({ secret, taken, agents }: { secret?: Secret; taken: (key: s
       <SettingsScroll>
         <Intro>{t.dialogText}</Intro>
         {!secret && (
-          <TextField isRequired isInvalid={!!nameError}>
-            <Label>{t.name}</Label>
-            <Input
+          <FormField label={t.name} required invalid={!!nameError} error={nameError} help={t.nameHelp}>
+            <FormInput
               value={key}
               onChangeText={onName}
               autoFocus
@@ -143,14 +141,11 @@ function SecretForm({ secret, taken, agents }: { secret?: Secret; taken: (key: s
               autoCorrect={false}
               spellCheck={false}
             />
-            {nameError ? <FieldError>{nameError}</FieldError> : <Description>{t.nameHelp}</Description>}
-          </TextField>
+          </FormField>
         )}
-        <TextField isRequired={!secret}>
-          <Label>{secret ? t.newValue : t.value}</Label>
+        <FormField label={secret ? t.newValue : t.value} required={!secret} help={secret?.preview ? t.keepValue(secret.preview) : undefined}>
           <SecretInput value={value} onChangeText={setValue} autoFocus={!!secret} showLabel={t.show} hideLabel={t.hide} />
-          {!!secret?.preview && <Description>{t.keepValue(secret.preview)}</Description>}
-        </TextField>
+        </FormField>
 
         {agents.length > 0 && (
           <Section

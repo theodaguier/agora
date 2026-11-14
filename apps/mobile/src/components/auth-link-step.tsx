@@ -3,7 +3,6 @@ import { router } from "expo-router";
 import { Button } from "heroui-native";
 import { useState } from "react";
 import { AuthScreen } from "@/components/auth-screen";
-import { GlobeIcon } from "@/components/icons";
 import { LoginField } from "@/components/login-field";
 import { parseAuthLink, type AuthLinkKind } from "@/lib/auth-links";
 import { withTap } from "@/lib/haptics";
@@ -46,7 +45,6 @@ export function AuthLinkStep({ kind }: { kind: AuthLinkKind }) {
     <AuthScreen title={t[kind].title} hint={t[kind].hint}>
       <LoginField
         label={t[kind].label}
-        icon={GlobeIcon}
         value={value}
         onChangeText={(text) => {
           setValue(text);

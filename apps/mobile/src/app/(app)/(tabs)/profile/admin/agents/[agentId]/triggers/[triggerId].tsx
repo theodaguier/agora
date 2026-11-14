@@ -2,9 +2,9 @@ import { agentTriggers, common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Description, Input, Label, TextArea, TextField } from "heroui-native";
+import { Button } from "heroui-native";
 import { useState } from "react";
-import { AdminGate, ErrorAlert, Intro, LoadingRows, Section, SettingsRow, SettingsScroll, SwitchRow, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, FormTextArea, Intro, LoadingRows, Section, SettingsRow, SettingsScroll, SwitchRow, useAdminToast } from "@/components/admin/ui";
 import { headerIcon } from "@/components/header-button";
 import { agentTriggersQuery } from "@/lib/agents-admin";
 import { api } from "@/lib/api";
@@ -106,19 +106,15 @@ function TriggerForm({ agentId, hook }: { agentId: string; hook: BotWebhook | nu
       </Stack.Toolbar>
       <SettingsScroll>
         {!hook && <Intro>{t.intro}</Intro>}
-        <TextField isRequired>
-          <Label>{t.name}</Label>
-          <Input value={name} onChangeText={setName} maxLength={120} placeholder={t.namePlaceholder} returnKeyType="next" />
-        </TextField>
-        <TextField isRequired>
-          <Label>{t.instructions}</Label>
-          <TextArea value={instructions} onChangeText={setInstructions} maxLength={4000} placeholder={t.instructionsPlaceholder} className="min-h-28" scrollEnabled={false} />
-        </TextField>
-        <TextField>
-          <Label>{t.field}</Label>
-          <Input value={dedupeField} onChangeText={setDedupeField} maxLength={200} placeholder={t.fieldPlaceholder} autoCapitalize="none" autoCorrect={false} spellCheck={false} />
-          <Description>{t.fieldHelp}</Description>
-        </TextField>
+        <FormField label={t.name} required>
+          <FormInput value={name} onChangeText={setName} maxLength={120} placeholder={t.namePlaceholder} returnKeyType="next" />
+        </FormField>
+        <FormField label={t.instructions} required>
+          <FormTextArea value={instructions} onChangeText={setInstructions} maxLength={4000} placeholder={t.instructionsPlaceholder} scrollEnabled={false} />
+        </FormField>
+        <FormField label={t.field} help={t.fieldHelp}>
+          <FormInput value={dedupeField} onChangeText={setDedupeField} maxLength={200} placeholder={t.fieldPlaceholder} autoCapitalize="none" autoCorrect={false} spellCheck={false} />
+        </FormField>
         <Section footer={t.autoMergeHelp}>
           <SwitchRow title={t.autoMerge} value={autoMerge} onChange={setAutoMerge} />
         </Section>

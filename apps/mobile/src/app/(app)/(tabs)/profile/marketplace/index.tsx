@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import { Button, LinkButton, ListGroup, SearchField, Spinner, Tabs, Typography } from "heroui-native";
+import { Button, LinkButton, ListGroup, Spinner, Tabs, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { AdminGate, ErrorAlert, LoadingRows, PressableRow, Section as ListSection, SectionTitle, SettingsScroll } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, LoadingRows, PressableRow, SearchBox, Section as ListSection, SectionTitle, SettingsScroll } from "@/components/admin/ui";
 import { ItemRow } from "@/components/marketplace/item-row";
 import { RestartBanner } from "@/components/marketplace/restart-banner";
 import { sectionTitles, useMarket, type Section } from "@/components/marketplace/use-market";
@@ -19,7 +19,7 @@ import { MenuButton } from "@/components/menus";
 import { EmptyState } from "@/components/empty-state";
 import { SearchIcon } from "@/components/icons";
 
-/* apps/web/src/components/marketplace/Marketplace.tsx: its blocks become segments of inset grouped sections, its "Show all" a screen; the search is a HeroUI SearchField. */
+/* apps/web/src/components/marketplace/Marketplace.tsx: its blocks become segments of inset grouped sections, its "Show all" a screen; the search is the navigation bar's own (SearchBox). */
 
 type Segment = "connectors" | "skills" | "plugins" | "bots";
 
@@ -137,15 +137,9 @@ function Marketplace() {
           />
         </Stack.Toolbar.View>
       </Stack.Toolbar>
+      <SearchBox value={query} onChange={setQuery} placeholder={t.searchPlaceholder} />
       <SettingsScroll onRefresh={market.refetch}>
         <View className="gap-4">
-          <SearchField value={query} onChange={setQuery}>
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input placeholder={t.searchPlaceholder} accessibilityLabel={t.searchPlaceholder} autoCorrect={false} autoCapitalize="none" returnKeyType="search" />
-              <SearchField.ClearButton />
-            </SearchField.Group>
-          </SearchField>
           <Tabs value={segment} onValueChange={(v) => (haptic.select(), setSegment(v as Segment))}>
             <Tabs.List>
               <Tabs.Indicator />

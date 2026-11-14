@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Avatar, Checkbox, Chip, Input, Label, ListGroup, ScrollShadow, SearchField, Spinner, TextField, useToast } from "heroui-native";
-import { useState } from "react";
+import { Avatar, Checkbox, Chip, ListGroup, ScrollShadow, Spinner, useToast } from "heroui-native";
+import { useEffect, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import type { SearchBarCommands } from "react-native-screens";
+import { FormField, FormInput } from "@/components/admin/ui";
 import { ParticipantAvatar, StatusAvatar } from "@/components/conversation-avatar";
 import { type Participant } from "@/components/participants";
 import { CloseIcon, PlusIcon, SearchIcon, UsersIcon } from "@/components/icons";
@@ -67,6 +69,9 @@ export default function NewChat() {
   const { data: people = [] } = useQuery(usersQuery);
   const [q, setQ] = useState("");
   const [groupMode, setGroupMode] = useState(false);
+  // The navigation bar's search keeps its own text: switching mode (which empties the query) clears it there too.
+  const searchRef = useRef<SearchBarCommands>(null);
+  useEffect(() => searchRef.current?.clearText(), [groupMode]);
   const [picked, setPicked] = useState<Participant[]>([]);
   const [title, setTitle] = useState("");
   const { toast } = useToast();
@@ -171,6 +176,16 @@ export default function NewChat() {
           <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={createGroup.isPending ? c.creating : c.create} disabled={!canCreate} variant="prominent" onPress={withTap(() => createGroup.mutate())} />
         </Stack.Toolbar>
       )}
+      {/* The search is the navigation bar's own (the sheet opens on it, ready to type), never a box in the page. */}
+      <Stack.SearchBar
+        ref={searchRef}
+        placeholder={groupMode ? t.groupMembers : t.searchOrCreate}
+        autoFocus
+        autoCapitalize="none"
+        hideWhenScrolling={false}
+        onChangeText={(e) => setQ(e.nativeEvent.text)}
+        onCancelButtonPress={() => setQ("")}
+      />
       <KeyboardAwareScrollView bottomOffset={24}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
@@ -179,19 +194,10 @@ export default function NewChat() {
         contentContainerClassName="gap-6 p-4 pb-12"
       >
         {groupMode && (
-          <TextField>
-            <Label>{t.groupName}</Label>
-            <Input value={title} onChangeText={setTitle} maxLength={80} placeholder={t.groupName} returnKeyType="done" />
-          </TextField>
+          <FormField label={t.groupName}>
+            <FormInput value={title} onChangeText={setTitle} maxLength={80} placeholder={t.groupName} returnKeyType="done" />
+          </FormField>
         )}
-
-        <SearchField value={q} onChange={setQ}>
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input placeholder={groupMode ? t.groupMembers : t.searchOrCreate} autoCorrect={false} autoFocus={!groupMode} />
-            <SearchField.ClearButton />
-          </SearchField.Group>
-        </SearchField>
 
         {/* Who is in the group so far, in a row that scrolls sideways (HeroUI ScrollShadow). */}
         {groupMode && picked.length > 0 && (

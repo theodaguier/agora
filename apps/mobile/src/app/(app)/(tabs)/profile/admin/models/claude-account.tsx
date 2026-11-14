@@ -1,10 +1,10 @@
 import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
-import { Button, Input, Label, TextField } from "heroui-native";
+import { Button } from "heroui-native";
 import { useEffect, useState } from "react";
 import { Linking } from "react-native";
-import { AdminGate, ErrorAlert, Intro, LoadingRows, SettingsScroll, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, FormField, FormInput, Intro, LoadingRows, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { accountsSaved, ENGINES } from "@/components/admin/models";
 import { modelsMessages as t } from "@/components/admin/models-summary";
 import { headerIcon } from "@/components/header-button";
@@ -90,10 +90,9 @@ function LoginForm() {
             <Button variant="secondary" className="self-start" onPress={withTap(() => Linking.openURL(start.data.url))}>
               {t.openPage}
             </Button>
-            <TextField isRequired isDisabled={finish.isPending}>
-              <Label>{t.code}</Label>
-              <Input value={code} onChangeText={setCode} autoCapitalize="none" autoCorrect={false} spellCheck={false} onSubmitEditing={() => valid && finish.mutate()} />
-            </TextField>
+            <FormField label={t.code} required>
+              <FormInput value={code} onChangeText={setCode} isDisabled={finish.isPending} autoCapitalize="none" autoCorrect={false} spellCheck={false} onSubmitEditing={() => valid && finish.mutate()} />
+            </FormField>
           </>
         )}
       </SettingsScroll>

@@ -2,10 +2,11 @@ import { common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack, useLocalSearchParams } from "expo-router";
-import { ListGroup, SearchField, Spinner, useToast } from "heroui-native";
+import { ListGroup, Spinner, useToast } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { SearchBox } from "@/components/admin/ui";
 import { ParticipantAvatar } from "@/components/conversation-avatar";
 import { type Participant } from "@/components/participants";
 import { Section } from "@/components/people/section";
@@ -94,14 +95,8 @@ export default function AddMembers() {
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={c.close} variant="prominent" onPress={withTap(() => router.back())} />
       </Stack.Toolbar>
+      <SearchBox value={q} onChange={setQ} placeholder={t.addToGroup} />
       <KeyboardAwareScrollView bottomOffset={24} contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="gap-6 p-4 pb-12" keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
-        <SearchField value={q} onChange={setQ}>
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input placeholder={t.addToGroup} autoCorrect={false} />
-            <SearchField.ClearButton />
-          </SearchField.Group>
-        </SearchField>
         {botsShown.length > 0 && (
           <Section title={t.bots} inset="ml-14">
             {botsShown.map((b) => row(`a:${b.id}`, { kind: "agent", agent: b }, b.name, { userIds: [], agentIds: [b.id] }))}

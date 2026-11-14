@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Redirect, router, Stack, useLocalSearchParams } from "expo-router";
-import { Alert, FieldError, Input, PressableFeedback, SkeletonGroup, TextField, Typography, useToast } from "heroui-native";
+import { Alert, PressableFeedback, SkeletonGroup, Typography, useToast } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { FormField, FormInput } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
 import { ConversationAvatar } from "@/components/conversation-avatar";
 import { conversationTitle, othersOf } from "@/components/participants";
@@ -203,21 +204,23 @@ export default function GroupInfo() {
         <View className="items-center gap-3">
           <ConversationAvatar conversation={conv} me={me.id} className="size-24" />
           {editing ? (
-            // In the name's place: « Done » or leaving the field saves.
-            <TextField isInvalid={rename.isError} isDisabled={rename.isPending} className="w-full">
-              <Input
-                autoFocus
-                value={title}
-                onChangeText={setTitle}
-                maxLength={80}
-                placeholder={t.untitled}
-                accessibilityLabel={t.groupName}
-                returnKeyType="done"
-                selectTextOnFocus
-                onEndEditing={save}
-              />
-              <FieldError>{t.actionFailed}</FieldError>
-            </TextField>
+            // In the name's place: « Done » or leaving the field saves. Stretched: an iOS form group spans the width.
+            <View className="self-stretch">
+              <FormField invalid={rename.isError} error={t.actionFailed}>
+                <FormInput
+                  isDisabled={rename.isPending}
+                  autoFocus
+                  value={title}
+                  onChangeText={setTitle}
+                  maxLength={80}
+                  placeholder={t.untitled}
+                  accessibilityLabel={t.groupName}
+                  returnKeyType="done"
+                  selectTextOnFocus
+                  onEndEditing={save}
+                />
+              </FormField>
+            </View>
           ) : (
             <PressableFeedback onPress={withTap(startEditing)} accessibilityRole="button" accessibilityHint={t.rename} className="max-w-full px-2">
               <Typography.Heading type="h3" align="center" numberOfLines={2}>

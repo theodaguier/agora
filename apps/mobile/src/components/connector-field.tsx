@@ -1,8 +1,9 @@
 import { envFileValue, envValue, fileMatchesAccept, isUrlEnvName, mcpEnvAccept, mcpEnvInput, MCP_ENV_VALUE_MAX, type McpEnvField } from "@agora/core";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
-import { Button, Description, Input, Label, TextField } from "heroui-native";
+import { Button, Description, Label, TextField } from "heroui-native";
 import { useState } from "react";
+import { FormField, FormInput } from "@/components/admin/ui";
 import { OptionPicker } from "@/components/menus";
 import { defineMessages } from "@/lib/i18n";
 import { withTap } from "@/lib/haptics";
@@ -101,10 +102,10 @@ export function ConnectorField({
     );
   }
 
+  // A typed value sits bare in its group; the file and list fields above keep their own control (a button, a picker).
   return (
-    <TextField isRequired={field.required} isInvalid={invalid}>
-      <Label>{field.name}</Label>
-      <Input
+    <FormField label={field.name} required={field.required} invalid={invalid} help={field.description || undefined}>
+      <FormInput
         value={value}
         onChangeText={(text) => onChange(text)}
         onBlur={complete}
@@ -115,7 +116,6 @@ export function ConnectorField({
         numberOfLines={input === "textarea" ? 4 : undefined}
         {...plain}
       />
-      {!!field.description && <Description>{field.description}</Description>}
-    </TextField>
+    </FormField>
   );
 }

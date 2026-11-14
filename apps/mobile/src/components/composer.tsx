@@ -1,7 +1,7 @@
 import { ALL_HANDLE, rankByQuery } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Button, Chip, Input, Surface, Typography, type InputRef } from "heroui-native";
+import { Chip, Typography, type InputRef } from "heroui-native";
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import { ScrollView, View } from "react-native";
 import { router } from "expo-router";
@@ -9,6 +9,7 @@ import { AgentAvatar } from "@/components/agent-avatar";
 import { subscribeMentions } from "@/components/agents/routine-mention";
 import { AwayNotice } from "@/components/away-notice";
 import { AttachMenu } from "@/components/composer/attach-menu";
+import { ComposerCard, ComposerInput, MicButton, SendButton } from "@/components/composer/composer-card";
 import { isImage } from "@/components/attachment-files";
 import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
 import { ReplyStrip } from "@/components/composer/reply-strip";
@@ -16,7 +17,7 @@ import { useDictation } from "@/components/composer/dictation";
 import { confirmAction } from "@/components/confirm-action";
 import { ContextDialog } from "@/components/context-dialog";
 import { PersonAvatar } from "@/components/conversation-avatar";
-import { ArrowUpIcon, ClockIcon, CloseIcon, MicIcon, PackageIcon, PlugIcon, StopIcon } from "@/components/icons";
+import { ClockIcon, CloseIcon, PackageIcon, PlugIcon } from "@/components/icons";
 import { MentionText } from "@/components/mention";
 import { ModelMenu } from "@/components/model-picker";
 import { useMe } from "@/components/server-scope";
@@ -58,8 +59,7 @@ const messages = defineMessages({
     newAction: "Start over",
     remove: (name: string) => `Remove ${name}`,
     send: "Send",
-    dictate: "Dictate",
-    stopDictation: "Stop dictation",
+    stop: "Stop",
   },
   fr: {
     tooLarge: "Fichier trop lourd (2 Go max)",
@@ -82,8 +82,7 @@ const messages = defineMessages({
     newAction: "Recommencer",
     remove: (name: string) => `Retirer ${name}`,
     send: "Envoyer",
-    dictate: "Dicter",
-    stopDictation: "Arrêter la dictée",
+    stop: "Arrêter",
   },
 });
 
@@ -331,37 +330,42 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           )}
         </View>
       )}
-      {/*
-       * Web « Composer »: a card (the field's white, a hairline) with the message being answered, the pending
-       * files and the skills/connectors/routines called with it on top, the field across its width, then its
-       * toolbar: attach on the left; dictation and send (or stop, while a bot replies to you) on the right.
-       */}
-      <Surface variant="transparent" className="rounded-xl border border-field-border bg-field p-0" style={{ borderCurve: "continuous" }}>
-        {(replyTo || files.length > 0 || invocations.length > 0) && (
-          <View className="gap-1 px-1.5 pt-1.5">
-            {replyTo && <ReplyStrip quote={replyTo} onCancel={onCancelReply} />}
-            <PendingFiles items={files} onRemove={removeFile} />
-            {invocations.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerClassName="gap-1.5 px-1">
-                {invocations.map((v) => (
-                  <InvocationChip
-                    key={invocationKey(v)}
-                    invocation={v}
-                    bot={v.kind !== "routine" && v.agentId ? mentionables.find((a) => a.id === v.agentId)?.name : undefined}
-                    onRemove={() => setInvocations((xs) => xs.filter((x) => x !== v))}
-                  />
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        )}
+      {/* The app's one composer card (components/composer/composer-card.tsx), shared with the code sessions. */}
+      <ComposerCard
+        header={
+          (replyTo || files.length > 0 || invocations.length > 0) && (
+            <>
+              {replyTo && <ReplyStrip quote={replyTo} onCancel={onCancelReply} />}
+              <PendingFiles items={files} onRemove={removeFile} />
+              {invocations.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerClassName="gap-1.5 px-1">
+                  {invocations.map((v) => (
+                    <InvocationChip
+                      key={invocationKey(v)}
+                      invocation={v}
+                      bot={v.kind !== "routine" && v.agentId ? mentionables.find((a) => a.id === v.agentId)?.name : undefined}
+                      onRemove={() => setInvocations((xs) => xs.filter((x) => x !== v))}
+                    />
+                  ))}
+                </ScrollView>
+              )}
+            </>
+          )
+        }
+        tools={<AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />}
+        trailing={
+          <>
+            <MicButton listening={dictation.listening} onPress={() => (dictation.listening ? dictation.stop() : dictation.start(text))} />
+            <SendButton canSend={canSend} label={t.send} onSend={send} stop={onStop ? { label: stopLabel ?? t.stop, onPress: onStop } : null} />
+          </>
+        }
+      >
         {/*
          * The web lays a colored copy under a transparent field; a native field takes styled
          * text as children instead (no `value`), so mentions are colored in the field itself.
          */}
-        <Input
+        <ComposerInput
           ref={area}
-          multiline
           placeholder={placeholder}
           aria-expanded={!!menu}
           onChangeText={(value) => {
@@ -376,35 +380,10 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
           onKeyPress={(e) => {
             if (e.nativeEvent.key === "Backspace" && text === "" && invocations.length) setInvocations((xs) => xs.slice(0, -1));
           }}
-          // Part of the card rather than a field inside it: no fill, no border, no shadow, no focus outline (it is
-          // always the one being typed in). At the messages' size, six lines, then it scrolls.
-          className="max-h-[152px] min-h-11 border-transparent bg-transparent px-3.5 pt-3 pb-1 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
         >
           <MentionText text={text} mentionables={colored} flat />
-        </Input>
-        <View className="flex-row items-center gap-1 px-1.5 pb-1.5">
-          <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
-          <View className="flex-1" />
-          <Button
-            isIconOnly
-            size="sm"
-            variant={dictation.listening ? "danger-soft" : "ghost"}
-            accessibilityLabel={dictation.listening ? t.stopDictation : t.dictate}
-            onPress={() => (dictation.listening ? dictation.stop() : dictation.start(text))}
-          >
-            <MicIcon size={20} className={dictation.listening ? "text-danger" : "text-icon"} />
-          </Button>
-          {onStop && !canSend ? (
-            <Button isIconOnly size="sm" variant="primary" accessibilityLabel={stopLabel} onPress={withTap(onStop)}>
-              <StopIcon className="size-4 text-accent-foreground" />
-            </Button>
-          ) : (
-            <Button isIconOnly size="sm" variant={canSend ? "primary" : "secondary"} accessibilityLabel={t.send} accessibilityState={{ disabled: !canSend }} onPress={send}>
-              <ArrowUpIcon className={canSend ? "size-[18px] text-accent-foreground" : "size-[18px] text-subtle"} strokeWidth={2.25} />
-            </Button>
-          )}
-        </View>
-      </Surface>
+        </ComposerInput>
+      </ComposerCard>
       {botTools && <ContextDialog conversationId={conversationId} open={contextOpen} onOpenChange={setContextOpen} />}
     </View>
   );

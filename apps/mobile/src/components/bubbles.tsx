@@ -49,8 +49,8 @@ const messages = defineMessages({
   },
 });
 
-/** Who opens a run of messages: their face, their name, the time. */
-export type PostHead = { avatar: ReactNode; name: string; time: string };
+/** Who opens a run of messages: their face, their name, the time (a code session's steps have none). */
+export type PostHead = { avatar: ReactNode; name: string; time?: string };
 
 /**
  * A message from a bot or a colleague, flat (web: Post). The first of a run opens on its author
@@ -65,9 +65,11 @@ export function Post({ head, className, children }: { head?: PostHead; className
           <Typography type="body-sm" weight="medium" numberOfLines={1} className="shrink">
             {head.name}
           </Typography>
-          <Typography type="body-xs" className="text-subtle tabular-nums">
-            {head.time}
-          </Typography>
+          {!!head.time && (
+            <Typography type="body-xs" className="text-subtle tabular-nums">
+              {head.time}
+            </Typography>
+          )}
         </View>
       )}
       <View className="min-w-0 gap-3 pl-7">{children}</View>
