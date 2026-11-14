@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.66.0 — 2026-11-14
+
+### Features
+- **mobile**: formulaires et recherches iOS natifs, session de code au look du chat
+
+### Fixes
+- **mobile**: carré gris des menus, champs des cartes du fil, haut des feuilles
+
 ## v0.65.0 — 2026-11-13
 
 ### Features
