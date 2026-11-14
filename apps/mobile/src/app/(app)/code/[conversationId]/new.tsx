@@ -79,10 +79,12 @@ export default function NewCodeSessionSheet() {
       </Stack.Toolbar>
       <KeyboardAwareScrollView
         bottomOffset={24}
+        // A sheet's header floats over its content (lib/navigation.ts sheetOptions): the form starts under it.
+        contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         className="bg-background"
-        contentContainerClassName="gap-6 p-4 pb-12"
+        contentContainerClassName="gap-6 px-4 pt-2 pb-12"
       >
         <Description className="px-4">{t.newHint}</Description>
         {/* The attachments belong to the instruction: in its card, under the text. */}

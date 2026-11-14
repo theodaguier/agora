@@ -3,6 +3,7 @@ import { Redirect, Stack } from "expo-router";
 import {
   Alert,
   Button,
+  Description,
   FieldError,
   Input,
   InputGroup,
@@ -21,7 +22,7 @@ import {
   useToast,
   type InputRef,
 } from "heroui-native";
-import { Children, forwardRef, Fragment, useEffect, useMemo, useState, type ComponentProps, type ElementRef, type ReactElement, type ReactNode } from "react";
+import { Children, createContext, forwardRef, useContext, Fragment, useEffect, useMemo, useState, type ComponentProps, type ElementRef, type ReactElement, type ReactNode } from "react";
 import { RefreshControl, View, type AccessibilityActionEvent, type AccessibilityActionInfo } from "react-native";
 import { Circle, Path } from "react-native-svg";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -401,10 +402,12 @@ export function SecretInput({
   ...props
 }: Omit<ComponentProps<typeof InputGroup.Input>, "secureTextEntry"> & { showLabel?: string; hideLabel?: string }) {
   const [shown, setShown] = useState(false);
+  const inCard = useContext(InCard);
+  const bare = !inCard && { background: null, className: cn(BARE_FIELD, "pl-4", props.className) };
   return (
     <InputGroup>
-      <InputGroup.Input autoCapitalize="none" autoCorrect={false} spellCheck={false} textContentType="none" background={null} {...props} className={cn(BARE_FIELD, "pl-4", props.className)} secureTextEntry={!shown} />
-      <InputGroup.Suffix className="pr-4">
+      <InputGroup.Input autoCapitalize="none" autoCorrect={false} spellCheck={false} textContentType="none" {...props} {...bare} secureTextEntry={!shown} />
+      <InputGroup.Suffix className={inCard ? undefined : "pr-4"}>
         <PressableFeedback hitSlop={20} accessibilityRole="button" accessibilityLabel={shown ? hideLabel : showLabel} onPress={withTap(() => setShown((s) => !s))}>
           {shown ? <EyeOffIcon size={16} className="text-field-placeholder" /> : <EyeIcon size={16} className="text-field-placeholder" />}
         </PressableFeedback>
@@ -435,13 +438,25 @@ export function SearchBox({ onChange, placeholder }: { value?: string; onChange:
  */
 
 
-/** A one-line field inside a form group (FormField, FieldRow). */
+/**
+ * Inside a card of the thread (a bot's request: a vault login, a connector's settings), which is already
+ * a card: the same fields keep HeroUI's own box under their label, never a white group inside the card.
+ */
+const InCard = createContext(false);
+
+export function CardFields({ children }: { children: ReactNode }) {
+  return <InCard.Provider value>{children}</InCard.Provider>;
+}
+
+/** A one-line field inside a form group (FormField, FieldRow); HeroUI's own field inside a card (CardFields). */
 export const FormInput = forwardRef<InputRef, ComponentProps<typeof Input>>(function FormInput({ className, ...props }, ref) {
+  if (useContext(InCard)) return <Input ref={ref} className={className} {...props} />;
   return <Input ref={ref} background={null} className={cn(BARE_FIELD, "px-4", className)} {...props} />;
 });
 
-/** A multi-line field inside a form group. */
+/** A multi-line field inside a form group; HeroUI's own inside a card. */
 export const FormTextArea = forwardRef<InputRef, ComponentProps<typeof TextArea>>(function FormTextArea({ className, ...props }, ref) {
+  if (useContext(InCard)) return <TextArea ref={ref} className={className} {...props} />;
   return <TextArea ref={ref} background={null} className={cn(BARE_FIELD, "min-h-28 px-4 py-3", className)} {...props} />;
 });
 
@@ -465,6 +480,15 @@ export function FormField({
   help?: ReactNode;
   children: ReactNode;
 }) {
+  if (useContext(InCard)) {
+    return (
+      <TextField isRequired={required} isInvalid={invalid}>
+        {!!label && <Label>{label}</Label>}
+        {children}
+        {invalid && error ? <FieldError>{error}</FieldError> : typeof help === "string" ? <Description>{help}</Description> : help}
+      </TextField>
+    );
+  }
   return (
     <TextField isRequired={required} isInvalid={invalid} className="gap-2">
       {!!label && <SectionTitle>{required ? `${label} *` : label}</SectionTitle>}

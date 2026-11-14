@@ -1,4 +1,5 @@
 import { common, connectors, integrations } from "@agora/core/i18n";
+import { CardFields } from "@/components/admin/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import * as Haptics from "expo-haptics";
@@ -194,6 +195,8 @@ export function McpRequestCard({ id }: { id: string }) {
   const target = req.url ?? req.command;
 
   return (
+    // A card of the thread: its fields keep their own box (CardFields), no white group inside the card.
+    <CardFields>
     <Card className={blockCard}>
       <BlockHeader
         title={t.connector(req.title)}
@@ -332,5 +335,6 @@ export function McpRequestCard({ id }: { id: string }) {
         )}
       </Card.Footer>
     </Card>
+    </CardFields>
   );
 }
