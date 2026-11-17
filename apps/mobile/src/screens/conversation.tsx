@@ -806,18 +806,18 @@ const ThreadMessage = memo(function ThreadMessage({
         </Post>
       )}
       {codeStarted && !sessionShown && (
-        <View className="mt-3 pl-7">
+        <View className="mt-3">
           <CodeSessionCard conversationId={conversationId} sessionId={codeStarted.sessionId} title={codeStarted.title} />
         </View>
       )}
       {event?.type === "bot.failed" && <FailureLine conversationId={conversationId} label={renderEvent(event, locale)} retry={last} />}
       {vaultRequest && (
-        <View className="mt-3 pl-7">
+        <View className="mt-3">
           <VaultRequestCard id={vaultRequest.requestId} />
         </View>
       )}
       {githubMerge && (
-        <View className="mt-3 pl-7">
+        <View className="mt-3">
           <GitHubMergeCard id={githubMerge.requestId} bot={githubMerge.bot} repo={githubMerge.repo} number={githubMerge.number} />
         </View>
       )}

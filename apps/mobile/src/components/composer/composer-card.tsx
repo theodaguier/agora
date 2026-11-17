@@ -41,7 +41,7 @@ export const ComposerInput = forwardRef<InputRef, ComponentProps<typeof Input>>(
       ref={ref}
       multiline
       background={null}
-      className="max-h-[152px] min-h-11 border-transparent bg-transparent px-3.5 pt-3 pb-1 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
+      className="max-h-[152px] min-h-11 border-transparent bg-transparent px-3.5 pt-3 pb-1 text-subheadline shadow-none ios:focus:outline-transparent android:focus:border-transparent"
       {...props}
     />
   );

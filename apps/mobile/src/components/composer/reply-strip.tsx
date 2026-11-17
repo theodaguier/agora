@@ -9,7 +9,7 @@ import { isImage } from "@/components/attachment-files";
 
 /*
  * The web's QuoteBlock above the composer (apps/web/src/components/MessageParts.tsx): the message being answered.
- * At the messages' size (text-body), as the field under it.
+ * At the messages' size (text-subheadline), as the field under it.
  */
 
 const messages = defineMessages({

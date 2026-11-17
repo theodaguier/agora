@@ -59,7 +59,7 @@ export function MessageText({
   const context = useMemo(() => ({ mentionables, streaming: !!streaming, definitions: definitionsOf(tree) }), [mentionables, streaming, tree]);
   const content = (
     <View className={className}>
-      <TextStyle className={cx("text-body", textClassName)}>
+      <TextStyle className={cx("text-subheadline", textClassName)}>
         <MarkdownContext.Provider value={context}>
           <Blocks nodes={tree.children} top />
         </MarkdownContext.Provider>
