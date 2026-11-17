@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.68.0 — 2026-11-17
+
+### Features
+- a project has a logo and a description
+
 ## v0.67.0 — 2026-11-17
 
 ### Features
