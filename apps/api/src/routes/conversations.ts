@@ -16,6 +16,7 @@ import {
   type LoadedConversation,
 } from "../conversations";
 import { db, schema } from "../db";
+import { readAvatar } from "../profile";
 import { env } from "../env";
 import { forgetMembers, publishToConversation, publishToUser } from "../events";
 import { CLAUDE_CODE_LABEL, CLAUDE_CODE_PROVIDER, canUseClaudeCode, isClaudeCodeModel, resolveClaudeCodeModel } from "../claude-code";
@@ -51,12 +52,16 @@ const messages = defineMessages({
   },
 });
 
-const { agent, attachment, conversation, conversationAgent, conversationMember, message, pin, queuedMessage, user } = schema;
+const { agent, attachment, conversation, conversationAgent, conversationAvatar, conversationMember, message, pin, queuedMessage, user } = schema;
+
+const conversationAvatarUrl = (id: string, at: Date) => `/api/conversations/${encodeURIComponent(id)}/avatar?v=${at.getTime()}`;
 
 const detail = (c: LoadedConversation) => ({
   id: c.conversation.id,
   kind: c.conversation.kind,
   title: c.conversation.title,
+  description: c.conversation.description,
+  image: c.conversation.image,
   createdBy: c.conversation.createdBy,
   members: c.members.map(({ id, name, image }) => ({ id, name, image })),
   agents: c.agents.map((a) => agentDto(a.agent)),
@@ -358,18 +363,71 @@ export const conversations = new Hono<AppEnv>()
     return c.json(detail(conv));
   })
 
+  /** A group's (a project's) name and description; any member may change them. */
   .patch("/:id", async (c) => {
-    const body = z.object({ title: z.string().trim().max(80) }).safeParse(await c.req.json());
+    const body = z
+      .object({ title: z.string().trim().max(80).optional(), description: z.string().trim().max(200).optional() })
+      .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid_body" }, 400);
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id"));
     if (!conv) return c.json({ error: "not_found" }, 404);
     if (conv.conversation.kind !== "group") return c.json({ error: "not_a_group" }, 400);
-    const title = body.data.title || null;
-    await db.update(conversation).set({ title }).where(eq(conversation.id, conv.conversation.id));
-    await postEvent(conv.conversation.id, title ? { type: "group.renamed", actor: me.name, title } : { type: "group.unnamed", actor: me.name });
-    await publishToConversation(conv.conversation.id, { type: "conversation.updated", conversationId: conv.conversation.id });
+    const id = conv.conversation.id;
+    const { title, description } = body.data;
+    const renamed = title !== undefined && (title || null) !== conv.conversation.title;
+    await db
+      .update(conversation)
+      .set({ ...(title !== undefined && { title: title || null }), ...(description !== undefined && { description: description || null }) })
+      .where(eq(conversation.id, id));
+    // Only a new name is told in the thread: a description is the project's, not news.
+    if (renamed) await postEvent(id, title ? { type: "group.renamed", actor: me.name, title } : { type: "group.unnamed", actor: me.name });
+    await publishToConversation(id, { type: "conversation.updated", conversationId: id });
     return c.body(null, 204);
+  })
+
+  /** A group's logo: raw body, already cropped by the app. */
+  .put("/:id/avatar", async (c) => {
+    const conv = await loadConversation(c.get("user").id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    if (conv.conversation.kind !== "group") return c.json({ error: "not_a_group" }, 400);
+    const upload = await readAvatar(c.req);
+    if ("error" in upload) return c.json({ error: upload.error }, upload.status);
+    const id = conv.conversation.id;
+    const at = new Date();
+    const image = conversationAvatarUrl(id, at);
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(conversationAvatar)
+        .values({ conversationId: id, ...upload, updatedAt: at })
+        .onConflictDoUpdate({ target: conversationAvatar.conversationId, set: { ...upload, updatedAt: at } });
+      await tx.update(conversation).set({ image }).where(eq(conversation.id, id));
+    });
+    await publishToConversation(id, { type: "conversation.updated", conversationId: id });
+    return c.json({ image });
+  })
+
+  .delete("/:id/avatar", async (c) => {
+    const conv = await loadConversation(c.get("user").id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const id = conv.conversation.id;
+    await db.transaction(async (tx) => {
+      await tx.delete(conversationAvatar).where(eq(conversationAvatar.conversationId, id));
+      await tx.update(conversation).set({ image: null }).where(eq(conversation.id, id));
+    });
+    await publishToConversation(id, { type: "conversation.updated", conversationId: id });
+    return c.body(null, 204);
+  })
+
+  /** The logo, for the group's members; the URL changes with every new logo, hence the long cache. */
+  .get("/:id/avatar", async (c) => {
+    const conv = await loadConversation(c.get("user").id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const [row] = await db.select().from(conversationAvatar).where(eq(conversationAvatar.conversationId, conv.conversation.id));
+    if (!row) return c.json({ error: "not_found" }, 404);
+    return new Response(new Uint8Array(row.data), {
+      headers: { "Content-Type": row.mime, "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" },
+    });
   })
 
   /** Adds colleagues and bots to a group. */

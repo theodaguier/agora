@@ -49,6 +49,7 @@ function SignedIn() {
         <Stack.Screen name="task/new" options={sheetOptions([0.6, 1])} />
         <Stack.Screen name="agents/[agentId]/routines/[routineId]" options={sheetOptions([0.75, 1])} />
         <Stack.Screen name="info/[conversationId]/add" options={sheetOptions([0.6, 1])} />
+        <Stack.Screen name="info/[conversationId]/edit" options={sheetOptions()} />
         <Stack.Screen name="code/[conversationId]/new" options={sheetOptions([0.75, 1])} />
         <Stack.Screen name="code/[conversationId]/[sessionId]/pull-request" options={sheetOptions([0.75, 1])} />
         <Stack.Screen name="code/[conversationId]/[sessionId]/credentials" options={sheetOptions([0.75, 1])} />

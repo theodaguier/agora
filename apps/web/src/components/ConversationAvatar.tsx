@@ -112,11 +112,23 @@ export function ConversationAvatar({
   className,
   status,
 }: {
-  conversation: { kind: string; title?: string | null; members: Person[]; agents: AgentSummary[] };
+  conversation: { kind: string; title?: string | null; image?: string | null; members: Person[]; agents: AgentSummary[] };
   me: string;
   className?: string;
   status?: string;
 }) {
+  // A project with its own logo: the logo, not the faces of who is in it.
+  if (conversation.kind === "group" && conversation.image) {
+    return (
+      <span className={cn("relative shrink-0", className ?? "size-10")}>
+        <Avatar aria-hidden className="size-full">
+          <AvatarImage src={conversation.image} alt="" />
+          <AvatarFallback />
+        </Avatar>
+        {status && <GroupWorkingDot agentIds={conversation.agents.map((a) => a.id)} ring={status} />}
+      </span>
+    );
+  }
   const others = othersOf(conversation, me);
   // A group, named or not: who is in it, two faces (never a generic people icon nor its initials).
   if (conversation.kind !== "group" || others.length < 2) {

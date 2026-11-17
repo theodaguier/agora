@@ -182,6 +182,8 @@ export async function listConversations(userId: string) {
         id: c.id,
         kind: c.kind,
         title: c.title,
+        description: c.description,
+        image: c.image,
         members: people,
         agents: bots.map(agentDto),
         preview: l?.text ? { text: previewText(l.text), event: l.event ?? null, author: l.kind === "event" ? null : author, fromMe } : null,

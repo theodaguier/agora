@@ -337,6 +337,13 @@
       "when": 1794526655476,
       "tag": "0047_artifacts",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794940526259,
+      "tag": "0048_project_identity",
+      "breakpoints": true
     }
   ]
 }
