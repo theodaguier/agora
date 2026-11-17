@@ -29,7 +29,8 @@ const messages = defineMessages({
     digest: "Morning recap",
     digestReady: "Morning recap ready",
     agents: "Agents",
-    team: "Team",
+    projects: "Projects",
+    directMessages: "Messages",
     listError: "Conversations can't be reached right now.",
   },
   fr: {
@@ -39,7 +40,8 @@ const messages = defineMessages({
     digest: "Récap du matin",
     digestReady: "Récap du matin prêt",
     agents: "Agents",
-    team: "Équipe",
+    projects: "Projets",
+    directMessages: "Messages",
     listError: "Les conversations sont injoignables pour le moment.",
   },
 });
@@ -73,11 +75,12 @@ export default function Chats() {
  >
         <Home />
         {rows.length ? (
-          // As the web's sidebar: the bots you talk to one-on-one, then the team (colleagues and groups).
+          // As the web's sidebar: the bots you talk to one-on-one, the projects (groups), then one-on-one messages with colleagues.
           <View className="mb-8 mt-1 gap-4">
             {[
               { key: "agents", label: t.agents, rows: rows.filter((c) => c.kind === "direct" && c.agents.length > 0) },
-              { key: "team", label: t.team, rows: rows.filter((c) => !(c.kind === "direct" && c.agents.length > 0)) },
+              { key: "projects", label: t.projects, rows: rows.filter((c) => c.kind !== "direct") },
+              { key: "messages", label: t.directMessages, rows: rows.filter((c) => c.kind === "direct" && c.agents.length === 0) },
             ].map(
               (g) =>
                 g.rows.length > 0 && (

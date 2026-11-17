@@ -98,7 +98,8 @@ const messages = defineMessages({
     resize: "Resize the sidebar",
     conversations: "Conversations",
     agents: "Agents",
-    team: "Team",
+    projects: "Projects",
+    directMessages: "Messages",
     working: "Working",
     waiting: "Waits for your answer",
   },
@@ -135,7 +136,8 @@ const messages = defineMessages({
     resize: "Redimensionner la barre latérale",
     conversations: "Conversations",
     agents: "Agents",
-    team: "Équipe",
+    projects: "Projets",
+    directMessages: "Messages",
     working: "Au travail",
     waiting: "Attend ta réponse",
   },
@@ -272,9 +274,10 @@ function SidebarBody() {
   const list = conversations
     .map((c) => ({ ...c, name: conversationTitle(c, user.id) }))
     .filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
-  // Agents: a direct conversation with a bot; the team: colleagues and groups.
+  // Agents: a direct conversation with a bot; projects: the groups; messages: one-on-one with a colleague.
   const withAgent = list.filter((c) => c.kind === "direct" && c.agents.length > 0);
-  const team = list.filter((c) => !(c.kind === "direct" && c.agents.length > 0));
+  const projects = list.filter((c) => c.kind !== "direct");
+  const direct = list.filter((c) => c.kind === "direct" && c.agents.length === 0);
   const isAdmin = user.role === "admin";
   const { data: tasks } = useQuery(tasksQuery(user.id));
   // Badge: what you have to do yourself, not what you gave to others.
@@ -312,13 +315,19 @@ function SidebarBody() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
-        {team.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>{t.team}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>{rows(team)}</SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+        {[
+          { key: "projects", label: t.projects, rows: projects },
+          { key: "messages", label: t.directMessages, rows: direct },
+        ].map(
+          (g) =>
+            g.rows.length > 0 && (
+              <SidebarGroup key={g.key}>
+                <SidebarGroupLabel>{g.label}</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>{rows(g.rows)}</SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ),
         )}
       </SidebarContent>
 
@@ -376,7 +385,7 @@ function SidebarBody() {
 /**
  * Desktop (Figma « Barre latérale sombre »): the organisation at the top (its recap on click), then the
  * inbox, the tasks and the sessions as icons with a dot when something waits, and new conversation
- * (searching is the command palette's, ⌘K). The bots, then the team. At the bottom, today's usage per
+ * (searching is the command palette's, ⌘K). The bots, the projects (groups), then one-on-one messages with colleagues. At the bottom, today's usage per
  * provider and the subscriptions, the apps (Marketplace) and your account.
  */
 function DesktopSidebar() {
@@ -465,7 +474,8 @@ function DesktopSidebar() {
         {!isPending && !list.length && <EmptyList query={conversations.length > 0} list={conversationList} />}
         {[
           { key: "agents", label: t.agents, rows: list.filter((c) => c.kind === "direct" && c.agents.length > 0) },
-          { key: "team", label: t.team, rows: list.filter((c) => !(c.kind === "direct" && c.agents.length > 0)) },
+          { key: "projects", label: t.projects, rows: list.filter((c) => c.kind !== "direct") },
+          { key: "messages", label: t.directMessages, rows: list.filter((c) => c.kind === "direct" && c.agents.length === 0) },
         ].map(
           (g) =>
             g.rows.length > 0 && (
