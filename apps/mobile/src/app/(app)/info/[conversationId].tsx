@@ -2,10 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Redirect, router, Stack, useLocalSearchParams } from "expo-router";
 import { Alert, PressableFeedback, SkeletonGroup, Typography, useToast } from "heroui-native";
-import { useState } from "react";
 import { View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { FormField, FormInput } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
 import { ConversationAvatar } from "@/components/conversation-avatar";
 import { conversationTitle, othersOf } from "@/components/participants";
@@ -23,52 +21,50 @@ import { conversationQuery, conversationsQuery } from "@/lib/queries";
 
 const messages = defineMessages({
   en: {
-    group: "Group",
-    groupName: "Group name",
-    renamed: "Name saved",
-    untitled: "Untitled group",
+    group: "Project",
+    groupName: "Project name",
+    untitled: "Untitled project",
     count: (n: number) => `${n} member${n > 1 ? "s" : ""}`,
     you: "you",
     more: "More actions",
-    rename: "Rename",
-    leave: "Leave group",
+    edit: "Edit the project",
+    leave: "Leave project",
     actionFailed: "Couldn't do that.",
-    addMembers: "Add to group",
+    addMembers: "Add to project",
     leaveTitle: (group: string) => `Leave "${group}"?`,
-    leaveBody: "You'll no longer see its messages. Someone in the group can add you back.",
-    leaveLastBody: "You're the last member: the group and its messages will be deleted.",
+    leaveBody: "You'll no longer see its messages. Someone in the project can add you back.",
+    leaveLastBody: "You're the last member: the project and its messages will be deleted.",
     leaveAction: "Leave",
-    removeTitle: (name: string) => `Remove ${name} from the group?`,
+    removeTitle: (name: string) => `Remove ${name} from the project?`,
     removeBody: "They'll no longer see its messages. You can add them back later.",
     removeBotBody: "It will no longer answer here. You can add it back later.",
     removeAction: "Remove",
     unavailable: "Conversation unavailable.",
   },
   fr: {
-    group: "Groupe",
-    groupName: "Nom du groupe",
-    renamed: "Nom enregistré",
-    untitled: "Groupe sans nom",
+    group: "Projet",
+    groupName: "Nom du projet",
+    untitled: "Projet sans nom",
     count: (n: number) => `${n} membre${n > 1 ? "s" : ""}`,
     you: "toi",
     more: "Plus d'actions",
-    rename: "Renommer",
-    leave: "Quitter le groupe",
+    edit: "Modifier le projet",
+    leave: "Quitter le projet",
     actionFailed: "Action impossible.",
-    addMembers: "Ajouter au groupe",
+    addMembers: "Ajouter au projet",
     leaveTitle: (group: string) => `Quitter « ${group} » ?`,
-    leaveBody: "Tu ne verras plus ses messages. Un membre du groupe pourra te rajouter.",
-    leaveLastBody: "Tu es le dernier membre : le groupe et ses messages seront supprimés.",
+    leaveBody: "Tu ne verras plus ses messages. Un membre du projet pourra te rajouter.",
+    leaveLastBody: "Tu es le dernier membre : le projet et ses messages seront supprimés.",
     leaveAction: "Quitter",
-    removeTitle: (name: string) => `Retirer ${name} du groupe ?`,
-    removeBody: "Cette personne ne verra plus les messages du groupe. Tu pourras la rajouter plus tard.",
+    removeTitle: (name: string) => `Retirer ${name} du projet ?`,
+    removeBody: "Cette personne ne verra plus les messages du projet. Tu pourras la rajouter plus tard.",
     removeBotBody: "Il ne répondra plus ici. Tu pourras le rajouter plus tard.",
     removeAction: "Retirer",
     unavailable: "Conversation indisponible.",
   },
 });
 
-/** Group info (web: MembersPanel): name (renamed in place), members (colleagues and bots), add, remove, leave. */
+/** Project info (web: MembersPanel): logo, name and description (edited on their own screen), members (colleagues and bots), add, remove, leave. */
 export default function GroupInfo() {
   const { conversationId } = useLocalSearchParams<{ conversationId: string }>();
   const me = useMe();
@@ -76,27 +72,8 @@ export default function GroupInfo() {
   const { toast } = useToast();
   const t = messages;
   const { data: conv, error } = useQuery(conversationQuery(conversationId));
-  const [title, setTitle] = useState("");
-  /** The name is text until « Renommer » (or a tap on it) puts it in a field, as the web's panel. */
-  const [editing, setEditing] = useState(false);
-  const [savedTitle, setSavedTitle] = useState<string | null | undefined>(undefined);
-  if (conv?.title !== savedTitle) {
-    setSavedTitle(conv?.title);
-    setTitle(conv?.title ?? "");
-  }
-
   const refresh = () =>
     Promise.all([qc.invalidateQueries({ queryKey: conversationQuery(conversationId).queryKey }), qc.invalidateQueries({ queryKey: conversationsQuery.queryKey })]);
-
-  const rename = useMutation({
-    mutationFn: (next: string) => api(conversationPath(conversationId), { method: "PATCH", body: JSON.stringify({ title: next }) }),
-    onSuccess: async () => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      toast.show({ variant: "success", label: t.renamed });
-      setEditing(false);
-      await refresh();
-    },
-  });
 
   const remove = useMutation({
     mutationFn: (m: { kind: "user" | "agent"; id: string }) =>
@@ -154,15 +131,7 @@ export default function GroupInfo() {
   }
 
   const canRemove = conv.createdBy === me.id || me.role === "admin";
-  const save = () => {
-    const next = title.trim();
-    if (next !== (conv.title ?? "")) rename.mutate(next);
-    else setEditing(false);
-  };
-  const startEditing = () => {
-    setTitle(conv.title ?? "");
-    setEditing(true);
-  };
+  const edit = () => router.push({ pathname: "/info/[conversationId]/edit", params: { conversationId } });
   const leave = async () =>
     (await confirmAction({
       title: t.leaveTitle(conversationTitle(conv, me.id)),
@@ -171,7 +140,7 @@ export default function GroupInfo() {
     })) && remove.mutate({ kind: "user", id: me.id });
 
   // As the web's group panel: who it is first (faces, name), then its count once and its members, one
-  // line each. Adding is the header's « + »; renaming and leaving are in its « … ».
+  // line each. Adding is the header's « + »; editing the project and leaving are in its « … ».
   return (
     <>
       <Stack.Screen options={{ title: t.group }} />
@@ -187,7 +156,7 @@ export default function GroupInfo() {
             icon="ellipsis"
             label={t.more}
             actions={[
-              { label: t.rename, icon: "pencil", onPress: startEditing },
+              { label: t.edit, icon: "pencil", onPress: edit },
               { label: t.leave, icon: "rectangle.portrait.and.arrow.right", destructive: true, onPress: () => void leave() },
             ]}
           />
@@ -203,31 +172,16 @@ export default function GroupInfo() {
       >
         <View className="items-center gap-3">
           <ConversationAvatar conversation={conv} me={me.id} className="size-24" />
-          {editing ? (
-            // In the name's place: « Done » or leaving the field saves. Stretched: an iOS form group spans the width.
-            <View className="self-stretch">
-              <FormField invalid={rename.isError} error={t.actionFailed}>
-                <FormInput
-                  isDisabled={rename.isPending}
-                  autoFocus
-                  value={title}
-                  onChangeText={setTitle}
-                  maxLength={80}
-                  placeholder={t.untitled}
-                  accessibilityLabel={t.groupName}
-                  returnKeyType="done"
-                  selectTextOnFocus
-                  onEndEditing={save}
-                />
-              </FormField>
-            </View>
-          ) : (
-            <PressableFeedback onPress={withTap(startEditing)} accessibilityRole="button" accessibilityHint={t.rename} className="max-w-full px-2">
-              <Typography.Heading type="h3" align="center" numberOfLines={2}>
-                {conv.title || t.untitled}
-              </Typography.Heading>
-            </PressableFeedback>
-          )}
+          <PressableFeedback onPress={withTap(edit)} accessibilityRole="button" accessibilityHint={t.edit} className="max-w-full items-center gap-1 px-2">
+            <Typography.Heading type="h3" align="center" numberOfLines={2}>
+              {conv.title || t.untitled}
+            </Typography.Heading>
+            {!!conv.description && (
+              <Typography type="body-sm" color="muted" align="center">
+                {conv.description}
+              </Typography>
+            )}
+          </PressableFeedback>
         </View>
 
         <Section title={t.count(conv.members.length + conv.agents.length)} inset="ml-16">

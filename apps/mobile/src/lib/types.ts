@@ -30,6 +30,10 @@ export type ConversationSummary = {
   id: string;
   kind: ConversationKind;
   title: string | null;
+  /** A group's (a project's) one-line description. */
+  description: string | null;
+  /** A group's logo; null = its participants' faces. */
+  image: string | null;
   members: Person[];
   agents: AgentSummary[];
   preview: { text: string; event: ConversationEvent | null; author: string | null; fromMe: boolean } | null;
@@ -70,6 +74,10 @@ export type ConversationDetail = {
   id: string;
   kind: ConversationKind;
   title: string | null;
+  /** A group's (a project's) one-line description. */
+  description: string | null;
+  /** A group's logo; null = its participants' faces. */
+  image: string | null;
   createdBy: string | null;
   members: Person[];
   agents: AgentSummary[];

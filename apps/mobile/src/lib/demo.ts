@@ -51,7 +51,8 @@ const atlas: AgentSummary = { id: "a-atlas", name: "Atlas", avatar: { shape: "be
 const nova: AgentSummary = { id: "a-nova", name: "Nova", avatar: { shape: "cloud", color: "#9a7cf0" } };
 const agents = [atlas, nova];
 
-type Conv = Omit<ConversationDetail, "turns"> & { unread: boolean; messages: Message[] };
+/** The demo's conversations have no project logo nor description: the API's null, filled in when they are listed or opened. */
+type Conv = Omit<ConversationDetail, "turns" | "description" | "image"> & { unread: boolean; messages: Message[] };
 
 let seq = 0;
 const id = (prefix: string) => `${prefix}-${++seq}`;
@@ -270,6 +271,8 @@ const summary = (c: Conv): ConversationSummary => {
     id: c.id,
     kind: c.kind,
     title: c.title,
+    description: null,
+    image: null,
     members: c.members,
     agents: c.agents,
     preview: last ? { text: last.text, event: null, author: last.author?.name ?? null, fromMe: last.author?.id === me.id } : null,
@@ -430,7 +433,7 @@ function route(method: string, path: string, query: URLSearchParams, body: Recor
             conversations.splice(conversations.indexOf(conv), 1);
             return {};
           }
-          return { id: conv.id, kind: conv.kind, title: conv.title, createdBy: conv.createdBy, members: conv.members, agents: conv.agents, turns: [] };
+          return { id: conv.id, kind: conv.kind, title: conv.title, description: null, image: null, createdBy: conv.createdBy, members: conv.members, agents: conv.agents, turns: [] };
         case "messages":
           if (method === "DELETE") {
             conv.messages = conv.messages.filter((m) => m.id !== parts[3]);

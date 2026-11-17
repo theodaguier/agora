@@ -2,7 +2,7 @@ import { PanelBar } from "@/components/PaneHeader";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
 import { CloseIcon, LogOutIcon, MoreIcon } from "@/components/icons";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { confirmAction } from "@/lib/confirm";
 import { useCurrentTaskTitle } from "@/components/WorkingOn";
@@ -15,7 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Item, ItemGroup } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
-import { api, conversationPath, type AgentSummary, type ConversationDetail, type Person } from "@/lib/api";
+import { api, conversationPath, uploadAvatar, type AgentSummary, type ConversationDetail, type Person } from "@/lib/api";
+import { AvatarField, type AvatarChange } from "@/components/ProfileFields";
+import { FormLabel } from "@/components/FormLabel";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldGroup } from "@/components/ui/field";
 import { openAgentProfile, openProfile } from "@/lib/profile";
 import { closeOrGoHome, tabPath } from "@/lib/workspace";
 import { agentsQuery, conversationQuery, conversationsQuery, usersQuery } from "@/lib/queries";
@@ -24,20 +28,26 @@ import { common } from "@agora/core/i18n";
 
 const messages = defineMessages({
   en: {
-    group: "Group",
+    group: "Project",
     hidePanel: "Hide panel",
-    groupName: "Group name",
-    untitled: "Untitled group",
+    groupName: "Project name",
+    untitled: "Untitled project",
+    edit: "Edit",
+    editTitle: "Edit the project",
+    editText: "Its logo, name and description, as every member sees them.",
+    logo: "Logo",
+    description: "Description",
+    descriptionHelp: "One line: what the project is about.",
     members: "Members",
     count: (n: number) => `${n} member${n > 1 ? "s" : ""}`,
     you: "you",
     more: "More actions",
-    leave: "Leave group",
+    leave: "Leave project",
     actionFailed: "Couldn't do that.",
     left: (title: string) => `You left “${title}”.`,
     remove: (name: string) => `Remove ${name}`,
     openProfile: (name: string) => `See ${name}'s profile and tasks`,
-    addToGroup: "Add to group…",
+    addToGroup: "Add to project…",
     noMatch: "No one matches.",
     everyoneHere: "Everyone is already here.",
     listsUnavailable: "Colleagues and bots are unreachable for now.",
@@ -45,29 +55,35 @@ const messages = defineMessages({
     colleagues: "Colleagues",
     addFailed: "Couldn't add them.",
     leaveTitle: (group: string) => `Leave "${group}"?`,
-    leaveBody: "You'll no longer see its messages. Someone in the group can add you back.",
-    leaveLastBody: "You're the last member: the group and its messages will be deleted.",
+    leaveBody: "You'll no longer see its messages. Someone in the project can add you back.",
+    leaveLastBody: "You're the last member: the project and its messages will be deleted.",
     leaveAction: "Leave",
-    removeTitle: (name: string) => `Remove ${name} from the group?`,
+    removeTitle: (name: string) => `Remove ${name} from the project?`,
     removeBody: "They'll no longer see its messages. You can add them back later.",
     removeBotBody: "It will no longer answer here. You can add it back later.",
     removeAction: "Remove",
   },
   fr: {
-    group: "Groupe",
+    group: "Projet",
     hidePanel: "Masquer le panneau",
-    groupName: "Nom du groupe",
-    untitled: "Groupe sans nom",
+    groupName: "Nom du projet",
+    untitled: "Projet sans nom",
+    edit: "Modifier",
+    editTitle: "Modifier le projet",
+    editText: "Son logo, son nom et sa description, tels que chaque membre les voit.",
+    logo: "Logo",
+    description: "Description",
+    descriptionHelp: "Une ligne : de quoi parle le projet.",
     members: "Membres",
     count: (n: number) => `${n} membre${n > 1 ? "s" : ""}`,
     you: "toi",
     more: "Plus d'actions",
-    leave: "Quitter le groupe",
+    leave: "Quitter le projet",
     actionFailed: "Action impossible.",
     left: (title: string) => `Tu as quitté « ${title} ».`,
     remove: (name: string) => `Retirer ${name}`,
     openProfile: (name: string) => `Voir le profil et les tâches de ${name}`,
-    addToGroup: "Ajouter au groupe…",
+    addToGroup: "Ajouter au projet…",
     noMatch: "Personne ne correspond.",
     everyoneHere: "Tout le monde est déjà là.",
     listsUnavailable: "Collègues et bots injoignables pour le moment.",
@@ -75,17 +91,17 @@ const messages = defineMessages({
     colleagues: "Collègues",
     addFailed: "Ajout impossible.",
     leaveTitle: (group: string) => `Quitter « ${group} » ?`,
-    leaveBody: "Tu ne verras plus ses messages. Un membre du groupe pourra te rajouter.",
-    leaveLastBody: "Tu es le dernier membre : le groupe et ses messages seront supprimés.",
+    leaveBody: "Tu ne verras plus ses messages. Un membre du projet pourra te rajouter.",
+    leaveLastBody: "Tu es le dernier membre : le projet et ses messages seront supprimés.",
     leaveAction: "Quitter",
-    removeTitle: (name: string) => `Retirer ${name} du groupe ?`,
-    removeBody: "Cette personne ne verra plus les messages du groupe. Tu pourras la rajouter plus tard.",
+    removeTitle: (name: string) => `Retirer ${name} du projet ?`,
+    removeBody: "Cette personne ne verra plus les messages du projet. Tu pourras la rajouter plus tard.",
     removeBotBody: "Il ne répondra plus ici. Tu pourras le rajouter plus tard.",
     removeAction: "Retirer",
   },
 });
 
-/** Group panel: name, members (employees and bots), add, remove, leave. */
+/** Project panel: its logo, name and description (edited in a dialog), members (employees and bots), add, remove, leave. */
 export function MembersPanel({ conversation: conv, onClose }: { conversation: ConversationDetail; onClose: () => void }) {
   const { user } = useRouteContext({ from: "/app" });
   const qc = useQueryClient();
@@ -93,7 +109,6 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
   const t = useT(messages);
   const c = useT(common);
   const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(conv.title ?? "");
   const canRemove = conv.createdBy === user.id || user.role === "admin";
 
   const refresh = () =>
@@ -101,28 +116,6 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
       qc.invalidateQueries({ queryKey: conversationQuery(conv.id).queryKey }),
       qc.invalidateQueries({ queryKey: conversationsQuery.queryKey }),
     ]);
-
-  const rename = useMutation({
-    mutationFn: (next: string) => api(conversationPath(conv.id), { method: "PATCH", body: JSON.stringify({ title: next }) }),
-    onSuccess: () => {
-      setEditing(false);
-      return refresh();
-    },
-    meta: { success: c.saved, error: t.actionFailed },
-  });
-
-  // Escape unmounts the input, which can still fire blur: don't save then.
-  const cancelled = useRef(false);
-  const cancel = () => {
-    cancelled.current = true;
-    setEditing(false);
-  };
-  const save = () => {
-    if (cancelled.current) return;
-    const next = title.trim();
-    if (next === (conv.title ?? "")) setEditing(false);
-    else rename.mutate(next);
-  };
 
   const remove = useMutation({
     mutationFn: (m: { kind: "user" | "agent"; id: string }) =>
@@ -171,40 +164,20 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
       />
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 pb-5">
+        {/* Who it is: its logo (or faces), its name, its description; « Modifier » opens all three. */}
         <div className="flex flex-col items-start gap-1">
           <ConversationAvatar conversation={conv} me={user.id} className="mb-2 size-16" />
-          {editing ? (
-            // Inline editing in the name's exact spot: Enter or clicking away saves, Escape cancels.
-            <Input
-              autoFocus
-              value={title}
-              maxLength={80}
-              disabled={rename.isPending}
-              onChange={(e) => setTitle(e.target.value)}
-              onFocus={(e) => e.currentTarget.select()}
-              onBlur={save}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-                if (e.key === "Escape") cancel();
-              }}
-              placeholder={t.groupName}
-              aria-label={t.groupName}
-            />
-          ) : (
-            <button
-              type="button"
-              title={t.groupName}
-              onClick={() => {
-                cancelled.current = false;
-                setTitle(conv.title ?? "");
-                setEditing(true);
-              }}
-              className="max-w-full truncate rounded-md text-left text-xl font-medium outline-none hover:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              {conv.title || t.untitled}
-            </button>
-          )}
+          <div className="flex w-full items-center gap-2">
+            <h2 className="min-w-0 flex-1 truncate text-xl font-medium">{conv.title || t.untitled}</h2>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              {t.edit}
+            </Button>
+          </div>
+          {conv.description && <p className="text-sm text-muted-foreground">{conv.description}</p>}
         </div>
+        <Dialog open={editing} onOpenChange={setEditing}>
+          {editing && <EditProject conversation={conv} onSaved={() => void refresh().then(() => setEditing(false))} />}
+        </Dialog>
 
         {/* Its count once, as the list's heading, with the way to add someone beside it. */}
         <section className="flex flex-col gap-1" aria-label={t.members}>
@@ -248,6 +221,62 @@ export function MembersPanel({ conversation: conv, onClose }: { conversation: Co
         </section>
       </div>
     </aside>
+  );
+}
+
+/** The project's logo, name and description, saved together (the organization's form, in a dialog). */
+function EditProject({ conversation: conv, onSaved }: { conversation: ConversationDetail; onSaved: () => void }) {
+  const t = useT(messages);
+  const c = useT(common);
+  const [title, setTitle] = useState(conv.title ?? "");
+  const [description, setDescription] = useState(conv.description ?? "");
+  const [logo, setLogo] = useState<AvatarChange>(undefined);
+  const save = useMutation({
+    mutationFn: async () => {
+      await api(conversationPath(conv.id), { method: "PATCH", body: JSON.stringify({ title: title.trim(), description: description.trim() }) });
+      if (logo) await uploadAvatar(logo, conversationPath(conv.id, "/avatar"));
+      else if (logo === null) await api(conversationPath(conv.id, "/avatar"), { method: "DELETE" });
+    },
+    onSuccess: onSaved,
+    meta: { success: c.saved, error: t.actionFailed },
+  });
+  const valid = title.trim().length > 0;
+  const formId = `project-${conv.id}`;
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>{t.editTitle}</DialogTitle>
+        <DialogDescription>{t.editText}</DialogDescription>
+      </DialogHeader>
+      <form
+        id={formId}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valid) save.mutate();
+        }}
+      >
+        <FieldGroup className="gap-5">
+          <AvatarField id={formId} name={title || t.untitled} current={conv.image} value={logo} onChange={setLogo} label={t.logo} />
+          <Field>
+            <FormLabel htmlFor={`${formId}-name`} required>
+              {t.groupName}
+            </FormLabel>
+            <Input id={`${formId}-name`} autoFocus value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} />
+          </Field>
+          <Field>
+            <FormLabel htmlFor={`${formId}-description`}>{t.description}</FormLabel>
+            <Input id={`${formId}-description`} value={description} maxLength={200} onChange={(e) => setDescription(e.target.value)} />
+            <FieldDescription>{t.descriptionHelp}</FieldDescription>
+          </Field>
+        </FieldGroup>
+      </form>
+      <DialogFooter>
+        <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
+        <Button type="submit" form={formId} disabled={!valid || save.isPending}>
+          {c.save}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 

@@ -320,12 +320,26 @@ export const conversation = pgTable("conversation", {
   kind: text("kind").$type<ConversationKind>().notNull(),
   /** Group name; null = title derived from participants. */
   title: text("title"),
+  /** A group's (a project's) one-line description, shown in its settings. */
+  description: text("description"),
+  /** A group's logo URL (`/api/conversations/<id>/avatar?v=…`); null = its participants' faces. */
+  image: text("image"),
   /** Sorted pair of a direct conversation's participants (`a:<agent>|u:<user>`, `u:<a>|u:<b>`). */
   directKey: text("direct_key").unique(),
   createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   /** Group a bot opened from a direct conversation by mentioning other bots there. */
   originId: text("origin_id").references((): AnyPgColumn => conversation.id, { onDelete: "set null" }),
   ...timestamps,
+});
+
+/** A group's logo, cropped client-side like profile photos: stored in the database to survive redeploys. */
+export const conversationAvatar = pgTable("conversation_avatar", {
+  conversationId: text("conversation_id")
+    .primaryKey()
+    .references(() => conversation.id, { onDelete: "cascade" }),
+  mime: text("mime").notNull(),
+  data: bytea("data").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 /** Humans in a conversation. */

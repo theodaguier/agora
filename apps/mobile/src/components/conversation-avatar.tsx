@@ -183,12 +183,14 @@ export function ConversationAvatar({
   className,
   status,
 }: {
-  conversation: { kind: string; members: Person[]; agents: AgentSummary[] };
+  conversation: { kind: string; image?: string | null; members: Person[]; agents: AgentSummary[] };
   me: string;
   className?: string;
   status?: boolean;
 }) {
   const size = useSize(className ?? "size-10", 40);
+  // A project with its own logo: the logo, not the faces of who is in it.
+  if (conversation.kind === "group" && conversation.image) return <ProjectLogo image={conversation.image} agentIds={conversation.agents.map((a) => a.id)} size={size} status={status} />;
   const others = othersOf(conversation, me);
   if (conversation.kind !== "group" || others.length < 2) {
     const first = others[0];
@@ -196,6 +198,23 @@ export function ConversationAvatar({
     return status ? <StatusAvatar p={first} size={size} /> : <ParticipantAvatar p={first} size={size} />;
   }
   return <GroupAvatar others={others} agentIds={conversation.agents.map((a) => a.id)} size={size} status={status} />;
+}
+
+function ProjectLogo({ image, agentIds, size, status }: { image: string; agentIds: string[]; size: number; status?: boolean }) {
+  const dot = useGroupDot(status ? agentIds : []);
+  const logo = (
+    <Avatar alt="" variant="soft" color="default" className="shrink-0" style={{ width: size, height: size }}>
+      <Avatar.Image source={{ uri: apiUrl(image.replace(/^\/api/, "")), headers: authHeaders() }} asChild>
+        <Image style={{ width: "100%", height: "100%" }} contentFit="cover" cachePolicy="disk" />
+      </Avatar.Image>
+    </Avatar>
+  );
+  if (!status) return logo;
+  return (
+    <Notched size={size} dot={dot} dotPx={dotSize(size)}>
+      {logo}
+    </Notched>
+  );
 }
 
 function GroupAvatar({ others, agentIds, size, status }: { others: Participant[]; agentIds: string[]; size: number; status?: boolean }) {
