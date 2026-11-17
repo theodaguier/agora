@@ -54,7 +54,7 @@ export type PostHead = { avatar: ReactNode; name: string; time?: string };
 
 /**
  * A message from a bot or a colleague, flat (web: Post). The first of a run opens on its author
- * (20 pt face, name, time); its parts run under it, 28 pt in, 12 pt apart.
+ * (20 pt face, name, time); its parts run under it on the same left edge, 12 pt apart.
  */
 export function Post({ head, className, children }: { head?: PostHead; className?: string; children: ReactNode }) {
   return (
@@ -72,7 +72,7 @@ export function Post({ head, className, children }: { head?: PostHead; className
           )}
         </View>
       )}
-      <View className="min-w-0 gap-3 pl-7">{children}</View>
+      <View className="min-w-0 gap-3">{children}</View>
     </View>
   );
 }
@@ -222,12 +222,12 @@ export function ThreadEvent({ label, conversationId, className }: { label: strin
       {label}
     </Typography>
   );
-  if (!conversationId) return <View className={cn("mt-3 pl-7", className)}>{text}</View>;
+  if (!conversationId) return <View className={cn("mt-3", className)}>{text}</View>;
   return (
     <PressableFeedback
       accessibilityRole="link"
       onPress={withTap(() => router.push({ pathname: "/c/[conversationId]", params: { conversationId } }))}
-      className={cn("mt-3 self-start pl-7", className)}
+      className={cn("mt-3 self-start", className)}
     >
       {text}
     </PressableFeedback>

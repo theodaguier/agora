@@ -201,7 +201,7 @@ function ItemView({ item }: { item: InboxItem }) {
                 {ageLabel(new Date(said.createdAt))}
               </Typography>
             </View>
-            <MessageText text={said.text} plain={said.kind === "user"} mentionables={mentionables} textClassName="text-callout" />
+            <MessageText text={said.text} plain={said.kind === "user"} mentionables={mentionables} />
           </Card>
         )}
         {conversationId && <Reply conversationId={conversationId} mention={item.actor?.kind === "agent" ? item.actor.id : undefined} />}

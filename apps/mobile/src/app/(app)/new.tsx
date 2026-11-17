@@ -27,13 +27,13 @@ const messages = defineMessages({
   en: {
     creatingBot: "Creating Bot…",
     createBot: "Create a new Bot",
-    createGroup: "Create a group conversation",
+    createGroup: "Create a project",
     newConversation: "New conversation",
-    newGroup: "New group",
+    newGroup: "New project",
     removeName: (name: string) => `Remove ${name}`,
     searchOrCreate: "Search or create Bots",
-    groupMembers: "Group Bots and colleagues",
-    groupName: "Group name",
+    groupMembers: "Project Bots and colleagues",
+    groupName: "Project name",
     pickTwo: "Pick at least two participants",
     noMatch: "No one matches.",
     bots: "Bots",
@@ -42,13 +42,13 @@ const messages = defineMessages({
   fr: {
     creatingBot: "Création du Bot…",
     createBot: "Créer un nouveau Bot",
-    createGroup: "Créer une conversation de groupe",
+    createGroup: "Créer un projet",
     newConversation: "Nouvelle conversation",
-    newGroup: "Nouveau groupe",
+    newGroup: "Nouveau projet",
     removeName: (name: string) => `Retirer ${name}`,
     searchOrCreate: "Rechercher ou créer des Bots",
-    groupMembers: "Bots et collègues du groupe",
-    groupName: "Nom du groupe",
+    groupMembers: "Bots et collègues du projet",
+    groupName: "Nom du projet",
     pickTwo: "Choisis au moins deux participants",
     noMatch: "Personne ne correspond.",
     bots: "Bots",
@@ -106,7 +106,7 @@ export default function NewChat() {
       api<{ id: string }>("/conversations/group", {
         method: "POST",
         body: JSON.stringify({
-          title: title.trim() || undefined,
+          title: title.trim(),
           userIds: picked.flatMap((p) => (p.kind === "user" ? [p.person.id] : [])),
           agentIds: picked.flatMap((p) => (p.kind === "agent" ? [p.agent.id] : [])),
         }),
@@ -127,7 +127,8 @@ export default function NewChat() {
     Haptics.selectionAsync();
     setPicked((xs) => (isPicked(p) ? xs.filter((x) => participantKey(x) !== participantKey(p)) : [...xs, p]));
   };
-  const canCreate = picked.length >= 2 && !createGroup.isPending;
+  // A group is a project: it is named, so the sidebar never lists it by its members.
+  const canCreate = picked.length >= 2 && title.trim().length > 0 && !createGroup.isPending;
   const busy = createBot.isPending || openDirect.isPending || createGroup.isPending;
 
   const row = (p: Participant) => {
@@ -194,7 +195,7 @@ export default function NewChat() {
         contentContainerClassName="gap-6 p-4 pb-12"
       >
         {groupMode && (
-          <FormField label={t.groupName}>
+          <FormField label={t.groupName} required>
             <FormInput value={title} onChangeText={setTitle} maxLength={80} placeholder={t.groupName} returnKeyType="done" />
           </FormField>
         )}

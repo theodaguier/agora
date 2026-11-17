@@ -33,16 +33,17 @@ const messages = defineMessages({
     colleagues: "Colleagues",
     creatingBot: "Creating Bot…",
     createBot: "Create a new Bot",
-    createGroup: "Create a group conversation",
+    createGroup: "Create a project",
     newConversation: "New conversation",
     to: "To:",
     removeName: (name: string) => `Remove ${name}`,
     addSomeone: "Add someone",
-    groupMembers: "Group Bots and colleagues",
+    groupMembers: "Project Bots and colleagues",
     searchOrCreate: "Search or create Bots",
-    groupNamePlaceholder: "Group name",
-    groupName: "Group name",
+    groupNamePlaceholder: "Project name *",
+    groupName: "Project name",
     pickTwo: "Pick at least two participants",
+    nameIt: "Name the project",
     noMatch: "No one matches.",
     noMatchHint: "Check the spelling, or search for another name.",
     noOneLeft: "No one else to add.",
@@ -54,16 +55,17 @@ const messages = defineMessages({
     colleagues: "Collègues",
     creatingBot: "Création du Bot…",
     createBot: "Créer un nouveau Bot",
-    createGroup: "Créer une conversation de groupe",
+    createGroup: "Créer un projet",
     newConversation: "Nouvelle conversation",
     to: "À :",
     removeName: (name: string) => `Retirer ${name}`,
     addSomeone: "Ajouter quelqu'un",
-    groupMembers: "Bots et collègues du groupe",
+    groupMembers: "Bots et collègues du projet",
     searchOrCreate: "Rechercher ou créer des Bots",
-    groupNamePlaceholder: "Nom du groupe",
-    groupName: "Nom du groupe",
+    groupNamePlaceholder: "Nom du projet *",
+    groupName: "Nom du projet",
     pickTwo: "Choisis au moins deux participants",
+    nameIt: "Donne un nom au projet",
     noMatch: "Personne ne correspond.",
     noMatchHint: "Vérifie l'orthographe, ou cherche un autre nom.",
     noOneLeft: "Personne d'autre à ajouter.",
@@ -120,7 +122,7 @@ export function NewChat() {
       api<{ id: string }>("/conversations/group", {
         method: "POST",
         body: JSON.stringify({
-          title: title.trim() || undefined,
+          title: title.trim(),
           userIds: picked.flatMap((p) => (p.kind === "user" ? [p.person.id] : [])),
           agentIds: picked.flatMap((p) => (p.kind === "agent" ? [p.agent.id] : [])),
         }),
@@ -184,7 +186,8 @@ export function NewChat() {
         ...candidates.map(pickRow),
       ];
   const current = rows.some((r) => r.key === selected) ? selected : (rows[0]?.key ?? "");
-  const canCreate = picked.length >= 2 && !createGroup.isPending;
+  // A group is a project: it is named, so the sidebar never lists it by its members.
+  const canCreate = picked.length >= 2 && title.trim().length > 0 && !createGroup.isPending;
 
   return (
     <Command
@@ -262,7 +265,7 @@ export function NewChat() {
           <Button
             disabled={!canCreate}
             onClick={() => createGroup.mutate()}
-            title={picked.length < 2 ? t.pickTwo : undefined}
+            title={picked.length < 2 ? t.pickTwo : !title.trim() ? t.nameIt : undefined}
           >
             {createGroup.isPending ? c.creating : c.create}
           </Button>

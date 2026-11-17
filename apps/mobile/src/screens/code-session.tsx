@@ -340,7 +340,7 @@ const usageTime = (u: NonNullable<CodeSession["usage"]>) => {
 
 /**
  * The session's « … » (web SessionDetails): its details as plain lines (the model for those who cannot
- * change it, the account, what it consumed), then its owner's priority and the repository's secrets.
+ * change it, the account, what it consumed), then its owner's mode, model and priority, and the repository's secrets.
  * Nothing to show: no button.
  */
 function DetailsMenu({ conversationId, session, owner }: { conversationId: string; session: CodeSession; owner: boolean }) {
@@ -355,11 +355,13 @@ function DetailsMenu({ conversationId, session, owner }: { conversationId: strin
     u ? { label: t.usage, value: `${t.estimated(format.cost(u.costUsd))}, ${usageTime(u)}`, icon: "chart.bar", note: t.costNote } : null,
   ] as (Line | null)[]).filter((x): x is Line => x !== null);
   const canSecrets = owner && !!session.repo;
+  const settings = useSessionSettings(conversationId, session, owner);
   if (!lines.length && !owner) return null;
   const actions: MenuEntry[] = [
     // Read, not chosen: each line its label over its value.
     ...lines.map((l): MenuEntry => ({ title: l.label, actions: [{ label: l.value, icon: l.icon, description: l.note, disabled: true, onPress: () => {} }] })),
     lines.length > 0 && owner && "divider",
+    ...settings,
     owner && { submenu: `${t.priority} : ${t.priorities[session.priority]}`, icon: PRIORITY_ICONS[session.priority], actions: priorityEntries(session, (priority) => set.mutate({ conversationId, id: session.id, priority })) },
     canSecrets && "divider",
     canSecrets && { label: t.credentials.open, icon: "key", onPress: () => router.push(credentialsHref(conversationId, session.id)) },
@@ -389,7 +391,7 @@ function Overview({ conversationId, session, owner, waiting }: { conversationId:
           <Timeline steps={session.steps} running={running} engine={session.engine} />
           {/* While it works and waits for nobody: what it does now, a light passing over the words. */}
           {running && !waiting && (
-            <View className="pl-7">
+            <View>
               <Shimmer>{session.activity || t.status.running}</Shimmer>
             </View>
           )}
@@ -1096,14 +1098,6 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
     onSuccess: (s) => applyCodeSession(qc, s),
     onError: (e) => toast.failed(e),
   });
-  const mode = useMutation({
-    mutationFn: (value: CodePermissionMode) => setCodeSessionMode(conversationId, session.id, value),
-    onSuccess: (s) => {
-      applyCodeSession(qc, s);
-      toast.success(t.modeChanged(t.modes[s.mode]));
-    },
-    onError: (e) => toast.failed(e),
-  });
   // What a session of this engine has before it runs, and its own once it ran: its own win on a name.
   const { data: base = [] } = useQuery({ ...codeCommandsQuery(conversationId, session.engine), retry: false });
   const names = new Set(session.commands.map((c) => c.name));
@@ -1144,30 +1138,12 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
             <SlashMenu items={items} onPick={(item) => setText(`/${item.name} `)} />
           </View>
         )}
-        {/* The conversation's composer card (components/composer/composer-card.tsx): the same chat, its mode and model as tools. */}
+        {/* The conversation's composer, as it is (components/composer/composer-card.tsx): the mode and the model are in « … ». */}
         <ComposerCard
           header={files.length > 0 && <PendingFiles items={files} onRemove={removeFile} />}
-          tools={
-            <>
-              <AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />
-              <TapMenu
-                accessibilityLabel={`${t.mode}: ${t.modes[session.mode]}`}
-                actions={[
-                  {
-                    title: t.mode,
-                    actions: codeEngineModes(session.engine).map((m) => ({ label: t.modes[m], icon: MODE_ICONS[m], description: t.modeHelp[m], checked: m === session.mode, onPress: () => m !== session.mode && mode.mutate(m) })),
-                  },
-                ]}
-              >
-                <Button variant="ghost" size="sm" isDisabled={mode.isPending} className="max-w-[150px]">
-                  <Button.Label numberOfLines={1}>{t.modes[session.mode]}</Button.Label>
-                </Button>
-              </TapMenu>
-            </>
-          }
+          tools={<AttachMenu open={attachOpen} onOpenChange={setAttachOpen} onFiles={addFiles} />}
           trailing={
             <>
-              <SessionModelPicker conversationId={conversationId} session={session} />
               <MicButton listening={dictation.listening} onPress={() => (dictation.listening ? dictation.stop() : dictation.start(text))} />
               <SendButton
                 canSend={canSend}
@@ -1194,35 +1170,47 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
   );
 }
 
-/** The session's model, among the ones its owner may use with its engine; named as people read it. */
-function SessionModelPicker({ conversationId, session }: { conversationId: string; session: CodeSession }) {
+/**
+ * The owner's settings of the session, as entries of its « … »: the mode, then the model among the ones
+ * its owner may use with its engine (named as people read it). The composer stays the conversation's.
+ */
+function useSessionSettings(conversationId: string, session: CodeSession, owner: boolean): MenuEntry[] {
   const t = tr(codeSessions);
   const qc = useQueryClient();
   const toast = useAdminToast();
-  const { data: models = [] } = useQuery(codeModelsQuery(conversationId, session.engine));
-  const change = useMutation({
-    mutationFn: (model: string) => setCodeSessionModel(conversationId, session.id, model),
+  const { data: models = [] } = useQuery({ ...codeModelsQuery(conversationId, session.engine), enabled: owner });
+  const mode = useMutation({
+    mutationFn: (value: CodePermissionMode) => setCodeSessionMode(conversationId, session.id, value),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      toast.success(t.modeChanged(t.modes[s.mode]));
+    },
+    onError: (e) => toast.failed(e),
+  });
+  const model = useMutation({
+    mutationFn: (value: string) => setCodeSessionModel(conversationId, session.id, value),
     onSuccess: (s) => {
       applyCodeSession(qc, s);
       toast.success(t.modelChanged);
     },
     onError: (e) => toast.failed(e),
   });
-  if (!models.length && !session.model) return null;
+  if (!owner) return [];
   const current = models.find((m) => m.id === session.model);
   // Its engine's default, as it resolved it: listed even when it is not among the models offered.
   const list: { id: string; label?: string }[] = session.model && !current ? [{ id: session.model }, ...models] : models;
   const name = (m: { id: string; label?: string }) => m.label ?? modelName(m.id);
   const shown = current ? name(current) : session.model ? modelName(session.model) : t.model;
-  return (
-    <TapMenu
-      accessibilityLabel={`${t.model}: ${shown}`}
-      actions={list.map((m) => ({ label: name(m), checked: m.id === session.model, onPress: () => m.id !== session.model && change.mutate(m.id) }))}
-    >
-      <Button variant="ghost" size="sm" className="max-w-[180px]">
-        <ModelLogo provider={ENGINE_PROVIDER[session.engine]} model={session.model ?? undefined} size={14} />
-        <Button.Label numberOfLines={1}>{shown}</Button.Label>
-      </Button>
-    </TapMenu>
-  );
+  return [
+    {
+      submenu: `${t.mode} : ${t.modes[session.mode]}`,
+      icon: MODE_ICONS[session.mode],
+      actions: codeEngineModes(session.engine).map((m) => ({ label: t.modes[m], icon: MODE_ICONS[m], description: t.modeHelp[m], checked: m === session.mode, onPress: () => m !== session.mode && mode.mutate(m) })),
+    },
+    list.length > 0 && {
+      submenu: `${t.model} : ${shown}`,
+      icon: "cpu",
+      actions: list.map((m) => ({ label: name(m), checked: m.id === session.model, onPress: () => m.id !== session.model && model.mutate(m.id) })),
+    },
+  ];
 }
