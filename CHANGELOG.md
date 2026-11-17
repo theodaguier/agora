@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.67.0 — 2026-11-17
+
+### Features
+- groups are projects — sidebar splits Projects and Messages, a project needs a name
+
+### Fixes
+- **mobile**: code session reads as the chat — same composer, no indent, 15 pt text
+
 ## v0.66.0 — 2026-11-14
 
 ### Features
