@@ -344,6 +344,13 @@
       "when": 1794940526259,
       "tag": "0048_project_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1795128304987,
+      "tag": "0049_effort_fast",
+      "breakpoints": true
     }
   ]
 }

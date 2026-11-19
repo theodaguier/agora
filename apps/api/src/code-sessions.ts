@@ -5,7 +5,8 @@ import { basename, join, sep } from "node:path";
 import type { Subprocess } from "bun";
 import { CODE_ENGINE_NAMES, CODE_PRIORITIES, codeEngineModes, codeInstructionText, type CodeApproval, type CodeIssue, type CodePriority, type CodePullRequest, type CodeEngine, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
 import { activateClaudeAccount, activeClaudeAccountId, claudeCodeEnv, claudeProfiles } from "./claude-accounts";
-import { resultUsage, sessionExists, workspace, type ClaudeResult } from "./claude-code";
+import { reasoningArgs, resultUsage, sessionExists, workspace, type ClaudeResult } from "./claude-code";
+import type { Reasoning } from "./hermes";
 import { engineBin, headlessEngine, type HeadlessEngine } from "./code-engines";
 import * as gitOps from "./code-git";
 import { GitError, githubEnv, githubToken, parseRepo, prepareWorktree, readGit, removeWorktree, sessionBranch, writeCredentials } from "./code-git";
@@ -199,6 +200,8 @@ function summary(s: Live): CodeSession {
     git: r.git,
     worktree: r.worktree,
     model: r.model,
+    effort: r.effort,
+    fast: r.fast,
     mode: modeOf(r),
     todos: s.transcript.todos,
     commands: r.commands,
@@ -447,6 +450,8 @@ async function save(s: Live) {
         issue: r.issue,
         result: r.result,
         model: r.model,
+        effort: r.effort,
+        fast: r.fast,
         permissions: r.permissions,
         git: r.git,
         worktree: r.worktree,
@@ -592,6 +597,8 @@ export async function startCodeSession(opts: {
    */
   project?: string;
   model?: string;
+  /** Its effort and fast mode (the caller checks the model has them). */
+  reasoning?: Reasoning;
   /** GitHub repository (owner/name or URL): the session works in a worktree of its clone, made before the first run. */
   repo?: string;
   /** Its branch to work on (default: a new one named after the session). */
@@ -646,6 +653,8 @@ export async function startCodeSession(opts: {
       repo: shared?.repo ?? null,
       worktree: shared && branch ? { branch, removedAt: null, clone: shared.clone } : null,
       model,
+      effort: opts.reasoning?.effort || null,
+      fast: !!opts.reasoning?.fast,
       permissions: { allowedTools: [], dirs: [], ...(opts.mode && opts.mode !== DEFAULT_MODE && { mode: opts.mode }) },
       steps: [],
     })
@@ -899,16 +908,38 @@ export async function detachCodeSessionIssue(id: string, conversationId?: string
 
 /**
  * The model of the next runs; a run under way switches right away (Claude Code's set_model
- * control request). The caller checks the model is one the owner may use.
+ * control request). The caller checks the model is one the owner may use, and passes the effort and
+ * fast mode it keeps (the ones the new model has).
  */
-export async function setCodeSessionModel(id: string, model: string, conversationId?: string) {
+export async function setCodeSessionModel(id: string, model: string, conversationId?: string, reasoning?: Reasoning) {
   const s = await load(id, conversationId);
   if (!MODEL.test(model)) throw new CodeSessionError("invalid");
   s.row.model = model;
   if (s.proc) write(s, { type: "control_request", request_id: crypto.randomUUID(), request: { subtype: "set_model", model } });
+  if (reasoning) applyReasoning(s, reasoning);
   touch(s, [], true);
   await save(s);
   return summary(s);
+}
+
+/** The effort and fast mode of the next runs, and of the one under way for Claude Code. The caller checks its model has them. */
+export async function setCodeSessionReasoning(id: string, reasoning: Reasoning, conversationId?: string) {
+  const s = await load(id, conversationId);
+  if (reasoning.effort && !EFFORT.test(reasoning.effort)) throw new CodeSessionError("invalid");
+  applyReasoning(s, reasoning);
+  touch(s, [], true);
+  await save(s);
+  return summary(s);
+}
+
+const EFFORT = /^[a-z]{1,20}$/;
+
+function applyReasoning(s: Live, { effort, fast }: Reasoning) {
+  const changed = (effort || null) !== s.row.effort || !!fast !== s.row.fast;
+  s.row.effort = effort || null;
+  s.row.fast = !!fast;
+  // Its warm process takes them from its flag settings, as `--effort` and `--settings` would at its start (null: the model's default).
+  if (changed && s.proc) write(s, { type: "control_request", request_id: crypto.randomUUID(), request: { subtype: "apply_flag_settings", settings: { effortLevel: s.row.effort, fastMode: s.row.fast } } });
 }
 
 /** Stops the run under way: Claude Code is interrupted (the tool in progress stops), then killed if it does not end. */
@@ -1691,6 +1722,7 @@ async function execute(s: Live, id: number): Promise<void> {
     "--strict-mcp-config",
     ...((await sessionExists(r.id)) ? ["--resume", r.id] : ["--session-id", r.id]),
     ...(r.model ? ["--model", r.model] : []),
+    ...reasoningArgs({ effort: r.effort, fast: r.fast }),
     ...(allowed.length ? ["--allowedTools", ...allowed] : []),
     ...[uploads, ...r.permissions.dirs].flatMap((d) => ["--add-dir", d]),
     ...(appended ? ["--append-system-prompt", appended] : []),
@@ -1877,7 +1909,7 @@ async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, syst
     .map((m) => m.prompt ?? m.text)
     .join("\n\n");
   const thread = r.engineThread;
-  const run = await engine.command({ bin, cwd: r.cwd, prompt, model: r.model, mode: modeOf(r), thread, system, mcp });
+  const run = await engine.command({ bin, cwd: r.cwd, prompt, model: r.model, reasoning: { effort: r.effort, fast: r.fast }, mode: modeOf(r), thread, system, mcp });
   r.account = await engine.account().catch(() => null);
   touch(s, [], true);
   // As Claude Code's: git and gh reach GitHub with the vault's token, its browsers show on the conversation's screen.

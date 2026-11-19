@@ -12,6 +12,8 @@ import { ModelLogo } from "./ProviderLogo";
 import { providerName } from "../lib/providers";
 import { modelName } from "@agora/core";
 import { defineMessages, useT } from "@/i18n";
+import { reasoning as reasoningMessages } from "@agora/core/i18n";
+import { ReasoningSettings, type Reasoning } from "./ReasoningSettings";
 
 const messages = defineMessages({
   en: {
@@ -52,6 +54,13 @@ export function ModelPicker({
     onOpenChange?.(next);
   };
   const { data, isError, isPending } = useQuery(modelsQuery(conversationId));
+  const tr = useT(reasoningMessages);
+  const reason = useMutation({
+    mutationFn: (next: Reasoning) => api(conversationPath(conversationId, "/reasoning"), { method: "PUT", body: JSON.stringify(next) }),
+    onMutate: (next) => qc.setQueryData(modelsQuery(conversationId).queryKey, (d) => d && { ...d, ...next }),
+    onSettled: () => qc.invalidateQueries({ queryKey: modelsQuery(conversationId).queryKey }),
+    meta: { success: tr.changed },
+  });
   const select = useMutation({
     mutationFn: ({ model, provider }: { model: string | null; provider?: string }) =>
       api(conversationPath(conversationId, "/model"), {
@@ -90,6 +99,12 @@ export function ModelPicker({
   const otherValue = (provider: string, id: string) => `${provider} ${providerName(provider)} ${id}`;
   // Chosen model from another Hermes provider signed in on this profile.
   const other = !engine && data.selected && data.selectedProvider && data.selectedProvider !== data.provider ? data.selectedProvider : null;
+  // The model the thread runs on, for what can be chosen with it.
+  const runs = engine
+    ? engineModel
+    : other
+      ? data.others.find((p) => p.provider === other)?.models.find((m) => m.id === data.selected)
+      : data.models.find((m) => m.id === (data.selected ?? fallback));
   const activeValue = !data.selected
     ? data.defaultAllowed
       ? defaultValue
@@ -169,6 +184,7 @@ export function ModelPicker({
             ))}
           </CommandList>
         </Command>
+        <ReasoningSettings offer={runs} value={{ effort: data.effort ?? null, fast: !!data.fast }} onChange={reason.mutate} />
       </PopoverContent>
     </Popover>
   );

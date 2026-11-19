@@ -14,7 +14,7 @@ import {
   type CodeSessionDetail,
   type CodeStep,
 } from "@agora/core";
-import { codeSessions, common, pullRequests } from "@agora/core/i18n";
+import { codeSessions, common, pullRequests, reasoning } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { Stack, router, useFocusEffect, type Href } from "expo-router";
@@ -39,6 +39,7 @@ import { Shimmer } from "@/components/shimmer";
 import { confirmAction } from "@/components/confirm-action";
 import { BranchIcon, CheckCircleIcon, ChevronDownIcon, CloseCircleIcon, BanIcon, SparklesIcon, ToolIcon } from "@/components/icons";
 import { MenuButton, TapMenu, type MenuEntry } from "@/components/menus";
+import { effortOf, effortOptions, type Reasoning } from "@/components/reasoning-rows";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
 import { ModelLogo } from "@/components/model-logo";
@@ -62,6 +63,7 @@ import {
   sendToCodeSession,
   setCodeSessionMode,
   setCodeSessionModel,
+  setCodeSessionReasoning,
   setCodeSessionParked,
   stopCodeSession,
   switchCodeSessionAccount,
@@ -1195,8 +1197,19 @@ function useSessionSettings(conversationId: string, session: CodeSession, owner:
     },
     onError: (e) => toast.failed(e),
   });
+  const reason = useMutation({
+    mutationFn: (value: Reasoning) => setCodeSessionReasoning(conversationId, session.id, value),
+    onSuccess: (s) => {
+      applyCodeSession(qc, s);
+      toast.success(tr(reasoning).changed);
+    },
+    onError: (e) => toast.failed(e),
+  });
   if (!owner) return [];
   const current = models.find((m) => m.id === session.model);
+  const r = tr(reasoning);
+  const efforts = effortOptions(current);
+  const effort = effortOf(current, session) ?? "default";
   // Its engine's default, as it resolved it: listed even when it is not among the models offered.
   const list: { id: string; label?: string }[] = session.model && !current ? [{ id: session.model }, ...models] : models;
   const name = (m: { id: string; label?: string }) => m.label ?? modelName(m.id);
@@ -1211,6 +1224,23 @@ function useSessionSettings(conversationId: string, session: CodeSession, owner:
       submenu: `${t.model} : ${shown}`,
       icon: "cpu",
       actions: list.map((m) => ({ label: name(m), checked: m.id === session.model, onPress: () => m.id !== session.model && model.mutate(m.id) })),
+    },
+    // What its model offers (Claude Code switches the run under way too): the levels, then the fast mode.
+    efforts.length > 0 && {
+      submenu: `${r.label} : ${efforts.find((o) => o.value === effort)?.label ?? r.byDefault}`,
+      icon: "gauge.with.dots.needle.50percent",
+      actions: efforts.map((o) => ({
+        label: o.label,
+        checked: o.value === effort,
+        onPress: () => o.value !== effort && reason.mutate({ effort: o.value === "default" ? null : o.value, fast: session.fast && !!current?.fast }),
+      })),
+    },
+    !!current?.fast && {
+      label: r.fast,
+      icon: "bolt",
+      description: r.fastHelp,
+      checked: session.fast,
+      onPress: () => reason.mutate({ effort: effortOf(current, session), fast: !session.fast }),
     },
   ];
 }

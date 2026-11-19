@@ -1,12 +1,13 @@
 import { CODE_ENGINE_NAMES, CODE_ENGINES, type CodeAccount, type CodeEngine, type CodeEngineInfo, type CodePermissionMode, type CodeStep, type CodeTodo } from "@agora/core";
 import { canUseClaudeCode } from "./claude-code";
-import { canUseCodex, codexModels, turnUsage, type CodexUsage } from "./codex";
+import { canUseCodex, codexModels, codexReasoningArgs, turnUsage, type CodexUsage } from "./codex";
 import { activeCodexAccountId, codexEnv, listCodexAccounts } from "./codex-accounts";
 import { untrackedSecretFile } from "./code-git";
 import { clip, describeTool, type Transcript } from "./code-steps";
 import { codexMcpArgs, cursorMcpConfig, noMcp, type EngineMcp } from "./engine-mcp";
 import { env } from "./env";
 import { childEnv } from "./harden";
+import type { ModelInfo, Reasoning } from "./hermes";
 import { cliEnv, cliPath } from "./host";
 import type { EngineUsage } from "./usage";
 
@@ -55,6 +56,8 @@ export type HeadlessEngine = {
     cwd: string;
     prompt: string;
     model: string | null;
+    /** Its effort and fast mode; engines without them ignore it. */
+    reasoning?: Reasoning;
     mode: CodePermissionMode;
     thread: string | null;
     system: string;
@@ -122,8 +125,8 @@ function cursorModels(): Promise<{ id: string; label: string }[]> {
 }
 
 /** The models a session on this engine can be given; empty: none listed, the engine picks. */
-export async function engineModels(engine: Exclude<CodeEngine, "claude">): Promise<{ id: string; label: string }[]> {
-  if (engine === "codex") return (await codexModels()).map((m) => ({ id: m.id, label: m.label ?? m.id }));
+export async function engineModels(engine: Exclude<CodeEngine, "claude">): Promise<(Pick<ModelInfo, "efforts" | "fast" | "description"> & { id: string; label: string })[]> {
+  if (engine === "codex") return (await codexModels()).map((m) => ({ id: m.id, label: m.label ?? m.id, description: m.description, efforts: m.efforts, fast: m.fast }));
   return cursorModels();
 }
 
@@ -140,7 +143,7 @@ const PLAN_NOTE =
 
 const codex: HeadlessEngine = {
   id: "codex",
-  async command({ bin, prompt, model, mode, thread, system, mcp }) {
+  async command({ bin, prompt, model, reasoning, mode, thread, system, mcp }) {
     const plan = mode === "plan";
     const instructions = [system, plan && PLAN_NOTE].filter(Boolean).join("\n\n");
     const connectors = codexMcpArgs(mcp ?? noMcp());
@@ -156,6 +159,7 @@ const codex: HeadlessEngine = {
         // As Claude Code's sessions: it acts on its own (git, network, installs), or only reads in plan mode.
         ...(plan ? ["-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"'] : ["--dangerously-bypass-approvals-and-sandbox"]),
         ...(model ? ["--model", model] : []),
+        ...codexReasoningArgs(reasoning),
         // A JSON string is a valid TOML string.
         ...(instructions ? ["-c", `developer_instructions=${JSON.stringify(instructions)}`] : []),
         ...connectors.args,

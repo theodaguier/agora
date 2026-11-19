@@ -8,7 +8,9 @@ import { ModelLogo } from "@/components/model-logo";
 import { FloatingMenu, MENU_MAX_HEIGHT, MenuEmpty, MenuRow } from "@/components/slash-menu";
 import { api, conversationPath } from "@/lib/api";
 import { useAdminToast } from "@/components/admin/ui";
-import { defineMessages } from "@/lib/i18n";
+import { defineMessages, tr } from "@/lib/i18n";
+import { reasoning } from "@agora/core/i18n";
+import { hasReasoning, ReasoningRows, type Reasoning } from "@/components/reasoning-rows";
 import { modelsQuery } from "@/lib/queries";
 import type { ModelOptions } from "@/lib/types";
 
@@ -140,9 +142,25 @@ export function ModelMenu({ conversationId, bots, bot, onBot, onClose }: MenuPro
     onError: (e) => toast.failed(e),
     onSettled: () => qc.invalidateQueries({ queryKey: query.queryKey }),
   });
+  // The effort and fast mode of the bot's model: the palette stays open, the change is said by a toast.
+  const reason = useMutation({
+    mutationFn: (next: Reasoning) => api(conversationPath(conversationId, "/reasoning"), { method: "PUT", body: JSON.stringify({ ...next, agentId: bot?.id }) }),
+    onMutate: (next) => {
+      qc.setQueryData(query.queryKey, (d) => d && { ...d, ...next });
+    },
+    onSuccess: () => toast.success(tr(reasoning).changed),
+    onError: (e) => toast.failed(e),
+    onSettled: () => qc.invalidateQueries({ queryKey: query.queryKey }),
+  });
 
   if (!data) return null;
   const { engines, engine, fallback, other } = current(data);
+  // The model the thread runs on, for what can be chosen with it.
+  const runs = engine
+    ? engine.models.find((m) => m.id === data.selected)
+    : other
+      ? data.others.find((p) => p.provider === other)?.models.find((m) => m.id === data.selected)
+      : data.models.find((m) => m.id === (data.selected ?? fallback));
   // Search values, as the web's cmdk values.
   const value = (provider: string, id: string, label = "") => `${provider} ${providerName(provider)} ${id} ${label}`;
 
@@ -226,6 +244,11 @@ export function ModelMenu({ conversationId, bots, bot, onBot, onClose }: MenuPro
     <FloatingMenu
       label={t.title}
       header={header}
+      footer={
+        hasReasoning(runs) && (
+          <ReasoningRows offer={runs} value={{ effort: data.effort ?? null, fast: !!data.fast }} onChange={reason.mutate} />
+        )
+      }
       list={
         <FlatList
           data={options}

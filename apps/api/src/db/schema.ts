@@ -371,6 +371,10 @@ export const conversationAgent = pgTable(
     addedBy: text("added_by").references(() => user.id, { onDelete: "set null" }),
     /** Model chosen for this bot here; null = the Hermes profile's default model. */
     model: text("model"),
+    /** Reasoning effort chosen with it (one the model lists); null = the model's default. */
+    effort: text("effort"),
+    /** Its fast mode (Claude Code's fast mode, the "priority" tier of Codex and Hermes). */
+    fast: boolean("fast").default(false).notNull(),
     /** Date of the last group message already passed to this bot. */
     seenUntil: timestamp("seen_until"),
     /** Incremented by /new and /compact: the bot starts over on a new Hermes session. */
@@ -461,6 +465,10 @@ export const codeSession = pgTable(
     /** Claude account of its last run. */
     account: jsonb("account").$type<CodeAccount>(),
     model: text("model"),
+    /** Reasoning effort of its runs; null = the engine's default. */
+    effort: text("effort"),
+    /** Its runs use the engine's fast mode. */
+    fast: boolean("fast").default(false).notNull(),
     result: text("result"),
     /** Rules the owner allowed "for the session", and its permission mode, passed again to each run. */
     /** `mode`: its permission mode; `actMode`: the one to go back to once a plan is approved. */

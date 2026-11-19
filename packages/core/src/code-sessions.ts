@@ -457,6 +457,10 @@ export type CodeSession = {
   /** Its worktree (null: a directory of its own, started without a repository or before worktrees). */
   worktree: CodeWorktree | null;
   model: string | null;
+  /** Reasoning effort of its runs (null: the engine's default for the model). */
+  effort: string | null;
+  /** Its runs use the engine's fast mode. */
+  fast: boolean;
   /** Its permission mode, for the next run and the one under way. */
   mode: CodePermissionMode;
   /** Claude Code's task list, as it last wrote it. */

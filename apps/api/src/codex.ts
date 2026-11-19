@@ -6,7 +6,7 @@ import { activeCodexAccountId, codexEnv } from "./codex-accounts";
 import { codexAppServer } from "./codex-app-server";
 import { codexMcpArgs, noMcp, type EngineMcp } from "./engine-mcp";
 import { env } from "./env";
-import type { HermesEvent, ModelInfo } from "./hermes";
+import type { HermesEvent, ModelInfo, Reasoning } from "./hermes";
 import { readLines } from "./lines";
 import type { EngineUsage } from "./usage";
 
@@ -34,7 +34,17 @@ const MODELS_TTL = 10 * 60_000;
 const modelsCache = new Map<string, { at: number; models: Promise<ModelInfo[]> }>();
 const lastModels = new Map<string, ModelInfo[]>();
 
-type ListedModel = { id: string; displayName?: string; description?: string; hidden?: boolean; supportedReasoningEfforts?: unknown[] };
+type ListedModel = {
+  id: string;
+  displayName?: string;
+  description?: string;
+  hidden?: boolean;
+  supportedReasoningEfforts?: { reasoningEffort?: string }[];
+  serviceTiers?: { id?: string; name?: string }[];
+};
+
+/** Codex's fast mode is a service tier: the one its model list calls "Fast". */
+export const CODEX_FAST_TIER = "priority";
 
 /** The models Codex offers the active account (`model/list` of its app server), cached a few minutes. */
 export async function codexModels(): Promise<ModelInfo[]> {
@@ -52,7 +62,17 @@ export async function codexModels(): Promise<ModelInfo[]> {
     } while (cursor);
     return list
       .filter((m) => !m.hidden)
-      .map((m) => ({ id: m.id, reasoning: !!m.supportedReasoningEfforts?.length, label: m.displayName ?? m.id, description: m.description }));
+      .map((m) => {
+        const efforts = (m.supportedReasoningEfforts ?? []).map((e) => e.reasoningEffort).filter((e): e is string => !!e);
+        return {
+          id: m.id,
+          reasoning: !!efforts.length,
+          ...(efforts.length > 0 && { efforts }),
+          ...(m.serviceTiers?.some((t) => t.id === CODEX_FAST_TIER) && { fast: true }),
+          label: m.displayName ?? m.id,
+          description: m.description,
+        };
+      });
   })().then(
     (list) => (lastModels.set(account, list), list),
     (err) => {
@@ -69,6 +89,12 @@ export async function codexModels(): Promise<ModelInfo[]> {
   modelsCache.set(account, { at: Date.now(), models });
   return models;
 }
+
+/** `model_reasoning_effort` and the fast service tier, as `-c` overrides (JSON strings are TOML strings). */
+export const codexReasoningArgs = (r: Reasoning | undefined) => [
+  ...(r?.effort ? ["-c", `model_reasoning_effort=${JSON.stringify(r.effort)}`] : []),
+  ...(r?.fast ? ["-c", `service_tier=${JSON.stringify(CODEX_FAST_TIER)}`] : []),
+];
 
 async function workspace() {
   const cwd = env.CODEX_CWD || join(homedir(), ".agora", "codex");
@@ -106,6 +132,8 @@ export async function* codexChat(opts: {
   text: string;
   images?: string[];
   model: string;
+  /** Its reasoning effort and fast tier, as chosen for the thread. */
+  reasoning?: Reasoning;
   system?: string;
   /** The bot's connectors (engine-mcp.ts). */
   mcp?: EngineMcp;
@@ -134,6 +162,7 @@ async function* runCodex(opts: {
   text: string;
   images?: string[];
   model: string;
+  reasoning?: Reasoning;
   system?: string;
   mcp?: EngineMcp;
   signal?: AbortSignal;
@@ -157,6 +186,7 @@ async function* runCodex(opts: {
     // None of the owner's config.toml (MCP servers, profiles…): only what the app sets here.
     "--ignore-user-config",
     "--model", opts.model,
+    ...codexReasoningArgs(opts.reasoning),
     "-c", 'sandbox_mode="read-only"',
     "-c", 'approval_policy="never"',
     "-c", 'web_search="live"',

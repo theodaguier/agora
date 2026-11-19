@@ -712,6 +712,18 @@ export const BrainIcon = createIcon("brain", {
   ),
 });
 
+/** A speedometer: how hard a model thinks. */
+export const GaugeIcon = createIcon("gauge", {
+  fill: <path d="M3 15.5a9 9 0 0 1 18 0 3.5 3.5 0 0 1-3.5 3.5h-11A3.5 3.5 0 0 1 3 15.5z" />,
+  cut: <path d="M12 15.5l3.5-4.5" strokeWidth={2} />,
+  solid: <Dot cx={12} cy={15.5} r={1.75} />,
+});
+
+/** A lightning bolt: a fast mode. */
+export const FlashIcon = createIcon("flash", {
+  fill: <path d="M13.5 2.5 5 13.5h6l-1.5 8 8.5-11h-6z" />,
+});
+
 export const SparklesIcon = createIcon("sparkles", {
   fill: <path d="M10 4.5c.5 4.6 3.4 7.5 8 8-4.6.5-7.5 3.4-8 8-.5-4.6-3.4-7.5-8-8 4.6-.5 7.5-3.4 8-8z" />,
   solid: (

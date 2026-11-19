@@ -56,7 +56,10 @@ export function applyCodeStep(qc: QueryClient, conversationId: string, sessionId
 }
 
 /** A session the owner starts without a bot: Claude Code names it from its first instruction. */
-export const startCodeSession = (conversationId: string, req: { task: string; attachmentIds?: string[]; repo?: string; engine?: CodeEngine; model?: string; mode?: CodePermissionMode }) =>
+export const startCodeSession = (
+  conversationId: string,
+  req: { task: string; attachmentIds?: string[]; repo?: string; engine?: CodeEngine; model?: string; effort?: string | null; fast?: boolean; mode?: CodePermissionMode },
+) =>
   api<CodeSession>(path(conversationId), { method: "POST", body: JSON.stringify(req) });
 
 /** GitHub repositories a new session can clone (the instance's token reaches them), the latest pushed first. */
@@ -124,7 +127,7 @@ export const stopCodeSession = (conversationId: string, id: string) => api<CodeS
 export const codeModelsQuery = (conversationId: string, engine: CodeEngine = "claude") =>
   queryOptions({
     queryKey: ["code-models", conversationId, engine],
-    queryFn: () => api<{ id: string; label?: string; description?: string; reasoning?: boolean }[]>(path(conversationId, `/models?engine=${engine}`)),
+    queryFn: () => api<{ id: string; label?: string; description?: string; reasoning?: boolean; efforts?: string[]; fast?: boolean }[]>(path(conversationId, `/models?engine=${engine}`)),
     staleTime: 10 * 60_000,
   });
 
@@ -146,6 +149,10 @@ export const codeEnginesQuery = (conversationId: string) =>
 
 export const setCodeSessionModel = (conversationId: string, id: string, model: string) =>
   api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/model`), { method: "PUT", body: JSON.stringify({ model }) });
+
+/** Its effort and fast mode, among the ones its model has (the run under way takes them too, on Claude Code). */
+export const setCodeSessionReasoning = (conversationId: string, id: string, reasoning: { effort: string | null; fast: boolean }) =>
+  api<CodeSession>(path(conversationId, `/${encodeURIComponent(id)}/reasoning`), { method: "PUT", body: JSON.stringify(reasoning) });
 
 /** The owner's Claude accounts signed in, the active one first (Settings › Models). */
 export const codeAccountsQuery = (conversationId: string) =>

@@ -81,7 +81,7 @@ export function SlashMenu({ items, onPick }: { items: SlashItem[]; onPick: (item
  * `header`: what stays above the scrolling rows (the model picker's search). `list`: a virtualized list
  * of its own, in place of the plain scroll view around `children` (the model picker: hundreds of models).
  */
-export function FloatingMenu({ label, header, list, children }: { label: string; header?: ReactNode; list?: ReactNode; children?: ReactNode }) {
+export function FloatingMenu({ label, header, list, footer, children }: { label: string; header?: ReactNode; list?: ReactNode; footer?: ReactNode; children?: ReactNode }) {
   return (
     <Surface className="overflow-hidden rounded-3xl border border-border bg-overlay p-0 shadow-lg" style={{ borderCurve: "continuous" }}>
       {header}
@@ -92,6 +92,13 @@ export function FloatingMenu({ label, header, list, children }: { label: string;
           </ScrollView>
         )}
       </ListGroup>
+      {/* Settings of what was picked (the model's effort): under the list, a group of their own. */}
+      {footer && (
+        <>
+          <Separator />
+          <ListGroup variant="transparent">{footer}</ListGroup>
+        </>
+      )}
     </Surface>
   );
 }

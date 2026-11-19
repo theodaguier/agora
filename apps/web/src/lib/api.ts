@@ -314,12 +314,15 @@ export type Message = {
   author: Author;
 };
 
+/** A model the picker offers; `efforts` and `fast`: what can be chosen with it (ReasoningPicker). */
+export type PickerModel = { id: string; reasoning: boolean; label?: string; description?: string; efforts?: string[]; fast?: boolean };
+
 export type ModelOptions = {
   provider: string;
   defaultModel: string;
-  models: { id: string; reasoning: boolean }[];
+  models: PickerModel[];
   /** Other providers signed in on Hermes, usable for this thread. */
-  others: { provider: string; models: { id: string; reasoning: boolean }[] }[];
+  others: { provider: string; models: PickerModel[] }[];
   /** Is the profile's default model allowed for this employee? */
   defaultAllowed: boolean;
   /** Model chosen for this conversation (null = the agent's). */
@@ -330,13 +333,17 @@ export type ModelOptions = {
   claudeCode?: SubscriptionModels | null;
   /** Codex engine, offered only to the subscription holder. */
   codex?: SubscriptionModels | null;
+  /** Effort chosen with the model (null: the model's default). */
+  effort?: string | null;
+  /** Its fast mode. */
+  fast?: boolean;
 };
 
 /** Models of a subscription engine (Claude Code, Codex), under its own heading in the picker. */
 export type SubscriptionModels = {
   provider: string;
   label: string;
-  models: { id: string; reasoning: boolean; label?: string; description?: string }[];
+  models: PickerModel[];
 };
 
 export type Toolset = {

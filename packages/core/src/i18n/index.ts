@@ -13,3 +13,4 @@ export { codeSessions } from "./code-sessions";
 export { pullRequests } from "./pull-requests";
 export { queue } from "./queue";
 export { agentTriggers } from "./agent-triggers";
+export { reasoning, effortRank } from "./reasoning";

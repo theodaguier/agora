@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { env } from "./env";
-import type { HermesEvent, ModelInfo } from "./hermes";
+import type { HermesEvent, ModelInfo, Reasoning } from "./hermes";
 import { anthropicModels, newestFirst, type CatalogModel } from "./model-catalog";
 import type { EngineUsage } from "./usage";
 import { activeClaudeAccountId, claudeCodeEnv } from "./claude-accounts";
@@ -62,7 +62,16 @@ export async function claudeCodeModels(): Promise<ModelInfo[]> {
 /** Exact model behind a Claude Code alias stored by an older thread ("opus[1m]" → "claude-opus-5-5[1m]"). */
 export const resolveClaudeCodeModel = (id: string) => aliases.get(id) ?? id;
 
-type MenuModel = { value: string; resolvedModel?: string; displayName?: string; description?: string; supportsAdaptiveThinking?: boolean };
+type MenuModel = {
+  value: string;
+  resolvedModel?: string;
+  displayName?: string;
+  description?: string;
+  supportsAdaptiveThinking?: boolean;
+  supportsEffort?: boolean;
+  supportedEffortLevels?: string[];
+  supportsFastMode?: boolean;
+};
 
 const ONE_M = "[1m]";
 const baseId = (id: string) => (id.endsWith(ONE_M) ? id.slice(0, -ONE_M.length) : id);
@@ -84,6 +93,8 @@ async function fetchModels(): Promise<ModelInfo[]> {
     models.set(id, {
       id,
       reasoning: !!m.supportsAdaptiveThinking,
+      ...(m.supportsEffort && !!m.supportedEffortLevels?.length && { efforts: m.supportedEffortLevels }),
+      ...(m.supportsFastMode && { fast: true }),
       label: label(id, known?.name ?? m.displayName ?? id),
       description: m.description,
       released: known?.release_date,
@@ -129,6 +140,12 @@ async function menuModels(): Promise<MenuModel[]> {
     proc.kill();
   }
 }
+
+/**
+ * `--effort`, and the fast mode: `-p` only turns it on when the flag settings ask for it
+ * (otherwise "sdk_opt_in_required"), which `--setting-sources project` leaves in force.
+ */
+export const reasoningArgs = (r: Reasoning | undefined) => [...(r?.effort ? ["--effort", r.effort] : []), ...(r?.fast ? ["--settings", JSON.stringify({ fastMode: true })] : [])];
 
 export async function workspace() {
   const cwd = env.CLAUDE_CODE_CWD || join(homedir(), ".agora", "claude-code");
@@ -176,6 +193,8 @@ export async function* claudeCodeChat(opts: {
   text: string;
   images?: string[];
   model: string;
+  /** Its effort (`--effort`) and fast mode, as chosen for the thread. */
+  reasoning?: Reasoning;
   system?: string;
   /** Directories the agent may read in addition to its workspace (attachments). */
   readDirs?: string[];
@@ -196,6 +215,7 @@ export async function* claudeCodeChat(opts: {
     "--verbose",
     "--include-partial-messages",
     "--model", opts.model,
+    ...reasoningArgs(opts.reasoning),
     // None of the owner's hooks, CLAUDE.md or personal MCP servers: only what the app provides.
     "--setting-sources", "project",
     "--strict-mcp-config",

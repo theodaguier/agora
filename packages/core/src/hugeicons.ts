@@ -43,6 +43,7 @@ import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal0
 import ContactBookIcon from "@hugeicons/core-free-icons/ContactBookIcon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
 import Cursor02Icon from "@hugeicons/core-free-icons/Cursor02Icon";
+import DashboardSpeed01Icon from "@hugeicons/core-free-icons/DashboardSpeed01Icon";
 import DashboardSquare01Icon from "@hugeicons/core-free-icons/DashboardSquare01Icon";
 import DatabaseIcon from "@hugeicons/core-free-icons/DatabaseIcon";
 import Database01Icon from "@hugeicons/core-free-icons/Database01Icon";
@@ -53,6 +54,7 @@ import File02Icon from "@hugeicons/core-free-icons/File02Icon";
 import FileAudioIcon from "@hugeicons/core-free-icons/FileAudioIcon";
 import FileCodeIcon from "@hugeicons/core-free-icons/FileCodeIcon";
 import FileEditIcon from "@hugeicons/core-free-icons/FileEditIcon";
+import FlashIcon from "@hugeicons/core-free-icons/FlashIcon";
 import FileImageIcon from "@hugeicons/core-free-icons/FileImageIcon";
 import FileSearchIcon from "@hugeicons/core-free-icons/FileSearchIcon";
 import FileVideoIcon from "@hugeicons/core-free-icons/FileVideoIcon";
@@ -332,6 +334,8 @@ export const HUGEICONS: Record<string, IconSvgElement> = {
   building: Building03Icon,
   bot: Robot01Icon,
   brain: AiBrain01Icon,
+  gauge: DashboardSpeed01Icon,
+  flash: FlashIcon,
   sparkles: SparklesIcon,
   warning: Alert02Icon,
   "shield-check": SecurityCheckIcon,
