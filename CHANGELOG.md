@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.69.0 — 2026-11-19
+
+### Features
+- choose the thinking effort and fast mode in chats and code sessions
+
 ## v0.68.0 — 2026-11-17
 
 ### Features
