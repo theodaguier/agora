@@ -2,7 +2,7 @@ import { ChoiceOption } from "@/components/QuestionsCard";
 import { modelName } from "@agora/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCanGoBack, useRouteContext, useRouter } from "@tanstack/react-router";
-import { createContext, Fragment, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from "react";
+import { createContext, Fragment, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from "react";
 import {
   CODE_ENGINE_NAMES,
   codeDetailLine,
@@ -31,7 +31,8 @@ import {
   type CodeStep,
   type CodeTodo,
 } from "@agora/core";
-import { codeSessions, common } from "@agora/core/i18n";
+import { codeSessions, common, reasoning as reasoningMessages } from "@agora/core/i18n";
+import { ReasoningSettings, type Reasoning } from "./ReasoningSettings";
 import {
   ArrowUpIcon,
   BranchIcon,
@@ -153,6 +154,7 @@ import {
   removeQueued,
   setCodeSessionMode,
   setCodeSessionModel,
+  setCodeSessionReasoning,
   startCodeSession,
   refreshCodeSessionGit,
   removeCodeSessionWorktree,
@@ -864,11 +866,23 @@ function NewSessionView({
   const [picked, setPicked] = useState<CodeEngine | null>(null);
   const engine = (picked && engines.some((e) => e.id === picked) ? picked : (engines.find((e) => e.id === "claude") ?? engines[0])?.id) ?? "claude";
   const [model, setModel] = useState<string | null>(null);
+  const [reasoning, setReasoning] = useState<Reasoning>({ effort: null, fast: false });
   const [mode, setMode] = useState<CodePermissionMode>("bypassPermissions");
+  const { data: models = [] } = useQuery(codeModelsQuery(conversationId, engine));
+  const pickModel = useCallback(
+    (next: string) => {
+      setModel(next);
+      // The effort and fast mode follow the new model when it has them.
+      const info = models.find((m) => m.id === next);
+      setReasoning((r) => ({ effort: r.effort && info?.efforts?.includes(r.effort) ? r.effort : null, fast: r.fast && !!info?.fast }));
+    },
+    [models],
+  );
   const pickEngine = (next: CodeEngine) => {
     setPicked(next);
     // Each engine has its own models, and the headless ones only act on their own or plan.
     setModel(null);
+    setReasoning({ effort: null, fast: false });
     if (!codeEngineModes(next).includes(mode)) setMode("bypassPermissions");
   };
   const { user } = useRouteContext({ from: "/app" });
@@ -878,7 +892,7 @@ function NewSessionView({
   const files = useInstructionFiles(conversationId);
   const start = useMutation({
     mutationFn: ({ task, attachmentIds }: { task: string; attachmentIds: string[] }) =>
-      startCodeSession(conversationId, { task, attachmentIds, mode, engine, ...(repo && { repo }), ...(model && { model }) }),
+      startCodeSession(conversationId, { task, attachmentIds, mode, engine, ...(repo && { repo }), ...(model && { model, ...reasoning }) }),
     onSuccess: (s) => {
       setText("");
       files.clear();
@@ -961,16 +975,18 @@ function NewSessionView({
               }}
               className="max-h-60"
             />
-            <InputGroupAddon align="block-end">
+            {/* Too narrow for one line: the engine, the model and send go to the next one, nothing is cut. */}
+            <InputGroupAddon align="block-end" className="flex-wrap">
               <AttachButton onFiles={files.add} disabled={start.isPending} />
               <RepoPicker conversationId={conversationId} recent={recent} value={repo} onSelect={setRepo} />
               <ModePicker engine={engine} value={mode} onSelect={setMode} />
-              <span className="flex-1" />
-              {engines.length > 1 && <EnginePicker engines={engines} value={engine} onSelect={pickEngine} />}
-              <CodeModelPicker conversationId={conversationId} engine={engine} value={model} onSelect={setModel} />
-              <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} aria-disabled={!canSend} className="aria-disabled:opacity-50">
-                {start.isPending ? <Spinner /> : <ArrowUpIcon />}
-              </InputGroupButton>
+              <span className="ml-auto flex items-center gap-2">
+                {engines.length > 1 && <EnginePicker engines={engines} value={engine} onSelect={pickEngine} />}
+                <CodeModelPicker conversationId={conversationId} engine={engine} value={model} onSelect={pickModel} reasoning={reasoning} onReasoning={setReasoning} />
+                <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} aria-disabled={!canSend} className="aria-disabled:opacity-50">
+                  {start.isPending ? <Spinner /> : <ArrowUpIcon />}
+                </InputGroupButton>
+              </span>
             </InputGroupAddon>
           </InputGroup>
         </form>
@@ -1094,7 +1110,7 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
   };
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" aria-label={t.repo} />} className="min-w-0 max-w-1/2 shrink">
+      <PopoverTrigger render={<InputGroupButton size="sm" aria-label={t.repo} />} className="min-w-0 max-w-48 shrink">
         <BranchIcon />
         <span className="truncate">{value ?? t.noRepo}</span>
       </PopoverTrigger>
@@ -2784,20 +2800,22 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
           }}
           className="max-h-40"
         />
-        <InputGroupAddon align="block-end">
+        {/* Too narrow for one line: the model and send go to the next one, nothing is cut. */}
+        <InputGroupAddon align="block-end" className="flex-wrap">
           <AttachButton onFiles={files.add} />
           <ModePicker engine={session.engine} value={session.mode} disabled={mode.isPending} onSelect={(value) => value !== session.mode && mode.mutate(value)} />
-          <span className="flex-1" />
-          <SessionModelPicker conversationId={conversationId} session={session} />
-          {stoppable ? (
-            <InputGroupButton variant="default" size="icon-sm" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()}>
-              {stop.isPending ? <Spinner /> : <StopIcon />}
-            </InputGroupButton>
-          ) : (
-            <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} aria-disabled={!canSend} className="aria-disabled:opacity-50">
-              <ArrowUpIcon />
-            </InputGroupButton>
-          )}
+          <span className="ml-auto flex items-center gap-2">
+            <SessionModelPicker conversationId={conversationId} session={session} />
+            {stoppable ? (
+              <InputGroupButton variant="default" size="icon-sm" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()}>
+                {stop.isPending ? <Spinner /> : <StopIcon />}
+              </InputGroupButton>
+            ) : (
+              <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} aria-disabled={!canSend} className="aria-disabled:opacity-50">
+                <ArrowUpIcon />
+              </InputGroupButton>
+            )}
+          </span>
         </InputGroupAddon>
       </InputGroup>
     </form>
@@ -2898,9 +2916,9 @@ function EnginePicker({ engines, value, onSelect }: { engines: { id: CodeEngine;
   const t = useT(messages);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={t.engine} className="min-w-0 shrink" />}>
+      <DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={t.engine} className="shrink-0" />}>
         <ModelLogo provider={value} />
-        <span className="truncate">{CODE_ENGINE_NAMES[value]}</span>
+        {CODE_ENGINE_NAMES[value]}
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-48">
         <DropdownMenuRadioGroup value={value} onValueChange={(v) => onSelect(v as CodeEngine)}>
@@ -2996,26 +3014,50 @@ function SessionTodos({ session }: { session: CodeSession }) {
   );
 }
 
-/** The session's model, among the ones its owner may use. */
+/** The session's model, among the ones its owner may use, and the effort and fast mode it runs with. */
 function SessionModelPicker({ conversationId, session }: { conversationId: string; session: CodeSession }) {
   const t = useT(messages);
+  const tr = useT(reasoningMessages);
   const qc = useQueryClient();
   const change = useMutation({
     mutationFn: (model: string) => setCodeSessionModel(conversationId, session.id, model),
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { success: t.modelChanged },
   });
+  const reason = useMutation({
+    mutationFn: (next: Reasoning) => setCodeSessionReasoning(conversationId, session.id, next),
+    onSuccess: (s) => applyCodeSession(qc, s),
+    meta: { success: tr.changed },
+  });
   const { mutate } = change;
   const onSelect = useCallback((model: string) => mutate(model), [mutate]);
-  return <CodeModelPicker conversationId={conversationId} engine={session.engine} value={session.model} onSelect={onSelect} />;
+  const { mutate: reasonMutate } = reason;
+  const onReasoning = useCallback((next: Reasoning) => reasonMutate(next), [reasonMutate]);
+  const reasoning = useMemo(() => ({ effort: session.effort, fast: session.fast }), [session.effort, session.fast]);
+  return <CodeModelPicker conversationId={conversationId} engine={session.engine} value={session.model} onSelect={onSelect} reasoning={reasoning} onReasoning={onReasoning} />;
 }
 
 /**
  * A Claude Code model among the ones the owner may use: searchable, each with its vendor's logo, as
- * in the conversation's picker. Null: Claude Code's default.
+ * in the conversation's picker, the effort and fast mode it runs with at its foot. Null: Claude Code's default.
+ * Its name is never cut: the composer's bar gives way on the repository instead.
  */
 // Memoized: a session at work updates at each step, and the open list must not be redrawn with it.
-const CodeModelPicker = memo(function CodeModelPicker({ conversationId, engine, value, onSelect }: { conversationId: string; engine: CodeEngine; value: string | null; onSelect: (model: string) => void }) {
+const CodeModelPicker = memo(function CodeModelPicker({
+  conversationId,
+  engine,
+  value,
+  onSelect,
+  reasoning,
+  onReasoning,
+}: {
+  conversationId: string;
+  engine: CodeEngine;
+  value: string | null;
+  onSelect: (model: string) => void;
+  reasoning: Reasoning;
+  onReasoning: (next: Reasoning) => void;
+}) {
   const t = useT(messages);
   const [open, setOpen] = useState(false);
   const { data: models = [] } = useQuery(codeModelsQuery(conversationId, engine));
@@ -3028,9 +3070,9 @@ const CodeModelPicker = memo(function CodeModelPicker({ conversationId, engine, 
   const key = (m: { id: string; label?: string }) => `${m.id} ${m.label ?? ""}`;
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" />} className="min-w-0 shrink">
+      <PopoverTrigger render={<InputGroupButton size="sm" />} className="shrink-0">
         <ModelLogo provider={vendor} model={value ?? undefined} />
-        <span className="truncate">{current?.label ?? (value ? modelName(value) : t.model)}</span>
+        {current?.label ?? (value ? modelName(value) : t.model)}
       </PopoverTrigger>
       <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
         <Command defaultValue={key(current ?? list[0] ?? { id: "" })}>
@@ -3055,6 +3097,7 @@ const CodeModelPicker = memo(function CodeModelPicker({ conversationId, engine, 
             </CommandGroup>
           </CommandList>
         </Command>
+        <ReasoningSettings offer={current} value={reasoning} onChange={onReasoning} />
       </PopoverContent>
     </Popover>
   );

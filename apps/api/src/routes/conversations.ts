@@ -21,7 +21,7 @@ import { env } from "../env";
 import { forgetMembers, publishToConversation, publishToUser } from "../events";
 import { CLAUDE_CODE_LABEL, CLAUDE_CODE_PROVIDER, canUseClaudeCode, isClaudeCodeModel, resolveClaudeCodeModel } from "../claude-code";
 import { CODEX_LABEL, CODEX_PROVIDER, canUseCodex, isCodexModel } from "../codex";
-import { skills } from "../hermes";
+import { skills, type ModelInfo } from "../hermes";
 import { HermesError, agentMcpServers, forgetSessions } from "../hermes-admin";
 import { syncSessionSearch } from "../session-search";
 import { allowedClaudeCodeModels, allowedCodexModels, allowedModelOptions } from "../models";
@@ -90,6 +90,32 @@ const ids = z.array(z.string().min(1).max(100)).max(50);
 function modelTarget(conv: LoadedConversation, agentId: string | undefined) {
   if (conv.directBot) return !agentId || agentId === conv.directBot.agent.id ? conv.directBot : null;
   return agentId ? (conv.agents.find((a) => a.agent.id === agentId) ?? null) : null;
+}
+
+type Pickable = Awaited<ReturnType<typeof pickable>>;
+
+/** What the employee may pick for a bot: its Hermes models, and Claude Code's and Codex's for their subscription owner. */
+async function pickable(profile: string, me: { id: string; email: string }) {
+  const [options, ccModels, cxModels] = await Promise.all([
+    allowedModelOptions(profile, me.id),
+    // Claude Code or Codex unavailable (binary missing, not logged in): the section is simply not offered.
+    canUseClaudeCode(me) ? allowedClaudeCodeModels(me.id).catch((err) => (console.error("claude code: models", err), [])) : [],
+    canUseCodex(me) ? allowedCodexModels(me.id).catch((err) => (console.error("codex: models", err), [])) : [],
+  ]);
+  return {
+    options,
+    claudeCode: ccModels.length ? { provider: CLAUDE_CODE_PROVIDER, label: CLAUDE_CODE_LABEL, models: ccModels } : null,
+    codex: cxModels.length ? { provider: CODEX_PROVIDER, label: CODEX_LABEL, models: cxModels } : null,
+  };
+}
+
+/** The model a stored `provider::model` names among the pickable ones (null: the profile's default model). */
+function modelInfo({ options, claudeCode, codex }: Pickable, value: string | null): ModelInfo | undefined {
+  if (!value) return options.models.find((m) => m.id === options.defaultModel);
+  const [provider, raw] = value.split("::") as [string, string | undefined];
+  const id = provider === CLAUDE_CODE_PROVIDER && raw ? resolveClaudeCodeModel(raw) : raw;
+  const groups = [{ provider: options.provider, models: options.models }, ...options.others, ...(claudeCode ? [claudeCode] : []), ...(codex ? [codex] : [])];
+  return groups.find((g) => g.provider === provider)?.models.find((m) => m.id === id);
 }
 
 const storeAttachment = (conv: LoadedConversation, name: string, mime: string, content: Blob) =>
@@ -962,35 +988,26 @@ export const conversations = new Hono<AppEnv>()
     return c.json({ ...base, engine: "hermes" as const, model: session?.model ?? link.model?.split("::")[1] ?? null, session });
   })
 
-  /** Models offered by Hermes for the bot's provider and the other signed-in ones, Claude Code's and Codex's (minus those blocked for the employee), and the one chosen here. */
+  /** Models offered by Hermes for the bot's provider and the other signed-in ones, Claude Code's and Codex's (minus those blocked for the employee), and the one chosen here with its effort and fast mode. */
   .get("/:id/models", async (c) => {
     const conv = await loadConversation(c.get("user").id, c.req.param("id"));
     const bot = conv && modelTarget(conv, c.req.query("agent"));
     if (!conv || !bot) return c.json({ error: "not_found" }, 404);
-    const options = await allowedModelOptions(bot.agent.hermesProfile, c.get("user").id).catch((err) => {
+    const offer = await pickable(bot.agent.hermesProfile, c.get("user")).catch((err) => {
       console.error("models: Hermes unavailable", err instanceof Error ? err.message : err);
       return null;
     });
     // Hermes restarting or down: the picker hides until it answers again.
-    if (!options) return c.json({ error: "hermes_unavailable" }, 503);
+    if (!offer) return c.json({ error: "hermes_unavailable" }, 503);
+    const { options, claudeCode, codex } = offer;
     let [selectedProvider = null, selected = null] = bot.link.model?.split("::") ?? [];
-    // Claude Code unavailable (binary missing, not logged in): the section is simply not offered.
-    const ccModels = canUseClaudeCode(c.get("user"))
-      ? await allowedClaudeCodeModels(c.get("user").id).catch((err) => (console.error("claude code: models", err), []))
-      : [];
-    const claudeCode = ccModels.length ? { provider: CLAUDE_CODE_PROVIDER, label: CLAUDE_CODE_LABEL, models: ccModels } : null;
-    const cxModels = canUseCodex(c.get("user")) ? await allowedCodexModels(c.get("user").id).catch((err) => (console.error("codex: models", err), [])) : [];
-    const codex = cxModels.length ? { provider: CODEX_PROVIDER, label: CODEX_LABEL, models: cxModels } : null;
     // Older threads stored a Claude Code alias ("opus[1m]"): shown as the exact model it points to.
     if (selectedProvider === CLAUDE_CODE_PROVIDER && selected) selected = resolveClaudeCodeModel(selected);
     // Choice has since been blocked or withdrawn: the thread falls back to an allowed model on the next message.
-    const groups = [{ provider: options.provider, models: options.models }, ...options.others, ...(claudeCode ? [claudeCode] : []), ...(codex ? [codex] : [])];
     // (Claude Code or Codex list unavailable: its choice is kept, the bot-runner decides at the next turn.)
     const listed = (selectedProvider !== CLAUDE_CODE_PROVIDER || claudeCode) && (selectedProvider !== CODEX_PROVIDER || codex);
-    if (selected && listed && !groups.some((g) => g.provider === selectedProvider && g.models.some((m) => m.id === selected))) {
-      [selectedProvider, selected] = [null, null];
-    }
-    return c.json({ ...options, selected, selectedProvider, claudeCode, codex });
+    if (selected && listed && !modelInfo(offer, bot.link.model)) [selectedProvider, selected] = [null, null];
+    return c.json({ ...options, selected, selectedProvider, claudeCode, codex, effort: bot.link.effort, fast: bot.link.fast });
   })
 
   .put("/:id/model", async (c) => {
@@ -1001,30 +1018,38 @@ export const conversations = new Hono<AppEnv>()
     const conv = await loadConversation(c.get("user").id, c.req.param("id"));
     const bot = conv && modelTarget(conv, body.data.agentId);
     if (!conv || !bot) return c.json({ error: "not_found" }, 404);
-    let value: string | null = null;
-    if (body.data.model && body.data.provider === CLAUDE_CODE_PROVIDER) {
-      if (!canUseClaudeCode(c.get("user"))) return c.json({ error: "forbidden" }, 403);
-      const models = await allowedClaudeCodeModels(c.get("user").id).catch(() => []);
-      if (!models.some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
-      value = `${CLAUDE_CODE_PROVIDER}::${body.data.model}`;
-    } else if (body.data.model && body.data.provider === CODEX_PROVIDER) {
-      if (!canUseCodex(c.get("user"))) return c.json({ error: "forbidden" }, 403);
-      const models = await allowedCodexModels(c.get("user").id).catch(() => []);
-      if (!models.some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
-      value = `${CODEX_PROVIDER}::${body.data.model}`;
-    } else if (body.data.model) {
-      const options = await allowedModelOptions(bot.agent.hermesProfile, c.get("user").id);
-      const provider = body.data.provider ?? options.provider;
-      const group = provider === options.provider ? options : options.others.find((p) => p.provider === provider);
-      if (!group?.models.some((m) => m.id === body.data.model)) return c.json({ error: "unknown_model" }, 400);
-      value = `${provider}::${body.data.model}`;
-    } else {
-      const options = await allowedModelOptions(bot.agent.hermesProfile, c.get("user").id);
-      if (!options.defaultAllowed) return c.json({ error: "forbidden_model" }, 403);
-    }
+    if (body.data.provider === CLAUDE_CODE_PROVIDER && !canUseClaudeCode(c.get("user"))) return c.json({ error: "forbidden" }, 403);
+    if (body.data.provider === CODEX_PROVIDER && !canUseCodex(c.get("user"))) return c.json({ error: "forbidden" }, 403);
+    const offer = await pickable(bot.agent.hermesProfile, c.get("user"));
+    const value = body.data.model ? `${body.data.provider ?? offer.options.provider}::${body.data.model}` : null;
+    if (!value && !offer.options.defaultAllowed) return c.json({ error: "forbidden_model" }, 403);
+    const info = modelInfo(offer, value);
+    if (value && !info) return c.json({ error: "unknown_model" }, 400);
+    // The effort and fast mode follow the new model when it has them, and go back to its defaults otherwise.
+    const effort = bot.link.effort && info?.efforts?.includes(bot.link.effort) ? bot.link.effort : null;
+    const fast = bot.link.fast && !!info?.fast;
     await db
       .update(conversationAgent)
-      .set({ model: value })
+      .set({ model: value, effort, fast })
+      .where(and(eq(conversationAgent.conversationId, conv.conversation.id), eq(conversationAgent.agentId, bot.agent.id)));
+    return c.body(null, 204);
+  })
+
+  /** The effort and fast mode of the bot's model here, among the ones that model has. */
+  .put("/:id/reasoning", async (c) => {
+    const body = z
+      .object({ effort: z.string().max(20).nullable(), fast: z.boolean(), agentId: z.string().max(64).optional() })
+      .safeParse(await c.req.json());
+    if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    const conv = await loadConversation(c.get("user").id, c.req.param("id"));
+    const bot = conv && modelTarget(conv, body.data.agentId);
+    if (!conv || !bot) return c.json({ error: "not_found" }, 404);
+    const info = modelInfo(await pickable(bot.agent.hermesProfile, c.get("user")), bot.link.model);
+    if (body.data.effort && !info?.efforts?.includes(body.data.effort)) return c.json({ error: "unsupported_effort" }, 400);
+    if (body.data.fast && !info?.fast) return c.json({ error: "unsupported_fast" }, 400);
+    await db
+      .update(conversationAgent)
+      .set({ effort: body.data.effort, fast: body.data.fast })
       .where(and(eq(conversationAgent.conversationId, conv.conversation.id), eq(conversationAgent.agentId, bot.agent.id)));
     return c.body(null, 204);
   });

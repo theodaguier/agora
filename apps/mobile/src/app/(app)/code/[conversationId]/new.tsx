@@ -12,6 +12,7 @@ import { AttachMenu } from "@/components/composer/attach-menu";
 import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
 import { headerIcon } from "@/components/header-button";
 import { OptionPicker } from "@/components/menus";
+import { keptFor, ReasoningRows, type Reasoning } from "@/components/reasoning-rows";
 import { applyCodeSession, codeModelsQuery, codeReposQuery, codeSessionsQuery, startCodeSession } from "@/lib/code-sessions";
 import { withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
@@ -38,13 +39,20 @@ export default function NewCodeSessionSheet() {
   const [repo, setRepo] = useState<string>(recent[0] ?? NO_REPO);
   const [mode, setMode] = useState<CodePermissionMode>("bypassPermissions");
   const [model, setModel] = useState<string>("");
+  const [reasoning, setReasoning] = useState<Reasoning>({ effort: null, fast: false });
+  const offer = models.find((m) => m.id === model);
+  const pickModel = (next: string) => {
+    setModel(next);
+    // The effort and fast mode follow the new model when it has them.
+    setReasoning((r) => keptFor(models.find((m) => m.id === next), r));
+  };
   const [text, setText] = useState("");
   const [attachOpen, setAttachOpen] = useState(false);
   const { files, setFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
   const ids = files.flatMap((f) => (f.status === "ready" && f.attachment ? [f.attachment.id] : []));
 
   const start = useMutation({
-    mutationFn: () => startCodeSession(conversationId, { task: text.trim(), attachmentIds: ids, mode, ...(repo && { repo }), ...(model && { model }) }),
+    mutationFn: () => startCodeSession(conversationId, { task: text.trim(), attachmentIds: ids, mode, ...(repo && { repo }), ...(model && { model, ...reasoning }) }),
     // The sheet gives way to the session; a failure stays inline, in the sheet.
     onSuccess: (s) => {
       setFiles([]);
@@ -105,9 +113,10 @@ export default function NewCodeSessionSheet() {
           </SettingsRow>
           {models.length > 0 && (
             <SettingsRow label={t.model}>
-              <OptionPicker value={model} options={models.map((m) => ({ value: m.id, label: m.label ?? m.id }))} onChange={setModel} label={t.model} />
+              <OptionPicker value={model} options={models.map((m) => ({ value: m.id, label: m.label ?? m.id }))} onChange={pickModel} label={t.model} />
             </SettingsRow>
           )}
+          <ReasoningRows offer={offer} value={reasoning} onChange={setReasoning} />
         </Section>
         <FieldError isInvalid={!!start.error}>{start.error?.message}</FieldError>
       </KeyboardAwareScrollView>

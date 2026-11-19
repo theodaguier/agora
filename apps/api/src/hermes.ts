@@ -72,7 +72,25 @@ async function hermesJson<T>(profile: string, path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export type ModelInfo = { id: string; reasoning: boolean; label?: string; description?: string };
+export type ModelInfo = {
+  id: string;
+  reasoning: boolean;
+  label?: string;
+  description?: string;
+  /** Reasoning effort levels it can be given, lowest first; absent: no effort to choose. */
+  efforts?: string[];
+  /** It has a faster, priority mode (Claude Code's fast mode, Codex's and Hermes's "priority" tier). */
+  fast?: boolean;
+};
+
+/** How hard the model thinks and whether it runs in its fast mode, as chosen for a thread or a session. */
+export type Reasoning = { effort?: string | null; fast?: boolean };
+
+/**
+ * Hermes's ladder (hermes_constants.VALID_REASONING_EFFORTS minus "minimal" and "ultra"): it does not
+ * forward the levels each provider takes and clamps an unsupported one to the provider's own vocabulary.
+ */
+const HERMES_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 export type ProviderModels = { provider: string; models: ModelInfo[] };
 export type ModelOptions = {
   provider: string;
@@ -82,11 +100,18 @@ export type ModelOptions = {
   others: ProviderModels[];
 };
 
-type RawProvider = { slug: string; models: string[]; authenticated?: boolean; source?: string; capabilities?: Record<string, { reasoning?: boolean }> };
+type RawProvider = { slug: string; models: string[]; authenticated?: boolean; source?: string; capabilities?: Record<string, { reasoning?: boolean; fast?: boolean }> };
 type RawModelOptions = { provider: string; model: string; providers: RawProvider[] };
 
 const modelsOf = (p: RawProvider | undefined): ModelInfo[] =>
-  (p?.models ?? []).map((id) => ({ id, reasoning: !!p?.capabilities?.[id]?.reasoning }));
+  (p?.models ?? []).map((id) => {
+    const caps = p?.capabilities?.[id];
+    return { id, reasoning: !!caps?.reasoning, ...(caps?.reasoning && { efforts: HERMES_EFFORTS }), ...(caps?.fast && { fast: true }) };
+  });
+
+/** Hermes's per-request `model_options`: what the thread chose, nothing when it kept the defaults. */
+const modelOptionsOf = (r: Reasoning | undefined) =>
+  r?.effort || r?.fast ? { model_options: { ...(r.effort && { reasoning_effort: r.effort }), ...(r.fast && { fast: true }) } } : {};
 
 /** Models actually available for the profile's provider and the other signed-in ones (Hermes's list, not a homemade one), newest first. */
 export async function modelOptions(profile: string): Promise<ModelOptions> {
@@ -152,6 +177,8 @@ export async function* chat(opts: {
   images?: string[];
   /** Model chosen for this thread, in Hermes's `provider::model` format. */
   model?: string | null;
+  /** Its effort and fast mode, as chosen for this thread. */
+  reasoning?: Reasoning;
   /** Context added to the system prompt for this turn only (not stored by Hermes). */
   system?: string;
   signal?: AbortSignal;
@@ -180,6 +207,7 @@ export async function* chat(opts: {
         body: JSON.stringify({
           // With `provider`, Hermes applies the requested model; otherwise it keeps the profile's.
           ...(provider && model ? { model, provider } : { model: opts.profile }),
+          ...modelOptionsOf(opts.reasoning),
           stream: true,
           messages: [...(opts.system ? [{ role: "system", content: opts.system }] : []), { role: "user", content }],
         }),
@@ -207,7 +235,7 @@ export async function* chat(opts: {
  * /v1/chat/completions, but the agent can pause to request an approval,
  * which is answered with answerApproval().
  */
-async function* run(opts: { profile: string; sessionId: string; text: string; model?: string | null; system?: string; signal?: AbortSignal }): AsyncGenerator<HermesEvent> {
+async function* run(opts: { profile: string; sessionId: string; text: string; model?: string | null; reasoning?: Reasoning; system?: string; signal?: AbortSignal }): AsyncGenerator<HermesEvent> {
   const [provider, model] = opts.model?.split("::") ?? [];
   const res = await startWithRetry(
     () =>
@@ -219,6 +247,7 @@ async function* run(opts: { profile: string; sessionId: string; text: string; mo
           session_id: opts.sessionId,
           ...(opts.system && { instructions: opts.system }),
           ...(provider && model ? { model, provider } : {}),
+          ...modelOptionsOf(opts.reasoning),
         }),
       }),
     opts.signal,

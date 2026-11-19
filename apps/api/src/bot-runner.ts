@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { canUseCodeSessions } from "./code-engines";
 import { CLAUDE_CODE_PROVIDER, claudeCodeChat, canUseClaudeCode, isClaudeCodeModel, resolveClaudeCodeModel } from "./claude-code";
 import { CODEX_PROVIDER, canUseCodex, codexChat, isCodexModel } from "./codex";
-import { answerApproval, chat, profileHome, toolsets, type HermesApproval } from "./hermes";
+import { answerApproval, chat, profileHome, toolsets, type HermesApproval, type Reasoning } from "./hermes";
 import { profileReady } from "./hermes-admin";
 import { blockedModels, resolveHermesModel } from "./models";
 import { attributeSession, recordEngineUsage, syncHermesUsage } from "./usage";
@@ -225,7 +225,7 @@ async function runCompaction(turn: Turn, actor: { id: string; name: string }) {
   }
   const bot = link.agent;
   const [requester] = await db.select().from(user).where(eq(user.id, actor.id));
-  const engine = await pickEngine(bot, link.link.model, requester ?? null, actor.id);
+  const engine = await pickEngine(bot, link.link, requester ?? null, actor.id);
   if (!engine) return;
 
   turn.started = true;
@@ -260,8 +260,8 @@ async function runCompaction(turn: Turn, actor: { id: string; name: string }) {
   await postEvent(conversationId, { type: "session.compacted", actor: actor.name });
 }
 
-/** Hermes, or one of the owner's subscription CLIs (Claude Code, Codex). */
-type Engine = { kind: "hermes" | "claude-code" | "codex"; model: string | null };
+/** Hermes, or one of the owner's subscription CLIs (Claude Code, Codex), with the effort and fast mode chosen with the model. */
+type Engine = { kind: "hermes" | "claude-code" | "codex"; model: string | null; reasoning?: Reasoning };
 
 const isSubscriptionModel = (model: string | null) => isClaudeCodeModel(model) || isCodexModel(model);
 
@@ -270,6 +270,17 @@ const isSubscriptionModel = (model: string | null) => isClaudeCodeModel(model) |
  * Null when none of the Hermes models is allowed for the employee.
  */
 async function pickEngine(
+  bot: typeof agent.$inferSelect,
+  link: Pick<typeof conversationAgent.$inferSelect, "model" | "effort" | "fast">,
+  requester: typeof user.$inferSelect | null,
+  requestedBy: string | null,
+): Promise<Engine | null> {
+  const engine = await pickModel(bot, link.model, requester, requestedBy);
+  // The effort and fast mode were chosen for that model: not for the one it falls back to.
+  return engine && engine.model === link.model ? { ...engine, reasoning: { effort: link.effort, fast: link.fast } } : engine;
+}
+
+async function pickModel(
   bot: typeof agent.$inferSelect,
   model: string | null,
   requester: typeof user.$inferSelect | null,
@@ -303,6 +314,7 @@ function openChat(
         text: opts.text,
         images: opts.images,
         model: engine.model!.split("::")[1]!,
+        reasoning: engine.reasoning,
         // Outside Hermes, the bot's personality is not injected automatically.
         system: [await readSoul(bot.hermesProfile), opts.system].filter(Boolean).join("\n\n"),
         // Nor its connectors: the ones enabled for it in Hermes, declared to the engine.
@@ -322,7 +334,7 @@ function openChat(
       turn.profile = bot.hermesProfile;
       turn.hermesSession = opts.sessionId;
     }
-    yield* chat({ profile: bot.hermesProfile, sessionId: opts.sessionId, text: opts.text, images: opts.images, model: engine.model, system: opts.system, signal: opts.signal });
+    yield* chat({ profile: bot.hermesProfile, sessionId: opts.sessionId, text: opts.text, images: opts.images, model: engine.model, reasoning: engine.reasoning, system: opts.system, signal: opts.signal });
   })();
 }
 
@@ -625,7 +637,7 @@ async function runTurn(turn: Turn) {
   const prompt = await withAttachments(text, files);
 
   const sessionId = hermesSessionId(conversationId, bot.revision, group ? agentId : undefined, link.link.sessionGeneration);
-  const engine = await pickEngine(bot, link.link.model, requester ?? null, turn.requestedBy);
+  const engine = await pickEngine(bot, link.link, requester ?? null, turn.requestedBy);
   if (!engine) {
     const event = { type: "bot.noAllowedModel", bot: bot.name } as const;
     await publishToConversation(conversationId, { type: "bot.error", conversationId, turnId: turn.turnId, message: renderEvent(event, await userLocale(await localeOf(turn.requestedBy))) });
