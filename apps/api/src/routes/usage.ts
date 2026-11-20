@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, lt, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { Hono } from "hono";
+import { planLimits } from "../plan-limits";
 import { z } from "zod";
 import { db, schema } from "../db";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
@@ -207,4 +208,7 @@ export const usage = new Hono<AppEnv>()
     if (!model) return c.json({ error: "invalid" }, 400);
     await resetModelPrice(provider, model);
     return c.json({ ok: true });
-  });
+  })
+
+  /** Rate limits of the coding subscriptions installed on the machine (sidebar). */
+  .get("/plans", async (c) => c.json({ plans: await planLimits(c.get("user")) }));

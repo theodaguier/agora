@@ -4,7 +4,7 @@ import { auth, common, conversations } from "@agora/core/i18n";
 import { useEventText } from "@/i18n/events";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams, useRouteContext } from "@tanstack/react-router";
-import { CalendarClockIcon, ChartIcon, ChevronDownIcon, ClockIcon, CloseIcon, ComposeIcon, SplitIcon, FileCodeIcon, FileTextIcon, KeyboardIcon, InboxIcon, LoaderIcon, TaskListIcon, LogOutIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SparklesIcon, UserIcon } from "@/components/icons";
+import { CalendarClockIcon, ChartIcon, ChevronDownIcon, ClockIcon, CloseIcon, SplitIcon, FileCodeIcon, FileTextIcon, KeyboardIcon, InboxIcon, LoaderIcon, TaskListIcon, LogOutIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SparklesIcon, UserIcon } from "@/components/icons";
 import { useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { OrgLogo } from "@/components/OrgLogo";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -20,6 +20,7 @@ import { ConversationAvatar, PersonAvatar } from "@/components/ConversationAvata
 import { activeDiscussions, ProjectItem, useOpenProjects } from "@/components/ProjectTree";
 import { conversationTitle } from "@/lib/participants";
 import { Marketplace } from "@/components/marketplace/Marketplace";
+import { PlanRows, usePlans } from "@/components/PlanLimits";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
@@ -101,6 +102,7 @@ const messages = defineMessages({
     agents: "Agents",
     projects: "Projects",
     directMessages: "Messages",
+    subscriptions: "Subscriptions",
     working: "Working",
     waiting: "Waits for your answer",
   },
@@ -139,6 +141,7 @@ const messages = defineMessages({
     agents: "Agents",
     projects: "Projets",
     directMessages: "Messages",
+    subscriptions: "Abonnements",
     working: "Au travail",
     waiting: "Attend ta réponse",
   },
@@ -444,6 +447,7 @@ function DesktopSidebar() {
   const [folded, toggleFold] = useFoldedGroups();
   const [openProjects, toggleProject] = useOpenProjects();
   const topProjects = list.filter((c) => c.kind === "group" && !c.parentId);
+  const plans = usePlans();
 
   return (
     <>
@@ -477,7 +481,7 @@ function DesktopSidebar() {
           </ShortcutTooltip>
           <ShortcutTooltip label={t.newConversation} shortcut={shortcuts.newConversation}>
             <Button variant="secondary" size="icon-sm" aria-label={t.newConversation} nativeButton={false} render={<Link to="/new" {...tabLink("/new", true)} />}>
-              <ComposeIcon />
+              <PlusIcon />
             </Button>
           </ShortcutTooltip>
         </div>
@@ -499,7 +503,7 @@ function DesktopSidebar() {
                   {icon}
                   <span>{label}</span>
                 </SidebarMenuButton>
-                {count > 0 && <SidebarMenuBadge aria-label={countLabel} className="font-normal text-muted-foreground">{count}</SidebarMenuBadge>}
+                {count > 0 && <SidebarMenuBadge aria-label={countLabel} className="bg-muted font-normal">{count}</SidebarMenuBadge>}
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
@@ -510,6 +514,8 @@ function DesktopSidebar() {
           { key: "agents", label: t.agents, rows: list.filter((c) => c.kind === "direct" && c.agents.length > 0) },
           { key: "projects", label: t.projects, rows: topProjects },
           { key: "messages", label: t.directMessages, rows: list.filter((c) => c.kind === "direct" && c.agents.length === 0) },
+          // The coding subscriptions installed here, with how much of their limits is used (owner only).
+          { key: "plans", label: t.subscriptions, rows: plans },
         ].map(
           (g) =>
             g.rows.length > 0 && (
@@ -522,16 +528,18 @@ function DesktopSidebar() {
                   {g.label}
                   <ChevronDownIcon
                     className={cn(
-                      "size-3! transition-[opacity,rotate] duration-150",
-                      folded.has(g.key) ? "-rotate-90" : "opacity-0 group-hover/fold:opacity-100",
+                      "size-3! transition-[rotate] duration-150",
+                      folded.has(g.key) && "-rotate-90",
                     )}
                   />
                 </SidebarGroupLabel>
                 <CollapsibleContent>
                   <SidebarGroupContent>
                     <SidebarMenu className="gap-px">
-                      {g.key === "projects"
-                        ? g.rows.map((p) => {
+                      {g.key === "plans" ? (
+                        <PlanRows plans={plans} />
+                      ) : g.key === "projects"
+                        ? topProjects.map((p) => {
                             const discussions = activeDiscussions(list, p.id);
                             const inside = conversationId === p.id || discussions.some((d) => d.id === conversationId);
                             return (
@@ -548,7 +556,7 @@ function DesktopSidebar() {
                               />
                             );
                           })
-                        : g.rows.map((c) => <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />)}
+                        : (g.rows as typeof list).map((c) => <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />)}
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </CollapsibleContent>
@@ -567,12 +575,6 @@ function DesktopSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           )}
-          <SidebarMenuItem>
-            <SidebarMenuButton className="h-7.5 gap-2.5 text-ui" onClick={() => openSettings()}>
-              <SettingsIcon />
-              <span>{t.settings}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <UserMenu user={user} />
           </SidebarMenuItem>
@@ -790,11 +792,14 @@ export function UserMenu({ user }: { user: { id: string; name: string; image?: s
         <span className="min-w-0 flex-1 truncate">{user.name}</span>
         {away && <MoonIcon role="img" aria-label={availabilityLabel(me) ?? t.dnd} className="text-destructive" />}
       </DropdownMenuTrigger>
-      {/* Three short groups, as Linear's: you, help, leave. Settings and the recap live in the sidebar already. */}
+      {/* Three short groups, as Linear's: you, help, leave. The recap lives in the workspace menu. */}
       <DropdownMenuContent side="top" align="start" className="w-56">
         <DropdownMenuGroup>
           <DropdownMenuItem onClick={() => openProfile(user.id)}>
             <UserIcon /> {t.profile}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openSettings()}>
+            <SettingsIcon /> {t.settings}
           </DropdownMenuItem>
           <DndMenu userId={user.id} />
         </DropdownMenuGroup>

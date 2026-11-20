@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import type { CodeAccount } from "@agora/core";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -71,6 +73,33 @@ export async function claudeCodeEnv() {
   if (!id) return claudeEnv();
   await accounts.prepare(accounts.dir(id));
   return accountEnv(accounts.dir(id));
+}
+
+/**
+ * OAuth access token of the account in use, to read its plan limits (plan-limits.ts). Never
+ * refreshed here: rotating the refresh token would sign `claude` out; it refreshes it itself on its
+ * next turn. macOS keeps it in the keychain (one item per config directory), Linux in the directory.
+ */
+export async function claudeAccessToken(): Promise<string | null> {
+  const id = await accounts.activeId();
+  if (!id && process.env.CLAUDE_CODE_OAUTH_TOKEN) return process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  const dir = id ? accounts.dir(id) : machineConfigDir();
+  let raw: string | null = null;
+  if (process.platform === "darwin") {
+    const custom = id || process.env.CLAUDE_CONFIG_DIR;
+    const service = `Claude Code-credentials${custom ? `-${createHash("sha256").update(dir).digest("hex").slice(0, 8)}` : ""}`;
+    const proc = Bun.spawn(["security", "find-generic-password", "-s", service, "-w"], { stdout: "pipe", stderr: "ignore", stdin: "ignore", timeout: 10_000 });
+    const out = (await new Response(proc.stdout).text()).trim();
+    if ((await proc.exited) === 0 && out) raw = out;
+  }
+  raw ??= await readFile(join(dir, ".credentials.json"), "utf8").catch(() => null);
+  try {
+    const oauth = JSON.parse(raw ?? "")?.claudeAiOauth as { accessToken?: string; expiresAt?: number } | undefined;
+    if (!oauth?.accessToken || (oauth.expiresAt && oauth.expiresAt < Date.now())) return null;
+    return oauth.accessToken;
+  } catch {
+    return null;
+  }
 }
 
 type AuthStatus = { loggedIn?: boolean; email?: string; subscriptionType?: string };

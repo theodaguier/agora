@@ -78,6 +78,11 @@ export type DigestStats = {
   people?: { id: string; name: string; image: string | null; tasksDone: number; messages: number }[];
 };
 
+/** One rate-limit window of a coding subscription (Claude Code, Codex): 5 hours, or the week; `model`: a window for one model family only (Opus, Sonnet). */
+export type PlanWindow = { usedPercent: number; resetsAt: string | null; windowMins: number; model: string | null };
+/** `account`: email of the subscription in use; `at`: when the figures were read. */
+export type PlanLimits = { id: "claude-code" | "codex"; plan: string | null; account: string | null; windows: PlanWindow[]; at: string };
+
 /** Morning recap (08:30): the previous day, or the previous week on Mondays. Texts mention people as @handle and bots as @Name. */
 export type Digest = {
   id: string;

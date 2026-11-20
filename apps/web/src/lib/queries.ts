@@ -18,6 +18,7 @@ import {
   type ModelOptions,
   type Person,
   type Pin,
+  type PlanLimits,
   type Skill,
   type Task,
   type UserProfile,
@@ -33,6 +34,14 @@ export const brandsQuery = queryOptions({
 export const agentsQuery = queryOptions({
   queryKey: ["agents"],
   queryFn: () => api<AgentSummary[]>("/agents"),
+});
+
+/** Rate limits of the coding subscriptions installed on the machine (sidebar); the API caches them. */
+export const planLimitsQuery = queryOptions({
+  queryKey: ["usage", "plans"],
+  queryFn: () => api<{ plans: PlanLimits[] }>("/usage/plans"),
+  staleTime: 60_000,
+  refetchInterval: 2 * 60_000,
 });
 
 /** Latest morning recap, or null before the first one. */
