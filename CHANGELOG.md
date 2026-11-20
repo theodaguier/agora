@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.69.1 — 2026-11-20
+
+### Fixes
+- show the thinking effort as its own chip in the composer
+
 ## v0.69.0 — 2026-11-19
 
 ### Features
