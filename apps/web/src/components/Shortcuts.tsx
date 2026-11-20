@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { useNavigate, useParams, useRouteContext } from "@tanstack/react-router";
-import { KeyboardIcon, TaskListIcon, PlusIcon, SettingsIcon, UserIcon } from "@/components/icons";
+import { FolderIcon, KeyboardIcon, TaskListIcon, PlusIcon, SettingsIcon, UserIcon } from "@/components/icons";
+import { NewProjectDialog } from "@/components/NewProjectDialog";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
 import { conversationTitle } from "@/lib/participants";
 import { OrgLogo } from "@/components/OrgLogo";
@@ -24,7 +25,7 @@ const messages = defineMessages({
     placeholder: "Search a conversation or an action…",
     open: "Open",
     run: "Run",
-    kinds: { bot: "Bot", group: "Group", person: "Colleague" },
+    kinds: { bot: "Bot", group: "Project", person: "Colleague" },
     lastMessage: "Last message",
     members: "Members",
     shortcut: "Shortcut",
@@ -32,6 +33,9 @@ const messages = defineMessages({
     actions: "Actions",
     conversations: "Conversations",
     newConversation: "New conversation",
+    newProject: "New project",
+    newProjectDetail: "Opens the « New project » window: name, description, bots and colleagues.",
+    create: "Create",
     tasks: "My tasks",
     settings: "Settings",
     profile: "My profile",
@@ -59,7 +63,7 @@ const messages = defineMessages({
     placeholder: "Rechercher une conversation ou une action…",
     open: "Ouvrir",
     run: "Lancer",
-    kinds: { bot: "Bot", group: "Groupe", person: "Collègue" },
+    kinds: { bot: "Bot", group: "Projet", person: "Collègue" },
     lastMessage: "Dernier message",
     members: "Membres",
     shortcut: "Raccourci",
@@ -67,6 +71,9 @@ const messages = defineMessages({
     actions: "Actions",
     conversations: "Conversations",
     newConversation: "Nouvelle conversation",
+    newProject: "Nouveau projet",
+    newProjectDetail: "Ouvre la fenêtre « Nouveau projet » : nom, description, bots et collègues.",
+    create: "Créer",
     tasks: "Mes tâches",
     settings: "Paramètres",
     profile: "Mon profil",
@@ -96,6 +103,7 @@ export function Shortcuts() {
   const { conversationId } = useParams({ strict: false }) as { conversationId?: string };
   const { data: conversations = [] } = useQuery(conversationsQuery);
   const overlay = useOverlay();
+  const [newProject, setNewProject] = useState(false);
 
   /** Same order as the sidebar; from outside a conversation, ↓ opens the first one and ↑ the last. */
   const step = (delta: 1 | -1) => {
@@ -115,7 +123,8 @@ export function Shortcuts() {
 
   return (
     <>
-      <Palette open={overlay === "palette"} />
+      <Palette open={overlay === "palette"} onNewProject={() => setNewProject(true)} />
+      <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
       <Help open={overlay === "help"} />
     </>
   );
@@ -145,14 +154,14 @@ export function ShortcutKeys({ shortcut }: { shortcut: Shortcut }) {
   );
 }
 
-type PaletteAction = { id: string; label: string; icon: ReactNode; shortcut?: Shortcut; onSelect: () => void; keepOpen?: boolean };
+type PaletteAction = { id: string; label: string; icon: ReactNode; shortcut?: Shortcut; onSelect: () => void; keepOpen?: boolean; preview?: ReactNode; detail?: string; enter?: string };
 
 /**
  * ⌘K, as in Raycast (Figma « Palette de commandes »): the results on the left, what the highlighted one
  * is on the right (a conversation: who, its last message; an action: its shortcut), and at the bottom
  * the space it acts in and what Enter does.
  */
-function Palette({ open }: { open: boolean }) {
+function Palette({ open, onNewProject }: { open: boolean; onNewProject: () => void }) {
   const t = useT(messages);
   const navigate = useNavigate();
   const org = useOrgName();
@@ -165,6 +174,8 @@ function Palette({ open }: { open: boolean }) {
   };
   const actions: PaletteAction[] = [
     { id: "new", label: t.newConversation, icon: <PlusIcon />, shortcut: shortcuts.newConversation, onSelect: () => navigate({ to: "/new" }) },
+    // Figma « Palette ⌘K · Nouveau projet »: the same dialog as the sidebar's « Projets ».
+    { id: "project", label: t.newProject, icon: <PlusIcon />, preview: <FolderIcon />, detail: t.newProjectDetail, enter: t.create, onSelect: onNewProject },
     { id: "tasks", label: t.tasks, icon: <TaskListIcon />, onSelect: () => navigate({ to: "/tasks" }) },
     { id: "settings", label: t.settings, icon: <SettingsIcon />, shortcut: shortcuts.settings, onSelect: () => openSettings() },
     { id: "profile", label: t.profile, icon: <UserIcon />, onSelect: () => openProfile(user.id) },
@@ -237,8 +248,9 @@ function Palette({ open }: { open: boolean }) {
               </>
             ) : action ? (
               <>
-                <span className="flex size-11 items-center justify-center rounded-lg bg-muted text-muted-foreground">{action.icon}</span>
+                <span className="flex size-11 items-center justify-center rounded-lg bg-muted text-muted-foreground">{action.preview ?? action.icon}</span>
                 <p className="font-medium">{action.label}</p>
+                {action.detail && <p className="text-sm text-muted-foreground">{action.detail}</p>}
                 {action.shortcut && (
                   <dl className="flex justify-between gap-3 border-b py-2 text-sm">
                     <dt className="text-muted-foreground">{t.shortcut}</dt>
@@ -255,7 +267,7 @@ function Palette({ open }: { open: boolean }) {
         <div className="flex items-center gap-2 border-t px-3 py-2 text-xs text-muted-foreground">
           <OrgLogo className="size-4" />
           <span className="min-w-0 flex-1 truncate">{org}</span>
-          <span className="font-medium text-foreground">{action ? t.run : t.open}</span>
+          <span className="font-medium text-foreground">{action ? (action.enter ?? t.run) : t.open}</span>
           <Kbd>↵</Kbd>
         </div>
       </Command>
