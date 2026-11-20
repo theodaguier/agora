@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.70.0 — 2026-11-20
+
+### Features
+- **api**: code sessions can post Agora artifacts
+
 ## v0.69.1 — 2026-11-20
 
 ### Fixes
