@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.75.0 — 2026-11-20
+
+### Features
+- a project page with its context, data and activity, read and written by its bots
+
 ## v0.74.0 — 2026-11-20
 
 ### Features
