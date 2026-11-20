@@ -1,6 +1,6 @@
 import { ChoiceOption } from "@/components/QuestionsCard";
 import { modelName } from "@agora/core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCanGoBack, useRouteContext, useRouter } from "@tanstack/react-router";
 import { createContext, Fragment, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type Ref, type RefObject } from "react";
 import {
@@ -32,7 +32,8 @@ import {
   type CodeTodo,
 } from "@agora/core";
 import { codeSessions, common, reasoning as reasoningMessages } from "@agora/core/i18n";
-import { ReasoningPicker, type Reasoning } from "./ReasoningPicker";
+import { GroupHeading, ModelMenu, tone, type MenuModel, type Reasoning } from "./ModelMenu";
+import { AttachButton, ComposerBar, ComposerBox, SendButton, composerField } from "./ComposerFrame";
 import {
   ArrowUpIcon,
   BranchIcon,
@@ -62,7 +63,6 @@ import {
   ShieldCheckIcon,
   SparklesIcon,
   SplitIcon,
-  StopIcon,
   TaskListIcon,
   TerminalIcon,
   ToolIcon,
@@ -84,7 +84,6 @@ import { UserBubble } from "@/components/Bubbles";
 import { TabChip } from "@/components/TabChip";
 import { usePendingFiles } from "@/components/Composer";
 import { MessageText } from "@/components/MessageText";
-import { ModelOption } from "@/components/ModelPicker";
 import { ModelLogo } from "@/components/ProviderLogo";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -119,7 +118,7 @@ import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLab
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FormLabel } from "@/components/FormLabel";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
+import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
@@ -861,6 +860,7 @@ function NewSessionView({
   // The conversation's repositories, the latest session's first: usually the one to work on again.
   const recent = [...new Set([...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).flatMap((s) => (s.git?.repo ? [s.git.repo] : [])))];
   const [repo, setRepo] = useState<string | null>(recent[0] ?? null);
+  const [repoOpen, setRepoOpen] = useState(false);
   const { data: engines = [] } = useQuery({ ...codeEnginesQuery(conversationId), retry: false });
   // Claude Code unless picked otherwise, or not available to them.
   const [picked, setPicked] = useState<CodeEngine | null>(null);
@@ -868,23 +868,21 @@ function NewSessionView({
   const [model, setModel] = useState<string | null>(null);
   const [reasoning, setReasoning] = useState<Reasoning>({ effort: null, fast: false });
   const [mode, setMode] = useState<CodePermissionMode>("bypassPermissions");
-  const { data: models = [] } = useQuery(codeModelsQuery(conversationId, engine));
-  const pickModel = useCallback(
-    (next: string) => {
-      setModel(next);
-      // The effort and fast mode follow the new model when it has them.
-      const info = modelOf(models, next);
-      setReasoning((r) => ({ effort: r.effort && info?.efforts?.includes(r.effort) ? r.effort : null, fast: r.fast && !!info?.fast }));
-    },
-    [models],
-  );
-  const pickEngine = (next: CodeEngine) => {
-    setPicked(next);
-    // Each engine has its own models, and the headless ones only act on their own or plan.
-    setModel(null);
-    setReasoning({ effort: null, fast: false });
-    if (!codeEngineModes(next).includes(mode)) setMode("bypassPermissions");
+  // Every engine's models, under its own heading in the model menu: picking one of another engine switches to it.
+  const lists = useQueries({ queries: engines.map((e) => codeModelsQuery(conversationId, e.id)) });
+  const modelsOf = (id: CodeEngine) => lists[engines.findIndex((e) => e.id === id)]?.data ?? [];
+  const pickModel = (next: CodeEngine, id: string) => {
+    const info = modelOf(modelsOf(next), id);
+    if (next !== engine) {
+      setPicked(next);
+      // The headless engines only act on their own or plan.
+      if (!codeEngineModes(next).includes(mode)) setMode("bypassPermissions");
+    }
+    setModel(id);
+    // The effort and fast mode follow the new model when it has them.
+    setReasoning((r) => ({ effort: r.effort && info?.efforts?.includes(r.effort) ? r.effort : null, fast: r.fast && !!info?.fast }));
   };
+  const running = model ?? modelOf(modelsOf(engine), null)?.id ?? null;
   const { user } = useRouteContext({ from: "/app" });
   const [text, setText] = useDraft(`${user.id}:code:${conversationId}:new`);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -939,7 +937,7 @@ function NewSessionView({
           className="relative"
         >
           {slash.menu}
-          <InputGroup>
+          <ComposerBox>
             {files.files.length > 0 && (
               <InputGroupAddon align="block-start">
                 <PendingFiles items={files.files} onRemove={files.remove} />
@@ -948,7 +946,6 @@ function NewSessionView({
             <InputGroupTextarea
               autoComplete="off"
               ref={area}
-              rows={2}
               value={text}
               autoFocus
               readOnly={start.isPending}
@@ -973,24 +970,45 @@ function NewSessionView({
                   submit();
                 }
               }}
-              className="max-h-60"
+              className={composerField}
             />
-            {/* Too narrow for one line: the engine, the model and send go to the next one, nothing is cut. */}
-            <InputGroupAddon align="block-end" className="flex-wrap">
-              <AttachButton onFiles={files.add} disabled={start.isPending} />
-              <RepoPicker conversationId={conversationId} recent={recent} value={repo} onSelect={setRepo} />
-              <ModePicker engine={engine} value={mode} onSelect={setMode} />
-              <span className="ml-auto flex items-center gap-2">
-                {engines.length > 1 && <EnginePicker engines={engines} value={engine} onSelect={pickEngine} />}
-                <ReasoningPicker offer={modelOf(models, model)} value={reasoning} onChange={setReasoning} />
-                <CodeModelPicker conversationId={conversationId} engine={engine} value={model} onSelect={pickModel} />
-                <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} aria-disabled={!canSend} className="aria-disabled:opacity-50">
-                  {start.isPending ? <Spinner /> : <ArrowUpIcon />}
-                </InputGroupButton>
-              </span>
-            </InputGroupAddon>
-          </InputGroup>
+            <ComposerBar
+              start={
+                <AttachButton
+                  onFiles={files.add}
+                  disabled={start.isPending}
+                  menu={
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem onClick={() => setRepoOpen(true)}>
+                        <BranchIcon />
+                        <span className="flex-1">{t.repoShort}</span>
+                        <span className="max-w-36 truncate text-muted-foreground">{repo ?? t.noRepo}</span>
+                      </DropdownMenuItem>
+                      <ModeSub engine={engine} value={mode} onSelect={setMode} />
+                    </DropdownMenuGroup>
+                  }
+                />
+              }
+              end={
+                <>
+                  <ModelMenu
+                    groups={engines.map((e) => ({
+                      key: e.id,
+                      heading: <GroupHeading logo={<ModelLogo provider={e.id} />} label={e.name} />,
+                      models: codeMenuModels(e.id, modelsOf(e.id), e.id === engine ? running : null),
+                    }))}
+                    value={running ? { group: engine, id: running } : null}
+                    reasoning={reasoning}
+                    onReasoning={setReasoning}
+                    onModel={({ group, id }) => pickModel(group as CodeEngine, id)}
+                  />
+                  <SendButton canSend={canSend} pending={start.isPending} />
+                </>
+              }
+            />
+          </ComposerBox>
         </form>
+        <RepoDialog conversationId={conversationId} recent={recent} value={repo} onSelect={setRepo} open={repoOpen} onOpenChange={setRepoOpen} />
       </div>
     </FileDropPanel>
   );
@@ -1062,29 +1080,6 @@ function FileDropPanel({ onFiles, label, children }: { onFiles?: (files: FileLis
   );
 }
 
-/** "+" beside the field, as in the conversation's: images, screenshots, any file for Claude Code. */
-function AttachButton({ onFiles, disabled }: { onFiles: (files: FileList) => void; disabled?: boolean }) {
-  const t = useT(messages);
-  const picker = useRef<HTMLInputElement>(null);
-  return (
-    <>
-      <input
-        ref={picker}
-        type="file"
-        multiple
-        hidden
-        onChange={(e) => {
-          if (e.target.files) onFiles(e.target.files);
-          e.target.value = "";
-        }}
-      />
-      <InputGroupButton size="icon-sm" aria-label={t.attachFiles} disabled={disabled} onClick={() => picker.current?.click()}>
-        <PlusIcon />
-      </InputGroupButton>
-    </>
-  );
-}
-
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 
 /** Where a new session works: a repository of the conversation, one the instance's GitHub token reaches, one typed, or none. */
@@ -1093,9 +1088,22 @@ function RepoLogo() {
   return <BrandLogo domain="github.com" fallback={<BranchIcon />} className="size-4 dark:invert" />;
 }
 
-function RepoPicker({ conversationId, recent, value, onSelect }: { conversationId: string; recent: string[]; value: string | null; onSelect: (repo: string | null) => void }) {
+function RepoDialog({
+  conversationId,
+  recent,
+  value,
+  onSelect,
+  open,
+  onOpenChange: setOpen,
+}: {
+  conversationId: string;
+  recent: string[];
+  value: string | null;
+  onSelect: (repo: string | null) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const t = useT(messages);
-  const [open, setOpen] = useState(false);
   const [credentials, setCredentials] = useState(false);
   const [search, setSearch] = useState("");
   const st = useT(stateMessages);
@@ -1110,12 +1118,8 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
     onSelect(repo);
   };
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" aria-label={t.repo} />} className="min-w-0 max-w-48 shrink">
-        <BranchIcon />
-        <span className="truncate">{value ?? t.noRepo}</span>
-      </PopoverTrigger>
-      <PopoverContent side="top" align="start" sideOffset={8} className="w-80 p-0">
+    <>
+      <CommandDialog open={open} onOpenChange={setOpen} title={t.repo} description={t.searchRepo}>
         <Command>
           <CommandInput placeholder={t.searchRepo} value={search} onValueChange={setSearch} />
           <CommandList className="max-h-80">
@@ -1174,9 +1178,9 @@ function RepoPicker({ conversationId, recent, value, onSelect }: { conversationI
             )}
           </CommandList>
         </Command>
-      </PopoverContent>
+      </CommandDialog>
       {value && <RepoCredentialsDialog conversationId={conversationId} repo={value} open={credentials} onClose={() => setCredentials(false)} />}
-    </Popover>
+    </>
   );
 }
 
@@ -2735,7 +2739,6 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
     meta: { success: (s: CodeSession) => t.modeChanged(t.modes[s.mode]) },
   });
   // While Claude Code works, the send button stops it; typing turns it back into send (an instruction mid-run).
-  const stoppable = active(session.status) && !text.trim() && !files.files.length;
   const canSend = !files.uploading && !send.isPending && (!!text.trim() || files.ids.length > 0);
   const submit = () => {
     if (canSend) send.mutate({ value: text.trim(), attachmentIds: files.ids });
@@ -2756,7 +2759,7 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
         onRemove={(id) => removeQueued(conversationId, session.id, id).then(queueDone)}
       />
       {slash.menu}
-      <InputGroup>
+      <ComposerBox>
         {files.files.length > 0 && (
           <InputGroupAddon align="block-start">
             <PendingFiles items={files.files} onRemove={files.remove} />
@@ -2765,7 +2768,6 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
         <InputGroupTextarea
           autoComplete="off"
           ref={area}
-          rows={1}
           value={text}
           autoFocus
           aria-expanded={slash.open}
@@ -2799,26 +2801,27 @@ function SessionComposer({ conversationId, session, ref }: { conversationId: str
               submit();
             }
           }}
-          className="max-h-40"
+          className={composerField}
         />
-        {/* Too narrow for one line: the model and send go to the next one, nothing is cut. */}
-        <InputGroupAddon align="block-end" className="flex-wrap">
-          <AttachButton onFiles={files.add} />
-          <ModePicker engine={session.engine} value={session.mode} disabled={mode.isPending} onSelect={(value) => value !== session.mode && mode.mutate(value)} />
-          <span className="ml-auto flex items-center gap-2">
-            <SessionModelPicker conversationId={conversationId} session={session} />
-            {stoppable ? (
-              <InputGroupButton variant="default" size="icon-sm" aria-label={stop.isPending ? t.stopping : t.stop} disabled={stop.isPending} onClick={() => stop.mutate()}>
-                {stop.isPending ? <Spinner /> : <StopIcon />}
-              </InputGroupButton>
-            ) : (
-              <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} aria-disabled={!canSend} className="aria-disabled:opacity-50">
-                <ArrowUpIcon />
-              </InputGroupButton>
-            )}
-          </span>
-        </InputGroupAddon>
-      </InputGroup>
+        <ComposerBar
+          start={
+            <AttachButton
+              onFiles={files.add}
+              menu={
+                <DropdownMenuGroup>
+                  <ModeSub engine={session.engine} value={session.mode} disabled={mode.isPending} onSelect={(value) => value !== session.mode && mode.mutate(value)} />
+                </DropdownMenuGroup>
+              }
+            />
+          }
+          end={
+            <>
+              <SessionModelPicker conversationId={conversationId} sessionId={session.id} engine={session.engine} model={session.model} effort={session.effort} fast={session.fast} />
+              <SendButton canSend={canSend} pending={send.isPending} onStop={active(session.status) && !text.trim() && !files.files.length ? () => stop.mutate() : undefined} stopping={stop.isPending} />
+            </>
+          }
+        />
+      </ComposerBox>
     </form>
   );
 }
@@ -2912,29 +2915,6 @@ function useSlashPalette(conversationId: string, engine: CodeEngine, own: CodeCo
   };
 }
 
-/** The agent CLI a new session runs on, among the ones installed on the server that are the person's. */
-function EnginePicker({ engines, value, onSelect }: { engines: { id: CodeEngine; name: string }[]; value: CodeEngine; onSelect: (engine: CodeEngine) => void }) {
-  const t = useT(messages);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={t.engine} className="shrink-0" />}>
-        <ModelLogo provider={value} />
-        {CODE_ENGINE_NAMES[value]}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-48">
-        <DropdownMenuRadioGroup value={value} onValueChange={(v) => onSelect(v as CodeEngine)}>
-          {engines.map((e) => (
-            <DropdownMenuRadioItem key={e.id} value={e.id}>
-              <ModelLogo provider={e.id} />
-              {e.name}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 /** What each permission mode lets the engine do: ask first, edit freely, only plan, everything. */
 const MODE_ICONS: Record<CodePermissionMode, ReactNode> = {
   default: <ShieldCheckIcon />,
@@ -2943,29 +2923,45 @@ const MODE_ICONS: Record<CodePermissionMode, ReactNode> = {
   bypassPermissions: <ShieldAlertIcon />,
 };
 
-/** Claude Code's permission mode, each with what it lets it do. */
-function ModePicker({ engine, value, onSelect, disabled }: { engine: CodeEngine; value: CodePermissionMode; onSelect: (mode: CodePermissionMode) => void; disabled?: boolean }) {
+/** The modes that act without asking: their row keeps the warning colour, so the risk stays visible. */
+const MODE_TONE: Partial<Record<CodePermissionMode, string>> = { bypassPermissions: "warning" };
+
+/**
+ * The permission mode, in the composer's « + » menu: the row says the current one, its submenu lists
+ * each with what it lets the engine do. Shift+Tab in the field switches it too.
+ */
+function ModeSub({ engine, value, onSelect, disabled }: { engine: CodeEngine; value: CodePermissionMode; onSelect: (mode: CodePermissionMode) => void; disabled?: boolean }) {
   const t = useT(messages);
+  const color = tone(MODE_TONE[value]);
   return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" aria-label={t.mode} disabled={disabled} />} />}>{t.modes[value]}</TooltipTrigger>
-        <TooltipContent>{t.modeShortcut}</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-72">
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger disabled={disabled} title={t.modeShortcut}>
+        <span className="contents" style={color}>
+          {MODE_ICONS[value]}
+        </span>
+        <span className="flex-1" style={color}>
+          {t.mode}
+        </span>
+        <span className="text-muted-foreground" style={color}>
+          {t.modes[value]}
+        </span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-72">
         <DropdownMenuRadioGroup value={value} onValueChange={(v) => onSelect(v as CodePermissionMode)}>
           {codeEngineModes(engine).map((m) => (
             <DropdownMenuRadioItem key={m} value={m} className="items-start">
-              {MODE_ICONS[m]}
+              <span className="contents" style={tone(MODE_TONE[m])}>
+                {MODE_ICONS[m]}
+              </span>
               <span className="flex min-w-0 flex-col gap-0.5">
-                <span>{t.modes[m]}</span>
+                <span style={tone(MODE_TONE[m])}>{t.modes[m]}</span>
                 <span className="text-xs text-muted-foreground">{t.modeHelp[m]}</span>
               </span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   );
 }
 
@@ -3018,91 +3014,63 @@ function SessionTodos({ session }: { session: CodeSession }) {
 /** A model among the engine's; none chosen: the engine's default, when it says which it is. */
 const modelOf = <M extends { id: string; default?: boolean }>(models: M[], model: string | null) => (model ? models.find((m) => m.id === model) : models.find((m) => m.default));
 
-/** The session's model, among the ones its owner may use, and the effort and fast mode it runs with. */
-function SessionModelPicker({ conversationId, session }: { conversationId: string; session: CodeSession }) {
+/** An engine's models for the model menu, each with its vendor's logo; the one it runs on listed even when not offered. */
+function codeMenuModels(engine: CodeEngine, models: { id: string; label?: string; description?: string; efforts?: string[]; fast?: boolean }[], running: string | null): MenuModel[] {
+  // Claude Code's default, as it resolved it: listed even when it is not among the models offered.
+  const list = running && !models.some((m) => m.id === running) ? [{ id: running }, ...models] : models;
+  return list.map((m) => ({
+    id: m.id,
+    label: ("label" in m && m.label) || modelName(m.id),
+    description: "description" in m ? m.description : undefined,
+    logo: <ModelLogo model={m.id} provider={engine} />,
+    efforts: "efforts" in m ? m.efforts : undefined,
+    fast: "fast" in m ? m.fast : undefined,
+  }));
+}
+
+/**
+ * The session's model, among the ones its owner may use, and the effort and fast mode it runs with: the
+ * conversation's menu (ModelMenu). Memoized on what it shows: a session at work updates at each step,
+ * and an open menu must not be redrawn with it.
+ */
+const SessionModelPicker = memo(function SessionModelPicker({
+  conversationId,
+  sessionId,
+  engine,
+  model,
+  effort,
+  fast,
+}: {
+  conversationId: string;
+  sessionId: string;
+  engine: CodeEngine;
+  model: string | null;
+  effort: string | null;
+  fast: boolean;
+}) {
   const t = useT(messages);
   const tr = useT(reasoningMessages);
   const qc = useQueryClient();
   const change = useMutation({
-    mutationFn: (model: string) => setCodeSessionModel(conversationId, session.id, model),
+    mutationFn: (next: string) => setCodeSessionModel(conversationId, sessionId, next),
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { success: t.modelChanged },
   });
   const reason = useMutation({
-    mutationFn: (next: Reasoning) => setCodeSessionReasoning(conversationId, session.id, next),
+    mutationFn: (next: Reasoning) => setCodeSessionReasoning(conversationId, sessionId, next),
     onSuccess: (s) => applyCodeSession(qc, s),
     meta: { success: tr.changed },
   });
-  const { mutate } = change;
-  const onSelect = useCallback((model: string) => mutate(model), [mutate]);
-  const { mutate: reasonMutate } = reason;
-  const onReasoning = useCallback((next: Reasoning) => reasonMutate(next), [reasonMutate]);
-  const { data: models = [] } = useQuery(codeModelsQuery(conversationId, session.engine));
-  return (
-    <>
-      <ReasoningPicker offer={modelOf(models, session.model)} value={{ effort: session.effort, fast: session.fast }} onChange={onReasoning} disabled={reason.isPending} />
-      <CodeModelPicker conversationId={conversationId} engine={session.engine} value={session.model} onSelect={onSelect} />
-    </>
-  );
-}
-
-/**
- * A Claude Code model among the ones the owner may use: searchable, each with its vendor's logo, as
- * in the conversation's picker (the effort and fast mode it runs with: ReasoningPicker, beside it). Null: the engine's default.
- * Its name is never cut: the composer's bar gives way on the repository instead.
- */
-// Memoized: a session at work updates at each step, and the open list must not be redrawn with it.
-const CodeModelPicker = memo(function CodeModelPicker({
-  conversationId,
-  engine,
-  value,
-  onSelect,
-}: {
-  conversationId: string;
-  engine: CodeEngine;
-  value: string | null;
-  onSelect: (model: string) => void;
-}) {
-  const t = useT(messages);
-  const [open, setOpen] = useState(false);
   const { data: models = [] } = useQuery(codeModelsQuery(conversationId, engine));
-  // Claude's models are Anthropic's; Codex's OpenAI's; Cursor's come from every vendor.
-  const vendor = engine === "claude" ? "anthropic" : engine === "codex" ? "openai" : "cursor";
-  if (!models.length && !value) return null;
-  const current = models.find((m) => m.id === value);
-  // Claude Code's default, as it resolved it: listed even when it is not among the models offered.
-  const list = value && !current ? [{ id: value }, ...models] : models;
-  const key = (m: { id: string; label?: string }) => `${m.id} ${m.label ?? ""}`;
+  const running = model ?? modelOf(models, null)?.id ?? null;
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" />} className="shrink-0">
-        <ModelLogo provider={vendor} model={value ?? undefined} />
-        {current?.label ?? (value ? modelName(value) : t.model)}
-      </PopoverTrigger>
-      <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
-        <Command defaultValue={key(current ?? list[0] ?? { id: "" })}>
-          <CommandInput placeholder={t.searchModel} />
-          <CommandList className="max-h-80">
-            <CommandEmpty>{t.noModel}</CommandEmpty>
-            <CommandGroup>
-              {list.map((m) => (
-                <ModelOption
-                  key={m.id}
-                  value={key(m)}
-                  label={"label" in m && m.label ? m.label : modelName(m.id)}
-                  description={"description" in m ? m.description : undefined}
-                  logo={<ModelLogo model={m.id} provider={engine} />}
-                  active={m.id === value}
-                  onSelect={() => {
-                    setOpen(false);
-                    if (m.id !== value) onSelect(m.id);
-                  }}
-                />
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <ModelMenu
+      groups={[{ key: engine, models: codeMenuModels(engine, models, running) }]}
+      value={running ? { group: engine, id: running } : null}
+      reasoning={{ effort, fast }}
+      disabled={change.isPending || reason.isPending}
+      onReasoning={reason.mutate}
+      onModel={({ id }) => change.mutate(id)}
+    />
   );
 });

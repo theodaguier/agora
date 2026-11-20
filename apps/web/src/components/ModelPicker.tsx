@@ -1,44 +1,37 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BrainIcon } from "@/components/icons";
-import { Fragment, useState } from "react";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
-import { InputGroupButton } from "@/components/ui/input-group";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { api, conversationPath } from "@/lib/api";
-import { modelsQuery } from "@/lib/queries";
-import { ModelLogo } from "./ProviderLogo";
-import { providerName } from "../lib/providers";
 import { modelName } from "@agora/core";
-import { defineMessages, useT } from "@/i18n";
 import { reasoning as reasoningMessages } from "@agora/core/i18n";
-import { ReasoningPicker, type Reasoning } from "./ReasoningPicker";
+import { Skeleton } from "@/components/ui/skeleton";
+import { defineMessages, useT } from "@/i18n";
+import { api, conversationPath, type PickerModel } from "@/lib/api";
+import { modelsQuery } from "@/lib/queries";
+import { providerName } from "../lib/providers";
+import { GroupHeading, ModelMenu, type MenuGroup, type MenuModel, type ModelChoice, type Reasoning } from "./ModelMenu";
+import { ModelLogo } from "./ProviderLogo";
 
 const messages = defineMessages({
   en: {
-    search: "Search models",
-    empty: "No models.",
     providerModels: (provider: string) => `${provider} models`,
     byDefault: (model: string) => `Default (${model})`,
-    reasoning: "Reasoning model",
   },
   fr: {
-    search: "Rechercher un modèle",
-    empty: "Aucun modèle.",
     providerModels: (provider: string) => `Modèles ${provider}`,
     byDefault: (model: string) => `Par défaut (${model})`,
-    reasoning: "Modèle à raisonnement",
   },
 });
 
+/** The agent's own model, not a model id. */
+const DEFAULT = "\u0001default";
+const HERMES = "hermes";
+
 /**
- * Model choice for this conversation, among those Hermes advertises for the agent's provider and the
- * other providers signed in on Hermes (and Claude Code's and Codex's, for the subscription holder). Searchable palette.
+ * Model of this conversation, with its effort and fast mode: among the models Hermes advertises for the
+ * agent's provider, the other providers signed in on Hermes, and Claude Code's and Codex's for the
+ * subscription holder. The same menu as a code session's (ModelMenu).
  */
 export function ModelPicker({
   conversationId,
-  open: controlled,
+  open,
   onOpenChange,
 }: {
   conversationId: string;
@@ -47,14 +40,8 @@ export function ModelPicker({
 }) {
   const qc = useQueryClient();
   const t = useT(messages);
-  const [local, setLocal] = useState(false);
-  const open = controlled ?? local;
-  const setOpen = (next: boolean) => {
-    setLocal(next);
-    onOpenChange?.(next);
-  };
-  const { data, isError, isPending } = useQuery(modelsQuery(conversationId));
   const tr = useT(reasoningMessages);
+  const { data, isError, isPending } = useQuery(modelsQuery(conversationId));
   const reason = useMutation({
     mutationFn: (next: Reasoning) => api(conversationPath(conversationId, "/reasoning"), { method: "PUT", body: JSON.stringify(next) }),
     onMutate: (next) => qc.setQueryData(modelsQuery(conversationId).queryKey, (d) => d && { ...d, ...next }),
@@ -63,171 +50,75 @@ export function ModelPicker({
   });
   const select = useMutation({
     mutationFn: ({ model, provider }: { model: string | null; provider?: string }) =>
-      api(conversationPath(conversationId, "/model"), {
-        method: "PUT",
-        body: JSON.stringify({ model, provider }),
-      }),
-    onMutate: ({ model, provider }) => {
-      qc.setQueryData(
-        modelsQuery(conversationId).queryKey,
-        (d) =>
-          d && {
-            ...d,
-            selected: model,
-            selectedProvider: model ? (provider ?? d.provider) : null,
-          },
-      );
-      setOpen(false);
-    },
+      api(conversationPath(conversationId, "/model"), { method: "PUT", body: JSON.stringify({ model, provider }) }),
+    onMutate: ({ model, provider }) =>
+      qc.setQueryData(modelsQuery(conversationId).queryKey, (d) => d && { ...d, selected: model, selectedProvider: model ? (provider ?? d.provider) : null }),
     onSettled: () => qc.invalidateQueries({ queryKey: modelsQuery(conversationId).queryKey }),
   });
 
   // Loading: a placeholder the size of the chip, so the composer's toolbar doesn't jump.
   if (isPending) return <Skeleton className="h-7 w-24" />;
   if (isError || !data) return null;
+
   // Subscription engines (Claude Code, Codex): the chosen one, if the thread is on it.
   const engines = [data.claudeCode, data.codex].filter((e) => !!e);
   const engine = engines.find((e) => data.selectedProvider === e.provider);
-  const engineModel = engine?.models.find((m) => m.id === data.selected);
-  // Default model forbidden for this employee: their messages go to the first allowed model.
-  const fallback = data.defaultAllowed ? data.defaultModel : (data.models[0]?.id ?? data.defaultModel);
-  const current = engine ? `${providerName(engine.provider)}, ${engineModel?.label ?? modelName(data.selected ?? "")}` : modelName(data.selected ?? fallback);
-  // cmdk values (also used for search); the current model is preselected on open.
-  const defaultValue = `default ${data.defaultModel}`;
-  const hermesValue = (id: string) => `${data.provider} ${providerName(data.provider)} ${id}`;
-  const engineValue = (provider: string, m: { id: string; label?: string }) => `${provider} ${m.id} ${m.label ?? ""}`;
-  const otherValue = (provider: string, id: string) => `${provider} ${providerName(provider)} ${id}`;
   // Chosen model from another Hermes provider signed in on this profile.
   const other = !engine && data.selected && data.selectedProvider && data.selectedProvider !== data.provider ? data.selectedProvider : null;
-  // The model the thread runs on, for what can be chosen with it.
-  const runs = engine
-    ? engineModel
+  // Default model forbidden for this employee: their messages go to the first allowed model.
+  const fallback = data.defaultAllowed ? data.defaultModel : (data.models[0]?.id ?? data.defaultModel);
+  const value: ModelChoice = engine
+    ? { group: engine.provider, id: data.selected! }
     : other
-      ? data.others.find((p) => p.provider === other)?.models.find((m) => m.id === data.selected)
-      : data.models.find((m) => m.id === (data.selected ?? fallback));
-  const activeValue = !data.selected
-    ? data.defaultAllowed
-      ? defaultValue
-      : hermesValue(fallback)
-    : engine
-      ? engineValue(engine.provider, engineModel ?? { id: data.selected })
-      : other
-        ? otherValue(other, data.selected)
-        : hermesValue(data.selected);
+      ? { group: other, id: data.selected! }
+      : { group: HERMES, id: data.selected ?? (data.defaultAllowed ? DEFAULT : fallback) };
+
+  const item = (provider: string, m: PickerModel): MenuModel => ({
+    id: m.id,
+    label: m.label ?? modelName(m.id),
+    description: m.description,
+    logo: <ModelLogo model={m.id} provider={provider} />,
+    efforts: m.efforts,
+    fast: m.fast,
+  });
+  // The model a thread was given, even when no longer listed: shown as it runs.
+  const withChosen = (g: MenuGroup): MenuGroup =>
+    g.key === value.group && !g.models.some((m) => m.id === value.id) && value.id !== DEFAULT
+      ? { ...g, models: [{ id: value.id, label: modelName(value.id) }, ...g.models] }
+      : g;
+  const agentDefault = data.models.find((m) => m.id === data.defaultModel);
+  const groups: MenuGroup[] = [
+    {
+      key: HERMES,
+      heading: <GroupHeading logo={<ModelLogo provider={data.provider} />} label={t.providerModels(providerName(data.provider))} />,
+      models: [
+        ...(data.defaultAllowed
+          ? [{ ...item(data.provider, agentDefault ?? { id: data.defaultModel, reasoning: false }), id: DEFAULT, label: t.byDefault(modelName(data.defaultModel)) }]
+          : []),
+        ...data.models.map((m) => item(data.provider, m)),
+      ],
+    },
+    ...data.others.map((p) => ({
+      key: p.provider,
+      heading: <GroupHeading logo={<ModelLogo provider={p.provider} />} label={t.providerModels(providerName(p.provider))} />,
+      models: p.models.map((m) => item(p.provider, m)),
+    })),
+    ...engines.map((e) => ({
+      key: e.provider,
+      heading: <GroupHeading logo={<ModelLogo provider={e.provider} />} label={e.label} />,
+      models: e.models.map((m) => item(e.provider, m)),
+    })),
+  ].map(withChosen);
 
   return (
-    <>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger render={<InputGroupButton size="sm" />}>{current}</PopoverTrigger>
-        <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
-          <Command defaultValue={activeValue}>
-            <CommandInput placeholder={t.search} />
-            <CommandList className="max-h-80">
-              <CommandEmpty>{t.empty}</CommandEmpty>
-              <CommandGroup heading={<GroupHeading provider={data.provider} label={t.providerModels(providerName(data.provider))} />}>
-                {data.defaultAllowed && (
-                  <ModelOption
-                    value={defaultValue}
-                    label={t.byDefault(modelName(data.defaultModel))}
-                    logo={<ModelLogo model={data.defaultModel} provider={data.provider} />}
-                    active={!data.selected}
-                    onSelect={() => select.mutate({ model: null })}
-                  />
-                )}
-                {data.models.map((m) => (
-                  <ModelOption
-                    key={m.id}
-                    value={hermesValue(m.id)}
-                    label={modelName(m.id)}
-                    logo={<ModelLogo model={m.id} provider={data.provider} />}
-                    reasoning={m.reasoning}
-                    active={!engine && !other && (data.selected ?? (data.defaultAllowed ? null : fallback)) === m.id}
-                    onSelect={() => select.mutate({ model: m.id })}
-                  />
-                ))}
-              </CommandGroup>
-              {data.others.map((p) => (
-                <Fragment key={p.provider}>
-                  <CommandSeparator />
-                  <CommandGroup heading={<GroupHeading provider={p.provider} label={t.providerModels(providerName(p.provider))} />}>
-                    {p.models.map((m) => (
-                      <ModelOption
-                        key={m.id}
-                        value={otherValue(p.provider, m.id)}
-                        label={modelName(m.id)}
-                        logo={<ModelLogo model={m.id} provider={p.provider} />}
-                        reasoning={m.reasoning}
-                        active={other === p.provider && data.selected === m.id}
-                        onSelect={() => select.mutate({ model: m.id, provider: p.provider })}
-                      />
-                    ))}
-                  </CommandGroup>
-                </Fragment>
-              ))}
-              {engines.map((e) => (
-                <Fragment key={e.provider}>
-                  <CommandSeparator />
-                  <CommandGroup heading={<GroupHeading provider={e.provider} label={e.label} />}>
-                    {e.models.map((m) => (
-                      <ModelOption
-                        key={m.id}
-                        value={engineValue(e.provider, m)}
-                        label={m.label ?? m.id}
-                        description={m.description}
-                        logo={<ModelLogo model={m.id} provider={e.provider} />}
-                        reasoning={m.reasoning}
-                        active={engine === e && data.selected === m.id}
-                        onSelect={() => select.mutate({ model: m.id, provider: e.provider })}
-                      />
-                    ))}
-                  </CommandGroup>
-                </Fragment>
-              ))}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-      <ReasoningPicker offer={runs} value={{ effort: data.effort ?? null, fast: !!data.fast }} onChange={reason.mutate} />
-    </>
-  );
-}
-
-export function GroupHeading({ provider, label }: { provider: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <ModelLogo provider={provider} className="size-3.5" />
-      {label}
-    </span>
-  );
-}
-
-export function ModelOption(props: {
-  value: string;
-  label: string;
-  logo?: React.ReactNode;
-  active: boolean;
-  reasoning?: boolean;
-  description?: string;
-  onSelect: () => void;
-}) {
-  const t = useT(messages);
-  return (
-    <CommandItem
-      value={props.value}
-      data-checked={props.active}
-      onSelect={props.onSelect}
-      title={props.description}
-    >
-      {props.logo}
-      <span className="min-w-0 flex-1 truncate">{props.label}</span>
-      {props.reasoning && (
-        <Tooltip>
-          <TooltipTrigger render={<span />}>
-            <BrainIcon aria-label={t.reasoning} />
-          </TooltipTrigger>
-          <TooltipContent>{t.reasoning}</TooltipContent>
-        </Tooltip>
-      )}
-    </CommandItem>
+    <ModelMenu
+      groups={groups}
+      value={value}
+      reasoning={{ effort: data.effort ?? null, fast: !!data.fast }}
+      open={open}
+      onOpenChange={onOpenChange}
+      onReasoning={reason.mutate}
+      onModel={({ group, id }) => select.mutate(group === HERMES ? { model: id === DEFAULT ? null : id } : { model: id, provider: group })}
+    />
   );
 }
