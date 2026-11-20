@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.77.0 — 2026-11-20
+
+### Features
+- **web**: a « Nouveau projet » row at the end of the sidebar's projects
+
 ## v0.76.0 — 2026-11-20
 
 ### Features
