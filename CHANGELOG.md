@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.76.0 — 2026-11-20
+
+### Features
+- create a project from a dialog, with just a name
+
 ## v0.75.0 — 2026-11-20
 
 ### Features
