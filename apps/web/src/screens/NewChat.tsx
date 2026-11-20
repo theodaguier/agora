@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { Command as CommandPrimitive } from "cmdk";
-import { ChevronLeftIcon, PlusIcon, UsersIcon, SearchIcon, WarningIcon } from "@/components/icons";
+import { ChevronLeftIcon, PlusIcon, SearchIcon, WarningIcon } from "@/components/icons";
 import { useState } from "react";
-import { NewProjectDialog } from "@/components/NewProjectDialog";
 import { StatusAvatar } from "@/components/ConversationAvatar";
 import { type Participant } from "@/lib/participants";
 import { closeOrGoHome } from "@/lib/workspace";
@@ -31,7 +30,6 @@ const messages = defineMessages({
     colleagues: "Colleagues",
     creatingBot: "Creating Bot…",
     createBot: "Create a new Bot",
-    createGroup: "Create a project",
     newConversation: "New conversation",
     to: "To:",
     searchOrCreate: "Search or create Bots",
@@ -45,7 +43,6 @@ const messages = defineMessages({
     colleagues: "Collègues",
     creatingBot: "Création du Bot…",
     createBot: "Créer un nouveau Bot",
-    createGroup: "Créer un projet",
     newConversation: "Nouvelle conversation",
     to: "À :",
     searchOrCreate: "Rechercher ou créer des Bots",
@@ -57,8 +54,8 @@ const messages = defineMessages({
 });
 
 /**
- * "To:": find a bot or a colleague, create a bot that configures itself through
- * conversation, or compose a group conversation.
+ * "To:": find a bot or a colleague, or create a bot that configures itself through
+ * conversation. A project is created from the sidebar's « Projets » (NewProjectDialog).
  */
 export function NewChat() {
   const { user } = useRouteContext({ from: "/app" });
@@ -75,7 +72,6 @@ export function NewChat() {
   const listError = agentsList.error ?? peopleList.error;
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState("");
-  const [newProject, setNewProject] = useState(false);
 
   const goTo = async (conversationId: string) => {
     await qc.invalidateQueries({ queryKey: conversationsQuery.queryKey });
@@ -99,7 +95,6 @@ export function NewChat() {
 
   const query = q.trim().toLowerCase();
   const candidates: Participant[] = [
-    // A bot still being configured does not join groups.
     ...agents.map((agent) => ({ kind: "agent" as const, agent })),
     ...people.map((person) => ({ kind: "user" as const, person })),
   ].filter((p) => participantName(p).toLowerCase().includes(query));
@@ -126,17 +121,6 @@ export function NewChat() {
               },
             ]
           : []),
-        {
-          key: "group",
-          label: t.createGroup,
-          section: "actions" as const,
-          run: () => setNewProject(true),
-          icon: (
-            <span className="flex size-6 items-center justify-center text-muted-foreground">
-              <UsersIcon />
-            </span>
-          ),
-        },
     ...candidates.map(pickRow),
   ];
   const current = rows.some((r) => r.key === selected) ? selected : (rows[0]?.key ?? "");
@@ -236,7 +220,6 @@ export function NewChat() {
           ) : null}
         </CommandList>
       </div>
-      <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
     </Command>
   );
 }
