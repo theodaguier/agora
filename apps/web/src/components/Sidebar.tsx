@@ -277,12 +277,18 @@ function SidebarBody() {
     .filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
   // Agents: a direct conversation with a bot; projects: the groups; messages: one-on-one with a colleague.
   const withAgent = list.filter((c) => c.kind === "direct" && c.agents.length > 0);
-  // A search lists the matching discussions as rows of their own; otherwise they sit in their project's folder.
-  const projects = list.filter((c) => c.kind !== "direct" && (q ? !c.archived : !c.parentId));
-  const direct = list.filter((c) => c.kind === "direct" && c.agents.length === 0);
   const [openProjects, toggleProject] = useOpenProjects();
   const allNamed = conversations.map((c) => ({ ...c, name: conversationTitle(c, user.id) }));
   const topProjects = allNamed.filter((c) => c.kind === "group" && !c.parentId);
+  // A search keeps discussions in their project's folder: the project shows when it or one of its discussions matches,
+  // unfolded on the matches (all of its discussions when its own name matches).
+  const match = (name: string) => name.toLowerCase().includes(q.toLowerCase());
+  const projectMatches = (p: (typeof allNamed)[number]) => {
+    const discussions = activeDiscussions(allNamed, p.id);
+    return q && !match(p.name) ? discussions.filter((d) => match(d.name)) : discussions;
+  };
+  const projects = topProjects.filter((p) => !q || match(p.name) || projectMatches(p).length > 0);
+  const direct = list.filter((c) => c.kind === "direct" && c.agents.length === 0);
   const isAdmin = user.role === "admin";
   const { data: tasks } = useQuery(tasksQuery(user.id));
   // Badge: what you have to do yourself, not what you gave to others.
@@ -330,10 +336,10 @@ function SidebarBody() {
                 <SidebarGroupLabel>{g.label}</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {g.key === "projects" && !q
+                    {g.key === "projects"
                       ? g.rows.map((p) => {
-                          const discussions = activeDiscussions(allNamed, p.id);
-                          const inside = conversationId === p.id || discussions.some((d) => d.id === conversationId);
+                          const discussions = projectMatches(p);
+                          const inside = !!q || conversationId === p.id || discussions.some((d) => d.id === conversationId);
                           return (
                             <ProjectItem
                               key={p.id}
@@ -345,6 +351,7 @@ function SidebarBody() {
                               open={openProjects.has(p.id) || inside}
                               onToggle={() => toggleProject(p.id, !(openProjects.has(p.id) || inside))}
                               desktop={false}
+                              all={!!q}
                             />
                           );
                         })

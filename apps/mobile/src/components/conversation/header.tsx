@@ -1,12 +1,14 @@
+import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { PressableFeedback, Typography } from "heroui-native";
 import { View } from "react-native";
 import { ConversationAvatar, ParticipantAvatar, useStatus } from "@/components/conversation-avatar";
 import { infoHref } from "@/components/conversation/info-href";
-import { othersOf, type Participant } from "@/components/participants";
+import { conversationTitle, othersOf, type Participant } from "@/components/participants";
 import { useHeaderTitleWidth } from "@/components/header-button";
 import { withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
+import { conversationsQuery } from "@/lib/queries";
 import type { ConversationDetail } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -47,8 +49,25 @@ export function HeaderTitle({
   // A phone's header is too narrow for the web's single line: the name on top, what is going on
   // under it in small type, both centred, as iOS stacks a title and its subtitle.
   const width = useHeaderTitleWidth(2);
+  // A discussion says its project first, « Agora / », a tap away from the project's discussions.
+  const { data: project } = useQuery({ ...conversationsQuery, enabled: !!conv?.parentId, select: (list) => list.find((c) => c.id === conv?.parentId) });
   return (
     <View style={{ maxWidth: width }} className="items-center">
+      <View className="min-w-0 max-w-full flex-row items-center gap-1">
+      {project && (
+        <PressableFeedback
+          onPress={withTap(() => router.push({ pathname: "/project/[projectId]", params: { projectId: project.id } }))}
+          accessibilityRole="button"
+          className="min-w-0 shrink flex-row items-center gap-1"
+        >
+          <Typography type="body-sm" color="muted" numberOfLines={1} className="shrink">
+            {conversationTitle(project, me)}
+          </Typography>
+          <Typography type="body-sm" color="muted">
+            /
+          </Typography>
+        </PressableFeedback>
+      )}
       <PressableFeedback
         isDisabled={!href}
         onPress={withTap(() => href && router.push(href))}
@@ -61,6 +80,7 @@ export function HeaderTitle({
           {title}
         </Typography>
       </PressableFeedback>
+      </View>
       <View className="max-w-full flex-row items-center gap-2">
         {everyone.length > 0 && (
           <PressableFeedback isDisabled={!href} onPress={withTap(() => href && router.push(href))} accessibilityElementsHidden className="flex-row items-center">
