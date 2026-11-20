@@ -367,7 +367,7 @@ function SidebarBody() {
                               all={!!q}
                             />
                           );
-                        })
+                        }).concat(q ? [] : [<NewProjectRow key="new-project" onClick={() => setNewProject(true)} label={t.newProject} desktop={false} />])
                       : rows(g.rows)}
                   </SidebarMenu>
                 </SidebarGroupContent>
@@ -572,7 +572,7 @@ function DesktopSidebar() {
                                 desktop
                               />
                             );
-                          })
+                          }).concat(<NewProjectRow key="new-project" onClick={() => setNewProject(true)} label={t.newProject} desktop />)
                         : (g.rows as typeof list).map((c) => <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />)}
                     </SidebarMenu>
                   </SidebarGroupContent>
@@ -600,6 +600,18 @@ function DesktopSidebar() {
       </SidebarFooter>
       <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
     </>
+  );
+}
+
+/** The last row of « Projets »: creates one (the group's « + » does the same, this one can't be missed). */
+function NewProjectRow({ onClick, label, desktop }: { onClick: () => void; label: string; desktop: boolean }) {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton size={desktop ? "default" : "lg"} className={cn("text-muted-foreground", desktop && "h-7.5 gap-2.5 text-ui")} onClick={onClick}>
+        <PlusIcon className={desktop ? "size-4" : undefined} />
+        <span>{label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
