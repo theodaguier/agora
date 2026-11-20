@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.73.0 — 2026-11-20
+
+### Features
+- one composer and one model menu for chats and code sessions
+
 ## v0.72.0 — 2026-11-20
 
 ### Features
