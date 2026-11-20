@@ -36,3 +36,4 @@ export * from "./attachments";
 export * from "./vaults";
 export * from "./ssh";
 export * from "./person-avatar";
+export * from "./projects";

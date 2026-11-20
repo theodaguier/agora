@@ -25,7 +25,7 @@ const MemoryWindow = lazyRouteComponent(() => import("./screens/MemoryWindow"), 
 const Sessions = lazyRouteComponent(() => import("./screens/Sessions"), "Sessions");
 const Artifacts = lazyRouteComponent(() => import("./screens/Artifacts"), "Artifacts");
 const ArtifactRoute = lazyRouteComponent(() => import("./screens/ConversationTabs"), "ArtifactRoute");
-const ProjectDiscussions = lazyRouteComponent(() => import("./screens/ProjectDiscussions"), "ProjectDiscussions");
+const ProjectPage = lazyRouteComponent(() => import("./screens/ProjectPage"), "ProjectPage");
 
 export const queryClient = new QueryClient({
   mutationCache,
@@ -114,8 +114,16 @@ const sessionsRoute = createRoute({ getParentRoute: () => appRoute, path: "/sess
 const artifactsRoute = createRoute({ getParentRoute: () => appRoute, path: "/artifacts", component: Artifacts });
 const artifactRoute = createRoute({ getParentRoute: () => appRoute, path: "/artifacts/$artifactId", component: ArtifactRoute });
 const inboxRoute = createRoute({ getParentRoute: () => appRoute, path: "/inbox", component: Inbox });
-/** Every discussion of a project, from its folder's « See all ». */
-const projectRoute = createRoute({ getParentRoute: () => appRoute, path: "/p/$projectId", component: ProjectDiscussions });
+/** A project's page (overview, discussions, sessions, data, activity); `?tab=` opens one of them. */
+export const PROJECT_TABS = ["overview", "discussions", "sessions", "data", "activity"] as const;
+export type ProjectTab = (typeof PROJECT_TABS)[number];
+const projectRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/p/$projectId",
+  validateSearch: (search: Record<string, unknown>): { tab?: ProjectTab } =>
+    PROJECT_TABS.includes(search.tab as ProjectTab) && search.tab !== "overview" ? { tab: search.tab as ProjectTab } : {},
+  component: ProjectPage,
+});
 /** `?m=<messageId>`: opens the conversation on that message (from the inbox). */
 const conversationRoute = createRoute({
   getParentRoute: () => appRoute,

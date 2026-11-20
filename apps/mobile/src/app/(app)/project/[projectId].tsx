@@ -26,8 +26,6 @@ const messages = defineMessages({
     archived: "Archived",
     general: "General",
     newDiscussion: "New discussion",
-    discussionName: "Its name",
-    create: "Create",
     rename: "Rename",
     pin: "Pin",
     unpin: "Unpin",
@@ -50,8 +48,6 @@ const messages = defineMessages({
     archived: "Archivées",
     general: "Général",
     newDiscussion: "Nouvelle discussion",
-    discussionName: "Son nom",
-    create: "Créer",
     rename: "Renommer",
     pin: "Épingler",
     unpin: "Désépingler",
@@ -88,24 +84,16 @@ export default function ProjectDiscussions() {
   const inside = named.filter((c) => c.parentId === projectId && c.archived === (tab === "archived"));
   const rows = tab === "active" ? [...(project ? [{ ...project, name: messages.general }] : []), ...inside.filter((c) => c.pinned), ...inside.filter((c) => !c.pinned)] : inside;
 
-  const create = () =>
-    Alert.prompt(messages.newDiscussion, messages.discussionName, [
-      { text: tr(common).cancel, style: "cancel" },
-      {
-        text: messages.create,
-        isPreferred: true,
-        onPress: async (title?: string) => {
-          if (!title?.trim()) return;
-          try {
-            const { id } = await api<{ id: string }>(conversationPath(projectId, "/discussions"), { method: "POST", body: JSON.stringify({ title: title.trim() }) });
-            await qc.invalidateQueries({ queryKey: conversationsQuery.queryKey });
-            router.push({ pathname: "/c/[conversationId]", params: { conversationId: id } });
-          } catch (e) {
-            toast.failed(e, messages.failed);
-          }
-        },
-      },
-    ]);
+  // No name to type: its bot names it after the first exchange.
+  const create = async () => {
+    try {
+      const { id } = await api<{ id: string }>(conversationPath(projectId, "/discussions"), { method: "POST", body: JSON.stringify({}) });
+      await qc.invalidateQueries({ queryKey: conversationsQuery.queryKey });
+      router.push({ pathname: "/c/[conversationId]", params: { conversationId: id } });
+    } catch (e) {
+      toast.failed(e, messages.failed);
+    }
+  };
 
   return (
     <>

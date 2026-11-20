@@ -24,6 +24,11 @@ export type ConversationEvent =
   | { type: "group.created"; actor: string }
   /** A discussion opened inside a project. */
   | { type: "discussion.created"; actor: string }
+  /** A bot named a discussion opened without a name (`actor`: the bot). */
+  | { type: "discussion.titled"; actor: string; title: string }
+  /** The project's context was rewritten, by a member or a bot; `summary`: what changed, in a few words. */
+  | { type: "project.context"; actor: string; summary?: string }
+  | { type: "project.status"; actor: string; status: "planned" | "in_progress" | "paused" | "done" | "cancelled" }
   | { type: "group.renamed"; actor: string; title: string }
   | { type: "group.unnamed"; actor: string }
   | { type: "members.added"; actor: string; names: string[] }
@@ -83,6 +88,9 @@ export type ConversationEvent =
 
 export type EventLocale = "en" | "fr";
 
+const PROJECT_STATUS_EN = { planned: "Planned", in_progress: "In progress", paused: "Paused", done: "Done", cancelled: "Cancelled" } as const;
+const PROJECT_STATUS_FR = { planned: "Prévu", in_progress: "En cours", paused: "En pause", done: "Terminé", cancelled: "Annulé" } as const;
+
 const list = (names: string[], and: string) =>
   names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} ${and} ${names.at(-1)}`;
 
@@ -93,6 +101,16 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
       return fr ? `${e.actor} a créé le groupe` : `${e.actor} created the group`;
     case "discussion.created":
       return fr ? `${e.actor} a ouvert la discussion` : `${e.actor} started the discussion`;
+    case "discussion.titled":
+      return fr ? `${e.actor} a nommé la discussion « ${e.title} »` : `${e.actor} named the discussion “${e.title}”`;
+    case "project.context":
+      return fr
+        ? `${e.actor} a mis à jour le contexte du projet${e.summary ? ` : ${e.summary}` : ""}`
+        : `${e.actor} updated the project context${e.summary ? `: ${e.summary}` : ""}`;
+    case "project.status": {
+      const label = (fr ? PROJECT_STATUS_FR : PROJECT_STATUS_EN)[e.status];
+      return fr ? `${e.actor} a passé le projet en « ${label} »` : `${e.actor} set the project to “${label}”`;
+    }
     case "group.renamed":
       return fr ? `${e.actor} a renommé le groupe « ${e.title} »` : `${e.actor} renamed the group “${e.title}”`;
     case "group.unnamed":

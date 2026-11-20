@@ -102,7 +102,6 @@ export function Sessions() {
     sessions.filter((s) => !toDecide.includes(s)),
     display,
   );
-  const navigate = useNavigate();
   const shown = groups.reduce((n, g) => n + g.sessions.length, 0) + toDecide.length;
   return (
     // Figma « Sessions de code · 1440 »: the title and its count, display on the right; then the groups
@@ -159,6 +158,23 @@ export function Sessions() {
           </Empty>
         ) : (
           <>
+            <SessionGroups toDecide={toDecide} groups={groups} grouping={display.group} />
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The sessions waiting for an answer as cards you decide in, then the groups of rows: the Sessions
+ * screen's list, also a project's Sessions tab.
+ */
+export function SessionGroups({ toDecide, groups, grouping }: { toDecide: CodeSession[]; groups: { key: string; sessions: CodeSession[] }[]; grouping: CodeSessionGrouping }) {
+  const t = useT(codeSessions);
+  const navigate = useNavigate();
+  return (
+    <>
             {toDecide.length > 0 && (
               <section aria-label={t.stateGroups.waiting}>
                 <GroupHeader mark={<CodeStateIcon state="waiting" />} label={t.stateGroups.waiting} count={toDecide.length} />
@@ -174,13 +190,16 @@ export function Sessions() {
               </section>
             )}
             {groups.map((g) => (
-              <Group key={g.key} group={display.group} groupKey={g.key} sessions={g.sessions} />
+              <Group key={g.key} group={grouping} groupKey={g.key} sessions={g.sessions} />
             ))}
-          </>
-        )}
-      </div>
-    </section>
+    </>
   );
+}
+
+/** A project's sessions, as the Sessions screen shows them by default: what waits for you first, then by state. */
+export function projectSessionGroups(sessions: CodeSession[]) {
+  const toDecide = sessions.filter((s) => codeSessionState(s) === "waiting" && !s.parked);
+  return { toDecide, groups: groupCodeSessions(sessions.filter((s) => !toDecide.includes(s)), DEFAULT_DISPLAY) };
 }
 
 /** Display options: group by, order by, and whether stopped sessions show. */
@@ -310,7 +329,7 @@ function useDropPriority(priority: CodePriority | null) {
  * its state (unless the group says it), the title, where its work is (repository · branch, in mono),
  * the agent that started it, the engine, when, then its « … » (its owner's actions). The line opens it beside its conversation.
  */
-function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: CodeSessionGrouping }) {
+export function SessionRow({ session: s, grouping }: { session: CodeSession; grouping: CodeSessionGrouping }) {
   const t = useT(codeSessions);
   const navigate = useNavigate();
   const { user } = useRouteContext({ from: "/app" });

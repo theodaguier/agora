@@ -13,6 +13,7 @@ import { mcpRequestSchema, type McpRequestBlock } from "./mcp-requests";
 import { questionsSchema, type Questions } from "./questions";
 import { parseSkillCreate, skillRequestSchema, type SkillCreateBlock, type SkillRequestBlock } from "./skill-requests";
 import { tasksBlockSchema, type TasksBlock } from "./tasks";
+import { discussionTitleSchema, projectContextSchema, type DiscussionTitleBlock, type ProjectContextBlock } from "./projects";
 import { availabilityBlockSchema, type AvailabilityBlock } from "./availability-bot";
 import { botCreateSchema, type BotCreateBlock } from "./bot-requests";
 import { currentLocale, defineMessages, tr, type Locale } from "./i18n";
@@ -146,7 +147,7 @@ export function onboardingPrompt(opts: { userName: string; text: string; turn: n
     .join("\n");
 }
 
-const BLOCK = /```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|bot-create|tasks|availability|view)[ \t]*\n([\s\S]*?)```/g;
+const BLOCK = /```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|bot-create|tasks|availability|view|discussion-title|project-context)[ \t]*\n([\s\S]*?)```/g;
 
 /** Separates the displayed text from the structured blocks emitted by the bot. */
 export function parseReply(reply: string) {
@@ -160,6 +161,8 @@ export function parseReply(reply: string) {
   let botCreate: BotCreateBlock | undefined;
   let tasks: TasksBlock | undefined;
   let availability: AvailabilityBlock | undefined;
+  let discussionTitle: DiscussionTitleBlock | undefined;
+  let projectContext: ProjectContextBlock | undefined;
   const views: ViewBlock[] = [];
   // Before the other blocks: a page isn't JSON, and ends at the first ``` starting a line.
   const previews = readPreviews(reply);
@@ -193,6 +196,14 @@ export function parseReply(reply: string) {
       const parsed = botCreateSchema.safeParse(json);
       if (!parsed.success) return raw;
       botCreate = parsed.data;
+    } else if (kind === "discussion-title") {
+      const parsed = discussionTitleSchema.safeParse(json);
+      if (!parsed.success) return raw;
+      discussionTitle = parsed.data;
+    } else if (kind === "project-context") {
+      const parsed = projectContextSchema.safeParse(json);
+      if (!parsed.success) return raw;
+      projectContext = parsed.data;
     } else if (kind === "tasks") {
       const parsed = tasksBlockSchema.safeParse(json);
       if (!parsed.success) return raw;
@@ -220,7 +231,7 @@ export function parseReply(reply: string) {
     }
     return "";
   });
-  return { text: text.replace(/\n{3,}/g, "\n\n").trim(), choices, profile, name: profile?.name ?? name, mcpRequest, questions, skillRequest, skillCreate, botCreate, tasks, availability, views: views.length ? views : undefined, previews: previews.length ? previews : undefined };
+  return { text: text.replace(/\n{3,}/g, "\n\n").trim(), choices, profile, name: profile?.name ?? name, mcpRequest, questions, skillRequest, skillCreate, botCreate, tasks, availability, discussionTitle, projectContext, views: views.length ? views : undefined, previews: previews.length ? previews : undefined };
 }
 
 /** Writes the bot's identity into the SOUL.md of its Hermes profile. */

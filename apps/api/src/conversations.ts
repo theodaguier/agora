@@ -187,6 +187,8 @@ export async function listConversations(userId: string) {
         parentId: c.parentId,
         pinned: !!c.pinnedAt,
         archived: !!c.archivedAt,
+        /** A project's status, for the sidebar's quick menu (null on anything else). */
+        status: c.kind === "group" && !c.parentId ? (c.status ?? "in_progress") : null,
         members: people,
         agents: bots.map(agentDto),
         preview: l?.text ? { text: previewText(l.text), event: l.event ?? null, author: l.kind === "event" ? null : author, fromMe } : null,

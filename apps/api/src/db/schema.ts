@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, ArtifactShareMode, BotWebhookStatus, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodeMergeMethod, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, GitHubMergeRequestStatus, IntegrationType, McpEnvField, VaultItemKind, VaultKind, VaultRequestKind, VaultRequestStatus, WeeklyHours } from "@agora/core";
+import type { AbsenceKind, ProjectBotAccess, ProjectContextAuthor, ProjectResource, ProjectStatus, ArtifactShareMode, BotWebhookStatus, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodeMergeMethod, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, GitHubMergeRequestStatus, IntegrationType, McpEnvField, VaultItemKind, VaultKind, VaultRequestKind, VaultRequestStatus, WeeklyHours } from "@agora/core";
 import type { ImplicitCall } from "../group";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
@@ -335,6 +335,19 @@ export const conversation = pgTable("conversation", {
   pinnedAt: timestamp("pinned_at"),
   /** A discussion put away: out of the sidebar, still in the project's archive. */
   archivedAt: timestamp("archived_at"),
+  /** A project's page (packages/core/src/projects.ts): its status (null = in progress), lead, repository and due date. */
+  status: text("status").$type<ProjectStatus>(),
+  leadId: text("lead_id").references(() => user.id, { onDelete: "set null" }),
+  repo: text("repo"),
+  dueOn: date("due_on", { mode: "string" }),
+  /** What its bots read with every message, in the project and its discussions; who changed it last. */
+  context: text("context"),
+  contextUpdatedAt: timestamp("context_updated_at"),
+  contextAuthor: jsonb("context_author").$type<ProjectContextAuthor>(),
+  /** Its links (repository, design, production…). */
+  resources: jsonb("resources").$type<ProjectResource[]>(),
+  /** What its bots may do in it; null = the defaults. */
+  botAccess: jsonb("bot_access").$type<Partial<ProjectBotAccess>>(),
   ...timestamps,
 });
 
