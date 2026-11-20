@@ -1,4 +1,4 @@
-import type { CodeSessionRef, ConversationEvent, IntegrationType, PreviewRef, ViewAction, ViewBlock } from "@agora/core";
+import type { CodeSessionRef, ConversationEvent, IntegrationType, ProjectInfo, ProjectStatus, PreviewRef, ViewAction, ViewBlock } from "@agora/core";
 import { defineMessages, getLocale, tr } from "@/i18n";
 
 const messages = defineMessages({
@@ -146,6 +146,8 @@ export type ConversationSummary = {
   pinned: boolean;
   /** A discussion put away in its project's archive. */
   archived: boolean;
+  /** A project's status; null on anything else. */
+  status: ProjectStatus | null;
   members: Person[];
   agents: AgentSummary[];
   preview: { text: string; event: ConversationEvent | null; author: string | null; fromMe: boolean } | null;
@@ -183,6 +185,8 @@ export type ConversationDetail = {
   pinned: boolean;
   /** A discussion put away in its project's archive. */
   archived: boolean;
+  /** A project's page (status, lead, context, links, bot access); null on anything else. */
+  project: ProjectInfo | null;
   createdBy: string | null;
   members: Person[];
   agents: AgentSummary[];

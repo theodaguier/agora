@@ -3,8 +3,11 @@ import { common } from "@agora/core/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { ArchiveIcon, CheckIcon, ChevronDownIcon, FolderIcon, MoreIcon, PencilIcon, PinIcon, PlusIcon, TrashIcon } from "@/components/icons";
+import { ArchiveIcon, CheckIcon, ChevronDownIcon, FolderIcon, LinkIcon, MoreIcon, PencilIcon, PinIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
+import { ProjectStatusIcon, useProjectStatusLabel } from "@/components/ProjectMarks";
+import { PROJECT_STATUSES, type ProjectStatus } from "@agora/core";
+import { toast } from "sonner";
 import { FormLabel } from "@/components/FormLabel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -45,6 +48,11 @@ const messages = defineMessages({
     unarchive: "Restore",
     delete: "Delete",
     actions: (name: string) => `Actions for ${name}`,
+    projectActions: (name: string) => `Actions for the project ${name}`,
+    openProject: "Open the project",
+    status: "Status",
+    copyLink: "Copy the link",
+    linkCopied: "Link copied.",
     addDiscussion: (name: string) => `New discussion in ${name}`,
     deleteTitle: (name: string) => `Delete « ${name} »?`,
     deleteBody: "Its messages are deleted for every member. This can't be undone.",
@@ -71,6 +79,11 @@ const messages = defineMessages({
     unarchive: "Restaurer",
     delete: "Supprimer",
     actions: (name: string) => `Actions sur ${name}`,
+    projectActions: (name: string) => `Actions sur le projet ${name}`,
+    openProject: "Ouvrir le projet",
+    status: "Statut",
+    copyLink: "Copier le lien",
+    linkCopied: "Lien copié.",
     addDiscussion: (name: string) => `Nouvelle discussion dans ${name}`,
     deleteTitle: (name: string) => `Supprimer « ${name} » ?`,
     deleteBody: "Ses messages sont supprimés pour tous les membres. Impossible de revenir en arrière.",
@@ -147,7 +160,7 @@ export function ProjectItem({
   all?: boolean;
 }) {
   const t = useT(messages);
-  const [creating, setCreating] = useState(false);
+  const create = useCreateDiscussion();
   const shown = all ? discussions : discussions.slice(0, SIDEBAR_DISCUSSIONS);
   // Unread somewhere inside a folded project: the dot stays on its row.
   const unread = !open && [project, ...discussions].some((c) => c.unread && c.id !== activeId);
@@ -165,10 +178,10 @@ export function ProjectItem({
           <ChevronDownIcon className={cn("size-3 text-muted-foreground transition-transform", !open && "-rotate-90")} />
           {unread && <span className="size-1.5 shrink-0 rounded-full bg-brand" />}
         </SidebarMenuButton>
-        <SidebarMenuAction showOnHover aria-label={t.addDiscussion(project.name)} onClick={() => setCreating(true)}>
+        <ProjectMenu project={project} trigger={<SidebarMenuAction showOnHover aria-label={t.projectActions(project.name)} className="right-7" />} />
+        <SidebarMenuAction showOnHover aria-label={t.addDiscussion(project.name)} disabled={create.isPending} onClick={() => create.mutate(project.id)}>
           <PlusIcon />
         </SidebarMenuAction>
-        <NewDiscussionDialog project={project} open={creating} onOpenChange={setCreating} />
       </SidebarMenuItem>
       {open && (
         <li>
@@ -186,7 +199,7 @@ export function ProjectItem({
             ))}
             {discussions.length > shown.length && (
               <SidebarMenuItem>
-                <SidebarMenuSubButton render={<Link to="/p/$projectId" params={{ projectId: project.id }} />} className="text-muted-foreground">
+                <SidebarMenuSubButton render={<Link to="/p/$projectId" params={{ projectId: project.id }} search={{ tab: "discussions" }} />} className="text-muted-foreground">
                   <span>{t.seeAll(discussions.length + 1)}</span>
                 </SidebarMenuSubButton>
               </SidebarMenuItem>
@@ -195,6 +208,68 @@ export function ProjectItem({
         </li>
       )}
     </>
+  );
+}
+
+/**
+ * A project's quick settings (Figma « réglages rapides »): open its page, a new discussion, its status,
+ * its link. In the sidebar on hover and in its page's header.
+ */
+export function ProjectMenu({ project, trigger, align = "start" }: { project: ConversationSummary; trigger: ReactNode & React.ReactElement; align?: "start" | "end" }) {
+  const t = useT(messages);
+  const statusLabel = useProjectStatusLabel();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const create = useCreateDiscussion();
+  const status = project.status ?? "in_progress";
+  const setStatus = useMutation({
+    mutationFn: (next: ProjectStatus) => api(conversationPath(project.id), { method: "PATCH", body: JSON.stringify({ status: next }) }),
+    onSuccess: () =>
+      Promise.all([qc.invalidateQueries({ queryKey: conversationsQuery.queryKey }), qc.invalidateQueries({ queryKey: conversationQuery(project.id).queryKey })]),
+    meta: { error: t.failed },
+  });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={trigger}>
+        <MoreIcon />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align} className="w-56">
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => navigate({ to: "/p/$projectId", params: { projectId: project.id } })}>
+            <FolderIcon />
+            {t.openProject}
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={create.isPending} onClick={() => create.mutate(project.id)}>
+            <PlusIcon />
+            {t.newDiscussion}
+          </DropdownMenuItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <ProjectStatusIcon status={status} />
+              {t.status}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-44">
+              {PROJECT_STATUSES.map((s) => (
+                <DropdownMenuItem key={s} onClick={() => s !== status && setStatus.mutate(s)}>
+                  <ProjectStatusIcon status={s} />
+                  {statusLabel[s]}
+                  {s === status && <CheckIcon className="ml-auto" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() =>
+            void navigator.clipboard.writeText(new URL(`/p/${project.id}`, window.location.origin).toString()).then(() => toast.success(t.linkCopied))
+          }
+        >
+          <LinkIcon />
+          {t.copyLink}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -306,26 +381,19 @@ export function DiscussionMenu({ discussion: d, projects, trigger }: { discussio
   );
 }
 
-/** Names a new discussion of a project, then opens it. */
-export function NewDiscussionDialog({ project, open, onOpenChange }: { project: { id: string }; open: boolean; onOpenChange: (open: boolean) => void }) {
+/** Opens a new discussion in a project, without a name: its bot names it after the first exchange. */
+export function useCreateDiscussion() {
   const t = useT(messages);
   const qc = useQueryClient();
   const navigate = useNavigate();
-  return (
-    <NameDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={t.newDiscussion}
-      initial=""
-      submit={t.create}
-      onSubmit={async (title) => {
-        const { id } = await api<{ id: string }>(conversationPath(project.id, "/discussions"), { method: "POST", body: JSON.stringify({ title }) });
-        await qc.invalidateQueries({ queryKey: conversationsQuery.queryKey });
-        navigate({ to: "/c/$conversationId", params: { conversationId: id } });
-      }}
-      error={t.createFailed}
-    />
-  );
+  return useMutation({
+    mutationFn: (projectId: string) => api<{ id: string }>(conversationPath(projectId, "/discussions"), { method: "POST", body: JSON.stringify({}) }),
+    onSuccess: async ({ id }) => {
+      await qc.invalidateQueries({ queryKey: conversationsQuery.queryKey });
+      navigate({ to: "/c/$conversationId", params: { conversationId: id } });
+    },
+    meta: { error: t.createFailed },
+  });
 }
 
 /** One required name field in a dialog: a new discussion, or renaming one. */

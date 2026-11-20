@@ -14,8 +14,10 @@ export function othersOf(c: { members: Person[]; agents: AgentSummary[] }, me: s
   ];
 }
 
-export function conversationTitle(c: { kind: string; title: string | null; members: Person[]; agents: AgentSummary[] }, me: string) {
+export function conversationTitle(c: { kind: string; title: string | null; parentId?: string | null; members: Person[]; agents: AgentSummary[] }, me: string) {
   if (c.title) return c.title;
+  // A discussion opened without a name, until its bot names it.
+  if (c.parentId) return tr(conversations).newDiscussion;
   const names = othersOf(c, me).map((p) => (p.kind === "agent" ? p.agent.name : p.person.name.split(" ")[0]!));
   return names.join(", ") || tr(conversations).justYou;
 }

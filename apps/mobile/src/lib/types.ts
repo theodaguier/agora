@@ -1,4 +1,4 @@
-import type { ConversationEvent } from "@agora/core";
+import type { ConversationEvent, ProjectInfo, ProjectStatus } from "@agora/core";
 
 /* The API's shapes, as in apps/web/src/lib/api.ts (same names). */
 
@@ -40,6 +40,8 @@ export type ConversationSummary = {
   pinned: boolean;
   /** A discussion put away in its project's archive. */
   archived: boolean;
+  /** A project's status; null on anything else. */
+  status: ProjectStatus | null;
   members: Person[];
   agents: AgentSummary[];
   preview: { text: string; event: ConversationEvent | null; author: string | null; fromMe: boolean } | null;
@@ -90,6 +92,8 @@ export type ConversationDetail = {
   pinned: boolean;
   /** A discussion put away in its project's archive. */
   archived: boolean;
+  /** A project's page; null on anything else. */
+  project: ProjectInfo | null;
   createdBy: string | null;
   members: Person[];
   agents: AgentSummary[];

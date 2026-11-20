@@ -22,6 +22,7 @@ import { QUESTIONS_PROMPT } from "./questions";
 import { createSkillCreation, createSkillRequest, SKILL_CREATE_PROMPT, SKILL_REQUEST_PROMPT } from "./skill-requests";
 import { BOT_CREATE_PROMPT, createBotRequest } from "./bot-requests";
 import { accessibleAgentIds } from "./conversations";
+import { applyDiscussionTitle, applyProjectContext, projectPrompt, titleFromFirstMessage } from "./projects";
 import { applyTasksBlock, TASKS_PROMPT, tasksContext } from "./tasks";
 import { CODE_DELEGATION_PROMPT, codeSessionsContext, wakePrompt } from "./code-sessions";
 import { webhookTurnPrompt } from "./webhook-prompt";
@@ -602,7 +603,7 @@ async function runTurn(turn: Turn) {
   }
   // Outside initial setup, the bot may request a missing MCP connector.
   if (!bot.onboarding) {
-    const [tasks, schedules, views, code] = await Promise.all([
+    const [tasks, schedules, views, code, project] = await Promise.all([
       tasksContext(people).catch((err) => {
         console.error("bot-runner: tasks context", err);
         return "";
@@ -619,9 +620,13 @@ async function runTurn(turn: Turn) {
         console.error("bot-runner: code sessions context", err);
         return "";
       }),
+      projectPrompt(conv).catch((err) => {
+        console.error("bot-runner: project context", err);
+        return "";
+      }),
     ]);
     const delegation = (await codeToolsUsable(bot.hermesProfile, turn.requestedBy)) ? CODE_DELEGATION_PROMPT : "";
-    system = [system, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, BOT_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, PREVIEW_PROMPT, mediaPrompt(conversationId), delegation, code]
+    system = [system, project, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, BOT_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, PREVIEW_PROMPT, mediaPrompt(conversationId), delegation, code]
       .filter(Boolean)
       .join("\n\n");
   }
@@ -741,6 +746,12 @@ async function runTurn(turn: Turn) {
     await applyTasksBlock(parsed.tasks, { conversationId, agentId, botName: bot.name, requestedBy: turn.requestedBy }).catch((err) =>
       console.error("bot-runner: tasks", err),
     );
+  }
+  if (group && !turn.controller.signal.aborted) {
+    const ctx = { conversationId, agentId, botName: bot.name };
+    if (parsed.projectContext) await applyProjectContext(parsed.projectContext, ctx).catch((err) => console.error("bot-runner: project context", err));
+    if (parsed.discussionTitle) await applyDiscussionTitle(parsed.discussionTitle, ctx).catch((err) => console.error("bot-runner: discussion title", err));
+    else if (conv.parentId && !conv.title) await titleFromFirstMessage(conversationId).catch((err) => console.error("bot-runner: discussion title", err));
   }
   if (parsed.availability && !turn.controller.signal.aborted) {
     await applyAvailabilityBlock(parsed.availability, { conversationId, botName: bot.name, requestedBy: turn.requestedBy }).catch((err) =>

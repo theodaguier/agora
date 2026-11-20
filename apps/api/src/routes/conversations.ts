@@ -34,7 +34,17 @@ import { markConversationRead, quietly } from "../inbox";
 import { defineMessages, tr } from "../i18n";
 import { allowedInvocations, type AttachmentRow, type Invocation } from "../prompt";
 import { sessionContext } from "../session-context";
+import { projectActivity, projectData } from "../projects";
 import { parseDraft } from "../views";
+import {
+  MAX_PROJECT_CONTEXT,
+  MAX_PROJECT_RESOURCES,
+  PROJECT_BOT_ACCESS_OPTIONS,
+  PROJECT_STATUSES,
+  projectBotAccess,
+  type ProjectInfo,
+  type ProjectStatus,
+} from "@agora/core";
 import { ALL_HANDLE, mentionsAll, SCREEN_VIEWPORTS, type QueuedMessageDto, type ViewAction, type ViewBlock } from "@agora/core";
 
 const messages = defineMessages({
@@ -56,6 +66,22 @@ const { agent, attachment, conversation, conversationAgent, conversationAvatar, 
 
 const conversationAvatarUrl = (id: string, at: Date) => `/api/conversations/${encodeURIComponent(id)}/avatar?v=${at.getTime()}`;
 
+/** A project's page properties (null on a discussion or a direct conversation). */
+export const projectInfo = (c: typeof conversation.$inferSelect): ProjectInfo | null =>
+  c.kind === "group" && !c.parentId
+    ? {
+        status: c.status ?? "in_progress",
+        leadId: c.leadId,
+        repo: c.repo,
+        dueOn: c.dueOn,
+        context: c.context ?? "",
+        contextUpdatedAt: c.contextUpdatedAt?.toISOString() ?? null,
+        contextAuthor: c.contextAuthor,
+        resources: c.resources ?? [],
+        botAccess: projectBotAccess(c.botAccess),
+      }
+    : null;
+
 const detail = (c: LoadedConversation) => ({
   id: c.conversation.id,
   kind: c.conversation.kind,
@@ -65,6 +91,7 @@ const detail = (c: LoadedConversation) => ({
   parentId: c.conversation.parentId,
   pinned: !!c.conversation.pinnedAt,
   archived: !!c.conversation.archivedAt,
+  project: projectInfo(c.conversation),
   createdBy: c.conversation.createdBy,
   members: c.members.map(({ id, name, image }) => ({ id, name, image })),
   agents: c.agents.map((a) => agentDto(a.agent)),
@@ -405,14 +432,15 @@ export const conversations = new Hono<AppEnv>()
 
   /** Opens a discussion inside a project: its own thread, with the project's members and bots. */
   .post("/:id/discussions", async (c) => {
-    const body = z.object({ title: z.string().trim().min(1).max(80) }).safeParse(await c.req.json());
+    // Without a name: its bot names it after the first exchange (bot-runner, set_discussion_title).
+    const body = z.object({ title: z.string().trim().max(80).optional() }).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid_body" }, 400);
     const me = c.get("user");
     const project = await loadConversation(me.id, c.req.param("id"));
     if (!project) return c.json({ error: "not_found" }, 404);
     if (!isProject(project)) return c.json({ error: "not_a_project" }, 400);
     const id = crypto.randomUUID();
-    await db.insert(conversation).values({ id, kind: "group", title: body.data.title, parentId: project.conversation.id, createdBy: me.id });
+    await db.insert(conversation).values({ id, kind: "group", title: body.data.title || null, parentId: project.conversation.id, createdBy: me.id });
     await joinProjectMembers(id, project, me.id);
     await postEvent(id, { type: "discussion.created", actor: me.name });
     void syncSessionSearch();
@@ -424,6 +452,22 @@ export const conversations = new Hono<AppEnv>()
     const conv = await loadConversation(c.get("user").id, c.req.param("id"));
     if (!conv) return c.json({ error: "not_found" }, 404);
     return c.json(detail(conv));
+  })
+
+  /** A project's activity: the events of its thread and of its discussions, latest first. */
+  .get("/:id/project/activity", async (c) => {
+    const conv = await loadConversation(c.get("user").id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    if (!isProject(conv)) return c.json({ error: "not_a_project" }, 400);
+    return c.json(await projectActivity(conv.conversation.id));
+  })
+
+  /** A project's data: the files and pages of its thread and of its discussions. */
+  .get("/:id/project/data", async (c) => {
+    const conv = await loadConversation(c.get("user").id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    if (!isProject(conv)) return c.json({ error: "not_a_project" }, 400);
+    return c.json(await projectData(conv.conversation.id));
   })
 
   /** Deletes a discussion of a project, with its messages; a project itself is left by its members, not deleted here. */
@@ -451,6 +495,31 @@ export const conversations = new Hono<AppEnv>()
         pinned: z.boolean().optional(),
         archived: z.boolean().optional(),
         parentId: z.string().min(1).max(100).optional(),
+        // A project's page.
+        status: z.enum(PROJECT_STATUSES as [ProjectStatus, ...ProjectStatus[]]).optional(),
+        leadId: z.string().min(1).max(100).nullable().optional(),
+        repo: z
+          .string()
+          .trim()
+          .regex(/^[\w.-]+\/[\w.-]+$/)
+          .nullable()
+          .optional()
+          .or(z.literal("").transform(() => null)),
+        dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+        context: z.string().max(MAX_PROJECT_CONTEXT).optional(),
+        resources: z
+          .array(z.object({ url: z.string().trim().url().max(500).refine((u) => /^https?:\/\//.test(u)), label: z.string().trim().max(60) }))
+          .max(MAX_PROJECT_RESOURCES)
+          .optional(),
+        botAccess: z
+          .object({
+            context: z.enum(PROJECT_BOT_ACCESS_OPTIONS.context as ["none", "read", "write"]),
+            data: z.enum(PROJECT_BOT_ACCESS_OPTIONS.data as ["none", "read", "add"]),
+            discussions: z.enum(PROJECT_BOT_ACCESS_OPTIONS.discussions as ["none", "rename"]),
+            sessions: z.enum(PROJECT_BOT_ACCESS_OPTIONS.sessions as ["none", "repo"]),
+          })
+          .partial()
+          .optional(),
       })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid_body" }, 400);
@@ -459,9 +528,13 @@ export const conversations = new Hono<AppEnv>()
     if (!conv) return c.json({ error: "not_found" }, 404);
     if (conv.conversation.kind !== "group") return c.json({ error: "not_a_group" }, 400);
     const id = conv.conversation.id;
-    const { title, description, pinned, archived, parentId } = body.data;
+    const { title, description, pinned, archived, parentId, status, leadId, repo, dueOn, context, resources, botAccess } = body.data;
     const discussion = !!conv.conversation.parentId;
     if (!discussion && (pinned !== undefined || archived !== undefined || parentId !== undefined)) return c.json({ error: "not_a_discussion" }, 400);
+    const page = [status, leadId, repo, dueOn, context, resources, botAccess].some((v) => v !== undefined);
+    if (page && discussion) return c.json({ error: "not_a_project" }, 400);
+    // The lead is one of its members.
+    if (leadId && !conv.members.some((m) => m.id === leadId)) return c.json({ error: "not_a_member" }, 400);
     // A discussion keeps a name: the sidebar lists it by it.
     if (discussion && title !== undefined && !title) return c.json({ error: "title_required" }, 400);
     let target: LoadedConversation | null = null;
@@ -478,8 +551,23 @@ export const conversations = new Hono<AppEnv>()
         ...(pinned !== undefined && { pinnedAt: pinned ? new Date() : null }),
         ...(archived !== undefined && { archivedAt: archived ? new Date() : null }),
         ...(target && { parentId: target.conversation.id }),
+        ...(status !== undefined && { status }),
+        ...(leadId !== undefined && { leadId }),
+        ...(repo !== undefined && { repo }),
+        ...(dueOn !== undefined && { dueOn }),
+        ...(context !== undefined &&
+          context !== (conv.conversation.context ?? "") && {
+            context: context || null,
+            contextUpdatedAt: new Date(),
+            contextAuthor: { kind: "user" as const, id: me.id, name: me.name },
+          }),
+        ...(resources !== undefined && { resources }),
+        ...(botAccess !== undefined && { botAccess: { ...conv.conversation.botAccess, ...botAccess } }),
       })
       .where(eq(conversation.id, id));
+    // The project's life is told in its thread, so its activity (and its bots) see it.
+    if (status !== undefined && status !== (conv.conversation.status ?? "in_progress")) await postEvent(id, { type: "project.status", actor: me.name, status });
+    if (context !== undefined && context !== (conv.conversation.context ?? "")) await postEvent(id, { type: "project.context", actor: me.name });
     // Moved: the new project's members join it (nobody is removed from a discussion they were in).
     if (target) {
       await joinProjectMembers(id, target, me.id);

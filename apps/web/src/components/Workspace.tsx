@@ -13,7 +13,7 @@ import { codeSessionState, type CodeSession } from "@agora/core";
 import { CodeStateIcon } from "@/components/CodeSessionMarks";
 import { CodeEnginesLogo } from "@/components/ProviderLogo";
 import { useCodeSessionUnread } from "@/lib/code-seen";
-import { BrowserIcon, ChatIntegrationIcon, CloseIcon, FileCodeIcon, InboxIcon, PlusIcon, SearchIcon, SplitIcon, TaskListIcon, TerminalIcon } from "@/components/icons";
+import { BrowserIcon, ChatIntegrationIcon, CloseIcon, FileCodeIcon, FolderIcon, InboxIcon, PlusIcon, SearchIcon, SplitIcon, TaskListIcon, TerminalIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -35,6 +35,8 @@ import { ConversationView } from "@/screens/Conversation";
 import { Inbox } from "@/screens/Inbox";
 import { NewChat } from "@/screens/NewChat";
 import { Sessions } from "@/screens/Sessions";
+import { ProjectView } from "@/screens/ProjectPage";
+import type { ProjectTab } from "@/router";
 import { Artifacts } from "@/screens/Artifacts";
 import { Tasks } from "@/screens/Tasks";
 import {
@@ -222,7 +224,7 @@ function useLocationSync() {
 }
 
 function PaneView({ pane, focused, multiple, canSplit }: { pane: Pane; focused: boolean; multiple: boolean; canSplit: boolean }) {
-  const search = useSearch({ strict: false }) as { m?: string };
+  const search = useSearch({ strict: false }) as { m?: string; tab?: ProjectTab };
   // Tabs already shown stay mounted (behind): their scroll, draft and side panel wait for them.
   const shown = useRef(new Set<string>());
   if (pane.active) shown.current.add(pane.active);
@@ -245,7 +247,7 @@ function PaneView({ pane, focused, multiple, canSplit }: { pane: Pane; focused: 
             return (
               <TabPlaceContext.Provider key={path} value={{ paneId: pane.id, current: focused && active, visible: active }}>
                 <div className={cn("flex min-h-0 min-w-0 flex-1", !active && "hidden")}>
-                  <TabContent path={path} focus={focused && active ? search.m : undefined} />
+                  <TabContent path={path} focus={focused && active ? search.m : undefined} projectTab={focused && active ? search.tab : undefined} />
                 </div>
               </TabPlaceContext.Provider>
             );
@@ -261,7 +263,7 @@ function PaneView({ pane, focused, multiple, canSplit }: { pane: Pane; focused: 
   );
 }
 
-function TabContent({ path, focus }: { path: string; focus?: string }) {
+function TabContent({ path, focus, projectTab }: { path: string; focus?: string; projectTab?: ProjectTab }) {
   const target = parseTab(path);
   const { user } = useRouteContext({ from: "/app" });
   const { data: conversations } = useQuery(conversationsQuery);
@@ -293,6 +295,8 @@ function TabContent({ path, focus }: { path: string; focus?: string }) {
       return <ArtifactPage artifactId={target.artifactId} onClose={close} />;
     case "sessions":
       return <Sessions />;
+    case "project":
+      return <ProjectView projectId={target.projectId} tab={projectTab ?? "overview"} />;
     case "inbox":
       return <Inbox />;
     default:
@@ -436,6 +440,10 @@ function useTabInfo(path: string): { title: string; icon: ReactNode; unread?: bo
       return { title: artifact?.title || t.artifact, icon: <FileCodeIcon /> };
     case "sessions":
       return { title: t.sessions, icon: <CodeEnginesLogo /> };
+    case "project": {
+      const project = conversations?.find((c) => c.id === target.projectId);
+      return { title: project ? conversationTitle(project, user.id) : t.loading, icon: <FolderIcon /> };
+    }
     case "inbox":
       return { title: t.inbox, icon: <InboxIcon /> };
     default:
