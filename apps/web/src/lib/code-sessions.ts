@@ -127,7 +127,7 @@ export const stopCodeSession = (conversationId: string, id: string) => api<CodeS
 export const codeModelsQuery = (conversationId: string, engine: CodeEngine = "claude") =>
   queryOptions({
     queryKey: ["code-models", conversationId, engine],
-    queryFn: () => api<{ id: string; label?: string; description?: string; reasoning?: boolean; efforts?: string[]; fast?: boolean }[]>(path(conversationId, `/models?engine=${engine}`)),
+    queryFn: () => api<{ id: string; label?: string; description?: string; reasoning?: boolean; efforts?: string[]; fast?: boolean; default?: boolean }[]>(path(conversationId, `/models?engine=${engine}`)),
     staleTime: 10 * 60_000,
   });
 

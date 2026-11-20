@@ -100,7 +100,7 @@ export const codeSessions = new Hono<AppEnv>()
     if (!engineBin(engine)) return c.json({ error: "engine_not_installed" }, 400);
     const files = await attachmentsOf(conv.conversation.id, body.data.attachmentIds);
     if (!files) return c.json({ error: "unknown_attachment" }, 400);
-    const info = body.data.model ? (await modelsOf(engine, me.id)).find((m) => m.id === body.data.model) : undefined;
+    const info = modelOf(await modelsOf(engine, me.id), body.data.model);
     if (body.data.model && !info) return c.json({ error: "unknown_model" }, 400);
     const reasoning = { effort: body.data.effort ?? null, fast: !!body.data.fast };
     const refused = unsupported(info, reasoning);
@@ -317,7 +317,7 @@ export const codeSessions = new Hono<AppEnv>()
     const body = z.object({ effort: z.string().max(20).nullable(), fast: z.boolean() }).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "invalid" }, 400);
     const session = await getCodeSession(owned.sessionId, owned.conversationId);
-    const info = session.model ? (await modelsOf(owned.engine, c.get("user").id)).find((m) => m.id === session.model) : undefined;
+    const info = modelOf(await modelsOf(owned.engine, c.get("user").id), session.model);
     const refused = unsupported(info, body.data);
     if (refused) return c.json({ error: refused }, 400);
     return setCodeSessionReasoning(owned.sessionId, body.data, owned.conversationId).then((s) => c.json(s), (err) => failure(c, err));
@@ -535,7 +535,11 @@ export const internalCode = new Hono()
     );
   });
 
-/** Why its model can't be given this effort or fast mode (no model: the engine's default, of which nothing is known). */
+/** A session's model among the engine's; none chosen: the engine's default, when it says which it is. */
+const modelOf = <M extends { id: string; default?: boolean }>(models: M[], model: string | null | undefined) =>
+  model ? models.find((m) => m.id === model) : models.find((m) => m.default);
+
+/** Why its model can't be given this effort or fast mode (no model known: none). */
 function unsupported(info: Pick<ModelInfo, "efforts" | "fast"> | undefined, { effort, fast }: Reasoning) {
   if (effort && !info?.efforts?.includes(effort)) return "unsupported_effort" as const;
   if (fast && !info?.fast) return "unsupported_fast" as const;
@@ -543,7 +547,7 @@ function unsupported(info: Pick<ModelInfo, "efforts" | "fast"> | undefined, { ef
 }
 
 /** The models a session on this engine can be given (Claude Code: minus the ones an admin blocked for the person). */
-async function modelsOf(engine: CodeEngine, userId: string): Promise<(Pick<ModelInfo, "efforts" | "fast" | "description"> & { id: string; label?: string })[]> {
+async function modelsOf(engine: CodeEngine, userId: string): Promise<(Pick<ModelInfo, "efforts" | "fast" | "description" | "default"> & { id: string; label?: string })[]> {
   const list = engine === "claude" ? allowedClaudeCodeModels(userId) : engineModels(engine);
   return list.catch((err) => (console.error(`code sessions: ${engine} models`, err), []));
 }

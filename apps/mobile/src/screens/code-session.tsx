@@ -39,7 +39,7 @@ import { Shimmer } from "@/components/shimmer";
 import { confirmAction } from "@/components/confirm-action";
 import { BranchIcon, CheckCircleIcon, ChevronDownIcon, CloseCircleIcon, BanIcon, SparklesIcon, ToolIcon } from "@/components/icons";
 import { MenuButton, TapMenu, type MenuEntry } from "@/components/menus";
-import { effortOf, effortOptions, type Reasoning } from "@/components/reasoning-rows";
+import { effortOf, effortOptions, modelOf, type Reasoning } from "@/components/reasoning-rows";
 import { MessageText } from "@/components/message-text";
 import { SlashMenu, type SlashItem } from "@/components/slash-menu";
 import { ModelLogo } from "@/components/model-logo";
@@ -1206,7 +1206,7 @@ function useSessionSettings(conversationId: string, session: CodeSession, owner:
     onError: (e) => toast.failed(e),
   });
   if (!owner) return [];
-  const current = models.find((m) => m.id === session.model);
+  const current = modelOf(models, session.model);
   const r = tr(reasoning);
   const efforts = effortOptions(current);
   const effort = effortOf(current, session) ?? "default";

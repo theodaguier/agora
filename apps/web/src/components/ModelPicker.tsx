@@ -13,7 +13,7 @@ import { providerName } from "../lib/providers";
 import { modelName } from "@agora/core";
 import { defineMessages, useT } from "@/i18n";
 import { reasoning as reasoningMessages } from "@agora/core/i18n";
-import { ReasoningSettings, type Reasoning } from "./ReasoningSettings";
+import { ReasoningPicker, type Reasoning } from "./ReasoningPicker";
 
 const messages = defineMessages({
   en: {
@@ -116,77 +116,79 @@ export function ModelPicker({
         : hermesValue(data.selected);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<InputGroupButton size="sm" />}>{current}</PopoverTrigger>
-      <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
-        <Command defaultValue={activeValue}>
-          <CommandInput placeholder={t.search} />
-          <CommandList className="max-h-80">
-            <CommandEmpty>{t.empty}</CommandEmpty>
-            <CommandGroup heading={<GroupHeading provider={data.provider} label={t.providerModels(providerName(data.provider))} />}>
-              {data.defaultAllowed && (
-                <ModelOption
-                  value={defaultValue}
-                  label={t.byDefault(modelName(data.defaultModel))}
-                  logo={<ModelLogo model={data.defaultModel} provider={data.provider} />}
-                  active={!data.selected}
-                  onSelect={() => select.mutate({ model: null })}
-                />
-              )}
-              {data.models.map((m) => (
-                <ModelOption
-                  key={m.id}
-                  value={hermesValue(m.id)}
-                  label={modelName(m.id)}
-                  logo={<ModelLogo model={m.id} provider={data.provider} />}
-                  reasoning={m.reasoning}
-                  active={!engine && !other && (data.selected ?? (data.defaultAllowed ? null : fallback)) === m.id}
-                  onSelect={() => select.mutate({ model: m.id })}
-                />
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger render={<InputGroupButton size="sm" />}>{current}</PopoverTrigger>
+        <PopoverContent side="top" align="end" sideOffset={8} className="w-72 p-0">
+          <Command defaultValue={activeValue}>
+            <CommandInput placeholder={t.search} />
+            <CommandList className="max-h-80">
+              <CommandEmpty>{t.empty}</CommandEmpty>
+              <CommandGroup heading={<GroupHeading provider={data.provider} label={t.providerModels(providerName(data.provider))} />}>
+                {data.defaultAllowed && (
+                  <ModelOption
+                    value={defaultValue}
+                    label={t.byDefault(modelName(data.defaultModel))}
+                    logo={<ModelLogo model={data.defaultModel} provider={data.provider} />}
+                    active={!data.selected}
+                    onSelect={() => select.mutate({ model: null })}
+                  />
+                )}
+                {data.models.map((m) => (
+                  <ModelOption
+                    key={m.id}
+                    value={hermesValue(m.id)}
+                    label={modelName(m.id)}
+                    logo={<ModelLogo model={m.id} provider={data.provider} />}
+                    reasoning={m.reasoning}
+                    active={!engine && !other && (data.selected ?? (data.defaultAllowed ? null : fallback)) === m.id}
+                    onSelect={() => select.mutate({ model: m.id })}
+                  />
+                ))}
+              </CommandGroup>
+              {data.others.map((p) => (
+                <Fragment key={p.provider}>
+                  <CommandSeparator />
+                  <CommandGroup heading={<GroupHeading provider={p.provider} label={t.providerModels(providerName(p.provider))} />}>
+                    {p.models.map((m) => (
+                      <ModelOption
+                        key={m.id}
+                        value={otherValue(p.provider, m.id)}
+                        label={modelName(m.id)}
+                        logo={<ModelLogo model={m.id} provider={p.provider} />}
+                        reasoning={m.reasoning}
+                        active={other === p.provider && data.selected === m.id}
+                        onSelect={() => select.mutate({ model: m.id, provider: p.provider })}
+                      />
+                    ))}
+                  </CommandGroup>
+                </Fragment>
               ))}
-            </CommandGroup>
-            {data.others.map((p) => (
-              <Fragment key={p.provider}>
-                <CommandSeparator />
-                <CommandGroup heading={<GroupHeading provider={p.provider} label={t.providerModels(providerName(p.provider))} />}>
-                  {p.models.map((m) => (
-                    <ModelOption
-                      key={m.id}
-                      value={otherValue(p.provider, m.id)}
-                      label={modelName(m.id)}
-                      logo={<ModelLogo model={m.id} provider={p.provider} />}
-                      reasoning={m.reasoning}
-                      active={other === p.provider && data.selected === m.id}
-                      onSelect={() => select.mutate({ model: m.id, provider: p.provider })}
-                    />
-                  ))}
-                </CommandGroup>
-              </Fragment>
-            ))}
-            {engines.map((e) => (
-              <Fragment key={e.provider}>
-                <CommandSeparator />
-                <CommandGroup heading={<GroupHeading provider={e.provider} label={e.label} />}>
-                  {e.models.map((m) => (
-                    <ModelOption
-                      key={m.id}
-                      value={engineValue(e.provider, m)}
-                      label={m.label ?? m.id}
-                      description={m.description}
-                      logo={<ModelLogo model={m.id} provider={e.provider} />}
-                      reasoning={m.reasoning}
-                      active={engine === e && data.selected === m.id}
-                      onSelect={() => select.mutate({ model: m.id, provider: e.provider })}
-                    />
-                  ))}
-                </CommandGroup>
-              </Fragment>
-            ))}
-          </CommandList>
-        </Command>
-        <ReasoningSettings offer={runs} value={{ effort: data.effort ?? null, fast: !!data.fast }} onChange={reason.mutate} />
-      </PopoverContent>
-    </Popover>
+              {engines.map((e) => (
+                <Fragment key={e.provider}>
+                  <CommandSeparator />
+                  <CommandGroup heading={<GroupHeading provider={e.provider} label={e.label} />}>
+                    {e.models.map((m) => (
+                      <ModelOption
+                        key={m.id}
+                        value={engineValue(e.provider, m)}
+                        label={m.label ?? m.id}
+                        description={m.description}
+                        logo={<ModelLogo model={m.id} provider={e.provider} />}
+                        reasoning={m.reasoning}
+                        active={engine === e && data.selected === m.id}
+                        onSelect={() => select.mutate({ model: m.id, provider: e.provider })}
+                      />
+                    ))}
+                  </CommandGroup>
+                </Fragment>
+              ))}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      <ReasoningPicker offer={runs} value={{ effort: data.effort ?? null, fast: !!data.fast }} onChange={reason.mutate} />
+    </>
   );
 }
 

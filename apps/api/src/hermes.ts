@@ -81,6 +81,8 @@ export type ModelInfo = {
   efforts?: string[];
   /** It has a faster, priority mode (Claude Code's fast mode, Codex's and Hermes's "priority" tier). */
   fast?: boolean;
+  /** The engine's own default (Claude Code's): what a session or thread without a chosen model runs on. */
+  default?: boolean;
 };
 
 /** How hard the model thinks and whether it runs in its fast mode, as chosen for a thread or a session. */

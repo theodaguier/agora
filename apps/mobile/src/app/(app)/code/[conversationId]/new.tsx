@@ -12,7 +12,7 @@ import { AttachMenu } from "@/components/composer/attach-menu";
 import { PendingFiles, usePendingFiles } from "@/components/composer/pending-files";
 import { headerIcon } from "@/components/header-button";
 import { OptionPicker } from "@/components/menus";
-import { keptFor, ReasoningRows, type Reasoning } from "@/components/reasoning-rows";
+import { keptFor, modelOf, ReasoningRows, type Reasoning } from "@/components/reasoning-rows";
 import { applyCodeSession, codeModelsQuery, codeReposQuery, codeSessionsQuery, startCodeSession } from "@/lib/code-sessions";
 import { withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
@@ -40,11 +40,11 @@ export default function NewCodeSessionSheet() {
   const [mode, setMode] = useState<CodePermissionMode>("bypassPermissions");
   const [model, setModel] = useState<string>("");
   const [reasoning, setReasoning] = useState<Reasoning>({ effort: null, fast: false });
-  const offer = models.find((m) => m.id === model);
+  const offer = modelOf(models, model);
   const pickModel = (next: string) => {
     setModel(next);
     // The effort and fast mode follow the new model when it has them.
-    setReasoning((r) => keptFor(models.find((m) => m.id === next), r));
+    setReasoning((r) => keptFor(modelOf(models, next), r));
   };
   const [text, setText] = useState("");
   const [attachOpen, setAttachOpen] = useState(false);
@@ -52,7 +52,7 @@ export default function NewCodeSessionSheet() {
   const ids = files.flatMap((f) => (f.status === "ready" && f.attachment ? [f.attachment.id] : []));
 
   const start = useMutation({
-    mutationFn: () => startCodeSession(conversationId, { task: text.trim(), attachmentIds: ids, mode, ...(repo && { repo }), ...(model && { model, ...reasoning }) }),
+    mutationFn: () => startCodeSession(conversationId, { task: text.trim(), attachmentIds: ids, mode, ...(repo && { repo }), ...(model && { model }), ...reasoning }),
     // The sheet gives way to the session; a failure stays inline, in the sheet.
     onSuccess: (s) => {
       setFiles([]);

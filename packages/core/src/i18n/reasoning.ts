@@ -20,8 +20,8 @@ export const reasoning = defineMessages({
     byDefault: "Default",
     byDefaultHelp: "The model's own",
     levels: { minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", ultra: "Ultra" } as Record<string, string>,
-    /** The composer's chip: the level chosen, and the fast mode when it is on. */
-    chip: (level: string | null, fast: boolean) => [level ? `Effort ${level.toLowerCase()}` : "Effort", fast && "fast"].filter(Boolean).join(", "),
+    /** The composer's chip: the level it runs with, and the fast mode when it is on. */
+    chip: (level: string, fast: boolean) => `${level} effort${fast ? ", fast" : ""}`,
     fast: "Fast mode",
     fastHelp: "Answers faster, uses more of the plan",
     changed: "Effort changed.",
@@ -32,7 +32,7 @@ export const reasoning = defineMessages({
     byDefault: "Par défaut",
     byDefaultHelp: "Celui du modèle",
     levels: { minimal: "Minimal", low: "Faible", medium: "Moyen", high: "Élevé", xhigh: "Très élevé", max: "Maximum", ultra: "Ultra" } as Record<string, string>,
-    chip: (level: string | null, fast: boolean) => [level ? `Effort ${level.toLowerCase()}` : "Effort", fast && "rapide"].filter(Boolean).join(", "),
+    chip: (level: string, fast: boolean) => `Effort ${level.toLowerCase()}${fast ? ", rapide" : ""}`,
     fast: "Mode rapide",
     fastHelp: "Répond plus vite, consomme davantage",
     changed: "Effort modifié.",

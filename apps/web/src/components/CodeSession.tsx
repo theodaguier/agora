@@ -32,7 +32,7 @@ import {
   type CodeTodo,
 } from "@agora/core";
 import { codeSessions, common, reasoning as reasoningMessages } from "@agora/core/i18n";
-import { ReasoningSettings, type Reasoning } from "./ReasoningSettings";
+import { ReasoningPicker, type Reasoning } from "./ReasoningPicker";
 import {
   ArrowUpIcon,
   BranchIcon,
@@ -873,7 +873,7 @@ function NewSessionView({
     (next: string) => {
       setModel(next);
       // The effort and fast mode follow the new model when it has them.
-      const info = models.find((m) => m.id === next);
+      const info = modelOf(models, next);
       setReasoning((r) => ({ effort: r.effort && info?.efforts?.includes(r.effort) ? r.effort : null, fast: r.fast && !!info?.fast }));
     },
     [models],
@@ -892,7 +892,7 @@ function NewSessionView({
   const files = useInstructionFiles(conversationId);
   const start = useMutation({
     mutationFn: ({ task, attachmentIds }: { task: string; attachmentIds: string[] }) =>
-      startCodeSession(conversationId, { task, attachmentIds, mode, engine, ...(repo && { repo }), ...(model && { model, ...reasoning }) }),
+      startCodeSession(conversationId, { task, attachmentIds, mode, engine, ...(repo && { repo }), ...(model && { model }), ...reasoning }),
     onSuccess: (s) => {
       setText("");
       files.clear();
@@ -982,7 +982,8 @@ function NewSessionView({
               <ModePicker engine={engine} value={mode} onSelect={setMode} />
               <span className="ml-auto flex items-center gap-2">
                 {engines.length > 1 && <EnginePicker engines={engines} value={engine} onSelect={pickEngine} />}
-                <CodeModelPicker conversationId={conversationId} engine={engine} value={model} onSelect={pickModel} reasoning={reasoning} onReasoning={setReasoning} />
+                <ReasoningPicker offer={modelOf(models, model)} value={reasoning} onChange={setReasoning} />
+                <CodeModelPicker conversationId={conversationId} engine={engine} value={model} onSelect={pickModel} />
                 <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label={t.send} aria-disabled={!canSend} className="aria-disabled:opacity-50">
                   {start.isPending ? <Spinner /> : <ArrowUpIcon />}
                 </InputGroupButton>
@@ -3014,6 +3015,9 @@ function SessionTodos({ session }: { session: CodeSession }) {
   );
 }
 
+/** A model among the engine's; none chosen: the engine's default, when it says which it is. */
+const modelOf = <M extends { id: string; default?: boolean }>(models: M[], model: string | null) => (model ? models.find((m) => m.id === model) : models.find((m) => m.default));
+
 /** The session's model, among the ones its owner may use, and the effort and fast mode it runs with. */
 function SessionModelPicker({ conversationId, session }: { conversationId: string; session: CodeSession }) {
   const t = useT(messages);
@@ -3033,13 +3037,18 @@ function SessionModelPicker({ conversationId, session }: { conversationId: strin
   const onSelect = useCallback((model: string) => mutate(model), [mutate]);
   const { mutate: reasonMutate } = reason;
   const onReasoning = useCallback((next: Reasoning) => reasonMutate(next), [reasonMutate]);
-  const reasoning = useMemo(() => ({ effort: session.effort, fast: session.fast }), [session.effort, session.fast]);
-  return <CodeModelPicker conversationId={conversationId} engine={session.engine} value={session.model} onSelect={onSelect} reasoning={reasoning} onReasoning={onReasoning} />;
+  const { data: models = [] } = useQuery(codeModelsQuery(conversationId, session.engine));
+  return (
+    <>
+      <ReasoningPicker offer={modelOf(models, session.model)} value={{ effort: session.effort, fast: session.fast }} onChange={onReasoning} disabled={reason.isPending} />
+      <CodeModelPicker conversationId={conversationId} engine={session.engine} value={session.model} onSelect={onSelect} />
+    </>
+  );
 }
 
 /**
  * A Claude Code model among the ones the owner may use: searchable, each with its vendor's logo, as
- * in the conversation's picker, the effort and fast mode it runs with at its foot. Null: Claude Code's default.
+ * in the conversation's picker (the effort and fast mode it runs with: ReasoningPicker, beside it). Null: the engine's default.
  * Its name is never cut: the composer's bar gives way on the repository instead.
  */
 // Memoized: a session at work updates at each step, and the open list must not be redrawn with it.
@@ -3048,15 +3057,11 @@ const CodeModelPicker = memo(function CodeModelPicker({
   engine,
   value,
   onSelect,
-  reasoning,
-  onReasoning,
 }: {
   conversationId: string;
   engine: CodeEngine;
   value: string | null;
   onSelect: (model: string) => void;
-  reasoning: Reasoning;
-  onReasoning: (next: Reasoning) => void;
 }) {
   const t = useT(messages);
   const [open, setOpen] = useState(false);
@@ -3097,7 +3102,6 @@ const CodeModelPicker = memo(function CodeModelPicker({
             </CommandGroup>
           </CommandList>
         </Command>
-        <ReasoningSettings offer={current} value={reasoning} onChange={onReasoning} />
       </PopoverContent>
     </Popover>
   );
