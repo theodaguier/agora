@@ -39,6 +39,7 @@ type ListedModel = {
   displayName?: string;
   description?: string;
   hidden?: boolean;
+  isDefault?: boolean;
   supportedReasoningEfforts?: { reasoningEffort?: string }[];
   serviceTiers?: { id?: string; name?: string }[];
 };
@@ -69,6 +70,7 @@ export async function codexModels(): Promise<ModelInfo[]> {
           reasoning: !!efforts.length,
           ...(efforts.length > 0 && { efforts }),
           ...(m.serviceTiers?.some((t) => t.id === CODEX_FAST_TIER) && { fast: true }),
+          ...(m.isDefault && { default: true }),
           label: m.displayName ?? m.id,
           description: m.description,
         };

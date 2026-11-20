@@ -14,6 +14,10 @@ export type Reasoning = { effort: string | null; fast: boolean };
 /** What the current model offers: its effort levels and whether it has a fast mode. */
 export type ReasoningOffer = { efforts?: string[]; fast?: boolean };
 
+/** A model among the engine's; none chosen: the engine's default, when it says which it is. */
+export const modelOf = <M extends { id: string; default?: boolean }>(models: M[], model: string | null | undefined) =>
+  model ? models.find((m) => m.id === model) : models.find((m) => m.default);
+
 /** Option value of the model's own effort ("default" is not a level any engine names). */
 const DEFAULT = "default";
 

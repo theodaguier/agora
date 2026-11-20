@@ -86,15 +86,22 @@ async function fetchModels(): Promise<ModelInfo[]> {
   const offered = menu.filter((m) => m.value && m.value !== "default");
   aliases = new Map(offered.filter((m) => m.resolvedModel && m.resolvedModel !== m.value).map((m) => [m.value, m.resolvedModel!]));
 
+  const effortsOf = (m: MenuModel | undefined) => (m?.supportsEffort && m.supportedEffortLevels?.length ? m.supportedEffortLevels : undefined);
+  // The model "default" stands for, and the levels `--effort` takes on the models the menu doesn't list.
+  const fallback = menu.find((m) => m.value === "default");
+  const ladder = effortsOf(fallback) ?? effortsOf(offered.find((m) => effortsOf(m)));
+
   const models = new Map<string, ModelInfo & { released?: string }>();
   for (const m of offered) {
     const id = m.resolvedModel ?? m.value;
     const known = byId.get(baseId(id));
+    const efforts = effortsOf(m);
     models.set(id, {
       id,
       reasoning: !!m.supportsAdaptiveThinking,
-      ...(m.supportsEffort && !!m.supportedEffortLevels?.length && { efforts: m.supportedEffortLevels }),
+      ...(efforts && { efforts }),
       ...(m.supportsFastMode && { fast: true }),
+      ...(fallback?.resolvedModel === id && { default: true }),
       label: label(id, known?.name ?? m.displayName ?? id),
       description: m.description,
       released: known?.release_date,
@@ -104,7 +111,8 @@ async function fetchModels(): Promise<ModelInfo[]> {
   for (const m of catalog) {
     // "(latest)" entries are undated aliases of a dated one listed too.
     if (bases.has(m.id) || /\(latest\)/i.test(m.name)) continue;
-    models.set(m.id, { id: m.id, reasoning: !!m.reasoning, label: label(m.id, m.name), released: m.release_date });
+    // Outside the menu, nothing says which levels it takes: the menu's, when it thinks.
+    models.set(m.id, { id: m.id, reasoning: !!m.reasoning, ...(m.reasoning && ladder && { efforts: ladder }), label: label(m.id, m.name), released: m.release_date });
   }
   return (await newestFirst([...models.values()], (m) => m.released)).map(({ released: _, ...m }) => m);
 }

@@ -125,8 +125,8 @@ function cursorModels(): Promise<{ id: string; label: string }[]> {
 }
 
 /** The models a session on this engine can be given; empty: none listed, the engine picks. */
-export async function engineModels(engine: Exclude<CodeEngine, "claude">): Promise<(Pick<ModelInfo, "efforts" | "fast" | "description"> & { id: string; label: string })[]> {
-  if (engine === "codex") return (await codexModels()).map((m) => ({ id: m.id, label: m.label ?? m.id, description: m.description, efforts: m.efforts, fast: m.fast }));
+export async function engineModels(engine: Exclude<CodeEngine, "claude">): Promise<(Pick<ModelInfo, "efforts" | "fast" | "description" | "default"> & { id: string; label: string })[]> {
+  if (engine === "codex") return (await codexModels()).map((m) => ({ id: m.id, label: m.label ?? m.id, description: m.description, efforts: m.efforts, fast: m.fast, default: m.default }));
   return cursorModels();
 }
 
