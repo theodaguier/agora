@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.71.0 — 2026-11-20
+
+### Features
+- discussions inside projects
+- projects show a folder when they have no logo
+
 ## v0.70.0 — 2026-11-20
 
 ### Features
