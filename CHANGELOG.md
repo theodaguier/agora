@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.72.0 — 2026-11-20
+
+### Features
+- a discussion's project in the mobile header; search keeps discussions in their folder
+
 ## v0.71.0 — 2026-11-20
 
 ### Features
