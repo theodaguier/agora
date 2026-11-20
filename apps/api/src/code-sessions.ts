@@ -1,7 +1,7 @@
 import { setPriority } from "node:os";
 import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { mkdir, readdir, readFile } from "node:fs/promises";
-import { basename, join, sep } from "node:path";
+import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import type { Subprocess } from "bun";
 import { CODE_ENGINE_NAMES, CODE_PRIORITIES, codeEngineModes, codeInstructionText, type CodeApproval, type CodeIssue, type CodePriority, type CodePullRequest, type CodeEngine, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
 import { activateClaudeAccount, activeClaudeAccountId, claudeCodeEnv, claudeProfiles } from "./claude-accounts";
@@ -20,6 +20,7 @@ import { cliEnv } from "./host";
 import { addHostForAgent, hostsFor, openSshForRun, sshNote, testHostForAgent, type SshAccess } from "./ssh";
 import { readLines } from "./lines";
 import { postEvent } from "./messages";
+import { ARTIFACT_PAGE_RULES, postArtifact } from "./previews";
 import { INLINE_IMAGE, MAX_INLINE_IMAGES, type AttachmentRow } from "./prompt";
 import { repoEnv } from "./repo-env";
 import { screenEnv } from "./screen";
@@ -1692,6 +1693,7 @@ async function execute(s: Live, id: number): Promise<void> {
     issueRepo(r) && !headless && issueNote(r.issue),
     sshNote(machines),
     !headless && sshAddNote,
+    !headless && artifactNote,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -2274,6 +2276,7 @@ function agoraTools(s: Live): Json[] {
     ...(s.bot && r.engine === "claude" ? [askTool(s.bot)] : []),
     ...(s.vault && r.engine === "claude" ? vaultTools : []),
     ...(r.engine === "claude" ? sshTools : []),
+    ...(r.engine === "claude" ? [artifactTool] : []),
     ...(issueRepo(r)
       ? [
           {
@@ -2290,6 +2293,60 @@ function agoraTools(s: Live): Json[] {
         ]
       : []),
   ];
+}
+
+/* ---------- artifacts it posts (previews.ts) ---------- */
+
+/**
+ * A session can't write a ```artifact block (only a bot's reply is read for one): it writes the page
+ * to a file and posts it with publish_artifact, which makes the same artifact a bot's block would.
+ */
+const PUBLISH_ARTIFACT = "publish_artifact";
+
+const artifactNote = [
+  "# Agora artifacts",
+  `When you are asked for an artifact (an Agora artifact, a page, a deck, a dashboard or a document to show or share in the conversation), write it as one HTML file and post it with mcp__${MCP_SERVER}__${PUBLISH_ARTIFACT}: it appears in the conversation as a card the members open, is kept as an artifact and can be shared by link. Don't serve it with a dev server or show it in the browser instead. To change it, edit the file and post it again with the same slug: it becomes the next version.`,
+  ...ARTIFACT_PAGE_RULES,
+  "- Embed images as `data:` URLs or link them over https: files next to the page are not published with it.",
+].join("\n");
+
+const artifactTool = {
+  name: PUBLISH_ARTIFACT,
+  description:
+    "Posts an HTML file as an Agora artifact of this session's conversation: the members get its card in the conversation, open it, and can share it by link. Posting again with the same slug publishes a new version of the same artifact. Returns its version and share link.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "The HTML file, absolute or relative to your working directory. One self-contained file." },
+      title: { type: "string", description: "The artifact's name, as shown on its card (\"Sales dashboard — Q3\")." },
+      slug: { type: "string", description: "Short lowercase hyphenated id of the artifact (sales-dashboard-q3). Same slug: new version of the same artifact. Defaults to one drawn from the title." },
+      message: { type: "string", description: "An optional short sentence shown with the card in the conversation." },
+    },
+    required: ["path", "title"],
+    additionalProperties: false,
+  },
+};
+
+async function artifactCall(s: Live, args: Json): Promise<string> {
+  const path = typeof args.path === "string" ? args.path.trim() : "";
+  const title = typeof args.title === "string" ? args.title.trim() : "";
+  if (!path) throw new Error("path is required.");
+  if (!title) throw new Error("title is required.");
+  const file = isAbsolute(path) ? path : resolve(s.row.cwd, path);
+  const html = await readFile(file, "utf8").catch(() => {
+    throw new Error(`Cannot read ${file}.`);
+  });
+  const posted = await postArtifact({
+    conversationId: s.row.conversationId,
+    agentId: s.row.agentId,
+    html,
+    title,
+    ...(typeof args.slug === "string" && { slug: args.slug }),
+    ...(typeof args.message === "string" && { text: args.message }),
+  });
+  const version = posted.version ? `version ${posted.version}` : "posted";
+  const link = posted.link ? ` Share link (${posted.shareMode === "private" ? "conversation members only until shared from the app" : `shared: ${posted.shareMode}`}): ${posted.link}` : "";
+  return `Artifact "${title}" ${version} is in the conversation.${link}`;
 }
 
 /* ---------- Machines SSH it sets up (ssh.ts) ---------- */
@@ -2386,6 +2443,13 @@ function onMcpMessage(s: Live, requestId: string, msg: Json) {
       }
       if (msg.params?.name === SSH_ADD || msg.params?.name === SSH_TEST) {
         void sshCall(s, msg.params.name, msg.params?.arguments ?? {}).then(
+          (text) => reply({ result: { content: [{ type: "text", text }] } }),
+          (err) => toolError(err instanceof Error ? err.message : String(err)),
+        );
+        return;
+      }
+      if (msg.params?.name === PUBLISH_ARTIFACT) {
+        void artifactCall(s, msg.params?.arguments ?? {}).then(
           (text) => reply({ result: { content: [{ type: "text", text }] } }),
           (err) => toolError(err instanceof Error ? err.message : String(err)),
         );
