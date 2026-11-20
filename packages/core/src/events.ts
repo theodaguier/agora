@@ -98,7 +98,8 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
   const fr = locale === "fr";
   switch (e.type) {
     case "group.created":
-      return fr ? `${e.actor} a créé le groupe` : `${e.actor} created the group`;
+      // Every group is a project now (a discussion has its own event).
+      return fr ? `${e.actor} a créé le projet` : `${e.actor} created the project`;
     case "discussion.created":
       return fr ? `${e.actor} a ouvert la discussion` : `${e.actor} started the discussion`;
     case "discussion.titled":

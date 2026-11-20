@@ -1,17 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { Command as CommandPrimitive } from "cmdk";
-import { ChevronLeftIcon, PlusIcon, UsersIcon, CloseIcon, SearchIcon, WarningIcon } from "@/components/icons";
+import { ChevronLeftIcon, PlusIcon, UsersIcon, SearchIcon, WarningIcon } from "@/components/icons";
 import { useState } from "react";
-import { AgentAvatar } from "@/components/AgentAvatar";
-import { PersonAvatar, StatusAvatar } from "@/components/ConversationAvatar";
+import { NewProjectDialog } from "@/components/NewProjectDialog";
+import { StatusAvatar } from "@/components/ConversationAvatar";
 import { type Participant } from "@/lib/participants";
 import { closeOrGoHome } from "@/lib/workspace";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupText } from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -36,17 +34,9 @@ const messages = defineMessages({
     createGroup: "Create a project",
     newConversation: "New conversation",
     to: "To:",
-    removeName: (name: string) => `Remove ${name}`,
-    addSomeone: "Add someone",
-    groupMembers: "Project Bots and colleagues",
     searchOrCreate: "Search or create Bots",
-    groupNamePlaceholder: "Project name *",
-    groupName: "Project name",
-    pickTwo: "Pick at least two participants",
-    nameIt: "Name the project",
     noMatch: "No one matches.",
     noMatchHint: "Check the spelling, or search for another name.",
-    noOneLeft: "No one else to add.",
     errorTitle: "List unavailable",
     error: "Bots and colleagues can't be reached right now.",
   },
@@ -58,17 +48,9 @@ const messages = defineMessages({
     createGroup: "Créer un projet",
     newConversation: "Nouvelle conversation",
     to: "À :",
-    removeName: (name: string) => `Retirer ${name}`,
-    addSomeone: "Ajouter quelqu'un",
-    groupMembers: "Bots et collègues du projet",
     searchOrCreate: "Rechercher ou créer des Bots",
-    groupNamePlaceholder: "Nom du projet *",
-    groupName: "Nom du projet",
-    pickTwo: "Choisis au moins deux participants",
-    nameIt: "Donne un nom au projet",
     noMatch: "Personne ne correspond.",
     noMatchHint: "Vérifie l'orthographe, ou cherche un autre nom.",
-    noOneLeft: "Personne d'autre à ajouter.",
     errorTitle: "Liste indisponible",
     error: "Les Bots et collègues sont injoignables pour le moment.",
   },
@@ -93,9 +75,7 @@ export function NewChat() {
   const listError = agentsList.error ?? peopleList.error;
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState("");
-  const [groupMode, setGroupMode] = useState(false);
-  const [picked, setPicked] = useState<Participant[]>([]);
-  const [title, setTitle] = useState("");
+  const [newProject, setNewProject] = useState(false);
 
   const goTo = async (conversationId: string) => {
     await qc.invalidateQueries({ queryKey: conversationsQuery.queryKey });
@@ -117,26 +97,12 @@ export function NewChat() {
     onSuccess: ({ id }) => goTo(id),
   });
 
-  const createGroup = useMutation({
-    mutationFn: () =>
-      api<{ id: string }>("/conversations/group", {
-        method: "POST",
-        body: JSON.stringify({
-          title: title.trim(),
-          userIds: picked.flatMap((p) => (p.kind === "user" ? [p.person.id] : [])),
-          agentIds: picked.flatMap((p) => (p.kind === "agent" ? [p.agent.id] : [])),
-        }),
-      }),
-    onSuccess: ({ id }) => goTo(id),
-    meta: { loading: c.creating },
-  });
-
   const query = q.trim().toLowerCase();
   const candidates: Participant[] = [
     // A bot still being configured does not join groups.
-    ...agents.filter((a) => !(groupMode && a.onboarding)).map((agent) => ({ kind: "agent" as const, agent })),
+    ...agents.map((agent) => ({ kind: "agent" as const, agent })),
     ...people.map((person) => ({ kind: "user" as const, person })),
-  ].filter((p) => participantName(p).toLowerCase().includes(query) && !picked.some((x) => participantKey(x) === participantKey(p)));
+  ].filter((p) => participantName(p).toLowerCase().includes(query));
 
   const pickRow = (p: Participant): Row => ({
     key: participantKey(p),
@@ -144,19 +110,11 @@ export function NewChat() {
     section: p.kind === "agent" ? "bots" : "people",
     icon: <StatusAvatar p={p} className="size-6" />,
     run: () => {
-      if (groupMode) {
-        setPicked((xs) => [...xs, p]);
-        setQ("");
-        setSelected("");
-      } else if (!openDirect.isPending) {
-        openDirect.mutate(p.kind === "agent" ? { agentId: p.agent.id } : { userId: p.person.id });
-      }
+      if (!openDirect.isPending) openDirect.mutate(p.kind === "agent" ? { agentId: p.agent.id } : { userId: p.person.id });
     },
   });
 
-  const rows: Row[] = groupMode
-    ? candidates.map(pickRow)
-    : [
+  const rows: Row[] = [
         ...(user.role === "admin"
           ? [
               {
@@ -172,22 +130,16 @@ export function NewChat() {
           key: "group",
           label: t.createGroup,
           section: "actions" as const,
-          run: () => {
-            setGroupMode(true);
-            setQ("");
-            setSelected("");
-          },
+          run: () => setNewProject(true),
           icon: (
             <span className="flex size-6 items-center justify-center text-muted-foreground">
               <UsersIcon />
             </span>
           ),
         },
-        ...candidates.map(pickRow),
-      ];
+    ...candidates.map(pickRow),
+  ];
   const current = rows.some((r) => r.key === selected) ? selected : (rows[0]?.key ?? "");
-  // A group is a project: it is named, so the sidebar never lists it by its members.
-  const canCreate = picked.length >= 2 && title.trim().length > 0 && !createGroup.isPending;
 
   return (
     <Command
@@ -210,67 +162,18 @@ export function NewChat() {
           <CommandPrimitive.Input
             data-slot="input-group-control"
             autoFocus
-            key={groupMode ? "group" : "pick"}
             value={q}
             onValueChange={(v) => {
               setQ(v);
               setSelected("");
             }}
             onKeyDown={(e) => {
-              if (e.key === "Backspace" && q === "" && picked.length) {
-                setPicked((xs) => xs.slice(0, -1));
-              } else if (e.key === "Escape") {
-                if (groupMode) {
-                  setGroupMode(false);
-                  setPicked([]);
-                  setQ("");
-                } else closeOrGoHome("/new", () => navigate({ to: "/" }));
-              }
+              if (e.key === "Escape") closeOrGoHome("/new", () => navigate({ to: "/" }));
             }}
-            placeholder={groupMode ? (picked.length ? t.addSomeone : t.groupMembers) : t.searchOrCreate}
+            placeholder={t.searchOrCreate}
             className="w-full min-w-0 flex-1 text-sm outline-hidden placeholder:text-muted-foreground"
           />
       </InputGroup>
-
-      {picked.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {picked.map((p) => (
-            <Badge
-              key={participantKey(p)}
-              variant="secondary"
-              render={<button type="button" aria-label={t.removeName(participantName(p))} onClick={() => setPicked((xs) => xs.filter((x) => participantKey(x) !== participantKey(p)))} />}
-            >
-              {p.kind === "agent" ? <AgentAvatar agent={p.agent} className="size-4" /> : <PersonAvatar person={p.person} className="size-4" />}
-              {participantName(p)}
-              <CloseIcon data-icon="inline-end" />
-            </Badge>
-          ))}
-        </div>
-      )}
-
-      {groupMode && (
-        <div className="flex items-center gap-2">
-          <Input
-            value={title}
-            maxLength={80}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => {
-              // This field is not the list's own: its keys don't drive the list.
-              e.stopPropagation();
-              if (e.key === "Enter" && canCreate) createGroup.mutate();
-            }}
-            placeholder={t.groupNamePlaceholder}
-            aria-label={t.groupName}
-          />
-          <Button
-            disabled={!canCreate}
-            onClick={() => createGroup.mutate()}
-            title={picked.length < 2 ? t.pickTwo : !title.trim() ? t.nameIt : undefined}
-          >
-            {createGroup.isPending ? c.creating : c.create}
-          </Button>
-        </div>
-      )}
 
         <CommandList className="max-h-none min-h-0 flex-1">
           {/* The actions, then one section per kind: who someone is is said once, by its heading. */}
@@ -320,19 +223,20 @@ export function NewChat() {
                 </Button>
               </EmptyContent>
             </Empty>
-          ) : !candidates.length && (query || groupMode) ? (
+          ) : !candidates.length && query ? (
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <SearchIcon />
                 </EmptyMedia>
-                <EmptyTitle>{query ? t.noMatch : t.noOneLeft}</EmptyTitle>
-                {query && <EmptyDescription>{t.noMatchHint}</EmptyDescription>}
+                <EmptyTitle>{t.noMatch}</EmptyTitle>
+                <EmptyDescription>{t.noMatchHint}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : null}
         </CommandList>
       </div>
+      <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
     </Command>
   );
 }
