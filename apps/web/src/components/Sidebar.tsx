@@ -17,6 +17,7 @@ import { listTime } from "@/lib/dates";
 import { useTurns } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { ConversationAvatar, PersonAvatar } from "@/components/ConversationAvatar";
+import { NewProjectDialog } from "@/components/NewProjectDialog";
 import { activeDiscussions, ProjectItem, useOpenProjects } from "@/components/ProjectTree";
 import { conversationTitle } from "@/lib/participants";
 import { Marketplace } from "@/components/marketplace/Marketplace";
@@ -43,6 +44,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -101,6 +103,7 @@ const messages = defineMessages({
     conversations: "Conversations",
     agents: "Agents",
     projects: "Projects",
+    newProject: "New project",
     directMessages: "Messages",
     subscriptions: "Subscriptions",
     working: "Working",
@@ -140,6 +143,7 @@ const messages = defineMessages({
     conversations: "Conversations",
     agents: "Agents",
     projects: "Projets",
+    newProject: "Nouveau projet",
     directMessages: "Messages",
     subscriptions: "Abonnements",
     working: "Au travail",
@@ -273,6 +277,7 @@ function SidebarBody() {
   const [q, setQ] = useState("");
   const t = useT(messages);
   const [market, setMarket] = useState(false);
+  const [newProject, setNewProject] = useState(false);
   const conversationList = useQuery(conversationsQuery);
   const { data: conversations = [], isPending } = conversationList;
   const list = conversations
@@ -334,9 +339,14 @@ function SidebarBody() {
           { key: "messages", label: t.directMessages, rows: direct },
         ].map(
           (g) =>
-            g.rows.length > 0 && (
+            (g.rows.length > 0 || (g.key === "projects" && !q)) && (
               <SidebarGroup key={g.key}>
                 <SidebarGroupLabel>{g.label}</SidebarGroupLabel>
+                {g.key === "projects" && (
+                  <SidebarGroupAction aria-label={t.newProject} onClick={() => setNewProject(true)}>
+                    <PlusIcon />
+                  </SidebarGroupAction>
+                )}
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {g.key === "projects"
@@ -413,6 +423,7 @@ function SidebarBody() {
           {market && <Marketplace onClose={() => setMarket(false)} />}
         </SidebarFooter>
       )}
+      <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
     </>
   );
 }
@@ -430,6 +441,7 @@ function DesktopSidebar() {
   const t = useT(messages);
   const org = useOrgName();
   const [market, setMarket] = useState(false);
+  const [newProject, setNewProject] = useState(false);
   const conversationList = useQuery(conversationsQuery);
   const { data: conversations = [], isPending } = conversationList;
   const { data: digest } = useQuery(digestQuery);
@@ -518,9 +530,14 @@ function DesktopSidebar() {
           { key: "plans", label: t.subscriptions, rows: plans },
         ].map(
           (g) =>
-            g.rows.length > 0 && (
+            (g.rows.length > 0 || g.key === "projects") && (
               // Linear's groups: the name folds its list away; the chevron shows on hover, and stays when folded.
               <Collapsible key={g.key} open={!folded.has(g.key)} onOpenChange={() => toggleFold(g.key)} render={<SidebarGroup className="group/fold pt-3.5" />}>
+                {g.key === "projects" && (
+                  <SidebarGroupAction aria-label={t.newProject} title={t.newProject} onClick={() => setNewProject(true)} className="top-3">
+                    <PlusIcon />
+                  </SidebarGroupAction>
+                )}
                 <SidebarGroupLabel
                   render={<CollapsibleTrigger />}
                   className="h-auto w-fit cursor-pointer gap-1 pb-1 leading-4.25 font-normal text-muted-foreground hover:text-foreground"
@@ -581,6 +598,7 @@ function DesktopSidebar() {
         </SidebarMenu>
         {user.role === "admin" && market && <Marketplace onClose={() => setMarket(false)} />}
       </SidebarFooter>
+      <NewProjectDialog open={newProject} onOpenChange={setNewProject} />
     </>
   );
 }

@@ -410,17 +410,18 @@ export const conversations = new Hono<AppEnv>()
 
   .post("/group", async (c) => {
     const body = z
-      .object({ title: z.string().trim().max(80).optional(), userIds: ids.default([]), agentIds: ids.default([]) })
+      .object({ title: z.string().trim().max(80).optional(), description: z.string().trim().max(200).optional(), userIds: ids.default([]), agentIds: ids.default([]) })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid_body" }, 400);
     const me = c.get("user");
     const people = (await existingUsers([...new Set(body.data.userIds)])).filter((u) => u.id !== me.id);
     const bots = await groupableAgents(me.id, [...new Set(body.data.agentIds)]);
-    if (people.length + bots.length < 2) return c.json({ error: "too_few_participants" }, 400);
+    // A named group is a project: its creator alone is enough, bots and colleagues join later.
+    if (!body.data.title && people.length + bots.length < 2) return c.json({ error: "too_few_participants" }, 400);
 
     const id = crypto.randomUUID();
     await db.transaction(async (tx) => {
-      await tx.insert(conversation).values({ id, kind: "group", title: body.data.title || null, createdBy: me.id });
+      await tx.insert(conversation).values({ id, kind: "group", title: body.data.title || null, description: body.data.description || null, createdBy: me.id });
       await tx.insert(conversationMember).values([me.id, ...people.map((p) => p.id)].map((userId) => ({ conversationId: id, userId })));
       if (bots.length) await tx.insert(conversationAgent).values(bots.map((b) => ({ conversationId: id, agentId: b.id, addedBy: me.id })));
     });
