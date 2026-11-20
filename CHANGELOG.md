@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.78.0 — 2026-11-20
+
+### Features
+- **web**: « Nouveau projet » in the ⌘K palette
+
+### Fixes
+- **web**: no « Créer un projet » in a new conversation
+- **web**: a project's name opens its page; its fold moves onto its logo
+
 ## v0.77.0 — 2026-11-20
 
 ### Features
