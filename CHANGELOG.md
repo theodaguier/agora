@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.74.0 — 2026-11-20
+
+### Features
+- coding subscriptions' limits in the sidebar
+
 ## v0.73.0 — 2026-11-20
 
 ### Features
