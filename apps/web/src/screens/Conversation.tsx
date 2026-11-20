@@ -385,15 +385,33 @@ function HeaderTitle({
       </Button>
     ) : (
       title && (
+        <>
+        {conv?.parentId && <ProjectCrumb projectId={conv.parentId} me={me} />}
         <TitleWithStatus
           title={title}
           p={conv && !group ? othersOf(conv, me)[0] : undefined}
           // A group's members are the facepile beside it: no initials tile repeating them.
           avatar={conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-4.5" />}
         />
+        </>
       )
     )}
     {group && conv && <Facepile conversation={conv} onClick={onOpenInfo} />}
+    </>
+  );
+}
+
+/** A discussion's project before its name, « Agora / », back to the project's own thread. */
+function ProjectCrumb({ projectId, me }: { projectId: string; me: string }) {
+  const { data: project } = useQuery({ ...conversationsQuery, select: (list) => list.find((c) => c.id === projectId) });
+  if (!project) return null;
+  return (
+    <>
+      <Link to="/c/$conversationId" params={{ conversationId: project.id }} className="flex min-w-0 shrink items-center gap-2 text-ui text-muted-foreground hover:text-foreground">
+        <ConversationAvatar conversation={project} me={me} className="size-4.5" />
+        <span className="truncate">{conversationTitle(project, me)}</span>
+      </Link>
+      <span className="text-ui text-muted-foreground">/</span>
     </>
   );
 }

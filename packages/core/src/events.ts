@@ -22,6 +22,8 @@ export type BotWebhook = {
  */
 export type ConversationEvent =
   | { type: "group.created"; actor: string }
+  /** A discussion opened inside a project. */
+  | { type: "discussion.created"; actor: string }
   | { type: "group.renamed"; actor: string; title: string }
   | { type: "group.unnamed"; actor: string }
   | { type: "members.added"; actor: string; names: string[] }
@@ -89,6 +91,8 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
   switch (e.type) {
     case "group.created":
       return fr ? `${e.actor} a créé le groupe` : `${e.actor} created the group`;
+    case "discussion.created":
+      return fr ? `${e.actor} a ouvert la discussion` : `${e.actor} started the discussion`;
     case "group.renamed":
       return fr ? `${e.actor} a renommé le groupe « ${e.title} »` : `${e.actor} renamed the group “${e.title}”`;
     case "group.unnamed":

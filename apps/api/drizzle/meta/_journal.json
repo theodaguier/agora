@@ -351,6 +351,13 @@
       "when": 1795128304987,
       "tag": "0049_effort_fast",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795171447919,
+      "tag": "0050_project_discussions",
+      "breakpoints": true
     }
   ]
 }
