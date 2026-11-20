@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.78.1 — 2026-11-20
+
+### Fixes
+- **web**: menu icons keep their colour on hover
+
 ## v0.78.0 — 2026-11-20
 
 ### Features
