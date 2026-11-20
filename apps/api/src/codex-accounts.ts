@@ -68,6 +68,14 @@ export async function codexEnv() {
   return accountEnv(accounts.dir(id));
 }
 
+/** Rate limits of the account in use (`account/rateLimits/read` of its app server). */
+export async function codexRateLimits() {
+  const [r] = await codexAppServer<[{ rateLimits?: CodexRateLimits | null }]>(await codexEnv(), [{ method: "account/rateLimits/read" }]);
+  return r?.rateLimits ?? null;
+}
+type CodexWindow = { usedPercent: number; windowDurationMins: number | null; resetsAt: number | null } | null;
+export type CodexRateLimits = { primary?: CodexWindow; secondary?: CodexWindow; planType?: string | null };
+
 type Account = { email: string | null; plan: string | null } | null;
 const accountCache = new Map<string, { at: number; account: Promise<Account> }>();
 
