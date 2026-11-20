@@ -1,10 +1,10 @@
 import { rankByQuery } from "@agora/core";
 import { useQuery } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { ArrowUpIcon, ChartIcon, ClockIcon, CloseIcon, FilesIcon, LayersIcon, ModelsIcon, PackageIcon, PlugIcon, PaperclipIcon, PlusIcon, RedoIcon, SettingsIcon, StopIcon, TrashIcon } from "@/components/icons";
+import { ChartIcon, ClockIcon, CloseIcon, FilesIcon, LayersIcon, ModelsIcon, PackageIcon, PlugIcon, PlusIcon, RedoIcon, SettingsIcon, TrashIcon } from "@/components/icons";
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref, type RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
+import { InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { defineMessages, useT } from "@/i18n";
 import { invocationKey, retryLast, sessionCommand, uploadAttachment, type AgentSummary, type Attachment, type Invocation, type ReplyTo } from "@/lib/api";
 import { ALL_HANDLE, MAX_ATTACHMENT } from "@agora/core";
@@ -24,6 +24,7 @@ import { PendingFiles, type PendingFile } from "./Attachments";
 import { PersonAvatar } from "./ConversationAvatar";
 import { QuoteBlock } from "./MessageParts";
 import { ModelPicker } from "./ModelPicker";
+import { AttachButton, ComposerBar, ComposerBox, SendButton, composerField, type AttachHandle } from "./ComposerFrame";
 import { SlashMenu, type SlashItem } from "./SlashMenu";
 import { toastError } from "@/lib/feedback";
 
@@ -48,7 +49,6 @@ const messages = defineMessages({
     newBody: "The bot will forget everything said in this thread. Messages stay visible.",
     newAction: "Start over",
     remove: (name: string) => `Remove ${name}`,
-    send: "Send",
   },
   fr: {
     tooLarge: "Fichier trop lourd (2 Go max)",
@@ -70,7 +70,6 @@ const messages = defineMessages({
     newBody: "Le bot oubliera tout ce qui s'est dit dans ce fil. Les messages restent affichés.",
     newAction: "Recommencer",
     remove: (name: string) => `Retirer ${name}`,
-    send: "Envoyer",
   },
 });
 
@@ -222,7 +221,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
   const [contextOpen, setContextOpen] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
-  const picker = useRef<HTMLInputElement>(null);
+  const picker = useRef<AttachHandle>(null);
   const t = useT(messages);
   const { files, clearFiles, addFiles, removeFile } = usePendingFiles(conversationId, t);
   // In a group, "/" lists the skills of the group's bots.
@@ -283,7 +282,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
         ]
       : [];
     const actions: SlashItem[] = [
-      { key: "action:files", kind: "action", name: t.attachFiles, description: t.attachHint, icon: FilesIcon, run: () => picker.current?.click() },
+      { key: "action:files", kind: "action", name: t.attachFiles, description: t.attachHint, icon: FilesIcon, run: () => picker.current?.open() },
       ...(botTools ? [{ key: "action:model", kind: "action" as const, name: t.chooseModel, description: t.chooseModelHint, icon: ModelsIcon, run: () => setModelOpen(true) }] : []),
       ...(botTools && user.role === "admin"
         ? [{ key: "action:admin", kind: "action" as const, name: t.agentSettings, description: t.administration, icon: SettingsIcon, run: () => openSettings("agents") }]
@@ -372,17 +371,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
             onPick={pick}
             status={token.trigger !== "/" ? undefined : commandsFailed ? "error" : slash && commandsPending ? "loading" : undefined}
           />}
-        <input
-          ref={picker}
-          type="file"
-          multiple
-          hidden
-          onChange={(e) => {
-            if (e.target.files) addFiles(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        <InputGroup className="rounded-xl bg-card shadow-xs dark:bg-card">
+        <ComposerBox>
           {invocations.length > 0 && (
             <InputGroupAddon align="block-start" className="flex-wrap">
               {invocations.map((v) => (
@@ -423,7 +412,7 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
               <div
                 ref={overlay}
                 aria-hidden
-                className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3.5 pb-0 text-base [scrollbar-gutter:stable] md:text-sm"
+                className={cn("pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-base md:text-sm", composerField)}
               >
                 <MentionText text={text} mentionables={colored} flat />
                 {/* A final line break takes a line in the field: the same here, so both scroll as far. */}
@@ -487,28 +476,20 @@ export function Composer({ conversationId, placeholder, botTools, mentionables =
                 }
               }}
               placeholder={placeholder}
-              className={cn("max-h-48 min-h-10 px-4 pt-3.5 pb-0 [scrollbar-gutter:stable]", highlighted && "text-transparent caret-foreground")}
+              className={cn(composerField, highlighted && "text-transparent caret-foreground")}
             />
           </div>
-          <InputGroupAddon align="block-end">
-            <InputGroupButton size="icon-sm" aria-label={t.attachFiles} onClick={() => picker.current?.click()} className="text-muted-foreground">
-              <PaperclipIcon />
-            </InputGroupButton>
-            <div className="ml-auto flex items-center gap-1">
-              {botTools && <ModelPicker conversationId={conversationId} open={modelOpen} onOpenChange={setModelOpen} />}
-              {botTools && <ContextDialog conversationId={conversationId} open={contextOpen} onOpenChange={setContextOpen} />}
-              {onStop && !canSend ? (
-                <InputGroupButton variant="default" size="icon-sm" aria-label={stopLabel} title={stopLabel} onClick={onStop}>
-                  <StopIcon />
-                </InputGroupButton>
-              ) : (
-                <InputGroupButton type="submit" variant={canSend ? "default" : "secondary"} size="icon-sm" className="rounded-full aria-disabled:text-subtle-foreground" aria-label={t.send} aria-disabled={!canSend}>
-                  <ArrowUpIcon />
-                </InputGroupButton>
-              )}
-            </div>
-          </InputGroupAddon>
-        </InputGroup>
+          <ComposerBar
+            start={<AttachButton ref={picker} onFiles={addFiles} />}
+            end={
+              <>
+                {botTools && <ModelPicker conversationId={conversationId} open={modelOpen} onOpenChange={setModelOpen} />}
+                {botTools && <ContextDialog conversationId={conversationId} open={contextOpen} onOpenChange={setContextOpen} />}
+                <SendButton canSend={canSend} onStop={onStop} stopLabel={stopLabel} />
+              </>
+            }
+          />
+        </ComposerBox>
       </form>
     </>
   );
