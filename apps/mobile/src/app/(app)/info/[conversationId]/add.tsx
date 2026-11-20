@@ -22,22 +22,22 @@ import { EmptyState } from "@/components/empty-state";
 
 const messages = defineMessages({
   en: {
-    addToGroup: "Add to group…",
+    addToGroup: "Add to the project…",
     noMatch: "No one matches.",
     everyoneHere: "Everyone is already here.",
     bots: "Bots",
     colleagues: "Colleagues",
     addFailed: "Couldn't add them.",
-    added: (name: string) => `${name} joined the group`,
+    added: (name: string) => `${name} joined the project`,
   },
   fr: {
-    addToGroup: "Ajouter au groupe…",
+    addToGroup: "Ajouter au projet…",
     noMatch: "Personne ne correspond.",
     everyoneHere: "Tout le monde est déjà là.",
     bots: "Bots",
     colleagues: "Collègues",
     addFailed: "Ajout impossible.",
-    added: (name: string) => `${name} a rejoint le groupe`,
+    added: (name: string) => `${name} a rejoint le projet`,
   },
 });
 

@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { AgentAvatar } from "./AgentAvatar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { initials, othersOf, type Participant } from "@/lib/participants";
+import { FolderIcon } from "@/components/icons";
 import { defineMessages, useT } from "@/i18n";
 import { conversations } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
@@ -105,7 +106,7 @@ export function StatusAvatar({ p, className, ring }: { p: Participant; className
   );
 }
 
-/** One avatar for a direct conversation, two overlapping for a group. `status` (ring class) adds the status dot. */
+/** One avatar for a direct conversation; a project shows its logo, or a folder. `status` (ring class) adds the status dot. */
 export function ConversationAvatar({
   conversation,
   me,
@@ -129,29 +130,27 @@ export function ConversationAvatar({
       </span>
     );
   }
-  const others = othersOf(conversation, me);
-  // A group, named or not: who is in it, two faces (never a generic people icon nor its initials).
-  if (conversation.kind !== "group" || others.length < 2) {
-    const first = others[0];
-    if (!first)
-      return (
-        <Avatar aria-hidden className={className ?? "size-10"}>
-          <AvatarFallback />
+  // A project without a logo: a folder (it holds the project's discussions), not the faces of who is in it.
+  if (conversation.kind === "group") {
+    return (
+      <span className={cn("relative shrink-0", className ?? "size-10")}>
+        <Avatar aria-hidden className="size-full">
+          <AvatarFallback>
+            <FolderIcon className="size-1/2" />
+          </AvatarFallback>
         </Avatar>
-      );
-    return status ? <StatusAvatar p={first} className={className} ring={status} /> : <ParticipantAvatar p={first} className={className} />;
+        {status && <GroupWorkingDot agentIds={conversation.agents.map((a) => a.id)} ring={status} />}
+      </span>
+    );
   }
-  return (
-    <span className={cn("relative shrink-0", className ?? "size-10")}>
-      <span className="absolute left-0 top-0 size-2/3" style={{ mask: cutout(others[1]!), WebkitMask: cutout(others[1]!) }} aria-hidden>
-        <ParticipantAvatar p={others[0]!} className="size-full" />
-      </span>
-      <span aria-hidden>
-        <ParticipantAvatar p={others[1]!} className="absolute bottom-0 right-0 size-2/3" />
-      </span>
-      {status && <GroupWorkingDot agentIds={conversation.agents.map((a) => a.id)} ring={status} />}
-    </span>
-  );
+  const first = othersOf(conversation, me)[0];
+  if (!first)
+    return (
+      <Avatar aria-hidden className={className ?? "size-10"}>
+        <AvatarFallback />
+      </Avatar>
+    );
+  return status ? <StatusAvatar p={first} className={className} ring={status} /> : <ParticipantAvatar p={first} className={className} />;
 }
 
 /** In a group, the dot only says that one of its bots is working. */
@@ -161,21 +160,4 @@ function GroupWorkingDot({ agentIds, ring }: { agentIds: string[]; ring: string 
   const working = useQuery({ ...presenceQuery, select: (s) => s.workingAgents.some((id) => ids.has(id)) }).data;
   if (!working) return null;
   return <span role="img" aria-label={t.working} className={cn(dot, ring, "bg-brand motion-safe:animate-pulse")} />;
-}
-
-const circlePath = "M16 0a16 16 0 1 1 0 32a16 16 0 0 1 0-32Z";
-
-/**
- * Cuts the back avatar along the silhouette of the front one, widened by a thin border,
- * whatever the background (hovered row, selected…); a colored ring would not follow it.
- * Coordinates: back avatar = 100 × 100, front one offset by 50 at the same scale (2/3 each).
- */
-function cutout(_front: Participant) {
-  const d = circlePath;
-  const svg =
-    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><mask id='m'>" +
-    "<rect width='100' height='100' fill='white'/>" +
-    `<path d='${d}' transform='translate(50 50) scale(3.125)' fill='black' stroke='black' stroke-width='5' stroke-linejoin='round'/>` +
-    "</mask></defs><rect width='100' height='100' mask='url(#m)'/></svg>";
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 0 0 / 100% 100% no-repeat`;
 }
