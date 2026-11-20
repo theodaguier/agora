@@ -1,7 +1,7 @@
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { ArchiveIcon, CheckIcon, ChevronDownIcon, FolderIcon, LinkIcon, MoreIcon, PencilIcon, PinIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
@@ -49,6 +49,8 @@ const messages = defineMessages({
     delete: "Delete",
     actions: (name: string) => `Actions for ${name}`,
     projectActions: (name: string) => `Actions for the project ${name}`,
+    fold: (name: string) => `Fold ${name}`,
+    unfold: (name: string) => `Unfold ${name}`,
     openProject: "Open the project",
     status: "Status",
     copyLink: "Copy the link",
@@ -80,6 +82,8 @@ const messages = defineMessages({
     delete: "Supprimer",
     actions: (name: string) => `Actions sur ${name}`,
     projectActions: (name: string) => `Actions sur le projet ${name}`,
+    fold: (name: string) => `Replier ${name}`,
+    unfold: (name: string) => `Déplier ${name}`,
     openProject: "Ouvrir le projet",
     status: "Statut",
     copyLink: "Copier le lien",
@@ -161,23 +165,41 @@ export function ProjectItem({
 }) {
   const t = useT(messages);
   const create = useCreateDiscussion();
+  const page = useLocation({ select: (l) => l.pathname === `/p/${project.id}` });
   const shown = all ? discussions : discussions.slice(0, SIDEBAR_DISCUSSIONS);
   // Unread somewhere inside a folded project: the dot stays on its row.
   const unread = !open && [project, ...discussions].some((c) => c.unread && c.id !== activeId);
   return (
     <>
       <SidebarMenuItem>
+        {/* The name opens the project's page; the fold is its own button over the logo (on hover on desktop). */}
         <SidebarMenuButton
           size={desktop ? "default" : "lg"}
           className={desktop ? "h-7.5 gap-2.5 text-ui" : undefined}
-          aria-expanded={open}
-          onClick={onToggle}
+          isActive={page}
+          render={<Link to="/p/$projectId" params={{ projectId: project.id }} aria-current={page ? "page" : undefined} />}
         >
-          <ConversationAvatar conversation={project} me={me} className={desktop ? "size-4" : "size-7"} />
+          <ConversationAvatar
+            conversation={project}
+            me={me}
+            className={cn(desktop ? "size-4 group-hover/menu-item:opacity-0 group-has-[[data-fold]:focus-visible]/menu-item:opacity-0" : "size-7 opacity-0")}
+          />
           <span className="min-w-0 flex-1 truncate">{project.name}</span>
-          <ChevronDownIcon className={cn("size-3 text-muted-foreground transition-transform", !open && "-rotate-90")} />
           {unread && <span className="size-1.5 shrink-0 rounded-full bg-brand" />}
         </SidebarMenuButton>
+        <button
+          type="button"
+          data-fold
+          aria-expanded={open}
+          aria-label={open ? t.fold(project.name) : t.unfold(project.name)}
+          onClick={onToggle}
+          className={cn(
+            "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+            desktop ? "left-2 size-4 opacity-0 group-hover/menu-item:opacity-100 focus-visible:opacity-100" : "left-2 size-7",
+          )}
+        >
+          <ChevronDownIcon className={cn("size-3.5 transition-transform", !open && "-rotate-90")} />
+        </button>
         <ProjectMenu project={project} trigger={<SidebarMenuAction showOnHover aria-label={t.projectActions(project.name)} className="right-7" />} />
         <SidebarMenuAction showOnHover aria-label={t.addDiscussion(project.name)} disabled={create.isPending} onClick={() => create.mutate(project.id)}>
           <PlusIcon />
