@@ -5,9 +5,10 @@ import { Image } from "expo-image";
 import { Avatar } from "heroui-native";
 import { useEffect, useState, type ReactNode } from "react";
 import { Animated, View } from "react-native";
-import Svg, { Circle, Defs, Mask, Path, Rect } from "react-native-svg";
+import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { useResolveClassNames } from "uniwind";
 import { AgentAvatar, useSize } from "@/components/agent-avatar";
+import { FolderIcon } from "@/components/icons";
 import { apiUrl, authHeaders } from "@/lib/api";
 import { availabilityLabel, isAway, useAvailability } from "@/lib/availability";
 import { presenceLabel } from "@/lib/dates";
@@ -174,9 +175,7 @@ function useGroupDot(agentIds: string[]): DotSpec | null {
   return busy ? working : null;
 }
 
-const circlePath = "M16 0a16 16 0 1 1 0 32a16 16 0 0 1 0-32Z";
-
-/** One avatar for a direct conversation, two overlapping for a group. `status` adds the status dot. */
+/** One avatar for a direct conversation; a project shows its logo, or a folder. `status` adds the status dot. */
 export function ConversationAvatar({
   conversation,
   me,
@@ -191,13 +190,11 @@ export function ConversationAvatar({
   const size = useSize(className ?? "size-10", 40);
   // A project with its own logo: the logo, not the faces of who is in it.
   if (conversation.kind === "group" && conversation.image) return <ProjectLogo image={conversation.image} agentIds={conversation.agents.map((a) => a.id)} size={size} status={status} />;
-  const others = othersOf(conversation, me);
-  if (conversation.kind !== "group" || others.length < 2) {
-    const first = others[0];
-    if (!first) return <Avatar alt="" variant="soft" color="default" animation="disable-all" className="shrink-0" style={{ width: size, height: size }} />;
-    return status ? <StatusAvatar p={first} size={size} /> : <ParticipantAvatar p={first} size={size} />;
-  }
-  return <GroupAvatar others={others} agentIds={conversation.agents.map((a) => a.id)} size={size} status={status} />;
+  // A project without a logo: a folder (it holds the project's discussions), not the faces of who is in it.
+  if (conversation.kind === "group") return <ProjectFolder agentIds={conversation.agents.map((a) => a.id)} size={size} status={status} />;
+  const first = othersOf(conversation, me)[0];
+  if (!first) return <Avatar alt="" variant="soft" color="default" animation="disable-all" className="shrink-0" style={{ width: size, height: size }} />;
+  return status ? <StatusAvatar p={first} size={size} /> : <ParticipantAvatar p={first} size={size} />;
 }
 
 function ProjectLogo({ image, agentIds, size, status }: { image: string; agentIds: string[]; size: number; status?: boolean }) {
@@ -217,40 +214,20 @@ function ProjectLogo({ image, agentIds, size, status }: { image: string; agentId
   );
 }
 
-function GroupAvatar({ others, agentIds, size, status }: { others: Participant[]; agentIds: string[]; size: number; status?: boolean }) {
+function ProjectFolder({ agentIds, size, status }: { agentIds: string[]; size: number; status?: boolean }) {
   const dot = useGroupDot(status ? agentIds : []);
-  // The back avatar is cut along the silhouette of the front one, widened by a thin border.
-  const small = (size * 2) / 3;
-  const front = others[1]!;
-  // Every avatar is a disc now (the agents' mascots too).
-  const d = circlePath;
+  const folder = (
+    <Avatar alt="" variant="soft" color="default" animation="disable-all" className="shrink-0" style={{ width: size, height: size }}>
+      <Avatar.Fallback animation="disabled">
+        <FolderIcon size={Math.round(size / 2)} className="text-muted" />
+      </Avatar.Fallback>
+    </Avatar>
+  );
+  if (!status) return folder;
   return (
-    <View className="relative shrink-0" style={{ width: size, height: size }}>
-      <MaskedView
-        style={{ position: "absolute", left: 0, top: 0, width: small, height: small }}
-        maskElement={
-          <Svg width={small} height={small} viewBox="0 0 100 100">
-            <Defs>
-              <Mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
-                <Rect width="100" height="100" fill="white" />
-                <Path d={d} transform="translate(50 50) scale(3.125)" fill="black" stroke="black" strokeWidth={5} strokeLinejoin="round" />
-              </Mask>
-            </Defs>
-            <Rect width="100" height="100" fill="black" mask="url(#cut)" />
-          </Svg>
-        }
-      >
-        <ParticipantAvatar p={others[0]!} size={small} />
-      </MaskedView>
-      <View className="absolute right-0 bottom-0" style={{ width: small, height: small }}>
-        {status ? (
-          <Notched size={small} dot={dot} dotPx={dotSize(size)}>
-            <ParticipantAvatar p={front} size={small} />
-          </Notched>
-        ) : (
-          <ParticipantAvatar p={front} size={small} />
-        )}
-      </View>
-    </View>
+    <Notched size={size} dot={dot} dotPx={dotSize(size)}>
+      {folder}
+    </Notched>
   );
 }
+

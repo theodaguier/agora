@@ -329,6 +329,12 @@ export const conversation = pgTable("conversation", {
   createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   /** Group a bot opened from a direct conversation by mentioning other bots there. */
   originId: text("origin_id").references((): AnyPgColumn => conversation.id, { onDelete: "set null" }),
+  /** The project a discussion belongs to (a group whose own parentId is null); deleted with it. */
+  parentId: text("parent_id").references((): AnyPgColumn => conversation.id, { onDelete: "cascade" }),
+  /** A discussion kept in the project's sidebar whatever its activity. */
+  pinnedAt: timestamp("pinned_at"),
+  /** A discussion put away: out of the sidebar, still in the project's archive. */
+  archivedAt: timestamp("archived_at"),
   ...timestamps,
 });
 

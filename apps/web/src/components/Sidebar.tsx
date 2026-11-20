@@ -17,6 +17,7 @@ import { listTime } from "@/lib/dates";
 import { useTurns } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { ConversationAvatar, PersonAvatar } from "@/components/ConversationAvatar";
+import { activeDiscussions, ProjectItem, useOpenProjects } from "@/components/ProjectTree";
 import { conversationTitle } from "@/lib/participants";
 import { Marketplace } from "@/components/marketplace/Marketplace";
 import { Button } from "@/components/ui/button";
@@ -276,8 +277,12 @@ function SidebarBody() {
     .filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
   // Agents: a direct conversation with a bot; projects: the groups; messages: one-on-one with a colleague.
   const withAgent = list.filter((c) => c.kind === "direct" && c.agents.length > 0);
-  const projects = list.filter((c) => c.kind !== "direct");
+  // A search lists the matching discussions as rows of their own; otherwise they sit in their project's folder.
+  const projects = list.filter((c) => c.kind !== "direct" && (q ? !c.archived : !c.parentId));
   const direct = list.filter((c) => c.kind === "direct" && c.agents.length === 0);
+  const [openProjects, toggleProject] = useOpenProjects();
+  const allNamed = conversations.map((c) => ({ ...c, name: conversationTitle(c, user.id) }));
+  const topProjects = allNamed.filter((c) => c.kind === "group" && !c.parentId);
   const isAdmin = user.role === "admin";
   const { data: tasks } = useQuery(tasksQuery(user.id));
   // Badge: what you have to do yourself, not what you gave to others.
@@ -324,7 +329,27 @@ function SidebarBody() {
               <SidebarGroup key={g.key}>
                 <SidebarGroupLabel>{g.label}</SidebarGroupLabel>
                 <SidebarGroupContent>
-                  <SidebarMenu>{rows(g.rows)}</SidebarMenu>
+                  <SidebarMenu>
+                    {g.key === "projects" && !q
+                      ? g.rows.map((p) => {
+                          const discussions = activeDiscussions(allNamed, p.id);
+                          const inside = conversationId === p.id || discussions.some((d) => d.id === conversationId);
+                          return (
+                            <ProjectItem
+                              key={p.id}
+                              project={p}
+                              discussions={discussions}
+                              projects={topProjects}
+                              me={user.id}
+                              activeId={conversationId}
+                              open={openProjects.has(p.id) || inside}
+                              onToggle={() => toggleProject(p.id, !(openProjects.has(p.id) || inside))}
+                              desktop={false}
+                            />
+                          );
+                        })
+                      : rows(g.rows)}
+                  </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
             ),
@@ -410,6 +435,8 @@ function DesktopSidebar() {
   const openTasks = tasks?.filter((x) => x.status !== "done" && x.assignees.some((a) => a.id === user.id)).length ?? 0;
   const list = conversations.map((c) => ({ ...c, name: conversationTitle(c, user.id) }));
   const [folded, toggleFold] = useFoldedGroups();
+  const [openProjects, toggleProject] = useOpenProjects();
+  const topProjects = list.filter((c) => c.kind === "group" && !c.parentId);
 
   return (
     <>
@@ -474,7 +501,7 @@ function DesktopSidebar() {
         {!isPending && !list.length && <EmptyList query={conversations.length > 0} list={conversationList} />}
         {[
           { key: "agents", label: t.agents, rows: list.filter((c) => c.kind === "direct" && c.agents.length > 0) },
-          { key: "projects", label: t.projects, rows: list.filter((c) => c.kind !== "direct") },
+          { key: "projects", label: t.projects, rows: topProjects },
           { key: "messages", label: t.directMessages, rows: list.filter((c) => c.kind === "direct" && c.agents.length === 0) },
         ].map(
           (g) =>
@@ -496,9 +523,25 @@ function DesktopSidebar() {
                 <CollapsibleContent>
                   <SidebarGroupContent>
                     <SidebarMenu className="gap-px">
-                      {g.rows.map((c) => (
-                        <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />
-                      ))}
+                      {g.key === "projects"
+                        ? g.rows.map((p) => {
+                            const discussions = activeDiscussions(list, p.id);
+                            const inside = conversationId === p.id || discussions.some((d) => d.id === conversationId);
+                            return (
+                              <ProjectItem
+                                key={p.id}
+                                project={p}
+                                discussions={discussions}
+                                projects={topProjects}
+                                me={user.id}
+                                activeId={conversationId}
+                                open={openProjects.has(p.id) || inside}
+                                onToggle={() => toggleProject(p.id, !(openProjects.has(p.id) || inside))}
+                                desktop
+                              />
+                            );
+                          })
+                        : g.rows.map((c) => <ConversationRow key={c.id} conversation={c} active={conversationId === c.id} desktop />)}
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </CollapsibleContent>

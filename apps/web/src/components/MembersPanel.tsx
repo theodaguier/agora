@@ -1,7 +1,7 @@
 import { PanelBar } from "@/components/PaneHeader";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouteContext } from "@tanstack/react-router";
-import { CloseIcon, LogOutIcon, MoreIcon } from "@/components/icons";
+import { CloseIcon, FolderIcon, LogOutIcon, MoreIcon } from "@/components/icons";
 import { useState } from "react";
 import { AgentAvatar } from "@/components/AgentAvatar";
 import { confirmAction } from "@/lib/confirm";
@@ -256,7 +256,7 @@ function EditProject({ conversation: conv, onSaved }: { conversation: Conversati
         }}
       >
         <FieldGroup className="gap-5">
-          <AvatarField id={formId} name={title || t.untitled} current={conv.image} value={logo} onChange={setLogo} label={t.logo} />
+          <AvatarField id={formId} name={title || t.untitled} current={conv.image} value={logo} onChange={setLogo} label={t.logo} empty={<FolderIcon className="size-1/2" />} />
           <Field>
             <FormLabel htmlFor={`${formId}-name`} required>
               {t.groupName}

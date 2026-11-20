@@ -42,6 +42,7 @@ function SignedIn() {
         <Stack.Screen name="agents/[agentId]" options={({ route }) => ((route.params as { conversationId?: string } | undefined)?.conversationId ? sheetOptions() : {})} />
         <Stack.Screen name="people/[userId]" />
         <Stack.Screen name="info/[conversationId]" />
+        <Stack.Screen name="project/[projectId]" />
         <Stack.Screen name="code/[conversationId]/[sessionId]" />
         {/* One short job each: a sheet over the current screen, closed before going anywhere else. */}
         <Stack.Screen name="new" options={sheetOptions()} />

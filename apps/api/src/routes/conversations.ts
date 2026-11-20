@@ -62,6 +62,9 @@ const detail = (c: LoadedConversation) => ({
   title: c.conversation.title,
   description: c.conversation.description,
   image: c.conversation.image,
+  parentId: c.conversation.parentId,
+  pinned: !!c.conversation.pinnedAt,
+  archived: !!c.conversation.archivedAt,
   createdBy: c.conversation.createdBy,
   members: c.members.map(({ id, name, image }) => ({ id, name, image })),
   agents: c.agents.map((a) => agentDto(a.agent)),
@@ -340,6 +343,23 @@ export async function resumeQueues() {
   for (const r of rows) if (!conversationBusy(r.conversationId)) await flushQueue(r.conversationId).catch((err) => console.error("conversations: queue", err));
 }
 
+/** A project: a group that is not itself a discussion of another project. */
+const isProject = (c: LoadedConversation) => c.conversation.kind === "group" && !c.conversation.parentId;
+
+/** The discussions of a project, for the member changes that follow the project into each of them. */
+async function discussionIds(projectId: string) {
+  return (await db.select({ id: conversation.id }).from(conversation).where(eq(conversation.parentId, projectId))).map((r) => r.id);
+}
+
+/** Gives a discussion every member and bot of its project it doesn't have yet. */
+async function joinProjectMembers(discussionId: string, project: LoadedConversation, addedBy: string) {
+  const people = project.members.map((m) => ({ conversationId: discussionId, userId: m.id }));
+  const bots = project.agents.map((a) => ({ conversationId: discussionId, agentId: a.agent.id, addedBy }));
+  if (people.length) await db.insert(conversationMember).values(people).onConflictDoNothing();
+  if (bots.length) await db.insert(conversationAgent).values(bots).onConflictDoNothing();
+  forgetMembers(discussionId);
+}
+
 export const conversations = new Hono<AppEnv>()
   .use(requireUser)
 
@@ -383,16 +403,55 @@ export const conversations = new Hono<AppEnv>()
     return c.json({ id }, 201);
   })
 
+  /** Opens a discussion inside a project: its own thread, with the project's members and bots. */
+  .post("/:id/discussions", async (c) => {
+    const body = z.object({ title: z.string().trim().min(1).max(80) }).safeParse(await c.req.json());
+    if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    const me = c.get("user");
+    const project = await loadConversation(me.id, c.req.param("id"));
+    if (!project) return c.json({ error: "not_found" }, 404);
+    if (!isProject(project)) return c.json({ error: "not_a_project" }, 400);
+    const id = crypto.randomUUID();
+    await db.insert(conversation).values({ id, kind: "group", title: body.data.title, parentId: project.conversation.id, createdBy: me.id });
+    await joinProjectMembers(id, project, me.id);
+    await postEvent(id, { type: "discussion.created", actor: me.name });
+    void syncSessionSearch();
+    await publishToConversation(id, { type: "conversation.updated", conversationId: id });
+    return c.json({ id }, 201);
+  })
+
   .get("/:id", async (c) => {
     const conv = await loadConversation(c.get("user").id, c.req.param("id"));
     if (!conv) return c.json({ error: "not_found" }, 404);
     return c.json(detail(conv));
   })
 
+  /** Deletes a discussion of a project, with its messages; a project itself is left by its members, not deleted here. */
+  .delete("/:id", async (c) => {
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    if (!conv.conversation.parentId) return c.json({ error: "not_a_discussion" }, 400);
+    const id = conv.conversation.id;
+    abandonTurns(id);
+    await db.delete(conversation).where(eq(conversation.id, id));
+    forgetGroup(id, conv.agents.map((a) => a.agent));
+    void syncSessionSearch();
+    for (const m of conv.members) publishToUser(m.id, { type: "conversation.removed", conversationId: id });
+    return c.body(null, 204);
+  })
+
   /** A group's (a project's) name and description; any member may change them. */
   .patch("/:id", async (c) => {
     const body = z
-      .object({ title: z.string().trim().max(80).optional(), description: z.string().trim().max(200).optional() })
+      .object({
+        title: z.string().trim().max(80).optional(),
+        description: z.string().trim().max(200).optional(),
+        // A discussion's place: kept in the sidebar, put away, or moved to another project.
+        pinned: z.boolean().optional(),
+        archived: z.boolean().optional(),
+        parentId: z.string().min(1).max(100).optional(),
+      })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid_body" }, 400);
     const me = c.get("user");
@@ -400,12 +459,32 @@ export const conversations = new Hono<AppEnv>()
     if (!conv) return c.json({ error: "not_found" }, 404);
     if (conv.conversation.kind !== "group") return c.json({ error: "not_a_group" }, 400);
     const id = conv.conversation.id;
-    const { title, description } = body.data;
+    const { title, description, pinned, archived, parentId } = body.data;
+    const discussion = !!conv.conversation.parentId;
+    if (!discussion && (pinned !== undefined || archived !== undefined || parentId !== undefined)) return c.json({ error: "not_a_discussion" }, 400);
+    // A discussion keeps a name: the sidebar lists it by it.
+    if (discussion && title !== undefined && !title) return c.json({ error: "title_required" }, 400);
+    let target: LoadedConversation | null = null;
+    if (parentId !== undefined && parentId !== conv.conversation.parentId) {
+      target = await loadConversation(me.id, parentId);
+      if (!target || !isProject(target)) return c.json({ error: "not_a_project" }, 400);
+    }
     const renamed = title !== undefined && (title || null) !== conv.conversation.title;
     await db
       .update(conversation)
-      .set({ ...(title !== undefined && { title: title || null }), ...(description !== undefined && { description: description || null }) })
+      .set({
+        ...(title !== undefined && { title: title || null }),
+        ...(description !== undefined && { description: description || null }),
+        ...(pinned !== undefined && { pinnedAt: pinned ? new Date() : null }),
+        ...(archived !== undefined && { archivedAt: archived ? new Date() : null }),
+        ...(target && { parentId: target.conversation.id }),
+      })
       .where(eq(conversation.id, id));
+    // Moved: the new project's members join it (nobody is removed from a discussion they were in).
+    if (target) {
+      await joinProjectMembers(id, target, me.id);
+      void syncSessionSearch();
+    }
     // Only a new name is told in the thread: a description is the project's, not news.
     if (renamed) await postEvent(id, title ? { type: "group.renamed", actor: me.name, title } : { type: "group.unnamed", actor: me.name });
     await publishToConversation(id, { type: "conversation.updated", conversationId: id });
@@ -468,9 +547,14 @@ export const conversations = new Hono<AppEnv>()
     const people = (await existingUsers(body.data.userIds)).filter((u) => !conv.members.some((m) => m.id === u.id));
     const bots = (await groupableAgents(me.id, body.data.agentIds)).filter((b) => !conv.agents.some((a) => a.agent.id === b.id));
     if (!people.length && !bots.length) return c.body(null, 204);
-    if (people.length) await db.insert(conversationMember).values(people.map((p) => ({ conversationId: id, userId: p.id }))).onConflictDoNothing();
-    if (bots.length) await db.insert(conversationAgent).values(bots.map((b) => ({ conversationId: id, agentId: b.id, addedBy: me.id }))).onConflictDoNothing();
-    forgetMembers(id);
+    // Joining a project is joining its discussions.
+    const into = isProject(conv) ? [id, ...(await discussionIds(id))] : [id];
+    for (const target of into) {
+      if (people.length) await db.insert(conversationMember).values(people.map((p) => ({ conversationId: target, userId: p.id }))).onConflictDoNothing();
+      if (bots.length) await db.insert(conversationAgent).values(bots.map((b) => ({ conversationId: target, agentId: b.id, addedBy: me.id }))).onConflictDoNothing();
+      forgetMembers(target);
+      if (target !== id) await publishToConversation(target, { type: "conversation.updated", conversationId: target });
+    }
     await postEvent(id, { type: "members.added", actor: me.name, names: [...people.map((p) => p.name), ...bots.map((b) => b.name)] });
     void syncSessionSearch();
     await publishToConversation(id, { type: "conversation.updated", conversationId: id });
@@ -487,6 +571,22 @@ export const conversations = new Hono<AppEnv>()
     const { kind, memberId } = c.req.param();
     const self = kind === "user" && memberId === me.id;
     if (!self && conv.conversation.createdBy !== me.id && me.role !== "admin") return c.json({ error: "forbidden" }, 403);
+    // Leaving a project, or being removed from it, is also leaving its discussions.
+    if (isProject(conv) && (kind === "user" || kind === "agent")) {
+      for (const sub of await discussionIds(id)) {
+        if (kind === "agent") {
+          await db.delete(conversationAgent).where(and(eq(conversationAgent.conversationId, sub), eq(conversationAgent.agentId, memberId)));
+          abandonTurns(sub, memberId);
+          const bot = conv.agents.find((a) => a.agent.id === memberId);
+          if (bot) forgetGroup(sub, [bot.agent]);
+        } else {
+          await db.delete(conversationMember).where(and(eq(conversationMember.conversationId, sub), eq(conversationMember.userId, memberId)));
+          forgetMembers(sub);
+          publishToUser(memberId, { type: "conversation.removed", conversationId: sub });
+        }
+        await publishToConversation(sub, { type: "conversation.updated", conversationId: sub });
+      }
+    }
 
     if (kind === "agent") {
       const target = conv.agents.find((a) => a.agent.id === memberId);

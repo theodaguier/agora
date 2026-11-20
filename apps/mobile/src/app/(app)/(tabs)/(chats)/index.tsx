@@ -1,23 +1,19 @@
-import { plainPreview, renderEvent } from "@agora/core";
 import { common, conversations } from "@agora/core/i18n";
 import { useQuery } from "@tanstack/react-query";
-import { Link, router, Stack } from "expo-router";
-import { ListGroup, PressableFeedback, Separator, SkeletonGroup, Spinner, Typography } from "heroui-native";
+import { router, Stack } from "expo-router";
+import { ListGroup, PressableFeedback, Separator, SkeletonGroup, Typography } from "heroui-native";
 import { Fragment, useMemo } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
-import { ColorDot, ConversationAvatar } from "@/components/conversation-avatar";
 import { conversationTitle } from "@/components/participants";
-import { PressableItem } from "@/components/people/section";
+import { ConversationRow } from "@/components/conversation-row";
 import { OrgLogo } from "@/components/org-logo";
 import { useMe, useServer } from "@/components/server-scope";
-import { listTime } from "@/lib/dates";
 import { digestQuery } from "@/lib/digest";
-import { defineMessages, locale, tr } from "@/lib/i18n";
+import { defineMessages, tr } from "@/lib/i18n";
 import { conversationsQuery } from "@/lib/queries";
 import type { ConversationSummary } from "@/lib/types";
 import { headerIcon } from "@/components/header-button";
 import { usePullToRefresh, withTap } from "@/lib/haptics";
-import { useTurns } from "@/lib/realtime";
 import { EmptyState } from "@/components/empty-state";
 import { WarningIcon } from "@/components/icons";
 
@@ -45,6 +41,23 @@ const messages = defineMessages({
     listError: "Les conversations sont injoignables pour le moment.",
   },
 });
+
+type Named = ConversationSummary & { name: string };
+
+/**
+ * The projects, one row each whatever their discussions: the row tells the latest activity among
+ * the project and its discussions still in use, and is unread when any of them is.
+ */
+function projectRows(rows: Named[]): Named[] {
+  return rows
+    .filter((c) => c.kind === "group" && !c.parentId)
+    .map((p) => {
+      const inside = [p, ...rows.filter((d) => d.parentId === p.id && !d.archived)];
+      const latest = inside.reduce((a, b) => (new Date(b.lastAt) > new Date(a.lastAt) ? b : a));
+      return { ...p, preview: latest.preview, lastAt: latest.lastAt, unread: inside.some((c) => c.unread) };
+    })
+    .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime());
+}
 
 /** The conversation list: the app's home, like the web's sidebar. */
 export default function Chats() {
@@ -79,7 +92,7 @@ export default function Chats() {
           <View className="mb-8 mt-1 gap-4">
             {[
               { key: "agents", label: t.agents, rows: rows.filter((c) => c.kind === "direct" && c.agents.length > 0) },
-              { key: "projects", label: t.projects, rows: rows.filter((c) => c.kind !== "direct") },
+              { key: "projects", label: t.projects, rows: projectRows(rows) },
               { key: "messages", label: t.directMessages, rows: rows.filter((c) => c.kind === "direct" && c.agents.length === 0) },
             ].map(
               (g) =>
@@ -91,7 +104,14 @@ export default function Chats() {
                     {/* Figma « Discussions »: one flat list on the page, no card, no separators. */}
                     <ListGroup variant="transparent" className="mx-1">
                       {g.rows.map((item) => (
-                        <Row key={item.id} item={item} me={me.id} t={t} />
+                        <ConversationRow
+                          key={item.id}
+                          item={item}
+                          me={me.id}
+                          t={t}
+                          // A project opens its discussions; everything else its thread.
+                          href={g.key === "projects" ? { pathname: "/project/[projectId]", params: { projectId: item.id } } : undefined}
+                        />
                       ))}
                     </ListGroup>
                   </View>
@@ -121,67 +141,6 @@ export default function Chats() {
         )}
       </ScrollView>
     </>
-  );
-}
-
-function Row({
-  item: c,
-  me,
-  t,
-}: {
-  item: ConversationSummary & { name: string };
-  me: string;
-  t: { prefix: (name: string) => string; you: string; unread: string; waiting: string; working: string };
-}) {
-  // A bot waiting for an approval: said instead of the last message, with the orange dot (état/attente).
-  const turns = useTurns(c.id);
-  const waiting = turns.some((x) => x.approval);
-  const working = !waiting && turns.length > 0;
-  const preview = c.preview;
-  const prefix = preview ? (preview.fromMe ? t.prefix(t.you) : preview.author && c.kind === "group" ? t.prefix(preview.author) : "") : "";
-  // « Pixel est prêt » under Pixel's name says nothing: a list preview is a message, not a setup event.
-  const shown = preview && preview.event?.type !== "agent.ready" ? preview : null;
-  const text = shown ? plainPreview(shown.event ? renderEvent(shown.event, locale) : shown.text) : "";
-  return (
-    <Link href={{ pathname: "/c/[conversationId]", params: { conversationId: c.id } }} asChild>
-      <Link.Trigger>
-        <PressableItem itemClassName="gap-3 py-2.5">
-          <ListGroup.ItemPrefix>
-            {/* Presence only for colleagues: what a bot is doing is said on the second line. */}
-            <ConversationAvatar conversation={c} me={me} className="size-11" status={!c.agents.length} />
-          </ListGroup.ItemPrefix>
-          <ListGroup.ItemContent className="gap-0.5">
-            <View className="flex-row items-baseline gap-2">
-              <ListGroup.ItemTitle className="flex-1" numberOfLines={1}>
-                {c.name}
-              </ListGroup.ItemTitle>
-              <Typography type="body-xs" className="text-subtle">
-                {listTime(new Date(c.lastAt))}
-              </Typography>
-            </View>
-            {/* Figma « Ligne de conversation »: the dot ends the second line, under the time. Waiting for you: orange; unread: blue. */}
-            <View className="flex-row items-center gap-2">
-              {working && <Spinner size="sm" color="default" />}
-              <ListGroup.ItemDescription className="flex-1" numberOfLines={1}>
-                {waiting ? t.waiting : working ? t.working : shown ? `${prefix}${text}` : ""}
-              </ListGroup.ItemDescription>
-              {waiting ? (
-                <View accessibilityLabel={t.waiting}>
-                  <ColorDot size={8} color="text-waiting" />
-                </View>
-              ) : (
-                c.unread && (
-                  <View accessibilityLabel={t.unread}>
-                    <ColorDot size={8} color="text-brand" />
-                  </View>
-                )
-              )}
-            </View>
-          </ListGroup.ItemContent>
-        </PressableItem>
-      </Link.Trigger>
-      <Link.Preview />
-    </Link>
   );
 }
 

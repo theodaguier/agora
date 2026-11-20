@@ -131,10 +131,10 @@ const strings = defineMessages({
     unavailable: "Conversation unavailable.",
     messageTo: (name: string) => `Message ${name}…`,
     runCommand: "Run this command and look at what it returns:",
-    writeGroupMention: "Message the group (@ to call a bot)",
-    writeGroup: "Message the group",
+    writeGroupMention: "Message the project (@ to call a bot)",
+    writeGroup: "Message the project",
     dropTo: (name: string) => `Drop your files to send them to ${name}`,
-    dropToGroup: "Drop your files to send them to the group",
+    dropToGroup: "Drop your files to send them to the project",
     back: "Back",
     waitingYou: "Waits for your answer",
     showPanel: "Show panel",
@@ -159,10 +159,10 @@ const strings = defineMessages({
     unavailable: "Conversation indisponible.",
     messageTo: (name: string) => `Écrire à ${name}…`,
     runCommand: "Exécute cette commande et analyse ce qu'elle renvoie :",
-    writeGroupMention: "Écrire au groupe (@ pour appeler un bot)",
-    writeGroup: "Écrire au groupe",
+    writeGroupMention: "Écrire dans le projet (@ pour appeler un bot)",
+    writeGroup: "Écrire dans le projet",
     dropTo: (name: string) => `Dépose tes fichiers pour les envoyer à ${name}`,
-    dropToGroup: "Dépose tes fichiers pour les envoyer au groupe",
+    dropToGroup: "Dépose tes fichiers pour les envoyer au projet",
     back: "Retour",
     waitingYou: "Attend ta réponse",
     showPanel: "Afficher le panneau",
@@ -385,15 +385,33 @@ function HeaderTitle({
       </Button>
     ) : (
       title && (
+        <>
+        {conv?.parentId && <ProjectCrumb projectId={conv.parentId} me={me} />}
         <TitleWithStatus
           title={title}
           p={conv && !group ? othersOf(conv, me)[0] : undefined}
           // A group's members are the facepile beside it: no initials tile repeating them.
           avatar={conv && !group && <ConversationAvatar conversation={conv} me={me} className="size-4.5" />}
         />
+        </>
       )
     )}
     {group && conv && <Facepile conversation={conv} onClick={onOpenInfo} />}
+    </>
+  );
+}
+
+/** A discussion's project before its name, « Agora / », back to the project's own thread. */
+function ProjectCrumb({ projectId, me }: { projectId: string; me: string }) {
+  const { data: project } = useQuery({ ...conversationsQuery, select: (list) => list.find((c) => c.id === projectId) });
+  if (!project) return null;
+  return (
+    <>
+      <Link to="/c/$conversationId" params={{ conversationId: project.id }} className="flex min-w-0 shrink items-center gap-2 text-ui text-muted-foreground hover:text-foreground">
+        <ConversationAvatar conversation={project} me={me} className="size-4.5" />
+        <span className="truncate">{conversationTitle(project, me)}</span>
+      </Link>
+      <span className="text-ui text-muted-foreground">/</span>
     </>
   );
 }

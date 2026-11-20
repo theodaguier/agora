@@ -34,6 +34,12 @@ export type ConversationSummary = {
   description: string | null;
   /** A group's logo; null = its participants' faces. */
   image: string | null;
+  /** The project a discussion belongs to; null for a project, a direct conversation. */
+  parentId: string | null;
+  /** A discussion kept at the top of its project whatever its activity. */
+  pinned: boolean;
+  /** A discussion put away in its project's archive. */
+  archived: boolean;
   members: Person[];
   agents: AgentSummary[];
   preview: { text: string; event: ConversationEvent | null; author: string | null; fromMe: boolean } | null;
@@ -78,6 +84,12 @@ export type ConversationDetail = {
   description: string | null;
   /** A group's logo; null = its participants' faces. */
   image: string | null;
+  /** The project a discussion belongs to; null for a project, a direct conversation. */
+  parentId: string | null;
+  /** A discussion kept at the top of its project whatever its activity. */
+  pinned: boolean;
+  /** A discussion put away in its project's archive. */
+  archived: boolean;
   createdBy: string | null;
   members: Person[];
   agents: AgentSummary[];

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { PersonAvatar } from "@/components/ConversationAvatar";
 import { Button } from "@/components/ui/button";
 import { FormLabel } from "@/components/FormLabel";
@@ -125,6 +125,7 @@ export function AvatarField({
   value,
   onChange,
   label,
+  empty,
 }: {
   id: string;
   name: string;
@@ -133,6 +134,8 @@ export function AvatarField({
   onChange: (next: AvatarChange) => void;
   /** Defaults to "Profile photo". */
   label?: string;
+  /** Shown while there is no image, instead of the initials of `name` (a project's folder). */
+  empty?: ReactNode;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const t = useT(messages);
@@ -191,13 +194,11 @@ export function AvatarField({
         )}
       >
         {/* No name yet: an empty disc with the camera, never a "?" placeholder. */}
-        {shown || name ? (
+        {shown || (name && !empty) ? (
           <PersonAvatar person={{ id, name, image: shown }} className="size-12" />
         ) : (
           <Avatar className="size-12">
-            <AvatarFallback>
-              <CameraIcon />
-            </AvatarFallback>
+            <AvatarFallback>{empty ?? <CameraIcon />}</AvatarFallback>
           </Avatar>
         )}
       </button>

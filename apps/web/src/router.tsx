@@ -25,6 +25,7 @@ const MemoryWindow = lazyRouteComponent(() => import("./screens/MemoryWindow"), 
 const Sessions = lazyRouteComponent(() => import("./screens/Sessions"), "Sessions");
 const Artifacts = lazyRouteComponent(() => import("./screens/Artifacts"), "Artifacts");
 const ArtifactRoute = lazyRouteComponent(() => import("./screens/ConversationTabs"), "ArtifactRoute");
+const ProjectDiscussions = lazyRouteComponent(() => import("./screens/ProjectDiscussions"), "ProjectDiscussions");
 
 export const queryClient = new QueryClient({
   mutationCache,
@@ -113,6 +114,8 @@ const sessionsRoute = createRoute({ getParentRoute: () => appRoute, path: "/sess
 const artifactsRoute = createRoute({ getParentRoute: () => appRoute, path: "/artifacts", component: Artifacts });
 const artifactRoute = createRoute({ getParentRoute: () => appRoute, path: "/artifacts/$artifactId", component: ArtifactRoute });
 const inboxRoute = createRoute({ getParentRoute: () => appRoute, path: "/inbox", component: Inbox });
+/** Every discussion of a project, from its folder's « See all ». */
+const projectRoute = createRoute({ getParentRoute: () => appRoute, path: "/p/$projectId", component: ProjectDiscussions });
 /** `?m=<messageId>`: opens the conversation on that message (from the inbox). */
 const conversationRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -144,7 +147,7 @@ const memoryRoute = createRoute({
   },
   component: MemoryWindow,
 });
-const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, memoryRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, sessionsRoute, artifactsRoute, artifactRoute, inboxRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, setupRoute, twoFactorRoute, inviteRoute, forgotPasswordRoute, resetPasswordRoute, memoryRoute, appRoute.addChildren([homeRoute, newChatRoute, tasksRoute, sessionsRoute, artifactsRoute, artifactRoute, inboxRoute, projectRoute, conversationRoute, screenRoute, codeSessionRoute, previewRoute, agentRoute])]);
 
 export const router = createRouter({ routeTree, defaultPendingComponent: RoutePending, defaultErrorComponent: RouteError, defaultNotFoundComponent: RouteNotFound });
 
