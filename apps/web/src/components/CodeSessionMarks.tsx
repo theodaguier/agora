@@ -128,7 +128,7 @@ export function CodePriorityIcon({ priority, className, showNone }: { priority: 
   }
   const { n, tone } = BARS[priority];
   return (
-    <svg viewBox="0 0 16 16" className={cn(svg, tone)} style={toneColor(tone)} aria-hidden>
+    <svg viewBox="0 0 16 16" className={cn(svg, tone)} style={toneColor(tone)} data-tone="" aria-hidden>
       {[
         [1.5, 6],
         [6.5, 9],

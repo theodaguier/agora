@@ -59,7 +59,8 @@ const key = (c: ModelChoice) => `${c.group}\u0000${c.id}`;
  */
 const EFFORT_TONE: Record<string, string> = { medium: "state-running", high: "state-merged", xhigh: "warning", max: "priority-urgent", ultra: "priority-urgent" };
 export const FAST_TONE = "state-running";
-export const tone = (token: string | undefined) => (token ? { color: `var(--${token})` } : undefined);
+/** Spread on an element: its colour, and `data-tone` so a highlighted menu row doesn't recolour its SVG paths (index.css). */
+export const tone = (token: string | undefined) => (token ? { style: { color: `var(--${token})` }, "data-tone": "" } : {});
 const effortTone = (effort: string | null) => tone(effort ? EFFORT_TONE[effort] : undefined);
 
 /**
@@ -113,9 +114,9 @@ export function ModelMenu({
         {current ? name(current) : t.model}
         {(effort || on) && (
           <span className="text-muted-foreground">
-            {effort && <span style={effortTone(effort)}>{level(effort)}</span>}
+            {effort && <span {...effortTone(effort)}>{level(effort)}</span>}
             {effort && on && ", "}
-            {on && <span style={tone(FAST_TONE)}>{t.fastShort}</span>}
+            {on && <span {...tone(FAST_TONE)}>{t.fastShort}</span>}
           </span>
         )}
       </DropdownMenuTrigger>
@@ -125,8 +126,8 @@ export function ModelMenu({
             <DropdownMenuGroup>
               {fast && (
                 <DropdownMenuItem closeOnClick={false} onClick={() => onReasoning({ effort, fast: !on })}>
-                  <FlashIcon style={tone(FAST_TONE)} />
-                  <span className="flex-1" style={tone(FAST_TONE)}>
+                  <FlashIcon {...tone(FAST_TONE)} />
+                  <span className="flex-1" {...tone(FAST_TONE)}>
                     {tr.fast}
                   </span>
                   <Switch checked={on} size="sm" tabIndex={-1} aria-hidden className="pointer-events-none data-checked:bg-state-running" />
@@ -156,11 +157,11 @@ export function ModelMenu({
               {efforts.length > 0 && (
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
-                    <GaugeIcon style={effortTone(effort)} />
-                    <span className="flex-1" style={effortTone(effort)}>
+                    <GaugeIcon {...effortTone(effort)} />
+                    <span className="flex-1" {...effortTone(effort)}>
                       {tr.label}
                     </span>
-                    <span className="text-muted-foreground" style={effortTone(effort)}>
+                    <span className="text-muted-foreground" {...effortTone(effort)}>
                       {level(effort ?? DEFAULT)}
                     </span>
                   </DropdownMenuSubTrigger>
@@ -168,8 +169,8 @@ export function ModelMenu({
                     <DropdownMenuRadioGroup value={effort ?? DEFAULT} onValueChange={(v) => onReasoning({ effort: v === DEFAULT ? null : (v as string), fast: on })}>
                       {[DEFAULT, ...efforts].map((e) => (
                         <DropdownMenuRadioItem key={e} value={e}>
-                          <GaugeIcon style={effortTone(e === DEFAULT ? null : e)} />
-                          <span style={effortTone(e === DEFAULT ? null : e)}>{level(e)}</span>
+                          <GaugeIcon {...effortTone(e === DEFAULT ? null : e)} />
+                          <span {...effortTone(e === DEFAULT ? null : e)}>{level(e)}</span>
                         </DropdownMenuRadioItem>
                       ))}
                     </DropdownMenuRadioGroup>

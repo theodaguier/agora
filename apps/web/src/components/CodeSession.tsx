@@ -2936,13 +2936,13 @@ function ModeSub({ engine, value, onSelect, disabled }: { engine: CodeEngine; va
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger disabled={disabled} title={t.modeShortcut}>
-        <span className="contents" style={color}>
+        <span className="contents" {...color}>
           {MODE_ICONS[value]}
         </span>
-        <span className="flex-1" style={color}>
+        <span className="flex-1" {...color}>
           {t.mode}
         </span>
-        <span className="text-muted-foreground" style={color}>
+        <span className="text-muted-foreground" {...color}>
           {t.modes[value]}
         </span>
       </DropdownMenuSubTrigger>
@@ -2950,11 +2950,11 @@ function ModeSub({ engine, value, onSelect, disabled }: { engine: CodeEngine; va
         <DropdownMenuRadioGroup value={value} onValueChange={(v) => onSelect(v as CodePermissionMode)}>
           {codeEngineModes(engine).map((m) => (
             <DropdownMenuRadioItem key={m} value={m} className="items-start">
-              <span className="contents" style={tone(MODE_TONE[m])}>
+              <span className="contents" {...tone(MODE_TONE[m])}>
                 {MODE_ICONS[m]}
               </span>
               <span className="flex min-w-0 flex-col gap-0.5">
-                <span style={tone(MODE_TONE[m])}>{t.modes[m]}</span>
+                <span {...tone(MODE_TONE[m])}>{t.modes[m]}</span>
                 <span className="text-xs text-muted-foreground">{t.modeHelp[m]}</span>
               </span>
             </DropdownMenuRadioItem>
