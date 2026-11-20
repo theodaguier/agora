@@ -133,6 +133,7 @@ export function ProjectItem({
   open,
   onToggle,
   desktop,
+  all = false,
 }: {
   project: Named;
   discussions: Named[];
@@ -142,10 +143,12 @@ export function ProjectItem({
   open: boolean;
   onToggle: () => void;
   desktop: boolean;
+  /** Every discussion given, not only the latest (a search's matches). */
+  all?: boolean;
 }) {
   const t = useT(messages);
   const [creating, setCreating] = useState(false);
-  const shown = discussions.slice(0, SIDEBAR_DISCUSSIONS);
+  const shown = all ? discussions : discussions.slice(0, SIDEBAR_DISCUSSIONS);
   // Unread somewhere inside a folded project: the dot stays on its row.
   const unread = !open && [project, ...discussions].some((c) => c.unread && c.id !== activeId);
   return (
