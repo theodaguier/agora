@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.80.0 — 2026-11-23
+
+### Features
+- GitHub as an Agora integration, repository picked from it
+
 ## v0.79.0 — 2026-11-23
 
 ### Features
