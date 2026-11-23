@@ -5,6 +5,7 @@ import {
   PROJECT_STATUSES,
   resourceDomain,
   type ConversationEvent,
+  type CodeRepo,
   type ProjectBotAccess,
   type ProjectInfo,
   type ProjectResource,
@@ -19,9 +20,9 @@ import { MessageText } from "@/components/MessageText";
 import { OptionSelect } from "@/components/Pickers";
 import { ProjectStatusIcon, useProjectStatusLabel } from "@/components/ProjectMarks";
 import { ProjectMenu, useCreateDiscussion } from "@/components/ProjectTree";
-import { ChevronLeftIcon, CloseIcon, ExternalLinkIcon, FileIcon, FileTextIcon, LinkIcon, SearchIcon } from "@/components/icons";
+import { BranchIcon, ChevronLeftIcon, CloseIcon, ExternalLinkIcon, FileIcon, FileTextIcon, LinkIcon, SearchIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup } from "@/components/ui/field";
@@ -43,6 +44,7 @@ import { useOrgTitle } from "@/lib/org";
 import { conversationTitle } from "@/lib/participants";
 import { agentsQuery, conversationQuery, conversationsQuery, usersQuery } from "@/lib/queries";
 import { confirmAction } from "@/lib/confirm";
+import { openSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import type { ProjectTab } from "@/router";
 import { ProjectDiscussionList } from "@/screens/ProjectDiscussions";
@@ -95,8 +97,14 @@ const messages = defineMessages({
     removeBotBody: "It will no longer answer in the project or its discussions. You can add it back later.",
     removeAction: "Remove",
     repo: "Repository",
-    repoPlaceholder: "owner/name",
+    findRepo: "Find a repository",
     noRepo: "No repository",
+    noRepos: "No repository matches.",
+    useRepo: (repo: string) => `Use ${repo}`,
+    clearRepo: "Remove the repository",
+    githubOff: "GitHub isn't connected to Agora.",
+    connectGitHub: "Connect GitHub",
+    askAdmin: "GitHub isn't connected to Agora: ask an admin to connect it in Settings.",
     openOnGitHub: "Open on GitHub",
     dueOn: "Due date",
     botAccess: "What the bots can do",
@@ -168,8 +176,14 @@ const messages = defineMessages({
     removeBotBody: "Il ne répondra plus dans le projet ni dans ses discussions. Tu pourras le rajouter plus tard.",
     removeAction: "Retirer",
     repo: "Dépôt",
-    repoPlaceholder: "propriétaire/nom",
+    findRepo: "Chercher un dépôt",
     noRepo: "Aucun dépôt",
+    noRepos: "Aucun dépôt ne correspond.",
+    useRepo: (repo: string) => `Utiliser ${repo}`,
+    clearRepo: "Retirer le dépôt",
+    githubOff: "GitHub n'est pas connecté à Agora.",
+    connectGitHub: "Connecter GitHub",
+    askAdmin: "GitHub n'est pas connecté à Agora : demande à un admin de le connecter dans les Paramètres.",
     openOnGitHub: "Ouvrir sur GitHub",
     dueOn: "Échéance",
     botAccess: "Ce que les bots peuvent faire",
@@ -787,46 +801,105 @@ function ParticipantsField({ detail, kind }: { detail: ConversationDetail; kind:
   );
 }
 
-/** The repository: one field showing it with GitHub's logo; it opens to change it, or to go to it on GitHub. */
+/** GitHub integration: connected or not, and the repositories its token reaches. */
+const githubReposQuery = { queryKey: ["github", "repos"], queryFn: () => api<{ connected: boolean; repos: CodeRepo[] }>("/github/repos") };
+
+const REPO = /^[\w.-]+\/[\w.-]+$/;
+
+function RepoLogo() {
+  return <BrandLogo domain="github.com" fallback={<BranchIcon />} className="size-4 dark:invert" />;
+}
+
+/**
+ * The repository, picked among those the GitHub integration reaches (Settings › Integrations). Without
+ * it, the field offers to connect GitHub. It also opens the repository on GitHub, or clears it.
+ */
 function RepoField({ repo, onSave }: { repo: string | null; onSave: (repo: string | null) => void }) {
   const t = useT(messages);
+  const { user } = useRouteContext({ from: "/app" });
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(repo ?? "");
-  const valid = !draft.trim() || /^[\w.-]+\/[\w.-]+$/.test(draft.trim());
+  const [search, setSearch] = useState("");
+  const { data, isPending, isError } = useQuery({ ...githubReposQuery, enabled: open });
+  const connected = data?.connected ?? true;
+  // A repository typed in full that the list doesn't hold (another owner's, or one the token doesn't list).
+  const typed = search.trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$|\/$/g, "");
+  const custom = connected && REPO.test(typed) && typed !== repo && !data?.repos.some((r) => r.repo === typed) ? typed : null;
+  const choose = (next: string | null) => {
+    setOpen(false);
+    setSearch("");
+    if (next !== repo) onSave(next);
+  };
   return (
     <Popover
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (o) setDraft(repo ?? "");
+        if (!o) setSearch("");
       }}
     >
       <PopoverTrigger render={<Button variant="outline" className={cn("w-full justify-start font-normal", !repo && "text-muted-foreground")} />}>
-        {repo && <BrandLogo domain="github.com" fallback={<LinkIcon />} className="size-3.5" />}
+        {repo && <RepoLogo />}
         <span className="truncate">{repo ?? t.noRepo}</span>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-64">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!valid) return;
-            onSave(draft.trim() || null);
-            setOpen(false);
-          }}
-          className="flex flex-col gap-2"
-        >
-          <Input autoFocus value={draft} placeholder={t.repoPlaceholder} aria-label={t.repo} aria-invalid={!valid} onChange={(e) => setDraft(e.target.value)} />
-          <div className="flex gap-2">
-            {repo && (
-              <Button variant="outline" size="sm" className="flex-1" nativeButton={false} render={<a href={GITHUB + repo} target="_blank" rel="noreferrer" />}>
-                {t.openOnGitHub}
-              </Button>
+      <PopoverContent align="end" className="w-72 p-0">
+        <Command>
+          <CommandInput placeholder={t.findRepo} value={search} onValueChange={setSearch} />
+          <CommandList>
+            <CommandEmpty>{isPending ? <Spinner className="mx-auto" /> : isError ? t.listUnavailable : connected ? t.noRepos : t.githubOff}</CommandEmpty>
+            {!isPending && !connected && (
+              <CommandGroup forceMount>
+                {user.role === "admin" ? (
+                  <CommandItem
+                    forceMount
+                    value="__connect"
+                    onSelect={() => {
+                      setOpen(false);
+                      openSettings("integrations");
+                    }}
+                  >
+                    <RepoLogo />
+                    {t.connectGitHub}
+                  </CommandItem>
+                ) : (
+                  <p className="px-2 py-1.5 text-sm text-muted-foreground">{t.askAdmin}</p>
+                )}
+              </CommandGroup>
             )}
-            <Button type="submit" size="sm" className="flex-1" disabled={!valid}>
-              {t.save}
-            </Button>
-          </div>
-        </form>
+            {custom && (
+              <CommandGroup>
+                <CommandItem value={custom} onSelect={() => choose(custom)}>
+                  <RepoLogo />
+                  {t.useRepo(custom)}
+                </CommandItem>
+              </CommandGroup>
+            )}
+            {!!data?.repos.length && (
+              <CommandGroup heading="GitHub">
+                {data.repos.map((r) => (
+                  <CommandItem key={r.repo} value={r.repo} data-checked={r.repo === repo} onSelect={() => choose(r.repo)}>
+                    <RepoLogo />
+                    <span className="truncate">{r.repo}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            {repo && (
+              <>
+                <CommandSeparator alwaysRender />
+                <CommandGroup forceMount>
+                  <CommandItem forceMount value="__open" onSelect={() => (setOpen(false), window.open(GITHUB + repo, "_blank", "noreferrer"))}>
+                    <ExternalLinkIcon />
+                    {t.openOnGitHub}
+                  </CommandItem>
+                  <CommandItem forceMount value="__none" onSelect={() => choose(null)}>
+                    <CloseIcon />
+                    {t.clearRepo}
+                  </CommandItem>
+                </CommandGroup>
+              </>
+            )}
+          </CommandList>
+        </Command>
       </PopoverContent>
     </Popover>
   );

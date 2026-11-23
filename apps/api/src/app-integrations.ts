@@ -21,6 +21,7 @@ const messages = defineMessages({
     resendInvalid: "Resend refused this API key.",
     logoDevInvalid: "logo.dev refused this publishable key.",
     googleMapsInvalid: "Google refused this key (is the Maps Static API enabled for it?).",
+    githubInvalid: "GitHub refused this token.",
     unreachable: (service: string) => `${service} is unreachable, try again.`,
     badFrom: "Expected an address like Agora <no-reply@your-domain.com>.",
   },
@@ -30,6 +31,7 @@ const messages = defineMessages({
     resendInvalid: "Resend a refusé cette clé API.",
     logoDevInvalid: "logo.dev a refusé cette clé publique.",
     googleMapsInvalid: "Google a refusé cette clé (l'API Maps Static est-elle activée pour elle ?).",
+    githubInvalid: "GitHub a refusé ce jeton.",
     unreachable: (service: string) => `${service} est injoignable, réessaie.`,
     badFrom: "Adresse attendue du type Agora <no-reply@ton-domaine.com>.",
   },
@@ -86,6 +88,21 @@ const DEFS = [
       }).catch(() => null);
       if (!res) throw new IntegrationError(tr(messages).unreachable("Google Maps"));
       if (!res.ok) throw new IntegrationError(tr(messages).googleMapsInvalid);
+    },
+  },
+  {
+    // The code sessions' GitHub access (code-git.ts githubToken): the repositories a project or a
+    // session picks from, their clones, branches and pull requests. The vault's GH_TOKEN stays a fallback.
+    id: "github",
+    fields: [{ name: "token", secret: true, required: true }],
+    fromEnv: () => null,
+    check: async (v) => {
+      const res = await fetch("https://api.github.com/user", {
+        headers: { Authorization: `Bearer ${v.token}`, Accept: "application/vnd.github+json", "User-Agent": "agora" },
+        signal: AbortSignal.timeout(8000),
+      }).catch(() => null);
+      if (!res) throw new IntegrationError(tr(messages).unreachable("GitHub"));
+      if (!res.ok) throw new IntegrationError(tr(messages).githubInvalid);
     },
   },
 ] satisfies Def[];

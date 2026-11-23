@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, realpath, rm, writeFile } from "node:fs/promi
 import { isAbsolute, join } from "node:path";
 import type { CodeCheck, CodeChecks, CodeGit, CodeGitFile, CodeIssue, CodeMergeMethod, CodePullRequest, CodeRepo } from "@agora/core";
 import { childEnv } from "./harden";
+import { integrationConfig } from "./app-integrations";
 import { defineMessages, tr } from "./i18n";
 import { instanceSecret } from "./vault";
 
@@ -15,15 +16,16 @@ import { instanceSecret } from "./vault";
  * project's credentials (repo-env.ts) written into it. Deleting the worktree
  * keeps the branch in the clone.
  *
- * Access comes from a token of the vault (instance .env): GH_TOKEN or
- * GITHUB_TOKEN, else the GitHub connector's. It is handed to git and gh through
+ * Access comes from the GitHub integration (Settings › Integrations), else a
+ * token of the vault (instance .env): GH_TOKEN or GITHUB_TOKEN, else the
+ * GitHub connector's. It is handed to git and gh through
  * the environment only: the clone's credential helper reads it from there, so
  * it is never written to disk nor put in a URL.
  */
 
 const messages = defineMessages({
   en: {
-    noToken: "No GitHub access: add GH_TOKEN (a token with Contents and Pull requests) to the vault, or install the GitHub connector.",
+    noToken: "No GitHub access: connect GitHub in Settings › Integrations.",
     badRepo: (repo: string) => `“${repo}” is not a GitHub repository (expected owner/name or its URL).`,
     otherClone: (dir: string, repo: string) => `${dir} already holds a clone of ${repo}: pick another project.`,
     notEmpty: (dir: string) => `${dir} already holds files that are not a git clone: pick another project.`,
@@ -57,7 +59,7 @@ const messages = defineMessages({
     methodRefused: (method: string) => `This repository doesn't allow ${method} merges.`,
   },
   fr: {
-    noToken: "Pas d'accès GitHub : ajoute GH_TOKEN (un jeton avec Contents et Pull requests) au coffre, ou installe le connecteur GitHub.",
+    noToken: "Pas d'accès GitHub : connecte GitHub dans Paramètres › Intégrations.",
     badRepo: (repo: string) => `« ${repo} » n'est pas un dépôt GitHub (owner/nom ou son URL attendu).`,
     otherClone: (dir: string, repo: string) => `${dir} contient déjà un clone de ${repo} : choisis un autre projet.`,
     notEmpty: (dir: string) => `${dir} contient déjà des fichiers qui ne sont pas un clone git : choisis un autre projet.`,
@@ -104,8 +106,8 @@ export class GitHubError extends GitError {
   }
 }
 
-/** GitHub access of the sessions, from the vault. */
-export const githubToken = () => instanceSecret("GH_TOKEN", "GITHUB_TOKEN", "MCP_GITHUB_API_KEY");
+/** GitHub access of the sessions: the app's GitHub integration, else the vault. */
+export const githubToken = async () => (await integrationConfig("github"))?.token ?? (await instanceSecret("GH_TOKEN", "GITHUB_TOKEN", "MCP_GITHUB_API_KEY"));
 
 /**
  * Credential helper of the clones: answers git with the token of its environment.

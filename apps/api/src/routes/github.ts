@@ -2,7 +2,8 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { turnOfHermesSession } from "../bot-runner";
 import { internalToken } from "../code-plugin";
-import { parseRepo } from "../code-git";
+import { canUseCodeSessions } from "../code-engines";
+import { githubToken, listRepos, parseRepo } from "../code-git";
 import { botMergeStatus, botPullRequest, decideMergeRequest, getMergeRequest, GitHubMergeError, mergeAsPerson, readPullRequest, requestMerge } from "../github-merge";
 import { requireUser, type AppEnv } from "../middleware";
 
@@ -22,6 +23,16 @@ export const github = new Hono<AppEnv>()
     if (err instanceof GitHubMergeError) return c.json({ error: err.message }, err.status);
     console.error("github", err);
     return c.json({ error: "internal" }, 500);
+  })
+
+  /**
+   * The GitHub integration, for a project's repository: whether it is connected, and the repositories
+   * its token reaches (listed to the people who can start code sessions only).
+   */
+  .get("/repos", async (c) => {
+    const connected = !!(await githubToken());
+    const repos = connected && canUseCodeSessions(c.get("user")) ? await listRepos().catch((err) => (console.error("github: repos", err), [])) : [];
+    return c.json({ connected, repos });
   })
 
   /** 404 without a token or for a pull request GitHub doesn't know (the card stays hidden). */

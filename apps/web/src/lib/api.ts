@@ -246,7 +246,7 @@ export type McpRequest = {
 
 /** One of the app's own integrations (Settings › Integrations); secret values come redacted. */
 export type AppIntegration = {
-  id: "resend" | "logodev" | "googlemaps";
+  id: "resend" | "logodev" | "googlemaps" | "github";
   source: "app" | "env" | null;
   values: Record<string, string>;
 };

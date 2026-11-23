@@ -135,7 +135,7 @@ describe("a session's worktree", () => {
   });
 
   test("pushing needs GitHub access", async () => {
-    await expect(push(dir)).rejects.toThrow(/GH_TOKEN/);
+    await expect(push(dir)).rejects.toThrow(/Int[ée]grations/);
   });
 
   test("prepared again, it stays as it is; another repository or stray files are refused", async () => {

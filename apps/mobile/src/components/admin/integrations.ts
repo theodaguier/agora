@@ -10,7 +10,7 @@ import { defineMessages } from "@/lib/i18n";
 
 /** One of the app's own integrations; secret values come redacted (apps/web/src/lib/api.ts AppIntegration). */
 export type AppIntegration = {
-  id: "resend" | "logodev";
+  id: "resend" | "logodev" | "googlemaps" | "github";
   source: "app" | "env" | null;
   values: Record<string, string>;
 };
@@ -37,6 +37,20 @@ export const SPECS: Record<IntegrationId, { name: string; domain: string; type: 
     docs: "https://www.logo.dev/dashboard/api-keys",
     fields: [{ name: "publishableKey", placeholder: "pk_…" }],
   },
+  googlemaps: {
+    name: "Google Maps",
+    domain: "google.com",
+    type: "other",
+    docs: "https://console.cloud.google.com/google/maps-apis/credentials",
+    fields: [{ name: "mapsKey", secret: true, placeholder: "AIza…" }],
+  },
+  github: {
+    name: "GitHub",
+    domain: "github.com",
+    type: "code",
+    docs: "https://github.com/settings/personal-access-tokens/new",
+    fields: [{ name: "token", secret: true, placeholder: "github_pat_…" }],
+  },
 };
 
 export const integrationsMessages = defineMessages({
@@ -46,16 +60,22 @@ export const integrationsMessages = defineMessages({
     purpose: {
       resend: "Sends invitation and password reset emails.",
       logodev: "Shows brand logos in conversations and connectors.",
+      googlemaps: "Draws the maps of the places agents show.",
+      github: "The repositories of projects and code sessions: clones, branches, pull requests.",
     } as Record<IntegrationId, string>,
     fields: {
       apiKey: "API key",
       from: "Sender",
       publishableKey: "Publishable key",
+      mapsKey: "API key",
+      token: "Access token",
     } as Record<string, string>,
     help: {
       apiKey: "A “Sending access” key is enough.",
       from: "Its domain must be verified in Resend.",
       publishableKey: "The pk_… key: it's made to be read by the browser.",
+      mapsKey: "With the Maps Static API enabled. It stays on the server.",
+      token: "A fine-grained token with Contents, Pull requests, Issues and Commit statuses, on the repositories Agora may use.",
     } as Record<string, string>,
     connected: "Connected",
     fromEnv: "From the environment",
@@ -66,6 +86,8 @@ export const integrationsMessages = defineMessages({
     disconnectText: {
       resend: "Invitation links will only be shown to the admin, and password reset emails won't be sent anymore.",
       logodev: "Conversations and connectors show generic icons again.",
+      googlemaps: "Maps of places fall back to a plain base map.",
+      github: "Projects and code sessions won't reach your repositories anymore.",
     } as Record<IntegrationId, string>,
     envNote: "The server's environment variables will apply again, if any.",
     dialogTitle: (name: string) => `Connect ${name}`,
@@ -84,16 +106,22 @@ export const integrationsMessages = defineMessages({
     purpose: {
       resend: "Envoie les emails d'invitation et de réinitialisation du mot de passe.",
       logodev: "Affiche le logo des marques dans les conversations et les connecteurs.",
+      googlemaps: "Dessine la carte des lieux que montrent les agents.",
+      github: "Les dépôts des projets et des sessions de code : clones, branches, pull requests.",
     },
     fields: {
       apiKey: "Clé API",
       from: "Expéditeur",
       publishableKey: "Clé publique",
+      mapsKey: "Clé API",
+      token: "Jeton d'accès",
     },
     help: {
       apiKey: "Une clé « Sending access » suffit.",
       from: "Son domaine doit être vérifié dans Resend.",
       publishableKey: "La clé pk_… : elle est faite pour être lue par le navigateur.",
+      mapsKey: "Avec l'API Maps Static activée. Elle reste sur le serveur.",
+      token: "Un jeton fine-grained avec Contents, Pull requests, Issues et Commit statuses, sur les dépôts qu'Agora peut utiliser.",
     },
     connected: "Connecté",
     fromEnv: "Via l'environnement",
@@ -104,6 +132,8 @@ export const integrationsMessages = defineMessages({
     disconnectText: {
       resend: "Les liens d'invitation ne seront plus qu'affichés à l'admin, et les emails de réinitialisation du mot de passe ne partiront plus.",
       logodev: "Les conversations et les connecteurs retrouvent des icônes génériques.",
+      googlemaps: "Les cartes des lieux reviennent à un fond de carte simple.",
+      github: "Les projets et les sessions de code n'accéderont plus à tes dépôts.",
     },
     envNote: "Les variables d'environnement du serveur s'appliqueront de nouveau, s'il y en a.",
     dialogTitle: (name: string) => `Connecter ${name}`,
