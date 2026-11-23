@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.81.1 — 2026-11-23
+
+### Fixes
+- GitHub organization typed as its display name
+
 ## v0.81.0 — 2026-11-23
 
 ### Features
