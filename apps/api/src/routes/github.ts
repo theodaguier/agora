@@ -5,11 +5,25 @@ import { internalToken } from "../code-plugin";
 import { canUseCodeSessions } from "../code-engines";
 import { forgetRepos, githubToken, listRepos, parseRepo } from "../code-git";
 import { env } from "../env";
-import { createFromCode, forgetInstallations, manifestForm, takeState } from "../github-app";
+import { defineMessages, tr } from "../i18n";
+import { createFromCode, forgetInstallations, manifestForm, orgHandle, takeState } from "../github-app";
 import { botMergeStatus, botPullRequest, decideMergeRequest, getMergeRequest, GitHubMergeError, mergeAsPerson, readPullRequest, requestMerge } from "../github-merge";
 import { requireUser, type AppEnv } from "../middleware";
 
 const METHOD = z.enum(["squash", "merge", "rebase"]);
+
+const messages = defineMessages({
+  en: {
+    badOrg: "Expected the organization's GitHub handle, as in github.com/E-Do-Studio.",
+    noOrg: (org: string) => `GitHub has no organization named “${org}”: use its handle, as in github.com/E-Do-Studio.`,
+    badName: "The app's name is required, 34 characters at most.",
+  },
+  fr: {
+    badOrg: "Le nom GitHub de l'organisation est attendu, comme dans github.com/E-Do-Studio.",
+    noOrg: (org: string) => `GitHub ne connaît aucune organisation « ${org} » : utilise son nom GitHub, comme dans github.com/E-Do-Studio.`,
+    badName: "Le nom de l'app est obligatoire, 34 caractères au plus.",
+  },
+});
 
 /** Back to Settings › Integrations in the web app, saying how connecting GitHub went. */
 const settingsUrl = (github: "connected" | "failed") => `${env.WEB_ORIGIN.replace(/\/$/, "")}/?settings=integrations&github=${github}`;
@@ -35,11 +49,20 @@ export const github = new Hono<AppEnv>()
   /** The form the browser posts to GitHub to create the app: on `org`, else on the admin's account. */
   .post("/app/manifest", async (c) => {
     if (c.get("user").role !== "admin") return c.json({ error: "forbidden" }, 403);
-    const body = z
-      .object({ org: z.string().trim().regex(/^[\w-]{1,39}$/).optional().or(z.literal("")), name: z.string().trim().min(1).max(34) })
-      .safeParse(await c.req.json().catch(() => ({})));
-    if (!body.success) return c.json({ error: "invalid" }, 400);
-    return c.json(manifestForm(c.get("user").id, body.data.org || null, body.data.name));
+    const t = tr(messages);
+    const body = z.object({ org: z.string().max(200).default(""), name: z.string().trim().min(1).max(34) }).safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: t.badName }, 400);
+    const org = orgHandle(body.data.org) || null;
+    if (org && !/^[a-z\d](?:[a-z\d-]{0,38})$/i.test(org)) return c.json({ error: t.badOrg }, 400);
+    // A wrong handle would end on GitHub's 404 page: checked here first (public, no token needed).
+    if (org) {
+      const res = await fetch(`https://api.github.com/orgs/${encodeURIComponent(org)}`, {
+        headers: { Accept: "application/vnd.github+json", "User-Agent": "agora" },
+        signal: AbortSignal.timeout(8000),
+      }).catch(() => null);
+      if (res?.status === 404) return c.json({ error: t.noOrg(org) }, 400);
+    }
+    return c.json(manifestForm(c.get("user").id, org, body.data.name));
   })
   /** GitHub created the app: its credentials are kept, then the browser goes on to install it. */
   .get("/app/created", async (c) => {

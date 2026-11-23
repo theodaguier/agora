@@ -69,6 +69,15 @@ export async function removeGithubApp() {
 
 const origin = () => env.WEB_ORIGIN.replace(/\/$/, "");
 
+/** "E-Do Studio", "https://github.com/E-Do-Studio/" → "E-Do-Studio": GitHub handles have no spaces. */
+export const orgHandle = (input: string) =>
+  input
+    .trim()
+    .replace(/^(?:https?:\/\/)?(?:www\.)?github\.com\//i, "")
+    .replace(/\/.*$/, "")
+    .replace(/^@/, "")
+    .replace(/\s+/g, "-");
+
 /** Pending creations: the state GitHub hands back, for the admin who started it. */
 const states = new Map<string, { userId: string; at: number }>();
 const STATE_TTL_MS = 30 * 60_000;
