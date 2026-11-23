@@ -1734,7 +1734,7 @@ async function execute(s: Live, id: number): Promise<void> {
   // The browsers it launches show on the conversation's screen.
   const baseEnv = {
     ...(await claudeCodeEnv()),
-    ...githubEnv(await githubToken()),
+    ...githubEnv(await githubToken(r.repo)),
     ...(await sessionEnv(r, ports)),
     // Its question waits for the bot longer than an MCP call usually does.
     ...(s.bot && { MCP_TOOL_TIMEOUT: String(QUESTION_MS + 60_000) }),
@@ -1915,7 +1915,7 @@ async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, syst
   r.account = await engine.account().catch(() => null);
   touch(s, [], true);
   // As Claude Code's: git and gh reach GitHub with the vault's token, its browsers show on the conversation's screen.
-  const cli = cliEnv(bin, { ...run.env, ...githubEnv(await githubToken()), ...(await sessionEnv(r, ports)) });
+  const cli = cliEnv(bin, { ...run.env, ...githubEnv(await githubToken(r.repo)), ...(await sessionEnv(r, ports)) });
   // Its Machines SSH: the wrappers come first in PATH.
   const ssh = await sshRun();
   const spawnEnv = ssh ? ssh.env(cli) : cli;

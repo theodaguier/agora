@@ -8,6 +8,8 @@ import { syncSessionSearch } from "../session-search";
 import { COMPANY_MEMORY_KEY, COMPANY_MEMORY_MAX, companyMemory } from "../company";
 import { db, schema } from "../db";
 import { IntegrationError, listIntegrations, removeIntegration, saveIntegration } from "../app-integrations";
+import { forgetRepos } from "../code-git";
+import { githubAppState, removeGithubApp } from "../github-app";
 import { clearBrandLogos } from "../brand-logos";
 import { createInvitation, InvitationError, resendInvitation } from "../invitations";
 import { modelOptions } from "../hermes";
@@ -267,6 +269,14 @@ export const admin = new Hono<AppEnv>()
     if (body.data.requireTwoFactor && !c.get("user").twoFactorEnabled) return c.json({ error: tr(errors).twoFactorFirst }, 409);
     await saveOrg(body.data, c.get("user").id);
     return c.json(await getOrg());
+  })
+
+  /** Agora's GitHub App: where it is installed; null when it wasn't created. */
+  .get("/github-app", async (c) => c.json(await githubAppState()))
+  .delete("/github-app", async (c) => {
+    await removeGithubApp();
+    forgetRepos();
+    return c.json(null);
   })
 
   /** The app's own integrations (Resend, logo.dev). */

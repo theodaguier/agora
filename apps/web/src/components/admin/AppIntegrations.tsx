@@ -106,6 +106,22 @@ const messages = defineMessages({
     show: "Show",
     hide: "Hide",
     checking: "Checking…",
+    github: {
+      installedOn: (accounts: string) => `Installed on ${accounts}.`,
+      notInstalled: "Created on GitHub, not installed on any account yet.",
+      toInstall: "To install",
+      install: "Install",
+      addAccount: "Add an account",
+      disconnectText: "Projects and code sessions won't reach your repositories anymore. The app stays on GitHub, where you can delete it.",
+      title: "Connect GitHub",
+      text: "GitHub creates Agora's app, then lets you choose the accounts and repositories it may use. No token to copy.",
+      org: "Organization",
+      orgHelp: "The account that owns the app, which can be installed on it only. Leave empty for your own account.",
+      name: "App name",
+      nameHelp: "Unique on GitHub.",
+      continue: "Continue on GitHub",
+      useToken: "Use an access token instead",
+    },
   },
   fr: {
     title: "Intégrations",
@@ -152,10 +168,30 @@ const messages = defineMessages({
     show: "Afficher",
     hide: "Masquer",
     checking: "Vérification…",
+    github: {
+      installedOn: (accounts: string) => `Installée sur ${accounts}.`,
+      notInstalled: "Créée sur GitHub, installée sur aucun compte pour l'instant.",
+      toInstall: "À installer",
+      install: "Installer",
+      addAccount: "Ajouter un compte",
+      disconnectText: "Les projets et les sessions de code n'accéderont plus à tes dépôts. L'app reste sur GitHub, où tu peux la supprimer.",
+      title: "Connecter GitHub",
+      text: "GitHub crée l'app d'Agora, puis te laisse choisir les comptes et les dépôts qu'elle peut utiliser. Aucun jeton à copier.",
+      org: "Organisation",
+      orgHelp: "Le compte propriétaire de l'app, qui ne pourra être installée que sur lui. Laisse vide pour ton propre compte.",
+      name: "Nom de l'app",
+      nameHelp: "Unique sur GitHub.",
+      continue: "Continuer sur GitHub",
+      useToken: "Utiliser plutôt un jeton d'accès",
+    },
   },
 });
 
 const integrationsQuery = { queryKey: ["admin", "integrations"], queryFn: () => api<AppIntegration[]>("/admin/integrations") };
+
+/** Agora's GitHub App: null until it's created from here. */
+type GithubApp = { slug: string; owner: string; url: string; installUrl: string; accounts: string[] } | null;
+export const githubAppQuery = { queryKey: ["admin", "github-app"], queryFn: () => api<GithubApp>("/admin/github-app") };
 
 /** Settings › Integrations (admin): the third-party services the app itself uses. */
 export function AppIntegrations() {
@@ -164,13 +200,26 @@ export function AppIntegrations() {
   const qc = useQueryClient();
   const { data, error, isPending } = useQuery(integrationsQuery);
   const [editing, setEditing] = useState<Id | null>(null);
-  const onChange = (list: AppIntegration[]) => {
-    qc.setQueryData(integrationsQuery.queryKey, list);
-    qc.invalidateQueries({ queryKey: brandsQuery.queryKey });
-    // The project page's repository picker and the code sessions' list of repositories.
+  const [connectingGithub, setConnectingGithub] = useState(false);
+  const githubApp = useQuery(githubAppQuery).data ?? null;
+  // The project page's repository picker and the code sessions' list of repositories.
+  const reposChanged = () => {
     qc.invalidateQueries({ queryKey: ["github"] });
     qc.invalidateQueries({ queryKey: ["code-repos"] });
   };
+  const onChange = (list: AppIntegration[]) => {
+    qc.setQueryData(integrationsQuery.queryKey, list);
+    qc.invalidateQueries({ queryKey: brandsQuery.queryKey });
+    reposChanged();
+  };
+  const removeApp = useMutation({
+    mutationFn: () => api(`/admin/github-app`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.setQueryData(githubAppQuery.queryKey, null);
+      reposChanged();
+    },
+    meta: { success: c.removed },
+  });
   const remove = useMutation({
     mutationFn: (id: Id) => api<AppIntegration[]>(`/admin/integrations/${id}`, { method: "DELETE" }),
     onSuccess: onChange,
@@ -198,6 +247,9 @@ export function AppIntegrations() {
               const spec = SPECS[i.id];
               // Keys and sender as saved: on hover only, they're raw technical strings.
               const details = spec.fields.map((f) => i.values[f.name]).filter(Boolean);
+              // GitHub through Agora's app: installed on accounts, or still to install.
+              const app = i.id === "github" ? githubApp : null;
+              const source = app ? "app" : i.source;
               return (
                 <Item size="xs" key={i.id}>
                   <ItemMedia>
@@ -206,19 +258,27 @@ export function AppIntegrations() {
                   <ItemContent className="min-w-0">
                     <ItemTitle>
                       {spec.name}
-                      {i.source && (
-                        <StatusLine tone={i.source === "app" ? "success" : "info"}>{i.source === "app" ? t.connected : t.fromEnv}</StatusLine>
+                      {app && !app.accounts.length ? (
+                        <StatusLine tone="warning">{t.github.toInstall}</StatusLine>
+                      ) : (
+                        source && <StatusLine tone={source === "app" ? "success" : "info"}>{source === "app" ? t.connected : t.fromEnv}</StatusLine>
                       )}
                     </ItemTitle>
                     <ItemDescription className="truncate" title={details.length ? details.join(", ") : undefined}>
-                      {t.purpose[i.id]}
+                      {app ? (app.accounts.length ? t.github.installedOn(app.accounts.join(", ")) : t.github.notInstalled) : t.purpose[i.id]}
                     </ItemDescription>
                   </ItemContent>
                   <ItemActions>
-                    <Button variant="outline" size="sm" onClick={() => setEditing(i.id)}>
-                      {i.source ? t.edit : t.connect}
-                    </Button>
-                    {i.source === "app" && (
+                    {app ? (
+                      <Button variant="outline" size="sm" nativeButton={false} render={<a href={app.installUrl} />}>
+                        {app.accounts.length ? t.github.addAccount : t.github.install}
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => (i.id === "github" && !i.source ? setConnectingGithub(true) : setEditing(i.id))}>
+                        {i.source ? t.edit : t.connect}
+                      </Button>
+                    )}
+                    {source === "app" && (
                       <DropdownMenu>
                         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.more(spec.name)} />}>
                           <MoreIcon />
@@ -229,9 +289,9 @@ export function AppIntegrations() {
                             onClick={async () =>
                               (await confirmAction({
                                 title: t.disconnectTitle(spec.name),
-                                description: `${t.disconnectText[i.id]} ${t.envNote}`,
+                                description: app ? t.github.disconnectText : `${t.disconnectText[i.id]} ${t.envNote}`,
                                 action: t.disconnect,
-                              })) && remove.mutate(i.id)
+                              })) && (app ? removeApp.mutate() : remove.mutate(i.id))
                             }
                           >
                             <LogOutIcon />
@@ -247,6 +307,16 @@ export function AppIntegrations() {
           </ListCardRows>
         )}
       </ListCard>
+      <Dialog open={connectingGithub} onOpenChange={setConnectingGithub}>
+        {connectingGithub && (
+          <GithubAppDialog
+            onUseToken={() => {
+              setConnectingGithub(false);
+              setEditing("github");
+            }}
+          />
+        )}
+      </Dialog>
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
         {editing && (
           <IntegrationDialog
@@ -346,3 +416,73 @@ function IntegrationDialog({ integration, onSaved }: { integration: AppIntegrati
     </DialogContent>
   );
 }
+
+/**
+ * Connecting GitHub: GitHub creates Agora's app from its manifest (posted by the browser), then
+ * installs it on the accounts chosen there, and comes back to Settings › Integrations.
+ */
+function GithubAppDialog({ onUseToken }: { onUseToken: () => void }) {
+  const t = useT(messages);
+  const c = useT(common);
+  const [org, setOrg] = useState("");
+  const [name, setName] = useState("");
+  const appName = name.trim() || defaultAppName(org);
+  const start = useMutation({
+    mutationFn: () => api<{ action: string; manifest: string }>("/github/app/manifest", { method: "POST", body: JSON.stringify({ org: org.trim(), name: appName }) }),
+    onSuccess: ({ action, manifest }) => {
+      // GitHub only takes the manifest in a form posted by the browser.
+      const form = document.createElement("form");
+      form.method = "post";
+      form.action = action;
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "manifest";
+      input.value = manifest;
+      form.append(input);
+      document.body.append(form);
+      form.submit();
+    },
+    meta: { error: false },
+  });
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>{t.github.title}</DialogTitle>
+        <DialogDescription>{t.github.text}</DialogDescription>
+      </DialogHeader>
+      <form
+        id="github-app"
+        onSubmit={(e) => {
+          e.preventDefault();
+          start.mutate();
+        }}
+      >
+        <FieldGroup className="gap-5">
+          <Field>
+            <FormLabel htmlFor="github-app-org">{t.github.org}</FormLabel>
+            <Input id="github-app-org" autoFocus autoComplete="off" spellCheck={false} placeholder="E-Do-Studio" value={org} onChange={(e) => setOrg(e.target.value)} />
+            <FieldDescription>{t.github.orgHelp}</FieldDescription>
+          </Field>
+          <Field>
+            <FormLabel htmlFor="github-app-name">{t.github.name}</FormLabel>
+            <Input id="github-app-name" autoComplete="off" maxLength={34} placeholder={defaultAppName(org)} value={name} onChange={(e) => setName(e.target.value)} />
+            <FieldDescription>{t.github.nameHelp}</FieldDescription>
+          </Field>
+          <ErrorText error={start.error} />
+          <Button type="button" variant="link" className="h-auto self-start p-0 text-muted-foreground" onClick={onUseToken}>
+            {t.github.useToken}
+          </Button>
+        </FieldGroup>
+      </form>
+      <DialogFooter>
+        <DialogClose render={<Button variant="outline" />}>{c.cancel}</DialogClose>
+        <Button type="submit" form="github-app" disabled={start.isPending || start.isSuccess}>
+          {t.github.continue}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+/** "Agora E-Do-Studio": GitHub app names are unique, 34 characters at most. */
+const defaultAppName = (org: string) => `Agora ${org.trim() || window.location.hostname}`.slice(0, 34);

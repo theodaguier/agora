@@ -3,6 +3,7 @@ import { isAbsolute, join } from "node:path";
 import type { CodeCheck, CodeChecks, CodeGit, CodeGitFile, CodeIssue, CodeMergeMethod, CodePullRequest, CodeRepo } from "@agora/core";
 import { childEnv } from "./harden";
 import { integrationConfig } from "./app-integrations";
+import { githubAppToken, githubAppTokens } from "./github-app";
 import { defineMessages, tr } from "./i18n";
 import { instanceSecret } from "./vault";
 
@@ -106,8 +107,12 @@ export class GitHubError extends GitError {
   }
 }
 
-/** GitHub access of the sessions: the app's GitHub integration, else the vault. */
-export const githubToken = async () => (await integrationConfig("github"))?.token ?? (await instanceSecret("GH_TOKEN", "GITHUB_TOKEN", "MCP_GITHUB_API_KEY"));
+/**
+ * GitHub access of the sessions, for `repo` when known: Agora's GitHub App (github-app.ts, its
+ * installation on the repository's owner), else a token pasted in Settings › Integrations, else the vault.
+ */
+export const githubToken = async (repo?: string | null) =>
+  (await githubAppToken(repo)) ?? (await integrationConfig("github"))?.token ?? (await instanceSecret("GH_TOKEN", "GITHUB_TOKEN", "MCP_GITHUB_API_KEY"));
 
 /**
  * Credential helper of the clones: answers git with the token of its environment.
@@ -225,7 +230,7 @@ export async function cloneOf(dir: string) {
  */
 export async function prepareWorktree(clone: string, cwd: string, repo: string, opts: { branch: string; author: { name: string; email: string } }) {
   const t = tr(messages);
-  const token = await githubToken();
+  const token = await githubToken(repo);
   const dir = cwd.split("/").filter(Boolean).at(-1) ?? cwd;
   return serial(clone, async () => {
     let cloned = false;
@@ -388,20 +393,32 @@ async function github<T>(token: string, method: string, path: string, body?: unk
 }
 
 const REPOS_TTL_MS = 5 * 60_000;
-let reposCache: { token: string; at: number; repos: CodeRepo[] } | null = null;
+let reposCache: { key: string; at: number; repos: CodeRepo[] } | null = null;
 
-/** The repositories the instance's token reaches, the latest pushed first; empty without a token. Cached a few minutes. */
+type ApiRepo = { full_name: string; private: boolean; pushed_at: string | null; archived?: boolean };
+
+export const forgetRepos = () => {
+  reposCache = null;
+};
+
+/**
+ * The repositories GitHub access reaches, the latest pushed first; empty without any. With Agora's
+ * GitHub App: those of all its installations. Cached a few minutes.
+ */
 export async function listRepos(): Promise<CodeRepo[]> {
-  const token = await githubToken();
-  if (!token) return [];
-  if (reposCache?.token === token && Date.now() - reposCache.at < REPOS_TTL_MS) return reposCache.repos;
-  const list = await github<{ full_name: string; private: boolean; pushed_at: string | null; archived?: boolean }[]>(
-    token,
-    "GET",
-    "/user/repos?sort=pushed&per_page=100&affiliation=owner,collaborator,organization_member",
-  );
-  const repos = list.filter((r) => !r.archived).map((r) => ({ repo: r.full_name, private: r.private, pushedAt: r.pushed_at }));
-  reposCache = { token, at: Date.now(), repos };
+  const appTokens = await githubAppTokens();
+  const token = appTokens.length ? null : await githubToken();
+  if (!appTokens.length && !token) return [];
+  const key = appTokens.length ? "app" : token!;
+  if (reposCache?.key === key && Date.now() - reposCache.at < REPOS_TTL_MS) return reposCache.repos;
+  const list = appTokens.length
+    ? (await Promise.all(appTokens.map((t) => github<{ repositories: ApiRepo[] }>(t, "GET", "/installation/repositories?per_page=100")))).flatMap((r) => r.repositories)
+    : await github<ApiRepo[]>(token!, "GET", "/user/repos?sort=pushed&per_page=100&affiliation=owner,collaborator,organization_member");
+  const repos = list
+    .filter((r) => !r.archived)
+    .map((r) => ({ repo: r.full_name, private: r.private, pushedAt: r.pushed_at }))
+    .sort((a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? ""));
+  reposCache = { key, at: Date.now(), repos };
   return repos;
 }
 
@@ -411,7 +428,7 @@ const toIssue = (i: ApiIssue): CodeIssue => ({ number: i.number, url: i.html_url
 
 /** The repository's open issues (pull requests left out), the latest first: what a session can link itself to. */
 export async function listIssues(repo: string, limit = 50): Promise<(CodeIssue & { labels: string[]; body: string })[]> {
-  const token = await githubToken();
+  const token = await githubToken(repo);
   if (!token) throw new GitError("No GitHub token.");
   const list = await github<ApiIssue[]>(token, "GET", `/repos/${repo}/issues?state=open&per_page=${Math.min(limit, 100)}&sort=updated`);
   return list
@@ -421,7 +438,7 @@ export async function listIssues(repo: string, limit = 50): Promise<(CodeIssue &
 
 /** One issue of the repository (null: not found, or a pull request). */
 export async function getIssue(repo: string, number: number): Promise<CodeIssue | null> {
-  const token = await githubToken();
+  const token = await githubToken(repo);
   if (!token) throw new GitError("No GitHub token.");
   const issue = await github<ApiIssue>(token, "GET", `/repos/${repo}/issues/${number}`).catch((err) => {
     if (err instanceof GitError && err.message.startsWith("GitHub 404")) return null;
@@ -596,7 +613,7 @@ async function pullOf(token: string, repo: string, branch: string): Promise<Code
 
 /** One pull request, enriched (pullDetails); null without a token or when GitHub doesn't know it. */
 export async function getPullRequest(repo: string, number: number): Promise<CodePullRequest | null> {
-  const token = await githubToken();
+  const token = await githubToken(repo);
   if (!token) return null;
   return pullDetails(token, repo, number).catch((err) => {
     if (err instanceof GitHubError && err.status === 404) return null;
@@ -606,7 +623,7 @@ export async function getPullRequest(repo: string, number: number): Promise<Code
 
 /** The paths a pull request changes (first page: AUTO_MERGE_MAX_FILES of them at most); null without GitHub access. */
 export async function pullFiles(repo: string, number: number): Promise<string[] | null> {
-  const token = await githubToken();
+  const token = await githubToken(repo);
   if (!token) return null;
   const files = await github<{ filename: string; previous_filename?: string }[]>(token, "GET", `/repos/${repo}/pulls/${number}/files?per_page=100`).catch(() => null);
   // A renamed file counts from where it came too: moving a migration out is still touching it.
@@ -639,7 +656,7 @@ function mergeRefusal(err: unknown, number: number, method: CodeMergeMethod): ne
  */
 export async function mergePull(repo: string, number: number, method: CodeMergeMethod, sha?: string | null): Promise<CodePullRequest> {
   const t = tr(messages);
-  const token = await githubToken();
+  const token = await githubToken(repo);
   if (!token) throw new GitError(t.noToken);
   const pr = await getPullRequest(repo, number);
   if (!pr) throw new GitError(t.prNotFound);
@@ -750,7 +767,7 @@ async function changedFiles(cwd: string, hasHead: boolean): Promise<CodeGitFile[
  */
 export async function readGit(cwd: string, hints: { repo?: string | null; pulls?: { repo: string; number: number }[] } = {}): Promise<CodeGit | null> {
   if (!(await isClone(cwd))) return null;
-  const token = await githubToken();
+  const token = await githubToken((await originRepo(cwd)) ?? hints.repo);
   const [branchRun, origin, base, last, upstream] = await Promise.all([
     git(cwd, ["branch", "--show-current"]),
     originRepo(cwd),
@@ -832,9 +849,9 @@ async function context(cwd: string, needToken: boolean) {
   if (!(await isClone(cwd))) throw new GitError(t.notRepo);
   const branch = (await git(cwd, ["branch", "--show-current"])).out;
   if (!branch) throw new GitError(t.detached);
-  const token = await githubToken();
-  if (needToken && !token) throw new GitError(t.noToken);
   const repo = await originRepo(cwd);
+  const token = await githubToken(repo);
+  if (needToken && !token) throw new GitError(t.noToken);
   if (needToken && !repo) throw new GitError(t.noRemote);
   return { t, branch, token: token!, repo: repo!, base: await defaultBranch(cwd) };
 }
