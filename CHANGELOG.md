@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.79.0 — 2026-11-23
+
+### Features
+- delete a project from its menu, in the sidebar and on its page
+
 ## v0.78.2 — 2026-11-23
 
 ### Fixes
