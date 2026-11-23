@@ -21,6 +21,7 @@ import { ProjectStatusIcon, useProjectStatusLabel } from "@/components/ProjectMa
 import { ProjectMenu, useCreateDiscussion } from "@/components/ProjectTree";
 import { ChevronLeftIcon, CloseIcon, ExternalLinkIcon, FileIcon, FileTextIcon, LinkIcon, SearchIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup } from "@/components/ui/field";
@@ -35,12 +36,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { defineMessages, useLocale, useT } from "@/i18n";
 import { useEventText } from "@/i18n/events";
-import { api, attachmentUrl, conversationPath, uploadAttachment, type ConversationDetail, type ConversationSummary } from "@/lib/api";
+import { api, attachmentUrl, conversationPath, uploadAttachment, type AgentSummary, type ConversationDetail, type ConversationSummary, type Person } from "@/lib/api";
 import { allCodeSessionsQuery } from "@/lib/code-sessions";
 import { dayLabel, listTime } from "@/lib/dates";
 import { useOrgTitle } from "@/lib/org";
 import { conversationTitle } from "@/lib/participants";
-import { conversationQuery, conversationsQuery } from "@/lib/queries";
+import { agentsQuery, conversationQuery, conversationsQuery, usersQuery } from "@/lib/queries";
+import { confirmAction } from "@/lib/confirm";
 import { cn } from "@/lib/utils";
 import type { ProjectTab } from "@/router";
 import { ProjectDiscussionList } from "@/screens/ProjectDiscussions";
@@ -78,6 +80,20 @@ const messages = defineMessages({
     noLead: "No lead",
     members: "Members",
     bots: "Bots",
+    addMember: "Add a member",
+    addBot: "Add a bot",
+    findMember: "Find a colleague…",
+    findBot: "Find a bot…",
+    memberCount: (n: number) => `${n} members`,
+    botCount: (n: number) => `${n} bots`,
+    nobodyMatches: "No one matches.",
+    listUnavailable: "Unreachable for now.",
+    addFailed: "Couldn't add them.",
+    removeFailed: "Couldn't remove them.",
+    removeTitle: (name: string) => `Remove ${name} from the project?`,
+    removeBody: "They'll no longer see the project or its discussions. You can add them back later.",
+    removeBotBody: "It will no longer answer in the project or its discussions. You can add it back later.",
+    removeAction: "Remove",
     repo: "Repository",
     repoPlaceholder: "owner/name",
     noRepo: "No repository",
@@ -104,7 +120,7 @@ const messages = defineMessages({
     saveFailed: "Couldn't save.",
     inDiscussion: (name: string) => `in ${name}`,
     general: "General",
-    newDiscussion: "New discussion",
+    startDiscussion: "Start a discussion",
   },
   fr: {
     projects: "Projets",
@@ -137,6 +153,20 @@ const messages = defineMessages({
     noLead: "Aucun",
     members: "Membres",
     bots: "Bots",
+    addMember: "Ajouter un membre",
+    addBot: "Ajouter un bot",
+    findMember: "Chercher un collègue…",
+    findBot: "Chercher un bot…",
+    memberCount: (n: number) => `${n} membres`,
+    botCount: (n: number) => `${n} bots`,
+    nobodyMatches: "Personne ne correspond.",
+    listUnavailable: "Injoignable pour le moment.",
+    addFailed: "Ajout impossible.",
+    removeFailed: "Retrait impossible.",
+    removeTitle: (name: string) => `Retirer ${name} du projet ?`,
+    removeBody: "Cette personne ne verra plus le projet ni ses discussions. Tu pourras la rajouter plus tard.",
+    removeBotBody: "Il ne répondra plus dans le projet ni dans ses discussions. Tu pourras le rajouter plus tard.",
+    removeAction: "Retirer",
     repo: "Dépôt",
     repoPlaceholder: "propriétaire/nom",
     noRepo: "Aucun dépôt",
@@ -163,7 +193,7 @@ const messages = defineMessages({
     saveFailed: "Enregistrement impossible.",
     inDiscussion: (name: string) => `dans ${name}`,
     general: "Général",
-    newDiscussion: "Nouvelle discussion",
+    startDiscussion: "Ouvrir une discussion",
   },
 });
 
@@ -301,13 +331,22 @@ export function ProjectView({ projectId, tab }: { projectId: string; tab: Projec
 
 /* ---------- overview ---------- */
 
+/** A section's heading, its actions on the right (same buttons, flush with the content's right edge). */
 function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex h-7 items-center gap-1">
       <h2 className="text-ui font-medium">{children}</h2>
       <span className="flex-1" />
-      {aside}
+      {aside && <div className="-mr-2.5 flex items-center">{aside}</div>}
     </div>
+  );
+}
+
+function SectionAction({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onClick}>
+      {children}
+    </Button>
   );
 }
 
@@ -356,16 +395,15 @@ function Overview({
       <section className="flex flex-col gap-2">
         <SectionTitle
           aside={
-            discussions.length > 0 && (
-              <Button variant="link" size="sm" className="h-auto p-0 text-muted-foreground" onClick={() => onTab("discussions")}>
-                {t.seeAll(discussions.length)}
-              </Button>
-            )
+            <>
+              {discussions.length > recent.length && <SectionAction onClick={() => onTab("discussions")}>{t.seeAll(discussions.length)}</SectionAction>}
+              <SectionAction onClick={onCreate}>{t.startDiscussion}</SectionAction>
+            </>
           }
         >
           {t.recentDiscussions}
         </SectionTitle>
-        <ItemGroup>
+        <ItemGroup className="-mx-3 w-auto">
           {[{ ...project, name: t.general }, ...recent].map((d) => (
             <Item key={d.id} size="sm" render={<Link to="/c/$conversationId" params={{ conversationId: d.id }} />}>
               <ItemContent className="flex-row items-center gap-2">
@@ -376,24 +414,15 @@ function Overview({
             </Item>
           ))}
         </ItemGroup>
-        <Button variant="ghost" size="sm" className="self-start text-muted-foreground" onClick={onCreate}>
-          {t.newDiscussion}
-        </Button>
       </section>
       <section className="flex flex-col gap-2">
         <SectionTitle
-          aside={
-            sessions.length > 0 && (
-              <Button variant="link" size="sm" className="h-auto p-0 text-muted-foreground" onClick={() => onTab("sessions")}>
-                {t.seeAll(sessions.length)}
-              </Button>
-            )
-          }
+          aside={sessions.length > 3 && <SectionAction onClick={() => onTab("sessions")}>{t.seeAll(sessions.length)}</SectionAction>}
         >
           {t.codeSessions}
         </SectionTitle>
         {sessions.length ? (
-          <div className="-mx-5 border-t">
+          <div className="-mx-5">
             {sessions.slice(0, 3).map((s) => (
               <SessionRow key={s.id} session={s} grouping="priority" />
             ))}
@@ -441,7 +470,10 @@ function ContextSection({ projectId, info }: { projectId: string; info: ProjectI
   const read = info.botAccess.context !== "none";
   return (
     <section className="flex flex-col gap-2">
-      <SectionTitle aside={<span className="text-xs text-muted-foreground">{read ? t.contextRead : t.contextHidden}</span>}>{t.context}</SectionTitle>
+      <div className="flex flex-col">
+        <SectionTitle aside={draft === null && <SectionAction onClick={() => setDraft(info.context)}>{t.edit}</SectionAction>}>{t.context}</SectionTitle>
+        <p className="text-xs text-muted-foreground">{read ? t.contextRead : t.contextHidden}</p>
+      </div>
       {draft !== null ? (
         <div className="flex flex-col gap-2">
           <Textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-48 font-mono text-xs" />
@@ -455,17 +487,11 @@ function ContextSection({ projectId, info }: { projectId: string; info: ProjectI
           </div>
         </div>
       ) : (
-        <div className="group/context relative rounded-lg border px-4 py-3">
+        <div className="flex flex-col gap-2 rounded-lg border px-4 py-3">
           {info.context ? <MessageText text={info.context} className="text-ui" /> : <p className="text-ui text-muted-foreground">{t.contextEmpty}</p>}
-          <div className="mt-2 flex items-center gap-2">
-            {info.contextAuthor && info.contextUpdatedAt && (
-              <span className="text-xs text-muted-foreground">{t.contextEdited(info.contextAuthor.name, listTime(new Date(info.contextUpdatedAt)))}</span>
-            )}
-            <span className="flex-1" />
-            <Button variant="ghost" size="sm" onClick={() => setDraft(info.context)}>
-              {t.edit}
-            </Button>
-          </div>
+          {info.contextAuthor && info.contextUpdatedAt && (
+            <span className="text-xs text-muted-foreground">{t.contextEdited(info.contextAuthor.name, listTime(new Date(info.contextUpdatedAt)))}</span>
+          )}
         </div>
       )}
     </section>
@@ -489,11 +515,7 @@ function ResourcesSection({ projectId, resources }: { projectId: string; resourc
   return (
     <section className="flex flex-col gap-2">
       <SectionTitle
-        aside={
-          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setAdding(true)}>
-            {t.add}
-          </Button>
-        }
+        aside={<SectionAction onClick={() => setAdding(true)}>{t.add}</SectionAction>}
       >
         {t.resources}
       </SectionTitle>
@@ -621,21 +643,10 @@ function PropertiesPanel({ detail, info, withActivity }: { detail: ConversationD
             />
           </PropertyRow>
           <PropertyRow label={t.members}>
-            <span className="flex -space-x-1 px-1.5">
-              {detail.members.slice(0, 6).map((m) => (
-                <PersonAvatar key={m.id} person={m} className="size-5 ring-2 ring-background" />
-              ))}
-            </span>
-            {detail.members.length > 6 && <span className="text-xs text-muted-foreground">+{detail.members.length - 6}</span>}
+            <ParticipantsField detail={detail} kind="user" />
           </PropertyRow>
           <PropertyRow label={t.bots}>
-            <span className="flex gap-1 px-1.5">
-              {detail.agents.map((a) => (
-                <span key={a.id} title={a.name}>
-                  <AgentAvatar agent={a} className="size-5" />
-                </span>
-              ))}
-            </span>
+            <ParticipantsField detail={detail} kind="agent" />
           </PropertyRow>
           <PropertyRow label={t.repo}>
             <RepoField repo={info.repo} onSave={(repo) => save.mutate({ repo })} />
@@ -654,7 +665,7 @@ function PropertiesPanel({ detail, info, withActivity }: { detail: ConversationD
         <h2 className="text-ui font-medium text-muted-foreground">{t.botAccess}</h2>
         {(Object.keys(PROJECT_BOT_ACCESS_OPTIONS) as (keyof ProjectBotAccess)[]).map((key) => (
           <Field key={key} className="gap-1.5">
-            <label htmlFor={`access-${key}`} className="text-xs text-muted-foreground">
+            <label htmlFor={`access-${key}`} className="text-ui text-muted-foreground">
               {access[key].label}
             </label>
             <OptionSelect
@@ -676,6 +687,103 @@ function PropertiesPanel({ detail, info, withActivity }: { detail: ConversationD
         </>
       )}
     </div>
+  );
+}
+
+type Candidate = { id: string; name: string; mark: ReactNode };
+
+/**
+ * The project's members or bots: one field showing who is in (faces, then the name or the count), opening a
+ * searchable list where each one is ticked in or out. Joining or leaving the project also joins or leaves
+ * its discussions (the API does it). Removing asks first; only the project's creator or an admin may.
+ */
+function ParticipantsField({ detail, kind }: { detail: ConversationDetail; kind: "user" | "agent" }) {
+  const t = useT(messages);
+  const c = useT(common);
+  const qc = useQueryClient();
+  const { user } = useRouteContext({ from: "/app" });
+  const [open, setOpen] = useState(false);
+  const botsQ = useQuery({ ...agentsQuery, enabled: open && kind === "agent" });
+  const peopleQ = useQuery({ ...usersQuery, enabled: open && kind === "user" });
+  const list: { data?: (AgentSummary | Person)[]; isPending: boolean; isError: boolean } = kind === "agent" ? botsQ : peopleQ;
+  const canRemove = detail.createdBy === user.id || user.role === "admin";
+  const asCandidate = (x: AgentSummary | Person): Candidate =>
+    kind === "agent"
+      ? { id: x.id, name: x.name, mark: <AgentAvatar agent={x as AgentSummary} className="size-5" /> }
+      : { id: x.id, name: x.name, mark: <PersonAvatar person={x as Person} className="size-5" /> };
+  const current: Candidate[] = (kind === "agent" ? detail.agents : detail.members).map(asCandidate);
+  const others: Candidate[] = (list.data ?? [])
+    .filter((x) => !current.some((m) => m.id === x.id) && !(kind === "agent" && (x as AgentSummary).onboarding))
+    .map(asCandidate);
+  const refresh = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: conversationQuery(detail.id).queryKey }),
+      qc.invalidateQueries({ queryKey: conversationsQuery.queryKey }),
+      qc.invalidateQueries({ queryKey: ["project-activity", detail.id] }),
+    ]);
+  const add = useMutation({
+    mutationFn: (id: string) =>
+      api(conversationPath(detail.id, "/members"), { method: "POST", body: JSON.stringify(kind === "agent" ? { agentIds: [id] } : { userIds: [id] }) }),
+    onSuccess: refresh,
+    meta: { success: c.added, error: t.addFailed },
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(conversationPath(detail.id, `/members/${kind}/${encodeURIComponent(id)}`), { method: "DELETE" }),
+    onSuccess: refresh,
+    meta: { success: c.removed, error: t.removeFailed },
+  });
+  const busy = add.isPending || remove.isPending;
+  const pending = add.isPending ? add.variables : remove.isPending ? remove.variables : null;
+  const toggle = async (m: Candidate, inProject: boolean) => {
+    if (busy) return;
+    if (!inProject) return add.mutate(m.id);
+    setOpen(false);
+    if (await confirmAction({ title: t.removeTitle(m.name), description: kind === "agent" ? t.removeBotBody : t.removeBody, action: t.removeAction }))
+      remove.mutate(m.id);
+  };
+  const row = (m: Candidate, inProject: boolean) => (
+    <CommandItem
+      key={m.id}
+      value={m.id}
+      keywords={[m.name]}
+      data-checked={inProject}
+      disabled={inProject && (!canRemove || m.id === user.id)}
+      onSelect={() => void toggle(m, inProject)}
+    >
+      {m.mark}
+      <span className="truncate">{m.name}</span>
+      {pending === m.id && <Spinner className="ml-auto" />}
+    </CommandItem>
+  );
+  const empty = kind === "agent" ? t.addBot : t.addMember;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger render={<Button variant="outline" className={cn("w-full justify-start font-normal", !current.length && "text-muted-foreground")} />}>
+        {current.length > 0 && (
+          <span className="flex shrink-0 -space-x-1">
+            {current.slice(0, 3).map((m) => (
+              <span key={m.id} className="flex rounded-full ring-2 ring-background [&>*]:size-4!">
+                {m.mark}
+              </span>
+            ))}
+          </span>
+        )}
+        <span className="truncate">
+          {current.length === 0 ? empty : current.length === 1 ? current[0]!.name : kind === "agent" ? t.botCount(current.length) : t.memberCount(current.length)}
+        </span>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 p-0">
+        {/* Filter on the name only: the value holds the id, which must not match. */}
+        <Command filter={(_, search, keywords) => (keywords?.some((k) => k.toLowerCase().includes(search.trim().toLowerCase())) ? 1 : 0)}>
+          <CommandInput placeholder={kind === "agent" ? t.findBot : t.findMember} />
+          <CommandList>
+            <CommandEmpty>{list.isPending ? <Spinner className="mx-auto" /> : list.isError ? t.listUnavailable : t.nobodyMatches}</CommandEmpty>
+            {current.length > 0 && <CommandGroup>{current.map((m) => row(m, true))}</CommandGroup>}
+            {others.length > 0 && <CommandGroup>{others.map((m) => row(m, false))}</CommandGroup>}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
