@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.80.1 — 2026-11-23
+
+### Fixes
+- **web**: empty states use the screen's icon, not a bot orb
+
 ## v0.80.0 — 2026-11-23
 
 ### Features
