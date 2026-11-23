@@ -476,8 +476,23 @@ export const conversations = new Hono<AppEnv>()
     const me = c.get("user");
     const conv = await loadConversation(me.id, c.req.param("id"));
     if (!conv) return c.json({ error: "not_found" }, 404);
-    if (!conv.conversation.parentId) return c.json({ error: "not_a_discussion" }, 400);
     const id = conv.conversation.id;
+    // A project: its creator or an admin deletes it, with its discussions (cascade). Code sessions stay, unlinked.
+    if (!conv.conversation.parentId) {
+      if (!isProject(conv)) return c.json({ error: "not_a_project" }, 400);
+      if (conv.conversation.createdBy !== me.id && me.role !== "admin") return c.json({ error: "forbidden" }, 403);
+      const subs = await discussionIds(id);
+      for (const sub of subs) {
+        abandonTurns(sub);
+        forgetGroup(sub, conv.agents.map((a) => a.agent));
+      }
+      abandonTurns(id);
+      await db.delete(conversation).where(eq(conversation.id, id));
+      forgetGroup(id, conv.agents.map((a) => a.agent));
+      void syncSessionSearch();
+      for (const m of conv.members) for (const gone of [...subs, id]) publishToUser(m.id, { type: "conversation.removed", conversationId: gone });
+      return c.body(null, 204);
+    }
     abandonTurns(id);
     await db.delete(conversation).where(eq(conversation.id, id));
     forgetGroup(id, conv.agents.map((a) => a.agent));

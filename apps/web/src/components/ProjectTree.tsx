@@ -1,7 +1,7 @@
 import { defineMessages, useT } from "@/i18n";
 import { common } from "@agora/core/i18n";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { ArchiveIcon, CheckIcon, ChevronDownIcon, FolderIcon, LinkIcon, MoreIcon, PencilIcon, PinIcon, PlusIcon, TrashIcon } from "@/components/icons";
 import { ConversationAvatar } from "@/components/ConversationAvatar";
@@ -29,7 +29,7 @@ import { api, conversationPath, type ConversationSummary } from "@/lib/api";
 import { confirmAction } from "@/lib/confirm";
 import { conversationQuery, conversationsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import { tabPath } from "@/lib/workspace";
+import { closeOrGoHome, closeTab, tabPath } from "@/lib/workspace";
 
 const messages = defineMessages({
   en: {
@@ -64,6 +64,9 @@ const messages = defineMessages({
     moved: "Discussion moved.",
     failed: "Action failed.",
     createFailed: "Couldn't create the discussion.",
+    deleteProject: "Delete the project",
+    deleteProjectBody: "Its discussions, their messages and its data are deleted for every member. Its code sessions stay. This can't be undone.",
+    projectDeleted: "Project deleted.",
   },
   fr: {
     general: "Général",
@@ -97,6 +100,9 @@ const messages = defineMessages({
     moved: "Discussion déplacée.",
     failed: "Action impossible.",
     createFailed: "Impossible de créer la discussion.",
+    deleteProject: "Supprimer le projet",
+    deleteProjectBody: "Ses discussions, leurs messages et ses données sont supprimés pour tous les membres. Ses sessions de code restent. Impossible de revenir en arrière.",
+    projectDeleted: "Projet supprimé.",
   },
 });
 
@@ -243,6 +249,23 @@ export function ProjectMenu({ project, trigger, align = "start" }: { project: Co
   const qc = useQueryClient();
   const navigate = useNavigate();
   const create = useCreateDiscussion();
+  const { user } = useRouteContext({ from: "/app" });
+  const [open, setOpen] = useState(false);
+  // Who created it is in the project's detail only: loaded when the menu opens (the project page has it already).
+  const { data: detail } = useQuery({ ...conversationQuery(project.id), enabled: open });
+  const canDelete = user.role === "admin" || (!!detail && detail.createdBy === user.id);
+  const remove = useMutation({
+    mutationFn: () => api(conversationPath(project.id), { method: "DELETE" }),
+    onSuccess: async () => {
+      const gone = [project.id, ...(qc.getQueryData(conversationsQuery.queryKey) ?? []).filter((c) => c.parentId === project.id).map((c) => c.id)];
+      await qc.invalidateQueries({ queryKey: conversationsQuery.queryKey });
+      for (const id of gone.slice(1)) closeTab(tabPath.conversation(id));
+      if (gone.some((id) => location.pathname.startsWith(tabPath.conversation(id))) || location.pathname.startsWith(tabPath.project(project.id)))
+        closeOrGoHome(tabPath.project(project.id), () => navigate({ to: "/" }));
+      else closeTab(tabPath.project(project.id));
+    },
+    meta: { success: t.projectDeleted, error: t.failed },
+  });
   const status = project.status ?? "in_progress";
   const setStatus = useMutation({
     mutationFn: (next: ProjectStatus) => api(conversationPath(project.id), { method: "PATCH", body: JSON.stringify({ status: next }) }),
@@ -251,7 +274,7 @@ export function ProjectMenu({ project, trigger, align = "start" }: { project: Co
     meta: { error: t.failed },
   });
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger render={trigger}>
         <MoreIcon />
       </DropdownMenuTrigger>
@@ -290,6 +313,21 @@ export function ProjectMenu({ project, trigger, align = "start" }: { project: Co
           <LinkIcon />
           {t.copyLink}
         </DropdownMenuItem>
+        {canDelete && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={async () =>
+                (await confirmAction({ title: t.deleteTitle(project.title || project.id), description: t.deleteProjectBody, action: t.delete })) && remove.mutate()
+              }
+            >
+              <TrashIcon />
+              {t.deleteProject}
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
