@@ -116,7 +116,7 @@ const messages = defineMessages({
       title: "Connect GitHub",
       text: "GitHub creates Agora's app, then lets you choose the accounts and repositories it may use. No token to copy.",
       org: "Organization",
-      orgHelp: "The account that owns the app, which can be installed on it only. Leave empty for your own account.",
+      orgHelp: "Its GitHub handle, as in github.com/E-Do-Studio: the app will belong to it and can be installed on it only. Leave empty for your own account.",
       name: "App name",
       nameHelp: "Unique on GitHub.",
       continue: "Continue on GitHub",
@@ -178,7 +178,7 @@ const messages = defineMessages({
       title: "Connecter GitHub",
       text: "GitHub crée l'app d'Agora, puis te laisse choisir les comptes et les dépôts qu'elle peut utiliser. Aucun jeton à copier.",
       org: "Organisation",
-      orgHelp: "Le compte propriétaire de l'app, qui ne pourra être installée que sur lui. Laisse vide pour ton propre compte.",
+      orgHelp: "Son nom GitHub, comme dans github.com/E-Do-Studio : l'app lui appartiendra et ne pourra être installée que sur elle. Laisse vide pour ton propre compte.",
       name: "Nom de l'app",
       nameHelp: "Unique sur GitHub.",
       continue: "Continuer sur GitHub",
@@ -485,4 +485,4 @@ function GithubAppDialog({ onUseToken }: { onUseToken: () => void }) {
 }
 
 /** "Agora E-Do-Studio": GitHub app names are unique, 34 characters at most. */
-const defaultAppName = (org: string) => `Agora ${org.trim() || window.location.hostname}`.slice(0, 34);
+const defaultAppName = (org: string) => `Agora ${org.trim().replace(/^(?:https?:\/\/)?(?:www\.)?github\.com\//i, "").replace(/\/.*$/, "") || window.location.hostname}`.slice(0, 34);
