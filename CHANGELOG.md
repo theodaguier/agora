@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.78.2 — 2026-11-23
+
+### Fixes
+- **web**: bots and members can be added to a project from its page
+
 ## v0.78.1 — 2026-11-20
 
 ### Fixes
