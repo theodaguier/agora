@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.81.0 — 2026-11-23
+
+### Features
+- connect GitHub in one click, through Agora's own GitHub App
+
 ## v0.80.1 — 2026-11-23
 
 ### Fixes
