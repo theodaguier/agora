@@ -18,7 +18,6 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { CodePriorityIcon, CodeStateIcon } from "@/components/CodeSessionMarks";
 import { PriorityIcon } from "@/components/Marks";
 import { CodeSessionActionsMenu, CodePriorityMenu, priorityOfKey, useSetCodePriority, useSetCodePriorityOf } from "@/components/CodePriorityMenu";
-import { EmptyFigure } from "@/components/EmptyFigure";
 import { LiveSessionCard } from "@/components/CodeSession";
 import { CodeEnginesLogo, ModelLogo } from "@/components/ProviderLogo";
 import { BranchIcon, ChevronLeftIcon, ClockIcon, FolderIcon, HistoryIcon, SlidersIcon, WarningIcon } from "@/components/icons";
@@ -150,7 +149,9 @@ export function Sessions() {
               </EmptyHeader>
             ) : (
               <EmptyHeader>
-                <EmptyFigure mascot="grey" />
+                <EmptyMedia variant="icon">
+                  <CodeEnginesLogo />
+                </EmptyMedia>
                 <EmptyTitle>{t.page.emptyTitle}</EmptyTitle>
                 <EmptyDescription>{t.page.empty}</EmptyDescription>
               </EmptyHeader>

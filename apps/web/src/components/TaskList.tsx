@@ -27,7 +27,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { EmptyFigure } from "@/components/EmptyFigure";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ListCard, ListCardHeader, ListCardRows } from "@/components/list-card";
@@ -170,7 +169,9 @@ export function TaskList({
     return emptyTitle ? (
       <Empty>
         <EmptyHeader>
-          <EmptyFigure mascot="green" />
+          <EmptyMedia variant="icon">
+            <TaskListIcon />
+          </EmptyMedia>
           <EmptyTitle>{emptyTitle}</EmptyTitle>
           <EmptyDescription>{empty}</EmptyDescription>
         </EmptyHeader>
