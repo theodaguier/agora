@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useEvents } from "@/lib/realtime";
 import { ConfirmHost } from "@/components/ConfirmDialog";
 import { ProfileSheet } from "@/components/ProfileSheet";
-import { useSettingsRequested } from "@/lib/settings";
+import { useSettingsFromUrl, useSettingsRequested } from "@/lib/settings";
 import { Shortcuts } from "@/components/Shortcuts";
 import { AppSidebar, SIDEBAR_WIDTH } from "@/components/Sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -29,6 +29,7 @@ export function AppShell() {
   const [sidebarWidth, setSidebarWidth] = useState(() => readSize("sidebar", SIDEBAR_WIDTH));
   useEvents(user.id);
   useAccountLocale(user.locale);
+  useSettingsFromUrl();
   return (
     <SidebarProvider
       defaultOpen={!document.cookie.includes("sidebar_state=false")}

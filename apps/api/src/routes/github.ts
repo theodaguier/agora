@@ -3,11 +3,16 @@ import { z } from "zod";
 import { turnOfHermesSession } from "../bot-runner";
 import { internalToken } from "../code-plugin";
 import { canUseCodeSessions } from "../code-engines";
-import { githubToken, listRepos, parseRepo } from "../code-git";
+import { forgetRepos, githubToken, listRepos, parseRepo } from "../code-git";
+import { env } from "../env";
+import { createFromCode, forgetInstallations, manifestForm, takeState } from "../github-app";
 import { botMergeStatus, botPullRequest, decideMergeRequest, getMergeRequest, GitHubMergeError, mergeAsPerson, readPullRequest, requestMerge } from "../github-merge";
 import { requireUser, type AppEnv } from "../middleware";
 
 const METHOD = z.enum(["squash", "merge", "rebase"]);
+
+/** Back to Settings › Integrations in the web app, saying how connecting GitHub went. */
+const settingsUrl = (github: "connected" | "failed") => `${env.WEB_ORIGIN.replace(/\/$/, "")}/?settings=integrations&github=${github}`;
 
 /** owner/repo and number of the path, or null. */
 function target(c: Context) {
@@ -23,6 +28,32 @@ export const github = new Hono<AppEnv>()
     if (err instanceof GitHubMergeError) return c.json({ error: err.message }, err.status);
     console.error("github", err);
     return c.json({ error: "internal" }, 500);
+  })
+
+  /* Agora's GitHub App (github-app.ts): created and installed from Settings › Integrations. */
+
+  /** The form the browser posts to GitHub to create the app: on `org`, else on the admin's account. */
+  .post("/app/manifest", async (c) => {
+    if (c.get("user").role !== "admin") return c.json({ error: "forbidden" }, 403);
+    const body = z
+      .object({ org: z.string().trim().regex(/^[\w-]{1,39}$/).optional().or(z.literal("")), name: z.string().trim().min(1).max(34) })
+      .safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "invalid" }, 400);
+    return c.json(manifestForm(c.get("user").id, body.data.org || null, body.data.name));
+  })
+  /** GitHub created the app: its credentials are kept, then the browser goes on to install it. */
+  .get("/app/created", async (c) => {
+    const me = c.get("user");
+    const code = c.req.query("code");
+    if (me.role !== "admin" || !code || !takeState(c.req.query("state"), me.id)) return c.redirect(settingsUrl("failed"));
+    const install = await createFromCode(code, me.id).catch((err) => (console.error("github app: creation", err), null));
+    return c.redirect(install ?? settingsUrl("failed"));
+  })
+  /** GitHub installed (or updated) the app: its installations are read again from GitHub. */
+  .get("/app/installed", async (c) => {
+    forgetInstallations();
+    forgetRepos();
+    return c.redirect(settingsUrl("connected"));
   })
 
   /**
