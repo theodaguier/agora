@@ -52,6 +52,8 @@ export type ConversationEvent =
   | { type: "code.wake"; bot: string; title: string; sessionId: string; reason: "idle" | "failed" | "question" }
   /** An outside service called a webhook of the bot: it starts by itself. */
   | { type: "webhook.received"; bot: string; name: string }
+  /** The colleague the bot wrote to for this person (```message-person``` block) answered: the bot takes over here. */
+  | { type: "person.answered"; actor: string; conversationId: string }
   | { type: "session.compacted"; actor: string }
   | { type: "session.compactFailed"; bot: string }
   | { type: "agent.updated" }
@@ -102,6 +104,8 @@ export function renderEvent(e: ConversationEvent, locale: EventLocale): string {
       return fr ? `${e.actor} a créé le projet` : `${e.actor} created the project`;
     case "discussion.created":
       return fr ? `${e.actor} a ouvert la discussion` : `${e.actor} started the discussion`;
+    case "person.answered":
+      return fr ? `${e.actor} a répondu` : `${e.actor} answered`;
     case "discussion.titled":
       return fr ? `${e.actor} a nommé la discussion « ${e.title} »` : `${e.actor} named the discussion “${e.title}”`;
     case "project.context":

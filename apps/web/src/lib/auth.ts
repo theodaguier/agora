@@ -18,6 +18,7 @@ export const authClient = createAuthClient({
         locale: { type: "string", required: false, input: false },
         releaseNotesSeen: { type: "string", required: false, input: false },
         digestSeen: { type: "string", required: false, input: false },
+        uiMode: { type: "string", required: false, input: false },
       },
     }),
   ],

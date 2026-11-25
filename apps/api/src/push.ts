@@ -10,6 +10,7 @@ import { canDisturb } from "./availability";
 import { db, schema } from "./db";
 import type { NotificationKind } from "./db/schema";
 import { excerpt } from "./group";
+import { isRelayKey } from "./person-relay";
 import { defineMessages, orgLocale, tr } from "./i18n";
 
 const { mobileLink, session } = schema;
@@ -106,12 +107,13 @@ async function actorName(actor: { userId?: string | null; agentId?: string | nul
 /** A message in a direct conversation, to the other person (a person's own bot conversation included). */
 export async function pushDirectMessage(m: { id: string; conversationId: string; kind: string; text: string; authorUserId?: string | null; authorAgentId?: string | null }) {
   if (m.kind === "event") return;
-  const [conv] = await db.select({ kind: conversation.kind }).from(conversation).where(eq(conversation.id, m.conversationId));
+  const [conv] = await db.select({ kind: conversation.kind, title: conversation.title, directKey: conversation.directKey }).from(conversation).where(eq(conversation.id, m.conversationId));
   if (conv?.kind !== "direct") return;
   const members = await db.select({ id: conversationMember.userId }).from(conversationMember).where(eq(conversationMember.conversationId, m.conversationId));
   const to = members.map((r) => r.id).filter((id) => id !== m.authorUserId);
   if (!to.length) return;
-  const name = (await actorName({ userId: m.authorUserId, agentId: m.authorAgentId })) ?? "";
+  // A colleague's assistant writing on their behalf says so: « Hermes, pour Théo Daguier » (person-relay.ts).
+  const name = (isRelayKey(conv.directKey) && conv.title) || ((await actorName({ userId: m.authorUserId, agentId: m.authorAgentId })) ?? "");
   const locales = await localesOf(to);
   for (const id of to) {
     const t = tr(messages, locales.get(id));

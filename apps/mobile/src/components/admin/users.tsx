@@ -1,4 +1,5 @@
-import { common } from "@agora/core/i18n";
+import { UI_MODES, type UiMode } from "@agora/core";
+import { common, simple } from "@agora/core/i18n";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Alert, BottomSheet, Button, Description, FieldError, Input, Label, Radio, RadioGroup, TextField, useBottomSheetAwareHandlers } from "heroui-native";
@@ -36,11 +37,31 @@ export function AccessChoice({ value, onChange, disabled }: { value: Access; onC
   );
 }
 
-/** Invitation form in a sheet: address and access; the invitee fills in the rest of the profile. */
+/** The interface they get: simple (one chat and its history) or full; admins always get the full one. */
+export function UiModeChoice({ value, onChange, disabled }: { value: UiMode; onChange: (v: UiMode) => void; disabled?: boolean }) {
+  const t = tr(simple);
+  return (
+    <RadioGroup value={value} onValueChange={(v) => onChange(v === "simple" ? "simple" : "full")} isDisabled={disabled} className="gap-4">
+      {UI_MODES.map((mode) => (
+        <RadioGroup.Item key={mode} value={mode} className="items-start">
+          <View className="flex-1 gap-0.5">
+            <Label>{t.uiMode[mode]}</Label>
+            <Description>{t.uiModeHint[mode]}</Description>
+          </View>
+          <Radio />
+        </RadioGroup.Item>
+      ))}
+    </RadioGroup>
+  );
+}
+
+export type InviteBody = { email: string; role: Access; uiMode: UiMode };
+
+/** Invitation form in a sheet: address, access and interface; the invitee fills in the rest of the profile. */
 export function InviteSheet(props: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onInvite: (body: { email: string; role: Access }) => Promise<unknown>;
+  onInvite: (body: InviteBody) => Promise<unknown>;
   pending: boolean;
   error: unknown;
 }) {
@@ -57,13 +78,14 @@ export function InviteSheet(props: {
   );
 }
 
-function InviteForm(props: { onInvite: (body: { email: string; role: Access }) => Promise<unknown>; pending: boolean; error: unknown }) {
+function InviteForm(props: { onInvite: (body: InviteBody) => Promise<unknown>; pending: boolean; error: unknown }) {
   const t = usersMessages;
   const { onFocus, onBlur } = useBottomSheetAwareHandlers();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Access>("user");
+  const [uiMode, setUiMode] = useState<UiMode>("full");
   const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const submit = () => valid && !props.pending && props.onInvite({ email: email.trim(), role }).catch(() => {});
+  const submit = () => valid && !props.pending && props.onInvite({ email: email.trim(), role, uiMode: role === "admin" ? "full" : uiMode }).catch(() => {});
   return (
     <View className="gap-5 pb-4">
       <BottomSheet.Title>{t.inviteLegend}</BottomSheet.Title>
@@ -87,6 +109,11 @@ function InviteForm(props: { onInvite: (body: { email: string; role: Access }) =
       <View className="gap-2">
         <Label isRequired>{t.access}</Label>
         <AccessChoice value={role} onChange={setRole} />
+      </View>
+      <View className="gap-2">
+        <Label isRequired>{tr(simple).interface}</Label>
+        <UiModeChoice value={role === "admin" ? "full" : uiMode} onChange={setUiMode} disabled={role === "admin"} />
+        {role === "admin" && <Description>{tr(simple).adminsFull}</Description>}
       </View>
       <Button isDisabled={!valid || props.pending} onPress={withTap(submit)}>
         {props.pending ? t.sending : t.invite}

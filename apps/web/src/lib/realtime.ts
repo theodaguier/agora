@@ -8,6 +8,7 @@ import { applyAgentStatus, applyPresence, presenceQuery } from "./presence";
 import type { CodeSession, CodeSessionRef, CodeStep } from "@agora/core";
 import { applyCodeSession, applyCodeStep, dropCodeSession, codeSessionsQuery } from "./code-sessions";
 import { playSound } from "./sounds";
+import { authClient } from "./auth";
 
 /** Delay after which "X is typing" disappears without a new signal. */
 const TYPING_MS = 5_000;
@@ -183,7 +184,8 @@ type GlobalEvent =
   | { type: "availability"; userId: string; schedule: Schedule }
   | { type: "tasks.changed"; userIds: string[] }
   | { type: "digest.ready"; id: string }
-  | { type: "inbox.changed" };
+  | { type: "inbox.changed" }
+  | { type: "session.changed" };
 
 function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
   if (ev.type === "presence") return applyPresence(qc, ev.userId, { online: ev.online, lastSeenAt: ev.lastSeenAt });
@@ -195,6 +197,13 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
   }
   // Also refreshes the admin's recap settings (["digest", "config"]).
   if (ev.type === "digest.ready") return void qc.invalidateQueries({ queryKey: ["digest"] });
+  // An admin changed the account's interface or role: the session is read again, and the shell follows it.
+  if (ev.type === "session.changed") {
+    authClient.$store.notify("$sessionSignal");
+    // Imported when needed: the router's module loads the screens.
+    void import("@/router").then(({ router }) => router.invalidate());
+    return;
+  }
   if (ev.type === "inbox.changed") {
     // A mention, a reply, a task: what lands in the inbox rings (reading it changes the inbox too, and stays silent).
     const before = qc.getQueryData<Inbox>(["inbox", "all"])?.unread;
@@ -343,6 +352,7 @@ const EVENT_TYPES = [
   "tasks.changed",
   "digest.ready",
   "inbox.changed",
+  "session.changed",
 ] as const;
 
 /** The server pings every 25 s: past this silence the stream is dead (sleep, network change, a proxy dropping it). */

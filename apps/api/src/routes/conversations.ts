@@ -11,6 +11,7 @@ import {
   agentDto,
   listConversations,
   loadConversation,
+  openChat,
   openDirectWithAgent,
   openDirectWithUser,
   type LoadedConversation,
@@ -24,7 +25,10 @@ import { CODEX_LABEL, CODEX_PROVIDER, canUseCodex, isCodexModel } from "../codex
 import { skills, type ModelInfo } from "../hermes";
 import { HermesError, agentMcpServers, forgetSessions } from "../hermes-admin";
 import { syncSessionSearch } from "../session-search";
-import { allowedClaudeCodeModels, allowedCodexModels, allowedModelOptions } from "../models";
+import { remember } from "../remember";
+import { relayParties } from "../person-relay";
+import { wikiEnabled } from "../memory";
+import { allowedClaudeCodeModels, allowedCodexModels, allowedModelOptions, userDefaultModel } from "../models";
 import { deleteRoutine, findRoutine, listRoutines, updateRoutine } from "../routines";
 import { screenInput, wakeScreen, watchScreen } from "../screen";
 import { excerpt, groupCalls, newChain, type Forwarded, type ReplyTo } from "../group";
@@ -45,7 +49,7 @@ import {
   type ProjectInfo,
   type ProjectStatus,
 } from "@agora/core";
-import { ALL_HANDLE, mentionsAll, SCREEN_VIEWPORTS, type QueuedMessageDto, type ViewAction, type ViewBlock } from "@agora/core";
+import { ALL_HANDLE, mentionsAll, SCREEN_VIEWPORTS, withoutPreviews, type InboxRelay, type QueuedMessageDto, type ViewAction, type ViewBlock } from "@agora/core";
 
 const messages = defineMessages({
   en: {
@@ -209,11 +213,38 @@ async function sendUserMessage(conv: LoadedConversation, me: { id: string; name:
       : [];
   const chain = newChain();
   for (const call of calls) enqueueTurn({ conversationId: id, ...call, triggerId: msg.id, requestedBy: me.id, chain });
+  // A colleague answering the bot that wrote to them for someone: the answer goes back to that person's conversation.
+  if (conv.directBot) void answerBack(conv, me, out.text).catch((err) => console.error("conversations: answer back", err));
   if (out.all) {
     const bots = conv.agents.filter((a) => !calls.some((c) => c.agentId === a.agent.id)).map(({ agent: a }) => ({ id: a.id, name: a.name, hermesProfile: a.hermesProfile }));
     void callAll({ conversationId: id, triggerId: msg.id, requestedBy: me.id, chain, bots }).catch((err) => console.error("conversations: @all", err));
   }
   return msg;
+}
+
+/**
+ * In a bot's conversation with a colleague on someone's behalf (person-relay.ts), the colleague's message
+ * also goes to the conversation the request came from: a grey line « Marie a répondu », and the bot takes
+ * over there with the answer, as the person it works for.
+ */
+async function answerBack(conv: LoadedConversation, me: { id: string; name: string }, text: string) {
+  const parties = relayParties(conv.conversation.directKey);
+  const origin = conv.conversation.originId;
+  if (!parties || !origin || parties.userId !== me.id || !text.trim()) return;
+  const [link] = await db
+    .select({ id: conversationAgent.agentId })
+    .from(conversationAgent)
+    .where(and(eq(conversationAgent.conversationId, origin), eq(conversationAgent.agentId, parties.agentId)));
+  if (!link) return;
+  const line = await postEvent(origin, { type: "person.answered", actor: me.name, conversationId: conv.conversation.id });
+  enqueueTurn({
+    conversationId: origin,
+    agentId: parties.agentId,
+    triggerId: line.id,
+    requestedBy: parties.forUserId,
+    chain: newChain(),
+    personAnswer: { name: me.name, text: excerpt(text, 4000) },
+  });
 }
 
 /** Group: keeps the skill invocations whose bot is in the group and has that skill enabled. */
@@ -240,6 +271,12 @@ function forgetGroup(conversationId: string, bots: { id: string; hermesProfile: 
 }
 
 type MessageData = { attachments?: { id: string; name: string; mime: string }[]; forwarded?: Forwarded } | null;
+
+/** The quote of an inbox item relayed to the simple interface's chat, as markdown. */
+const relayQuote = (data: unknown) => {
+  const relay = (data as { relay?: InboxRelay } | null)?.relay;
+  return relay ? `> ${relay.authorName}: ${relay.text.replace(/\n/g, "\n> ")}` : "";
+};
 
 /** What a reply keeps of the message it answers. */
 function replySnapshot(m: MessageDto): ReplyTo {
@@ -408,6 +445,18 @@ export const conversations = new Hono<AppEnv>()
     return c.json({ id: await openDirectWithUser(me, other) });
   })
 
+  /**
+   * A new chat with a bot, like ChatGPT's "New chat": a direct conversation of its own (no `directKey`), on a
+   * fresh Hermes session, named after its first message. The empty one left from last time is reused.
+   */
+  .post("/chat", async (c) => {
+    const body = z.object({ agentId: z.string().min(1) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    const me = c.get("user").id;
+    if (!(await accessibleAgentIds(me)).has(body.data.agentId)) return c.json({ error: "not_found" }, 404);
+    return c.json({ id: await openChat(me, body.data.agentId) }, 201);
+  })
+
   .post("/group", async (c) => {
     const body = z
       .object({ title: z.string().trim().max(80).optional(), description: z.string().trim().max(200).optional(), userIds: ids.default([]), agentIds: ids.default([]) })
@@ -452,7 +501,10 @@ export const conversations = new Hono<AppEnv>()
   .get("/:id", async (c) => {
     const conv = await loadConversation(c.get("user").id, c.req.param("id"));
     if (!conv) return c.json({ error: "not_found" }, 404);
-    return c.json(detail(conv));
+    // A colleague's assistant writing for them (person-relay.ts): who it writes for, under its name in the header.
+    const parties = relayParties(conv.conversation.directKey);
+    const [forUser] = parties ? await db.select({ name: user.name }).from(user).where(eq(user.id, parties.forUserId)) : [];
+    return c.json({ ...detail(conv), onBehalfOf: forUser?.name ?? null });
   })
 
   /** A project's activity: the events of its thread and of its discussions, latest first. */
@@ -854,6 +906,32 @@ export const conversations = new Hono<AppEnv>()
     return c.json({ ids: sent }, 201);
   })
 
+  /** "Save to the second brain": the message, or one of its files (`attachmentId`), into the shared wiki's sources (remember.ts). */
+  .post("/:id/messages/:messageId/remember", async (c) => {
+    const body = z.object({ attachmentId: z.string().max(100).optional() }).safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    if (!wikiEnabled()) return c.json({ error: "memory_disabled" }, 503);
+    const me = c.get("user");
+    const conv = await loadConversation(me.id, c.req.param("id"));
+    if (!conv) return c.json({ error: "not_found" }, 404);
+    const msg = await getMessage(conv.conversation.id, c.req.param("messageId"));
+    if (!msg || msg.kind === "event") return c.json({ error: "not_found" }, 404);
+    const ids = ((msg.data as MessageData)?.attachments ?? []).map((a) => a.id).filter((id) => !body.data.attachmentId || id === body.data.attachmentId);
+    if (body.data.attachmentId && !ids.length) return c.json({ error: "not_found" }, 404);
+    const files = ids.length ? await db.select().from(attachment).where(and(eq(attachment.conversationId, conv.conversation.id), inArray(attachment.id, ids))) : [];
+    const where = conv.conversation.title ?? conv.directBot?.agent.name ?? conv.members.map((m) => m.name).join(", ");
+    const path = await remember({
+      // A colleague's request their assistant brought (inbox.ts relayToChat): what was asked goes with it.
+      text: body.data.attachmentId ? "" : [withoutPreviews(msg.text), relayQuote(msg.data)].filter(Boolean).join("\n\n"),
+      files,
+      savedBy: me.name,
+      author: msg.author?.name ?? null,
+      where,
+      at: new Date(msg.createdAt),
+    });
+    return c.json({ path }, 201);
+  })
+
   /** Deletes a message for every member: one of your own, or a bot's. Events and colleagues' messages stay. */
   .delete("/:id/messages/:messageId", async (c) => {
     const me = c.get("user");
@@ -1204,14 +1282,19 @@ export const conversations = new Hono<AppEnv>()
     // Hermes restarting or down: the picker hides until it answers again.
     if (!offer) return c.json({ error: "hermes_unavailable" }, 503);
     const { options, claudeCode, codex } = offer;
-    let [selectedProvider = null, selected = null] = bot.link.model?.split("::") ?? [];
+    // Nothing chosen here: the default model an admin set for the person shows as the choice (bot-runner runs it).
+    const personal = bot.link.model ? null : await userDefaultModel(c.get("user").id);
+    const chosen = bot.link.model ?? (personal && modelInfo(offer, personal) ? personal : null);
+    let [selectedProvider = null, selected = null] = chosen?.split("::") ?? [];
     // Older threads stored a Claude Code alias ("opus[1m]"): shown as the exact model it points to.
     if (selectedProvider === CLAUDE_CODE_PROVIDER && selected) selected = resolveClaudeCodeModel(selected);
     // Choice has since been blocked or withdrawn: the thread falls back to an allowed model on the next message.
     // (Claude Code or Codex list unavailable: its choice is kept, the bot-runner decides at the next turn.)
     const listed = (selectedProvider !== CLAUDE_CODE_PROVIDER || claudeCode) && (selectedProvider !== CODEX_PROVIDER || codex);
-    if (selected && listed && !modelInfo(offer, bot.link.model)) [selectedProvider, selected] = [null, null];
-    return c.json({ ...options, selected, selectedProvider, claudeCode, codex, effort: bot.link.effort, fast: bot.link.fast });
+    if (selected && listed && !modelInfo(offer, chosen)) [selectedProvider, selected] = [null, null];
+    // With a personal default, the bot's own default is not offered: picking "default" would not reach it.
+    const defaultAllowed = options.defaultAllowed && !(chosen && !bot.link.model);
+    return c.json({ ...options, defaultAllowed, selected, selectedProvider, claudeCode, codex, effort: bot.link.effort, fast: bot.link.fast });
   })
 
   .put("/:id/model", async (c) => {

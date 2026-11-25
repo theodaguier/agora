@@ -166,7 +166,7 @@ function PanelSection({ title, card, children }: { title: string; card: boolean;
 }
 
 /** The routine and when it runs, then its actions. */
-function RoutineItem({ conversationId, routine, onMention }: { conversationId: string; routine: Routine; onMention: () => void }) {
+export function RoutineItem({ conversationId, routine, onMention }: { conversationId: string; routine: Routine; onMention: () => void }) {
   const t = useT(messages);
   const toggle = useToggleRoutine(conversationId, routine);
   return (

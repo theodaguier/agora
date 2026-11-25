@@ -35,6 +35,8 @@ export type AppEvent =
   | { type: "digest.ready"; id: string }
   /** Something landed in (or left) the account's inbox (inbox.ts). */
   | { type: "inbox.changed" }
+  /** An admin changed the account's interface or role: the apps reload the session. */
+  | { type: "session.changed" }
   /** Your messages waiting in a conversation for its bots to finish (routes/conversations.ts). */
   | { type: "queue.updated"; conversationId: string; items: import("@agora/core").QueuedMessageDto[] };
 

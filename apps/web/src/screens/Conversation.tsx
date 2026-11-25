@@ -52,7 +52,12 @@ import { playSound } from "@/lib/sounds";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyFigure } from "@/components/EmptyFigure";
-import { agentMascot } from "@agora/core";
+import { SimpleChatTitle, UnreadCard } from "@/components/SimpleShell";
+import { remember } from "@/lib/simple";
+import { RelayCard } from "@/components/RelayCard";
+import { RoutineCard, RoutineLine, TaskCard } from "@/components/ChatCards";
+import { simple as simpleMessages } from "@agora/core/i18n";
+import { agentMascot, isSimple } from "@agora/core";
 import {
   api,
   ApiError,
@@ -556,6 +561,13 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
   const qc = useQueryClient();
   const eventText = useEventText();
   const t = useT(strings);
+  const ts = useT(simpleMessages);
+  const simpleMode = isSimple(user);
+  // "Save to the second brain" (any message, in any interface): its text and files go to the shared wiki's sources.
+  const rememberMessage = useMutation({
+    mutationFn: (messageId: string) => remember(conversationId, messageId),
+    meta: { success: ts.remembered, error: ts.rememberFailed },
+  });
   const detail = useQuery(conversationQuery(conversationId));
   const c = useT(common);
   const messagesList = useQuery(messagesQuery(conversationId));
@@ -903,6 +915,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
   const runCommand = (command: string, language: string) =>
     void send(`${t.runCommand}\n\n\`\`\`${language}\n${command.trim()}\n\`\`\``, [], [], []);
 
+  const emptyChat = simpleMode && !isPending && !messagesList.isError && messages.length === 0 && !sending.length;
   const thread = (
     <RunCommandContext.Provider value={runCommand}>
     <section ref={root} className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
@@ -913,6 +926,9 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
       )}
       {/* Figma « Conversation · Dev »: face, name, its sessions in grey; search, more and the side panel. */}
       <header className="@container/header flex h-11.5 shrink-0 items-center gap-2 border-b pr-3.5 pl-3 md:pl-5">
+        {simpleMode ? (
+          <SimpleChatTitle agentId={directBot?.id ?? null} botName={directBot?.name ?? null} title={title} onBehalfOf={conv?.onBehalfOf ?? null} conversationId={conversationId} />
+        ) : (
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <HeaderTitle conv={conv} me={user.id} title={title} directBot={directBot} directPerson={directPerson} waiting={turns.some((x) => x.approval)} onOpenInfo={() => setPanel("info")} />
           {conv && (
@@ -926,11 +942,14 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
             />
           )}
         </div>
+        )}
         <PanelButtons panel={panel} setPanel={setPanel} hasPanels={!!conv} hasInfo={hasInfo} />
       </header>
       {conv && <PinnedBar conversationId={conversationId} onJump={jumpTo} onSeeAll={() => setPanel("pins")} />}
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* Figma « Mode simple », web: a new chat has its question and the composer together, in the middle. */}
+      {emptyChat && <div aria-hidden className="flex-1" />}
+      <div className={cn("relative flex min-h-0 flex-col", !emptyChat && "flex-1")}>
         <div
           ref={scroller}
           onScroll={(e) => {
@@ -969,12 +988,20 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
             )}
             {!isPending && !messagesList.isError && messages.length === 0 && !sending.length && (
               <Empty className="m-auto max-w-sm flex-none">
+                {simpleMode ? (
+                  // Figma « Mode simple », web: the question alone, as ChatGPT asks it.
+                  <EmptyHeader>
+                    <EmptyTitle>{ts.empty}</EmptyTitle>
+                    <UnreadCard current={conversationId} />
+                  </EmptyHeader>
+                ) : (
                 <EmptyHeader>
                   {/* Its portrait is already beside the thread when its panel is open. */}
                   {directBot && panel !== "info" && <EmptyFigure mascot={agentMascot(directBot.avatar.color)} />}
                   <EmptyTitle>{title}</EmptyTitle>
                   <EmptyDescription>{t.emptyHint}</EmptyDescription>
                 </EmptyHeader>
+                )}
               </Empty>
             )}
             {timeline.map((entry, i) => {
@@ -1041,6 +1068,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                       onForward={() => setForwarding(m)}
                       pinned={isPinned({ messageId: m.id })}
                       onTogglePin={() => togglePin({ messageId: m.id })}
+                      onRemember={() => rememberMessage.mutate(m.id)}
                       onDelete={fromMe ? () => deleteMessage(m.id) : undefined}
                     >
                       <ChatMessage
@@ -1069,6 +1097,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                       onForward={() => setForwarding(m)}
                       pinned={isPinned({ messageId: m.id })}
                       onTogglePin={() => togglePin({ messageId: m.id })}
+                      onRemember={() => rememberMessage.mutate(m.id)}
                       onDelete={fromMe ? () => deleteMessage(m.id) : undefined}
                     >
                       <ChatMessage
@@ -1089,6 +1118,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                   {m.kind === "bot" && (
                     <Post className={gap || undefined} head={postHead}>
                       {/* What it used, before what it says: as while it works (the live turn starts with it). */}
+                      {m.data?.routine && <RoutineLine routine={m.data.routine} />}
                       {(m.data?.tools || m.data?.approvals) && <ToolLine tools={m.data.tools ?? []} approvals={m.data.approvals} />}
                       {(m.text || !!m.data?.codeSessions?.length) && (
                         <MessageRow
@@ -1100,6 +1130,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                           onForward={() => setForwarding(m)}
                           pinned={isPinned({ messageId: m.id })}
                           onTogglePin={() => togglePin({ messageId: m.id })}
+                          onRemember={() => rememberMessage.mutate(m.id)}
                           onDelete={() => deleteMessage(m.id)}
                         >
                           {m.data?.codeSessions?.length ? (
@@ -1119,6 +1150,11 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
                       {m.data?.previews && <PreviewCards previews={m.data.previews} onOpen={openPreview} />}
                       <BotFiles message={m} />
                       <PullRequestLinks text={m.text} shown={sessionPulls} />
+                      {m.data?.relay && <RelayCard relay={m.data.relay} />}
+                      {!!m.data?.tasks?.length && <TaskCard ids={m.data.tasks} />}
+                      {!!m.data?.routines?.length && (
+                        <RoutineCard conversationId={conversationId} ids={m.data.routines} onMention={(r) => composer.current?.addInvocation({ kind: "routine", id: r.id, name: r.name })} />
+                      )}
                       {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
                       {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
                       {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}
@@ -1244,6 +1280,7 @@ export function ConversationView({ conversationId, focus }: { conversationId: st
         )}
         <ForwardDialog conversationId={conversationId} message={forwarding} onClose={() => setForwarding(null)} />
       </div>
+      {emptyChat && <div aria-hidden className="flex-1" />}
     </section>
     </RunCommandContext.Provider>
   );
@@ -1301,8 +1338,8 @@ const hideBlocks = (text: string) =>
   NO_REPLY.startsWith(text.trim().replace(/[.\s]+$/, ""))
     ? ""
     : withoutMediaTags(withoutPreviews(text))
-        .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[ \t]*\n[\s\S]*?```/g, "")
-        .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[\s\S]*$/, "")
+        .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view|message-person|task-list|routine-list)[ \t]*\n[\s\S]*?```/g, "")
+        .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view|message-person|task-list|routine-list)[\s\S]*$/, "")
         .replace(/\n{3,}/g, "\n\n")
         .trimEnd();
 

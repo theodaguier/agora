@@ -1,4 +1,5 @@
-import { PackageIcon, ClockIcon, CopyIcon, DownloadIcon, MoreIcon, ForwardIcon, PinIcon, PinOffIcon, PlugIcon, ReplyIcon, TrashIcon } from "@/components/icons";
+import { simple } from "@agora/core/i18n";
+import { BrainIcon, PackageIcon, ClockIcon, CopyIcon, DownloadIcon, MoreIcon, ForwardIcon, PinIcon, PinOffIcon, PlugIcon, ReplyIcon, TrashIcon } from "@/components/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { removeMessage } from "@agora/core";
 import type { ComponentType, ReactNode } from "react";
@@ -237,11 +238,14 @@ export function MessageRow(props: {
   onTogglePin?: () => void;
   /** Deletes it for everyone: offered on your own messages and on the bots'. */
   onDelete?: () => void;
+  /** "Save to the second brain": the message and its files go to the shared wiki's sources. */
+  onRemember?: () => void;
   /** Came in while the conversation was open: rises into place. */
   arriving?: boolean;
   children: ReactNode;
 }) {
   const t = useT(messages);
+  const ts = useT(simple);
   const files = props.attachments ?? [];
   const items = ({ Group, Item, Separator }: MenuParts) => (
     <>
@@ -258,7 +262,7 @@ export function MessageRow(props: {
           </Item>
         )}
       </Group>
-      {(props.text || files.length > 0) && <Separator />}
+      {(props.text || files.length > 0 || props.onRemember) && <Separator />}
       <Group>
         {props.text && (
           <Item onClick={() => copyText(props.text!)}>
@@ -268,6 +272,11 @@ export function MessageRow(props: {
         {files.length > 0 && (
           <Item onClick={() => downloadAll(files)}>
             <DownloadIcon /> {t.download(files.length)}
+          </Item>
+        )}
+        {props.onRemember && (
+          <Item onClick={props.onRemember}>
+            <BrainIcon /> {ts.remember}
           </Item>
         )}
       </Group>
@@ -318,13 +327,13 @@ export function MessageRow(props: {
               <MoreIcon />
             </DropdownMenuTrigger>
             {/* Opens over the message, never past the window: the button sits at the message's outer end. */}
-            <DropdownMenuContent align={props.mine ? "start" : "end"} className="w-48">
+            <DropdownMenuContent align={props.mine ? "start" : "end"} className="w-56">
               {items(dropdownParts)}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuContent className="w-48">{items(contextParts)}</ContextMenuContent>
+      <ContextMenuContent className="w-56">{items(contextParts)}</ContextMenuContent>
     </ContextMenu>
   );
 }

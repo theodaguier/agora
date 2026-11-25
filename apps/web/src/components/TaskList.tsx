@@ -328,7 +328,7 @@ const priorityBadge: Record<Exclude<TaskPriority, "normal">, "destructive" | "se
 };
 
 /** `owner`: whose list it is (their own face is not repeated on each row). */
-function TaskRow({ task, owner, table }: { task: Task; owner: string | null; table?: boolean }) {
+export function TaskRow({ task, owner, table }: { task: Task; owner: string | null; table?: boolean }) {
   const { user } = useRouteContext({ from: "/app" });
   const work = useWorkingOn();
   const mine = task.assignees.find((a) => a.id === user.id);

@@ -1,4 +1,4 @@
-import type { ServerHistoryRange, ServerReport, SshHostDto, SshLogEntry } from "@agora/core";
+import type { ServerHistoryRange, ServerReport, SshHostDto, SshLogEntry, UiMode } from "@agora/core";
 import { queryOptions } from "@tanstack/react-query";
 import { ApiError, api, apiUrl, authHeaders } from "./api";
 import { readLocalFile } from "./files";
@@ -23,9 +23,13 @@ export type AdminUser = {
   username: string | null;
   title: string;
   agents: string[];
+  /** Interface an admin gave them (@agora/core isSimple). */
+  uiMode: UiMode;
+  /** Model their conversations start on (`provider::model`); null = each bot's own. */
+  defaultModel: string | null;
 };
 
-export type AdminInvitation = { id: string; email: string; role: "admin" | "user"; expiresAt: string; createdAt: string };
+export type AdminInvitation = { id: string; email: string; role: "admin" | "user"; uiMode: UiMode; expiresAt: string; createdAt: string };
 
 /** Invitation send response: without email configured, the link must be passed on by hand. */
 export type InvitationSent = { sent: boolean; link: string | null; error?: string };
@@ -37,6 +41,8 @@ export type AdminModels = {
   providers: { provider: string; models: { id: string; reasoning: boolean; label?: string }[]; onlyFor: string | null }[];
   /** Forbidden models (`provider::model`) per employee. */
   blocked: Record<string, string[]>;
+  /** Each employee's default model (`provider::model`), when an admin set one. */
+  defaults: Record<string, string>;
   /** Profiles whose models Hermes could not provide. */
   unreachable: number;
 };

@@ -9,7 +9,14 @@ import type { AvatarShape } from "./agent-avatar";
 
 export type AgentAvatarSpec = { shape: AvatarShape; color: string };
 
-export type AgentSummary = { id: string; name: string; avatar: AgentAvatarSpec; onboarding: boolean };
+export type AgentSummary = {
+  id: string;
+  name: string;
+  avatar: AgentAvatarSpec;
+  onboarding: boolean;
+  /** What it is for, from its SOUL.md (GET /agents only). */
+  role?: string | null;
+};
 
 /** A bot's profile, as everyone sees it; `access`: you may write to it. */
 export type AgentProfile = AgentSummary & { createdAt: string; access: boolean };
@@ -180,6 +187,8 @@ export type ConversationDetail = {
   id: string;
   kind: ConversationKind;
   title: string | null;
+  /** A colleague's assistant writing for them: who it writes for (person-relay.ts). */
+  onBehalfOf?: string | null;
   /** A group's (a project's) one-line description. */
   description: string | null;
   /** A group's logo; null = its participants' faces. */
@@ -330,6 +339,13 @@ export type Message = {
     previews?: PreviewRef[];
     /** Employee's answer to a draft the bot showed. */
     viewAction?: ViewAction;
+    /** The simple interface: an inbox item their assistant brings to the chat. */
+    relay?: import("@agora/core").InboxRelay;
+    /** A routine's result: the routine it comes from (a grey line above it). */
+    routine?: import("@agora/core").RoutineRunRef;
+    /** Tasks and routines the bot shows as a card (ids). */
+    tasks?: string[];
+    routines?: string[];
   } | null;
   createdAt: string;
   author: Author;
@@ -452,12 +468,17 @@ export type AdminUser = {
   username: string | null;
   title: string;
   agents: string[];
+  /** Interface an admin gave them (@agora/core isSimple). */
+  uiMode: import("@agora/core").UiMode;
+  /** Model their conversations start on (`provider::model`); null = each bot's own. */
+  defaultModel: string | null;
 };
 
 export type AdminInvitation = {
   id: string;
   email: string;
   role: "admin" | "user";
+  uiMode: import("@agora/core").UiMode;
   expiresAt: string;
   createdAt: string;
 };
@@ -480,6 +501,8 @@ export type AdminModels = {
     /** Only this employee can use it (Claude Code: personal subscription). */
     onlyFor: string | null;
   }[];
+  /** Each employee's default model (`provider::model`), when an admin set one. */
+  defaults: Record<string, string>;
   /** Forbidden models (`provider::model`) per employee. */
   blocked: Record<string, string[]>;
   /** Profiles whose models Hermes could not provide. */

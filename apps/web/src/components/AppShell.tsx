@@ -13,6 +13,8 @@ import { WhatsNew } from "@/components/WhatsNew";
 import { Workspace } from "@/components/Workspace";
 import { readSize, useDesktop } from "@/lib/workspace";
 import { MorningDigest } from "@/components/MorningDigest";
+import { SimpleShell } from "@/components/SimpleShell";
+import { isSimple } from "@agora/core";
 
 const Settings = lazy(() => import("@/components/Settings").then((m) => ({ default: m.Settings })));
 
@@ -30,6 +32,19 @@ export function AppShell() {
   useEvents(user.id);
   useAccountLocale(user.locale);
   useSettingsFromUrl();
+  const overlays = (
+    <>
+      {settingsRequested && <Suspense fallback={null}><Settings /></Suspense>}
+      <ProfileSheet />
+      <ConfirmHost />
+      <Shortcuts />
+      <WhatsNew />
+      {/* After WhatsNew: waits for the changelog to be closed. */}
+      <MorningDigest />
+    </>
+  );
+  // One chat and its history, without the workspace's tabs and sections (components/SimpleShell).
+  if (isSimple(user)) return <SimpleShell overlays={overlays} />;
   return (
     <SidebarProvider
       defaultOpen={!document.cookie.includes("sidebar_state=false")}
@@ -52,13 +67,7 @@ export function AppShell() {
           </SidebarInset>
         </>
       )}
-      {settingsRequested && <Suspense fallback={null}><Settings /></Suspense>}
-      <ProfileSheet />
-      <ConfirmHost />
-      <Shortcuts />
-      <WhatsNew />
-      {/* After WhatsNew: waits for the changelog to be closed. */}
-      <MorningDigest />
+      {overlays}
     </SidebarProvider>
   );
 }

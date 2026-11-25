@@ -1,6 +1,8 @@
 import { getOrg, invalidateOrg, ORG_AVATAR_ID, orgAvatarUrl, saveOrg } from "../org";
 import { readAvatar } from "../profile";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { UI_MODES } from "@agora/core";
+import { blockedModels } from "../models";
 import { Hono } from "hono";
 import { z } from "zod";
 import { createProfile, HermesError } from "../hermes-admin";
@@ -17,7 +19,7 @@ import { CLAUDE_CODE_PROVIDER, claudeCodeModels } from "../claude-code";
 import { CODEX_PROVIDER, codexModels } from "../codex";
 import { env } from "../env";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
-import { forgetMembers } from "../events";
+import { forgetMembers, publishToUser } from "../events";
 import { errors } from "../errors.messages";
 import { defineMessages, tr } from "../i18n";
 
@@ -62,6 +64,8 @@ export const admin = new Hono<AppEnv>()
           name: user.name,
           email: user.email,
           role: user.role,
+          uiMode: user.uiMode,
+          defaultModel: user.defaultModel,
           image: user.image,
           username: user.username,
           title: user.title,
@@ -80,6 +84,7 @@ export const admin = new Hono<AppEnv>()
         id: invitation.id,
         email: invitation.email,
         role: invitation.role,
+        uiMode: invitation.uiMode,
         expiresAt: invitation.expiresAt,
         createdAt: invitation.createdAt,
       })
@@ -92,7 +97,7 @@ export const admin = new Hono<AppEnv>()
   /** The account is created by the invitee themselves, by following the link received by email. */
   .post("/invitations", async (c) => {
     const body = z
-      .object({ email: z.string().trim().email(), role: z.enum(["admin", "user"]).default("user") })
+      .object({ email: z.string().trim().email(), role: z.enum(["admin", "user"]).default("user"), uiMode: z.enum(UI_MODES).default("full") })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: tr(messages).invalidEmail }, 400);
     try {
@@ -123,7 +128,7 @@ export const admin = new Hono<AppEnv>()
    */
   .patch("/users/:id", async (c) => {
     const body = z
-      .object({ role: z.enum(["admin", "user"]).optional(), title: z.string().trim().min(1).max(60).optional() })
+      .object({ role: z.enum(["admin", "user"]).optional(), title: z.string().trim().min(1).max(60).optional(), uiMode: z.enum(UI_MODES).optional() })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: tr(messages).emptyTitle }, 400);
     const id = c.req.param("id");
@@ -132,7 +137,10 @@ export const admin = new Hono<AppEnv>()
       return c.json({ error: tr(messages).ownAdminRights }, 400);
     }
     const [row] = await db.update(user).set(body.data).where(eq(user.id, id)).returning({ id: user.id });
-    return row ? c.body(null, 204) : c.json({ error: "not_found" }, 404);
+    if (!row) return c.json({ error: "not_found" }, 404);
+    // Their open apps switch interface (and role) without signing in again.
+    if (body.data.uiMode || body.data.role) publishToUser(id, { type: "session.changed" });
+    return c.body(null, 204);
   })
 
   /**
@@ -172,11 +180,12 @@ export const admin = new Hono<AppEnv>()
   .get("/models", async (c) => {
     const ownerId = async (email: string) =>
       email.trim() ? (await db.select({ id: user.id }).from(user).where(sql`lower(${user.email}) = ${email.trim().toLowerCase()}`))[0] : undefined;
-    const [agents, blocks, ownerRow, codexOwner] = await Promise.all([
+    const [agents, blocks, ownerRow, codexOwner, withDefault] = await Promise.all([
       db.select({ hermesProfile: agent.hermesProfile }).from(agent).where(eq(agent.onboarding, false)),
       db.select().from(modelBlock),
       ownerId(env.CLAUDE_CODE_OWNER_EMAIL),
       ownerId(env.CODEX_OWNER_EMAIL || env.CLAUDE_CODE_OWNER_EMAIL),
+      db.select({ id: user.id, model: user.defaultModel }).from(user).where(isNotNull(user.defaultModel)),
     ]);
     const [results, ccModels, cxModels] = await Promise.all([
       Promise.allSettled(agents.map((a) => modelOptions(a.hermesProfile))),
@@ -194,6 +203,8 @@ export const admin = new Hono<AppEnv>()
     }
     const blocked: Record<string, string[]> = {};
     for (const b of blocks) (blocked[b.userId] ??= []).push(b.model);
+    const defaults: Record<string, string> = {};
+    for (const u of withDefault) defaults[u.id] = u.model!;
     return c.json({
       providers: [
         ...[...providers].map(([provider, models]) => ({ provider, models: [...models.values()], onlyFor: null as string | null })),
@@ -206,6 +217,8 @@ export const admin = new Hono<AppEnv>()
           : []),
       ],
       blocked,
+      /** Each employee's default model (`provider::model`), when an admin set one. */
+      defaults,
       unreachable: results.filter((r) => r.status === "rejected").length,
     });
   })
@@ -214,12 +227,24 @@ export const admin = new Hono<AppEnv>()
     const body = z.object({ blocked: z.array(z.string().max(200)).max(500) }).safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid_body" }, 400);
     const userId = c.req.param("id");
+    const models = [...new Set(body.data.blocked)];
     await db.transaction(async (tx) => {
       await tx.delete(modelBlock).where(eq(modelBlock.userId, userId));
-      const models = [...new Set(body.data.blocked)];
       if (models.length) await tx.insert(modelBlock).values(models.map((model) => ({ userId, model })));
+      // Their default model just got blocked: back to each bot's own (the next allowed one, models.ts).
+      await tx.update(user).set({ defaultModel: null }).where(and(eq(user.id, userId), inArray(user.defaultModel, models.length ? models : [""])));
     });
     return c.body(null, 204);
+  })
+
+  /** The model an employee's conversations start on (`provider::model`, one they are allowed); null = each bot's own default. */
+  .put("/users/:id/default-model", async (c) => {
+    const body = z.object({ model: z.string().regex(/^[^:]+::.+$/).max(200).nullable() }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    const userId = c.req.param("id");
+    if (body.data.model && (await blockedModels(userId)).has(body.data.model)) return c.json({ error: "forbidden_model" }, 400);
+    const [row] = await db.update(user).set({ defaultModel: body.data.model }).where(eq(user.id, userId)).returning({ id: user.id });
+    return row ? c.body(null, 204) : c.json({ error: "not_found" }, 404);
   })
 
   /** Organization: name, agent language, time zone (set at install time). */

@@ -8,6 +8,9 @@ import { CardContent, CardDescription, CardTitle } from "@/components/ui/card";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { modelName } from "@agora/core";
+import { simple } from "@agora/core/i18n";
 import { api, type AdminModels, type AdminUser } from "@/lib/api";
 import { adminModelsQuery, adminUsersQuery } from "@/lib/queries";
 import { defineMessages, useT } from "@/i18n";
@@ -68,6 +71,26 @@ export function Models() {
   });
 
   const blockedOf = (userId: string) => new Set(data?.blocked[userId] ?? []);
+  // The model an employee's conversations start on, among those allowed; null = each bot's own.
+  const setDefault = useMutation({
+    mutationFn: ({ userId, model }: { userId: string; model: string | null }) =>
+      api(`/admin/users/${userId}/default-model`, { method: "PUT", body: JSON.stringify({ model }) }),
+    onMutate: ({ userId, model }) => {
+      qc.setQueryData<AdminModels>(adminModelsQuery.queryKey, (d) => {
+        if (!d) return d;
+        const defaults = { ...d.defaults };
+        if (model) defaults[userId] = model;
+        else delete defaults[userId];
+        return { ...d, defaults };
+      });
+    },
+    onSettled: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: adminModelsQuery.queryKey }),
+        qc.invalidateQueries({ queryKey: adminUsersQuery.queryKey }),
+        qc.invalidateQueries({ queryKey: ["models"] }),
+      ]),
+  });
   /** Allows (allowed) or forbids these models for an employee. */
   const set = (userId: string, models: string[], allowed: boolean) => {
     const blocked = blockedOf(userId);
@@ -95,7 +118,15 @@ export function Models() {
         ) : (
           <ListCardRows>
             {users.map((u) => (
-              <UserModels key={u.id} user={u} providers={data.providers.filter((p) => !p.onlyFor || p.onlyFor === u.id)} blocked={blockedOf(u.id)} onChange={(models, allowed) => set(u.id, models, allowed)} />
+              <UserModels
+                key={u.id}
+                user={u}
+                providers={data.providers.filter((p) => !p.onlyFor || p.onlyFor === u.id)}
+                blocked={blockedOf(u.id)}
+                onChange={(models, allowed) => set(u.id, models, allowed)}
+                defaultModel={data.defaults?.[u.id] ?? null}
+                onDefault={(model) => setDefault.mutate({ userId: u.id, model })}
+              />
             ))}
           </ListCardRows>
         )}
@@ -111,11 +142,15 @@ function UserModels({
   providers,
   blocked,
   onChange,
+  defaultModel,
+  onDefault,
 }: {
   user: AdminUser;
   providers: AdminModels["providers"];
   blocked: Set<string>;
   onChange: (models: string[], allowed: boolean) => void;
+  defaultModel: string | null;
+  onDefault: (model: string | null) => void;
 }) {
   const t = useT(messages);
   const ids = providers.flatMap((p) => p.models.map((m) => key(p.provider, m.id)));
@@ -132,6 +167,7 @@ function UserModels({
         <ItemDescription>{summary}</ItemDescription>
       </ItemContent>
       <ItemActions>
+        <DefaultModelSelect providers={providers} blocked={blocked} value={defaultModel} onChange={onDefault} name={u.name} />
         <Popover>
           <PopoverTrigger render={<Button variant="outline" size="sm" aria-label={t.editOf(u.name)} />}>{t.edit}</PopoverTrigger>
           <PopoverContent align="end" sideOffset={6} className="w-80 p-0">
@@ -178,5 +214,55 @@ function UserModels({
         </Popover>
       </ItemActions>
     </Item>
+  );
+}
+
+const AGENT_DEFAULT = "\u0001agent";
+
+/** An employee's default model (Figma « Mode simple », web — Modèles par personne): the allowed ones, by provider. */
+function DefaultModelSelect({
+  providers,
+  blocked,
+  value,
+  onChange,
+  name,
+}: {
+  providers: AdminModels["providers"];
+  blocked: Set<string>;
+  value: string | null;
+  onChange: (model: string | null) => void;
+  name: string;
+}) {
+  const ts = useT(simple);
+  const groups = providers
+    .map((p) => ({ provider: p.provider, models: p.models.filter((m) => !blocked.has(key(p.provider, m.id))) }))
+    .filter((p) => p.models.length);
+  const labelOf = (v: string) => {
+    if (v === AGENT_DEFAULT) return ts.agentDefault;
+    const [provider, id] = v.split("::") as [string, string];
+    return providers.find((p) => p.provider === provider)?.models.find((m) => m.id === id)?.label ?? modelName(id);
+  };
+  return (
+    <Select value={value ?? AGENT_DEFAULT} onValueChange={(v) => v != null && onChange(v === AGENT_DEFAULT ? null : (v as string))}>
+      <SelectTrigger size="sm" aria-label={`${ts.defaultModel}, ${name}`} title={ts.defaultModelHint} className="w-44">
+        <SelectValue>{(v: string | null) => (v ? labelOf(v) : null)}</SelectValue>
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false} align="end" className="max-h-96 w-64">
+        <SelectGroup>
+          <SelectItem value={AGENT_DEFAULT}>{ts.agentDefault}</SelectItem>
+        </SelectGroup>
+        {groups.map((p) => (
+          <SelectGroup key={p.provider}>
+            <SelectLabel>{providerName(p.provider)}</SelectLabel>
+            {p.models.map((m) => (
+              <SelectItem key={m.id} value={key(p.provider, m.id)}>
+                <ModelLogo model={m.id} provider={p.provider} />
+                {m.label ?? modelName(m.id)}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

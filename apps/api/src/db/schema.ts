@@ -1,5 +1,5 @@
 import { type AnyPgColumn, boolean, customType, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique } from "drizzle-orm/pg-core";
-import type { AbsenceKind, ProjectBotAccess, ProjectContextAuthor, ProjectResource, ProjectStatus, ArtifactShareMode, BotWebhookStatus, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodeMergeMethod, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, GitHubMergeRequestStatus, IntegrationType, McpEnvField, VaultItemKind, VaultKind, VaultRequestKind, VaultRequestStatus, WeeklyHours } from "@agora/core";
+import type { UiMode, AbsenceKind, ProjectBotAccess, ProjectContextAuthor, ProjectResource, ProjectStatus, ArtifactShareMode, BotWebhookStatus, CodeAccount, CodeCommand, CodeEngine, CodeGit, CodeIssue, CodeMergeMethod, CodePriority, CodeSessionStatus, CodeStep, CodeTodo, CodeUsage, CodeWorktree, GitHubMergeRequestStatus, IntegrationType, McpEnvField, VaultItemKind, VaultKind, VaultRequestKind, VaultRequestStatus, WeeklyHours } from "@agora/core";
 import type { ImplicitCall } from "../group";
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
@@ -24,6 +24,10 @@ export const user = pgTable("user", {
   image: text("image"),
   /** Access level (admin plugin): "admin" or "user". */
   role: text("role").default("user"),
+  /** Interface the admin chose for them: "simple" (one chat and its history, @agora/core isSimple) or "full". Admins always get the full one. */
+  uiMode: text("ui_mode").$type<UiMode>().default("full").notNull(),
+  /** Model their conversations start on (`provider::model`), set by an admin; null = each bot's own default. */
+  defaultModel: text("default_model"),
   firstName: text("first_name").default("").notNull(),
   lastName: text("last_name").default("").notNull(),
   /** Public handle, lowercase; optional. */
@@ -182,6 +186,8 @@ export const invitation = pgTable(
     id: text("id").primaryKey(),
     email: text("email").notNull(),
     role: text("role").$type<"admin" | "user">().default("user").notNull(),
+    /** Interface the account gets once created. */
+    uiMode: text("ui_mode").$type<UiMode>().default("full").notNull(),
     tokenHash: text("token_hash").notNull().unique(),
     invitedBy: text("invited_by").references(() => user.id, { onDelete: "set null" }),
     expiresAt: timestamp("expires_at").notNull(),

@@ -4,10 +4,13 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import { Alert, Typography } from "heroui-native";
 import { useState } from "react";
 import { modelsMessages, modelsSummary, providersFor } from "@/components/admin/models-summary";
-import { AdminGate, ErrorAlert, LoadingRows, SearchBox, Section, SettingsScroll, SwitchRow, useAdminToast } from "@/components/admin/ui";
+import { AdminGate, ErrorAlert, LinkRow, LoadingRows, SearchBox, Section, SettingsScroll, SwitchRow, useAdminToast } from "@/components/admin/ui";
 import { api } from "@/lib/api";
 import { adminModelsQuery, adminUsersQuery, modelKey, providerName, type AdminModels } from "@/lib/admin";
-import { MenuButton } from "@/components/menus";
+import { MenuButton, TapMenu } from "@/components/menus";
+import { modelName } from "@agora/core";
+import { simple } from "@agora/core/i18n";
+import { tr } from "@/lib/i18n";
 import { EmptyState } from "@/components/empty-state";
 import { SearchIcon } from "@/components/icons";
 
@@ -52,6 +55,28 @@ export default function UserModels() {
     }
     save.mutate([...next]);
   };
+  // Their default model: the one their conversations start on, among those still allowed.
+  const setDefault = useMutation({
+    mutationFn: (model: string | null) => api(`/admin/users/${encodeURIComponent(userId)}/default-model`, { method: "PUT", body: JSON.stringify({ model }) }),
+    onMutate: (model) => {
+      Haptics.selectionAsync();
+      qc.setQueryData<AdminModels>(adminModelsQuery.queryKey, (d) => {
+        if (!d) return d;
+        const defaults = { ...d.defaults };
+        if (model) defaults[userId] = model;
+        else delete defaults[userId];
+        return { ...d, defaults };
+      });
+    },
+    onError: (e) => toast.failed(e),
+    onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: adminModelsQuery.queryKey }), qc.invalidateQueries({ queryKey: adminUsersQuery.queryKey }), qc.invalidateQueries({ queryKey: ["models"] })]),
+  });
+  const current = data?.defaults?.[userId] ?? null;
+  const labelOf = (key: string) => {
+    const [provider, id] = key.split("::") as [string, string];
+    const m = providers.find((p) => p.provider === provider)?.models.find((x) => x.id === id);
+    return m?.label ?? modelName(id);
+  };
   const idsOf = new Map(providers.map((p) => [p.provider, p.models.map((m) => modelKey(p.provider, m.id))]));
   const everyId = [...idsOf.values()].flat();
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -89,6 +114,27 @@ export default function UserModels() {
           ) : (
             <>
               <SearchBox value={q} onChange={setQ} placeholder={t.search} />
+              {words.length === 0 && (
+                <Section title={tr(simple).defaultModel} footer={tr(simple).defaultModelHint}>
+                  <TapMenu
+                    accessibilityLabel={tr(simple).defaultModel}
+                    actions={[
+                      { label: tr(simple).agentDefault, checked: !current, onPress: () => current && setDefault.mutate(null) },
+                      ...providers.map((p) => ({
+                        title: providerName(p.provider),
+                        actions: p.models
+                          .filter((m) => !blocked.has(modelKey(p.provider, m.id)))
+                          .map((m) => {
+                            const key = modelKey(p.provider, m.id);
+                            return { label: m.label ?? m.id, checked: key === current, onPress: () => key !== current && setDefault.mutate(key) };
+                          }),
+                      })),
+                    ]}
+                  >
+                    <LinkRow title={tr(simple).defaultModel} value={current ? labelOf(current) : tr(simple).agentDefault} pointerEvents="none" />
+                  </TapMenu>
+                </Section>
+              )}
               <Typography.Paragraph type="body-sm" color="muted" className="px-4">
                 {modelsSummary(providers, blocked)}
               </Typography.Paragraph>

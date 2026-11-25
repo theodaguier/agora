@@ -189,7 +189,8 @@ type GlobalEvent =
   | { type: "availability"; userId: string; schedule: Schedule }
   | { type: "tasks.changed"; userIds: string[] }
   | { type: "digest.ready"; id: string }
-  | { type: "inbox.changed" };
+  | { type: "inbox.changed" }
+  | { type: "session.changed" };
 
 type Snapshot = { users: Record<string, { online: boolean; lastSeenAt: string | null }>; workingAgents: string[]; schedules: Record<string, Schedule> };
 
@@ -204,6 +205,8 @@ function apply(qc: QueryClient, me: string, ev: ServerEvent | GlobalEvent) {
   if (ev.type === "availability") return snapshot((old) => ({ ...old, schedules: { ...old.schedules, [ev.userId]: ev.schedule } }));
   if (ev.type === "digest.ready") return void qc.invalidateQueries({ queryKey: ["digest"] });
   if (ev.type === "inbox.changed") return void qc.invalidateQueries({ queryKey: ["inbox"] });
+  // An admin changed the account's interface or role.
+  if (ev.type === "session.changed") return void qc.invalidateQueries({ queryKey: ["session"] });
   if (ev.type === "tasks.changed") {
     qc.invalidateQueries({ queryKey: ["tasks"] });
     for (const id of ev.userIds) qc.invalidateQueries({ queryKey: ["user", id] });

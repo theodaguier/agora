@@ -6,7 +6,14 @@ export type AvatarShape = "bean" | "pill" | "triangle" | "shield" | "circle" | "
 
 export type AgentAvatarSpec = { shape: AvatarShape; color: string };
 
-export type AgentSummary = { id: string; name: string; avatar: AgentAvatarSpec; onboarding?: boolean };
+export type AgentSummary = {
+  id: string;
+  name: string;
+  avatar: AgentAvatarSpec;
+  onboarding?: boolean;
+  /** What it is for, from its SOUL.md (GET /agents only). */
+  role?: string | null;
+};
 
 export type Person = { id: string; name: string; image: string | null; username?: string | null; title?: string };
 
@@ -59,7 +66,16 @@ export type Task = {
 };
 
 /** The signed-in account, from Better Auth's session. */
-export type SessionUser = { id: string; name: string; email: string; image: string | null; role: string | null; twoFactorEnabled?: boolean | null };
+export type SessionUser = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  role: string | null;
+  twoFactorEnabled?: boolean | null;
+  /** Interface an admin gave the account (@agora/core isSimple). */
+  uiMode?: string | null;
+};
 
 /* ---------- Conversation ---------- */
 
@@ -82,6 +98,8 @@ export type ConversationDetail = {
   id: string;
   kind: ConversationKind;
   title: string | null;
+  /** A colleague's assistant writing for them: who it writes for (person-relay.ts). */
+  onBehalfOf?: string | null;
   /** A group's (a project's) one-line description. */
   description: string | null;
   /** A group's logo; null = its participants' faces. */
@@ -214,6 +232,13 @@ export type Message = {
     previews?: import("@agora/core").PreviewRef[];
     /** Employee's answer to a draft the bot showed. */
     viewAction?: import("@agora/core").ViewAction;
+    /** The simple interface: an inbox item their assistant brings to the chat. */
+    relay?: import("@agora/core").InboxRelay;
+    /** A routine's result: the routine it comes from (a grey line above it). */
+    routine?: import("@agora/core").RoutineRunRef;
+    /** Tasks and routines the bot shows as a card (ids). */
+    tasks?: string[];
+    routines?: string[];
   } | null;
   createdAt: string;
   author: Author;

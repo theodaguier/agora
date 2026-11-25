@@ -1,11 +1,12 @@
-import { common } from "@agora/core/i18n";
+import { modelName, type UiMode } from "@agora/core";
+import { common, simple } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, router, Stack, useLocalSearchParams } from "expo-router";
 import { Button, Card, Description, ListGroup, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { AdminGate, ErrorAlert, FormField, FormInput, LoadingRows, PressableRow, Section, SectionTitle, SettingsScroll, useAdminToast } from "@/components/admin/ui";
-import { AccessChoice } from "@/components/admin/users";
+import { AccessChoice, UiModeChoice } from "@/components/admin/users";
 import { confirmAction } from "@/components/confirm-action";
 import { usersMessages } from "@/components/admin/users-messages";
 import { PersonAvatar } from "@/components/conversation-avatar";
@@ -75,7 +76,7 @@ function UserDetail({ user: u }: { user: AdminUser }) {
     setTitle(u.title);
   }
   const update = useMutation({
-    mutationFn: (patch: { role?: string; title?: string }) => api(`/admin/users/${encodeURIComponent(u.id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    mutationFn: (patch: { role?: string; title?: string; uiMode?: UiMode }) => api(`/admin/users/${encodeURIComponent(u.id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
     onSuccess: (_, patch) => patch.title !== undefined && toast.success(tr(common).saved),
     onSettled: () => qc.invalidateQueries({ queryKey: adminUsersQuery.queryKey }),
     onError: (e) => {
@@ -128,6 +129,21 @@ function UserDetail({ user: u }: { user: AdminUser }) {
         {u.id === me && <Description className="px-4">{t.ownAccess}</Description>}
       </View>
 
+      {/* Figma « Mode simple », the member page: the interface, chosen here or in the invitation. */}
+      <View className="gap-2">
+        <SectionTitle>{tr(simple).interface}</SectionTitle>
+        <Card>
+          <Card.Body>
+            <UiModeChoice
+              value={u.role === "admin" ? "full" : u.uiMode}
+              disabled={u.role === "admin" || update.isPending}
+              onChange={(uiMode) => update.mutate({ uiMode })}
+            />
+          </Card.Body>
+        </Card>
+        {u.role === "admin" && <Description className="px-4">{tr(simple).adminsFull}</Description>}
+      </View>
+
       <Section>
         <Link href={{ pathname: "/profile/admin/access/user/[userId]", params: { userId: u.id } }} asChild>
           <PressableRow>
@@ -143,6 +159,10 @@ function UserDetail({ user: u }: { user: AdminUser }) {
             <ListGroup.ItemContent>
               <ListGroup.ItemTitle>{t.models}</ListGroup.ItemTitle>
             </ListGroup.ItemContent>
+            {/* Their default model, set on the models screen. */}
+            <Typography.Paragraph type="body-sm" color="muted" numberOfLines={1} className="max-w-44 shrink">
+              {u.defaultModel ? modelName(u.defaultModel.split("::")[1]!) : tr(simple).agentDefault}
+            </Typography.Paragraph>
             <ListGroup.ItemSuffix />
           </PressableRow>
         </Link>
