@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.81.2 — 2026-11-25
+
+### Fixes
+- GitHub access of code sessions
+
 ## v0.81.1 — 2026-11-23
 
 ### Fixes
