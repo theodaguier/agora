@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.82.0 — 2026-11-25
+
+### Features
+- simple interface, per-person default model, routine results in the chat
+
 ## v0.81.2 — 2026-11-25
 
 ### Fixes
