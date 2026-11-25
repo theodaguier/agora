@@ -52,6 +52,11 @@ const messages = defineMessages({
     merged: (n: number, base: string, method: string) => `Pull request #${n} merged into ${base} (${method}).`,
     pulled: (branch: string) => `Branch ${branch} updated from GitHub.`,
     failed: (what: string) => `Git failed: ${what}`,
+    via: {
+      app: "token of Agora's GitHub App",
+      pasted: "token pasted in Settings › Integrations › GitHub",
+      vault: "GH_TOKEN of the vault",
+    } as Record<TokenSource, string>,
     prNotFound: "Pull request not found.",
     prNotOpen: (n: number, state: string) => `Pull request #${n} is ${state}: it can't be merged.`,
     notMergeable: (n: number, why: string) => `Pull request #${n} can't be merged${why ? `: ${why}` : ""}.`,
@@ -86,6 +91,11 @@ const messages = defineMessages({
     merged: (n: number, base: string, method: string) => `PR #${n} mergée dans ${base} (${method}).`,
     pulled: (branch: string) => `Branche ${branch} mise à jour depuis GitHub.`,
     failed: (what: string) => `Échec de git : ${what}`,
+    via: {
+      app: "jeton de la GitHub App d'Agora",
+      pasted: "jeton collé dans Paramètres › Intégrations › GitHub",
+      vault: "GH_TOKEN du coffre",
+    },
     prNotFound: "PR introuvable.",
     prNotOpen: (n: number, state: string) => `La PR #${n} est ${state} : elle ne peut pas être mergée.`,
     notMergeable: (n: number, why: string) => `La PR #${n} ne peut pas être mergée${why ? ` : ${why}` : ""}.`,
@@ -111,8 +121,25 @@ export class GitHubError extends GitError {
  * GitHub access of the sessions, for `repo` when known: Agora's GitHub App (github-app.ts, its
  * installation on the repository's owner), else a token pasted in Settings › Integrations, else the vault.
  */
-export const githubToken = async (repo?: string | null) =>
-  (await githubAppToken(repo)) ?? (await integrationConfig("github"))?.token ?? (await instanceSecret("GH_TOKEN", "GITHUB_TOKEN", "MCP_GITHUB_API_KEY"));
+export async function githubToken(repo?: string | null): Promise<string | null> {
+  const app = await githubAppToken(repo);
+  if (app) return known(app, "app");
+  const pasted = (await integrationConfig("github"))?.token;
+  if (pasted) return known(pasted, "pasted");
+  const vault = await instanceSecret("GH_TOKEN", "GITHUB_TOKEN", "MCP_GITHUB_API_KEY");
+  return vault ? known(vault, "vault") : null;
+}
+
+type TokenSource = "app" | "pasted" | "vault";
+
+/** Where each token handed out came from, so that a refusal by GitHub says which one it refused. */
+const sources = new Map<string, TokenSource>();
+
+function known(token: string, source: TokenSource) {
+  if (sources.size > 100) sources.clear();
+  sources.set(token, source);
+  return token;
+}
 
 /**
  * Credential helper of the clones: answers git with the token of its environment.
@@ -147,7 +174,14 @@ async function git(cwd: string, args: string[], token: string | null = null, tim
 /** Same, failing with git's own words. */
 async function must(cwd: string, args: string[], token: string | null = null, timeoutMs?: number) {
   const r = await git(cwd, args, token, timeoutMs);
-  if (!r.ok) throw new GitError(tr(messages).failed((r.err || r.out).split("\n").filter(Boolean).slice(-3).join(" ").slice(0, 500) || args[0]!));
+  if (!r.ok) {
+    const t = tr(messages);
+    const what = (r.err || r.out).split("\n").filter(Boolean).slice(-3).join(" ").slice(0, 500) || args[0]!;
+    const source = token ? sources.get(token) : undefined;
+    // Only when GitHub refused the credentials: name the token it refused.
+    const refused = source && /Authentication failed|Invalid username or token|access to repository not granted|returned error: 40[13]|Repository not found/i.test(what);
+    throw new GitError(t.failed(refused ? `${what} (${t.via[source]})` : what));
+  }
   return r.out;
 }
 
