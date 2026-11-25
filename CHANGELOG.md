@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.83.0 — 2026-11-25
+
+### Features
+- admins choose their own simple interface
+
 ## v0.82.0 — 2026-11-25
 
 ### Features
