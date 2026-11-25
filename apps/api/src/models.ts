@@ -4,7 +4,21 @@ import { CODEX_PROVIDER, codexModels } from "./codex";
 import { db, schema } from "./db";
 import { modelOptions, type ModelOptions } from "./hermes";
 
-const { modelBlock } = schema;
+const { modelBlock, user } = schema;
+
+/** The model an admin set for this employee's conversations (`provider::model`), unless it has since been blocked. */
+export async function userDefaultModel(userId: string) {
+  const [[row], blocked] = await Promise.all([db.select({ model: user.defaultModel }).from(user).where(eq(user.id, userId)), blockedModels(userId)]);
+  return row?.model && !blocked.has(row.model) ? row.model : null;
+}
+
+/** Can a bot on this Hermes profile run this `provider::model`? (Claude Code's and Codex's are checked when the turn starts.) */
+export async function profileOffers(profile: string, model: string) {
+  const [provider, id] = model.split("::") as [string, string];
+  if (provider === CLAUDE_CODE_PROVIDER || provider === CODEX_PROVIDER) return true;
+  const options = await modelOptions(profile);
+  return [{ provider: options.provider, models: options.models }, ...options.others].some((p) => p.provider === provider && p.models.some((m) => m.id === id));
+}
 
 /** Models blocked for this employee (`provider::model`, Claude Code's and Codex's included). */
 export async function blockedModels(userId: string) {

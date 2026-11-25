@@ -13,6 +13,7 @@ import { mcpRequestSchema, type McpRequestBlock } from "./mcp-requests";
 import { questionsSchema, type Questions } from "./questions";
 import { parseSkillCreate, skillRequestSchema, type SkillCreateBlock, type SkillRequestBlock } from "./skill-requests";
 import { tasksBlockSchema, type TasksBlock } from "./tasks";
+import { personMessageSchema, type PersonMessageBlock } from "./person-relay";
 import { discussionTitleSchema, projectContextSchema, type DiscussionTitleBlock, type ProjectContextBlock } from "./projects";
 import { availabilityBlockSchema, type AvailabilityBlock } from "./availability-bot";
 import { botCreateSchema, type BotCreateBlock } from "./bot-requests";
@@ -147,7 +148,10 @@ export function onboardingPrompt(opts: { userName: string; text: string; turn: n
     .join("\n");
 }
 
-const BLOCK = /```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|bot-create|tasks|availability|view|discussion-title|project-context)[ \t]*\n([\s\S]*?)```/g;
+const BLOCK = /```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|bot-create|tasks|availability|view|discussion-title|project-context|message-person|task-list|routine-list)[ \t]*\n([\s\S]*?)```/g;
+
+/** ```task-list``` / ```routine-list```: tasks or routines the bot shows as a card (ids from its context). */
+const listBlockSchema = z.object({ ids: z.array(z.string().trim().min(1).max(64)).min(1).max(20) });
 
 /** Separates the displayed text from the structured blocks emitted by the bot. */
 export function parseReply(reply: string) {
@@ -163,6 +167,9 @@ export function parseReply(reply: string) {
   let availability: AvailabilityBlock | undefined;
   let discussionTitle: DiscussionTitleBlock | undefined;
   let projectContext: ProjectContextBlock | undefined;
+  const personMessages: PersonMessageBlock[] = [];
+  let taskList: string[] | undefined;
+  let routineList: string[] | undefined;
   const views: ViewBlock[] = [];
   // Before the other blocks: a page isn't JSON, and ends at the first ``` starting a line.
   const previews = readPreviews(reply);
@@ -200,6 +207,15 @@ export function parseReply(reply: string) {
       const parsed = discussionTitleSchema.safeParse(json);
       if (!parsed.success) return raw;
       discussionTitle = parsed.data;
+    } else if (kind === "task-list" || kind === "routine-list") {
+      const parsed = listBlockSchema.safeParse(json);
+      if (!parsed.success) return raw;
+      if (kind === "task-list") taskList = parsed.data.ids;
+      else routineList = parsed.data.ids;
+    } else if (kind === "message-person") {
+      const parsed = personMessageSchema.safeParse(json);
+      if (!parsed.success) return raw;
+      personMessages.push(parsed.data);
     } else if (kind === "project-context") {
       const parsed = projectContextSchema.safeParse(json);
       if (!parsed.success) return raw;
@@ -231,7 +247,7 @@ export function parseReply(reply: string) {
     }
     return "";
   });
-  return { text: text.replace(/\n{3,}/g, "\n\n").trim(), choices, profile, name: profile?.name ?? name, mcpRequest, questions, skillRequest, skillCreate, botCreate, tasks, availability, discussionTitle, projectContext, views: views.length ? views : undefined, previews: previews.length ? previews : undefined };
+  return { text: text.replace(/\n{3,}/g, "\n\n").trim(), choices, profile, name: profile?.name ?? name, mcpRequest, questions, skillRequest, skillCreate, botCreate, tasks, availability, discussionTitle, projectContext, personMessages: personMessages.length ? personMessages : undefined, taskList, routineList, views: views.length ? views : undefined, previews: previews.length ? previews : undefined };
 }
 
 /** Writes the bot's identity into the SOUL.md of its Hermes profile. */

@@ -213,7 +213,8 @@ export async function applyProjectContext(block: ProjectContextBlock, ctx: Ctx) 
  */
 export async function titleFromFirstMessage(conversationId: string) {
   const [conv] = await db.select().from(conversation).where(eq(conversation.id, conversationId));
-  if (!conv?.parentId || conv.title) return;
+  // A project's discussion, or a "New chat" with a bot (conversations.ts openChat).
+  if (!conv || conv.title || !(conv.parentId || (conv.kind === "direct" && !conv.directKey))) return;
   const [first] = await db
     .select({ text: message.text })
     .from(message)

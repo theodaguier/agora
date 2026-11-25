@@ -5,14 +5,18 @@
  */
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { withHandles } from "@agora/core";
+import { isSimple, withHandles } from "@agora/core";
+import { simple as simpleMessages } from "@agora/core/i18n";
+import { openDirectWithAgent } from "./conversations";
+import { agentAuthor, postMessage } from "./messages";
+import { userLocale } from "./org";
 import { db, schema } from "./db";
 import type { NotificationKind } from "./db/schema";
 import { publishToUser } from "./events";
 import { pushInbox } from "./push";
 import { excerpt } from "./group";
 
-const { agent, conversation, conversationMember, message, notification, task, user } = schema;
+const { agent, agentAccess, conversation, conversationMember, message, notification, task, user } = schema;
 
 type Actor = { userId?: string | null; agentId?: string | null };
 type NewNotification = { userId: string; kind: NotificationKind; conversationId?: string | null; messageId?: string | null; taskId?: string | null; text: string };
@@ -25,8 +29,64 @@ async function notify(rows: NewNotification[], actor: Actor) {
     kept.map((r) => ({ ...r, id: crypto.randomUUID(), actorUserId: actor.userId ?? null, actorAgentId: actor.agentId ?? null })),
   );
   for (const userId of new Set(kept.map((r) => r.userId))) publishToUser(userId, { type: "inbox.changed" });
+  // The simple interface has no inbox: their assistant brings it to their chat, and that message is what notifies them.
+  const relayed = await relayToChat(kept, actor).catch((err) => {
+    console.error("inbox: relay to chat", err);
+    return new Set<string>();
+  });
   // Not awaited: Expo's service must not slow down what triggered the notification.
-  void pushInbox(kept, actor);
+  void pushInbox(
+    kept.filter((r) => !relayed.has(r.userId)),
+    actor,
+  );
+}
+
+/**
+ * Simple interface (@agora/core isSimple): each notification also comes as a message from their assistant
+ * (the first bot they can use) in their direct conversation with it, quoting what happened and linking to it.
+ * Returns who got one.
+ */
+async function relayToChat(rows: NewNotification[], actor: Actor) {
+  const people = await db
+    .select({ id: user.id, role: user.role, uiMode: user.uiMode, locale: user.locale })
+    .from(user)
+    .where(inArray(user.id, [...new Set(rows.map((r) => r.userId))]));
+  const simple = new Map(people.filter(isSimple).map((p) => [p.id, p]));
+  const done = new Set<string>();
+  if (!simple.size) return done;
+  const [actorUser] = actor.userId ? await db.select({ name: user.name }).from(user).where(eq(user.id, actor.userId)) : [];
+  const [actorAgent] = !actorUser && actor.agentId ? await db.select({ name: agent.name }).from(agent).where(eq(agent.id, actor.agentId)) : [];
+  const who = actorUser?.name ?? actorAgent?.name ?? "?";
+  const sources = [...new Set(rows.map((r) => r.conversationId).filter((id): id is string => !!id))];
+  const titles = new Map(
+    sources.length ? (await db.select({ id: conversation.id, title: conversation.title }).from(conversation).where(inArray(conversation.id, sources))).map((c) => [c.id, c.title]) : [],
+  );
+  for (const r of rows) {
+    const person = simple.get(r.userId);
+    if (!person) continue;
+    const bot = await assistantOf(r.userId);
+    if (!bot) continue;
+    const t = simpleMessages[await userLocale(person.locale)];
+    const where = (r.conversationId && titles.get(r.conversationId)) || "…";
+    const text = r.kind === "task.assigned" ? t.taskFor(who) : r.kind === "task.done" ? t.taskDone(who) : t.wroteIn(who, where);
+    const conversationId = await openDirectWithAgent(r.userId, bot.id);
+    const relay = { kind: r.kind, authorName: who, text: r.text, conversationId: r.conversationId ?? null, messageId: r.messageId ?? null, taskId: r.taskId ?? null };
+    await postMessage({ id: crypto.randomUUID(), conversationId, kind: "bot", authorAgentId: bot.id, text, data: { relay } }, agentAuthor(bot));
+    done.add(r.userId);
+  }
+  return done;
+}
+
+/** The bot that speaks for someone in the simple interface: the first one they can use. */
+async function assistantOf(userId: string) {
+  const [row] = await db
+    .select({ agent })
+    .from(agentAccess)
+    .innerJoin(agent, eq(agent.id, agentAccess.agentId))
+    .where(and(eq(agentAccess.userId, userId), eq(agent.onboarding, false)))
+    .orderBy(agent.createdAt)
+    .limit(1);
+  return row?.agent ?? null;
 }
 
 /** "@handle" not inside a word (an email), as the app colors them. */

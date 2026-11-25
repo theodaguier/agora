@@ -37,3 +37,4 @@ export * from "./vaults";
 export * from "./ssh";
 export * from "./person-avatar";
 export * from "./projects";
+export * from "./ui-mode";

@@ -16,6 +16,8 @@ import { headerIcon } from "@/components/header-button";
 import { usePullToRefresh, withTap } from "@/lib/haptics";
 import { EmptyState } from "@/components/empty-state";
 import { WarningIcon } from "@/components/icons";
+import { SimpleHome } from "@/components/simple/home";
+import { useSimple } from "@/lib/simple";
 
 const messages = defineMessages({
   en: {
@@ -59,8 +61,12 @@ function projectRows(rows: Named[]): Named[] {
     .sort((a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime());
 }
 
-/** The conversation list: the app's home, like the web's sidebar. */
-export default function Chats() {
+/** The app's home: the conversation list, like the web's sidebar; the simple interface's chat. */
+export default function Home() {
+  return useSimple() ? <SimpleHome /> : <Chats />;
+}
+
+function Chats() {
   const me = useMe();
   const t = { ...messages, ...tr(conversations), you: tr(common).you };
   const { data: list = [], isPending, error, refetch } = useQuery(conversationsQuery);
@@ -86,7 +92,7 @@ export default function Chats() {
  />
         }
  >
-        <Home />
+        <OrgHome />
         {rows.length ? (
           // As the web's sidebar: the bots you talk to one-on-one, the projects (groups), then one-on-one messages with colleagues.
           <View className="mb-8 mt-1 gap-4">
@@ -145,7 +151,7 @@ export default function Chats() {
 }
 
 /** Figma « Accueil » (the web sidebar's org button): who this space is; opens the morning recap when there is one. */
-function Home() {
+function OrgHome() {
   const server = useServer();
   const { data: digest } = useQuery(digestQuery);
   return (

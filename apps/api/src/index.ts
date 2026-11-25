@@ -59,6 +59,7 @@ import { syncSessionSearch } from "./session-search";
 import { usage } from "./routes/usage";
 import { localeMiddleware } from "./i18n";
 import { protectProcess } from "./harden";
+import { startRoutineDelivery } from "./routine-delivery";
 import { MAX_FILE } from "./attachments";
 
 protectProcess();
@@ -164,6 +165,7 @@ startUsageCollector();
 startServerSampler();
 startDigest();
 startPosthogAlertSync();
+startRoutineDelivery();
 recoverTurns()
   .then(() => resumeQueues())
   .catch((err) => console.error("bot-runner: recovery", err));

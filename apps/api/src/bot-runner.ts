@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { bumpAgentRevision, companyMemory, hermesSessionId, turnContext } from "./company";
 import { orgContext, userLocale } from "./org";
 import { defineMessages, orgLocale, tr } from "./i18n";
@@ -12,7 +12,13 @@ import { CLAUDE_CODE_PROVIDER, claudeCodeChat, canUseClaudeCode, isClaudeCodeMod
 import { CODEX_PROVIDER, canUseCodex, codexChat, isCodexModel } from "./codex";
 import { answerApproval, chat, profileHome, toolsets, type HermesApproval, type Reasoning } from "./hermes";
 import { profileReady } from "./hermes-admin";
-import { blockedModels, resolveHermesModel } from "./models";
+import { blockedModels, profileOffers, resolveHermesModel, userDefaultModel } from "./models";
+
+/** An employee's default model, when the bot's Hermes profile offers it. */
+async function personalDefault(profile: string, userId: string) {
+  const model = await userDefaultModel(userId).catch(() => null);
+  return model && (await profileOffers(profile, model).catch(() => false)) ? model : null;
+}
 import { attributeSession, recordEngineUsage, syncHermesUsage } from "./usage";
 import { agentAuthor, listMessages, postEvent, postMessage, unseenMessages, type MessageDto } from "./messages";
 import { connectorsPrompt, createRequest, MCP_REQUEST_PROMPT } from "./mcp-requests";
@@ -24,6 +30,8 @@ import { BOT_CREATE_PROMPT, createBotRequest } from "./bot-requests";
 import { accessibleAgentIds } from "./conversations";
 import { applyDiscussionTitle, applyProjectContext, projectPrompt, titleFromFirstMessage } from "./projects";
 import { applyTasksBlock, TASKS_PROMPT, tasksContext } from "./tasks";
+import { listRoutines } from "./routines";
+import { applyPersonMessage, isRelayKey, PERSON_MESSAGE_PROMPT, onBehalfPrompt } from "./person-relay";
 import { CODE_DELEGATION_PROMPT, codeSessionsContext, wakePrompt } from "./code-sessions";
 import { webhookTurnPrompt } from "./webhook-prompt";
 import { applyAvailabilityBlock, AVAILABILITY_BLOCK_PROMPT, availabilityContext } from "./availability-bot";
@@ -56,6 +64,8 @@ export type TurnRequest = {
   wake?: CodeWake;
   /** Started by an outside service (webhooks.ts): the trigger is the event line, the prompt comes from this delivery. */
   webhook?: string;
+  /** The colleague it wrote to for this person answered (person-relay.ts): the trigger is the event line. */
+  personAnswer?: { name: string; text: string };
 };
 
 /** Why a session woke its bot, and what it had to say then. */
@@ -276,7 +286,9 @@ async function pickEngine(
   requester: typeof user.$inferSelect | null,
   requestedBy: string | null,
 ): Promise<Engine | null> {
-  const engine = await pickModel(bot, link.model, requester, requestedBy);
+  // No model chosen here: the one an admin set for the person, if this bot can run it.
+  const personal = !link.model && requester?.defaultModel ? await personalDefault(bot.hermesProfile, requester.id) : null;
+  const engine = await pickModel(bot, link.model ?? personal, requester, requestedBy);
   // The effort and fast mode were chosen for that model: not for the one it falls back to.
   return engine && engine.model === link.model ? { ...engine, reasoning: { effort: link.effort, fast: link.fast } } : engine;
 }
@@ -525,7 +537,7 @@ async function runTurn(turn: Turn) {
   /** Direct conversation: the employee's other bots, which this bot may bring into a group. */
   let otherBots: { id: string; name: string }[] = [];
   // Woken by a session or a webhook: the event line has no author, the turn is its owner's.
-  const requesterId = trigger.authorUserId ?? (turn.wake || turn.webhook ? turn.requestedBy : null);
+  const requesterId = trigger.authorUserId ?? (turn.wake || turn.webhook || turn.personAnswer ? turn.requestedBy : null);
   const [requester] = !group && requesterId ? await db.select().from(user).where(eq(user.id, requesterId)) : [];
   if (group) {
     const [humans, bots, context] = await Promise.all([
@@ -584,6 +596,7 @@ async function runTurn(turn: Turn) {
     });
   } else {
     text = withViewAction(await withInvocations(bot.hermesProfile, withQuote(trigger.text, data), data?.invocations ?? []), data?.viewAction);
+    text = (await outOfSessionContext(conversationId, trigger.createdAt)) + text;
     if (bot.onboarding) {
       const [{ n }] = await db
         .select({ n: sql<number>`count(*)::int` })
@@ -626,7 +639,9 @@ async function runTurn(turn: Turn) {
       }),
     ]);
     const delegation = (await codeToolsUsable(bot.hermesProfile, turn.requestedBy)) ? CODE_DELEGATION_PROMPT : "";
-    system = [system, project, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, BOT_CREATE_PROMPT, TASKS_PROMPT, tasks, AVAILABILITY_BLOCK_PROMPT, schedules, views, PREVIEW_PROMPT, mediaPrompt(conversationId), delegation, code]
+    const routines = group ? "" : routinesContext(await listRoutines(bot.hermesProfile, conversationId).catch(() => []));
+    const onBehalf = isRelayKey(conv.directKey) ? await onBehalfPrompt(conv.directKey!).catch(() => "") : "";
+    system = [system, onBehalf, project, QUESTIONS_PROMPT, MCP_REQUEST_PROMPT, SKILL_REQUEST_PROMPT, SKILL_CREATE_PROMPT, BOT_CREATE_PROMPT, TASKS_PROMPT, tasks, group ? "" : LIST_PROMPT, group ? "" : routines, turn.requestedBy ? PERSON_MESSAGE_PROMPT : "", AVAILABILITY_BLOCK_PROMPT, schedules, views, PREVIEW_PROMPT, mediaPrompt(conversationId), delegation, code]
       .filter(Boolean)
       .join("\n\n");
   }
@@ -634,6 +649,8 @@ async function runTurn(turn: Turn) {
   if (turn.wake) text = await wakePrompt(turn.wake, requester?.name ?? null);
   // Started by an outside service: the prompt carries what it sent, marked as data.
   if (turn.webhook) text = (await webhookTurnPrompt(turn.webhook)) ?? text;
+  if (turn.personAnswer)
+    text = `${turn.personAnswer.name} answered the message you sent them for this person:\n\n${turn.personAnswer.text}\n\nTell this person what it means for their request, in a few words, and finish what they asked if this answer was what was missing.`;
   // /retry: same message again, but the previous answer is already in the session.
   if (turn.retry) text = `${text}\n\n---\n\n(Nouvelle tentative : ta réponse précédente à ce message ne convenait pas. Propose une autre réponse, sans y faire référence.)`;
   // First message after /compact: the new session starts from the summary.
@@ -659,6 +676,8 @@ async function runTurn(turn: Turn) {
     const vault = engine.kind === "hermes" && (await hasReadableVault(agentId, turn.requestedBy).catch((err) => (console.error("bot-runner: vaults", err), false)));
     if (vault) system = [system, VAULT_PROMPT].join("\n\n");
   }
+  // Routines of this conversation before the turn: one it creates shows as a card under its reply.
+  const routinesBefore = group ? null : new Set((await listRoutines(bot.hermesProfile, conversationId).catch(() => [])).map((r) => r.id));
   const events = openChat(
     bot,
     engine,
@@ -753,6 +772,13 @@ async function runTurn(turn: Turn) {
     if (parsed.discussionTitle) await applyDiscussionTitle(parsed.discussionTitle, ctx).catch((err) => console.error("bot-runner: discussion title", err));
     else if (conv.parentId && !conv.title) await titleFromFirstMessage(conversationId).catch((err) => console.error("bot-runner: discussion title", err));
   }
+  // A "New chat" with the bot (conversations.ts openChat): named after its first message, like the history shows it.
+  if (!group && conv.kind === "direct" && !conv.directKey && !conv.title) {
+    await titleFromFirstMessage(conversationId).catch((err) => console.error("bot-runner: chat title", err));
+  }
+  for (const block of turn.controller.signal.aborted ? [] : (parsed.personMessages ?? [])) {
+    await applyPersonMessage(block, { agentId, forUserId: turn.requestedBy, conversationId }).catch((err) => console.error("bot-runner: message person", err));
+  }
   if (parsed.availability && !turn.controller.signal.aborted) {
     await applyAvailabilityBlock(parsed.availability, { conversationId, botName: bot.name, requestedBy: turn.requestedBy }).catch((err) =>
       console.error("bot-runner: availability", err),
@@ -769,7 +795,11 @@ async function runTurn(turn: Turn) {
     : null;
   if (sending?.sent.size) parsed.text = withoutMediaTags(parsed.text, (p) => sending.sent.has(p));
   const sentFiles = sending?.saved ?? [];
-  if (parsed.text || parsed.choices || parsed.questions || parsed.views || previews.length || sentFiles.length || request || skill || bots || turn.codeSessions.length) {
+  const createdRoutines = routinesBefore
+    ? (await listRoutines(bot.hermesProfile, conversationId).catch(() => [])).filter((r) => !routinesBefore.has(r.id)).map((r) => r.id)
+    : [];
+  const routineCards = [...new Set([...createdRoutines, ...(parsed.routineList ?? [])])];
+  if (parsed.text || parsed.choices || parsed.questions || parsed.views || previews.length || sentFiles.length || request || skill || bots || turn.codeSessions.length || routineCards.length || parsed.taskList) {
     const extra = {
       turn: { id: turn.turnId, startedAt: turn.startedAt! },
       ...(turn.tools.length && { tools: turn.tools }),
@@ -784,6 +814,9 @@ async function runTurn(turn: Turn) {
       ...(request && { mcpRequest: request.id }),
       ...(skill && { skillRequest: skill.id }),
       ...(bots && { botRequest: bots.id }),
+      // Cards of tasks and routines (```task-list```, ```routine-list```, a routine just created).
+      ...(parsed.taskList && { tasks: parsed.taskList }),
+      ...(routineCards.length && { routines: routineCards }),
     };
     saved = await postMessage(
       {
@@ -957,6 +990,46 @@ async function openRelayGroup(opts: {
     opts.chain.relays++;
     enqueueTurn({ conversationId: groupId, agentId: target.id, triggerId: relayed.id, requestedBy: requester.id, chain: opts.chain });
   }
+}
+
+/**
+ * What Agora posted here in the bot's name since the last exchange, which its Hermes session never saw
+ * (a routine's result, an inbox item for the simple interface, its message to a colleague): told before
+ * the new message, so « décale le shooting à vendredi » after a routine's result is understood.
+ */
+async function outOfSessionContext(conversationId: string, before: Date) {
+  const recent = await db
+    .select({ kind: message.kind, text: message.text, data: message.data })
+    .from(message)
+    .where(and(eq(message.conversationId, conversationId), lt(message.createdAt, before), ne(message.kind, "event")))
+    .orderBy(desc(message.createdAt))
+    .limit(10);
+  const posted: string[] = [];
+  for (const m of recent) {
+    const d = m.data as { outOfSession?: boolean; routine?: { name: string }; relay?: { authorName: string; text: string } } | null;
+    if (m.kind !== "bot" || !(d?.outOfSession || d?.routine || d?.relay)) break;
+    const quote = d?.relay ? `\n> ${d.relay.authorName}: ${d.relay.text}` : "";
+    posted.unshift(d?.routine ? `- Result of your routine "${d.routine.name}": ${m.text}` : `- ${m.text}${quote}`);
+  }
+  return posted.length ? `Posted in your name in this conversation since your last exchange (you did not see it):\n${posted.join("\n")}\n\n---\n\n` : "";
+}
+
+const LIST_PROMPT = [
+  "# Showing tasks and routines",
+  "When the person asks to see their tasks or routines, answer in one short sentence and end with one of these blocks, alone: the app shows them as a card where each one opens.",
+  "```task-list",
+  '{"ids": ["<task id>", "…"]}',
+  "```",
+  "```routine-list",
+  '{"ids": ["<routine id>", "…"]}',
+  "```",
+  "- Only ids listed in your context. A routine you create here is shown by itself: no block for it.",
+].join("\n");
+
+/** This conversation's routines, with the ids a ```routine-list``` block takes. */
+function routinesContext(list: { id: string; name: string; schedule: string; enabled: boolean }[]) {
+  if (!list.length) return "";
+  return ["# Routines created in this conversation", ...list.map((r) => `- ${r.id}: ${r.name} (${r.enabled ? r.schedule : "paused"})`)].join("\n");
 }
 
 /** The bot's personality (SOUL.md of its Hermes profile), if readable from here. */

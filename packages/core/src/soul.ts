@@ -44,3 +44,13 @@ export function profileSlug(name: string) {
     .slice(0, 32);
   return base || "agent";
 }
+
+/** The first sentence of a SOUL.md's role section (« ## Ton rôle » / « ## Your role »): what the agent is for, in one line. */
+export function soulRole(soul: string, max = 90) {
+  const section = /^##\s*(?:Ton rôle|Your role)\s*\n+([\s\S]*?)(?=\n##\s|$)/im.exec(soul)?.[1]?.trim();
+  const line = section?.split("\n").find((l) => l.trim())?.trim();
+  // Still the template's placeholder: nothing to say yet.
+  if (!line || line.startsWith("<")) return null;
+  const sentence = line.replace(/^[-*]\s+/, "").split(/(?<=[.!?])\s/)[0]!.trim();
+  return sentence.length <= max ? sentence : `${sentence.slice(0, max - 1).replace(/\s+\S*$/, "")}…`;
+}

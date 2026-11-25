@@ -18,6 +18,7 @@ export const headerIcon = {
   userPlus: require("../../assets/header-icons/user-plus.png"),
   chevronLeft: require("../../assets/header-icons/chevron-left.png"),
   search: require("../../assets/header-icons/search.png"),
+  panelLeft: require("../../assets/header-icons/panel-left.png"),
 };
 
 /**

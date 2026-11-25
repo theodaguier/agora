@@ -1,7 +1,9 @@
 import { confirmAction } from "@/lib/confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouteContext } from "@tanstack/react-router";
-import { CalendarClockIcon, CloseIcon, MailIcon, MoreIcon, PencilIcon, ShieldCheckIcon, TrashIcon, UserIcon } from "@/components/icons";
+import { CalendarClockIcon, CloseIcon, ComposeIcon, GridIcon, MailIcon, MoreIcon, PencilIcon, ShieldCheckIcon, TrashIcon, UserIcon } from "@/components/icons";
+import { isSimple, UI_MODES, type UiMode } from "@agora/core";
+import { simple } from "@agora/core/i18n";
 import { AvailabilityEditor } from "@/components/AvailabilityEditor";
 import {
   DropdownMenu,
@@ -118,7 +120,7 @@ const messages = defineMessages({
   },
 });
 
-type InviteBody = { email: string; role: string };
+type InviteBody = { email: string; role: string; uiMode: string };
 
 export function Users() {
   const t = useT(messages);
@@ -144,7 +146,8 @@ export function Users() {
     const form = e.currentTarget;
     const f = new FormData(form);
     invite.mutate(
-      { email: String(f.get("email") ?? "").trim(), role: String(f.get("role")) },
+      // Admins always get the full interface.
+      { email: String(f.get("email") ?? "").trim(), role: String(f.get("role")), uiMode: f.get("role") === "admin" ? "full" : String(f.get("uiMode")) },
       { onSuccess: () => form.reset() },
     );
   };
@@ -161,6 +164,7 @@ export function Users() {
           <form onSubmit={submit} className="flex items-center gap-2">
             <Input name="email" type="email" required aria-label={t.email} placeholder={t.emailPlaceholder} autoComplete="off" />
             <AccessSelect name="role" defaultValue="user" className="w-32 shrink-0" />
+            <UiModeSelect name="uiMode" defaultValue="full" className="w-32 shrink-0" />
             <Button type="submit" disabled={invite.isPending}>
               {invite.isPending ? t.sending : t.invite}
             </Button>
@@ -260,8 +264,45 @@ function AccessSelect({
   );
 }
 
+/** The interface they get (@agora/core isSimple): simple (one chat and its history) or full. */
+function UiModeSelect({ className, defaultValue, name }: { className?: string; defaultValue?: UiMode; name?: string }) {
+  const t = useT(simple);
+  const modes = UI_MODES.map((value) => ({ value, label: t.uiMode[value], icon: modeIcon[value] }));
+  return (
+    <Select items={modes} defaultValue={defaultValue} name={name}>
+      <SelectTrigger aria-label={t.interface} className={className}>
+        <SelectValue>
+          {(v: string | null) => {
+            const m = modes.find((x) => x.value === v);
+            return m ? (
+              <>
+                {m.icon}
+                {m.label}
+              </>
+            ) : null;
+          }}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent alignItemWithTrigger={false} align="end" className="w-72">
+        {modes.map((m) => (
+          <SelectItem key={m.value} value={m.value}>
+            {m.icon}
+            <span className="flex flex-col">
+              {m.label}
+              <span className="text-xs text-muted-foreground">{t.uiModeHint[m.value]}</span>
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+const modeIcon: Record<UiMode, React.ReactNode> = { simple: <ComposeIcon />, full: <GridIcon /> };
+
 function UserRow({ user: u }: { user: AdminUser }) {
   const t = useT(messages);
+  const ts = useT(simple);
   const c = useT(common);
   const qc = useQueryClient();
   const me = useRouteContext({ from: "/app" }).user.id;
@@ -269,7 +310,7 @@ function UserRow({ user: u }: { user: AdminUser }) {
   const [scheduling, setScheduling] = useState(false);
   const [editing, setEditing] = useState(false);
   const update = useMutation({
-    mutationFn: (patch: { role?: string; title?: string }) =>
+    mutationFn: (patch: { role?: string; title?: string; uiMode?: UiMode }) =>
       api(`/admin/users/${encodeURIComponent(u.id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
     onSettled: () => qc.invalidateQueries({ queryKey: adminUsersQuery.queryKey }),
     onError: () => setTitle(u.title),
@@ -303,6 +344,7 @@ function UserRow({ user: u }: { user: AdminUser }) {
         </ItemContent>
         <ItemActions>
           <Badge variant="secondary">{access === "admin" ? t.admin : t.member}</Badge>
+          {isSimple(u) && <Badge variant="outline">{ts.uiMode.simple}</Badge>}
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.actions} disabled={remove.isPending || update.isPending} />}>
               <MoreIcon />
@@ -328,6 +370,18 @@ function UserRow({ user: u }: { user: AdminUser }) {
                     <ShieldCheckIcon />
                     {t.admin}
                   </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{access === "admin" ? ts.adminsFull : ts.interface}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={access === "admin" ? "full" : u.uiMode} onValueChange={(mode) => mode !== u.uiMode && update.mutate({ uiMode: mode as UiMode })}>
+                  {UI_MODES.map((mode) => (
+                    <DropdownMenuRadioItem key={mode} value={mode} disabled={access === "admin"}>
+                      {modeIcon[mode]}
+                      {ts.uiMode[mode]}
+                    </DropdownMenuRadioItem>
+                  ))}
                 </DropdownMenuRadioGroup>
               </DropdownMenuGroup>
               {!isMe && (

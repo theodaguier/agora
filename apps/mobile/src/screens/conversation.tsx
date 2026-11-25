@@ -37,7 +37,7 @@ import { ConversationFilesProvider } from "@/lib/conversation-files";
 import { clockTime, dayLabel } from "@/lib/dates";
 import { haptic, withTap } from "@/lib/haptics";
 import { defineMessages, locale, tr } from "@/lib/i18n";
-import { integrations } from "@agora/core/i18n";
+import { integrations, simple as simpleMessages } from "@agora/core/i18n";
 import type { Mentionable } from "@/lib/mentions";
 import { useMentionables } from "@/lib/people";
 import { conversationQuery, conversationsQuery, messagesQuery } from "@/lib/queries";
@@ -46,6 +46,11 @@ import { useThreadHaptics } from "@/screens/conversation-haptics";
 import type { ActiveTurn, AgentSummary, Attachment, Author, ConversationDetail, Invocation, Message, ReplyTo } from "@/lib/types";
 import { MenuButton } from "@/components/menus";
 import { EmptyState } from "@/components/empty-state";
+import { SimpleChatHeader } from "@/components/simple/header";
+import { remember } from "@/lib/simple";
+import { RelayCard } from "@/components/simple/relay-card";
+import { RoutineCard, RoutineLine, TaskCard } from "@/components/simple/cards";
+import { UnreadCard } from "@/components/simple/unread";
 
 /*
  * apps/web/src/screens/Conversation.tsx (the Geist redesign) as an iOS screen: the native header (face,
@@ -133,8 +138,11 @@ const OLDER_WITHIN = 600;
 /** How far from its end the thread must be scrolled for the "latest messages" button to show. */
 const SCROLLED_UP = 400;
 
-/** `focus`: a message to open the thread on (a notification, the inbox), like the web's `?m=`. */
-export function Conversation({ conversationId, focus }: { conversationId: string; focus?: string }) {
+/**
+ * `focus`: a message to open the thread on (a notification, the inbox), like the web's `?m=`.
+ * `simple`: the simple interface's home chat (components/simple): its own header and empty state.
+ */
+export function Conversation({ conversationId, focus, simple: simpleHome }: { conversationId: string; focus?: string; simple?: boolean }) {
   const user = useMe();
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -312,7 +320,9 @@ export function Conversation({ conversationId, focus }: { conversationId: string
   // Its sessions, or the way to start one for the owner of the subscription.
   const canStartCode = useCanStartCodeSession(conversationId);
   const codeSessions = useCodeSessions(conversationId);
-  const header = (
+  const header = simpleHome ? (
+    <SimpleChatHeader agentId={directBot?.id ?? null} botName={directBot?.name ?? null} title={title} onBehalfOf={conv?.onBehalfOf ?? null} conversationId={conversationId} />
+  ) : (
     <ConversationHeader
       conv={conv}
       me={user.id}
@@ -397,8 +407,16 @@ export function Conversation({ conversationId, focus }: { conversationId: string
               )}
               {!isPending && messages.length === 0 && !sending.length && conv && (
                 // Figma « État vide », conversation neuve: the bot's figurine; a colleague or a group, their avatar.
+                // The simple interface: the question alone, as ChatGPT asks it (Figma « Mode simple », 1 · Accueil).
                 <View className="flex-1 justify-center">
-                  {directBot ? (
+                  {simpleHome ? (
+                    <View className="items-center">
+                      <Typography.Heading type="h3" align="center" className="px-8">
+                        {tr(simpleMessages).empty}
+                      </Typography.Heading>
+                      <UnreadCard current={conversationId} />
+                    </View>
+                  ) : directBot ? (
                     <EmptyState mascot={agentMascot(directBot.avatar.color)} title={title} description={t.emptyHint} />
                   ) : (
                     <View className="items-center gap-3 px-8">
@@ -619,8 +637,8 @@ const hideBlocks = (text: string) =>
   NO_REPLY.startsWith(text.trim().replace(/[.\s]+$/, ""))
     ? ""
     : withoutMediaTags(withoutPreviews(text))
-        .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[ \t]*\n[\s\S]*?```/g, "")
-        .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view)[\s\S]*$/, "")
+        .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view|message-person|task-list|routine-list)[ \t]*\n[\s\S]*?```/g, "")
+        .replace(/```(choices|bot-profile|bot-name|mcp-request|questions|skill-request|skill-create|tasks|view|message-person|task-list|routine-list)[\s\S]*$/, "")
         .replace(/\n{3,}/g, "\n\n")
         .trimEnd();
 
@@ -724,6 +742,7 @@ const ThreadMessage = memo(function ThreadMessage({
       pinned={pinned}
       onTogglePin={() => actions.togglePin(m.id)}
       onDelete={onDelete}
+      onRemember={() => remember(conversationId, m.id)}
     >
       {children}
     </MessageRow>
@@ -764,6 +783,7 @@ const ThreadMessage = memo(function ThreadMessage({
       {m.kind === "bot" && (
         <Post head={postHead} className={gap}>
           {/* What it used, before what it says: as while it works (the live reply starts with it). */}
+          {m.data?.routine && <RoutineLine routine={m.data.routine} />}
           {(m.data?.tools || m.data?.approvals) && <ToolLine tools={m.data.tools ?? []} approvals={m.data.approvals} />}
           {(!!m.text || !!m.data?.codeSessions?.length) &&
             row(
@@ -800,6 +820,9 @@ const ThreadMessage = memo(function ThreadMessage({
             return files.length > 0 && <SentAttachments items={files} align="start" />;
           })()}
           <PullRequestLinks text={m.text} conversationId={conversationId} />
+          {m.data?.relay && <RelayCard relay={m.data.relay} />}
+          {!!m.data?.tasks?.length && <TaskCard ids={m.data.tasks} />}
+          {!!m.data?.routines?.length && m.author?.kind === "agent" && <RoutineCard conversationId={conversationId} agentId={m.author.id} ids={m.data.routines} />}
           {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
           {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
           {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}

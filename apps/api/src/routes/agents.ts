@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { soulRole } from "@agora/core";
 import { asc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { agentTurns } from "../bot-runner";
@@ -5,6 +7,7 @@ import { accessibleAgentIds, agentDto } from "../conversations";
 import { db, schema } from "../db";
 import { directKey } from "../group";
 import { env } from "../env";
+import { profileHome } from "../hermes";
 import { createProfileInBackground } from "../hermes-admin";
 import { requireAdmin, requireUser, type AppEnv } from "../middleware";
 import { greeting, newBotName, newBotIdentity } from "../onboarding";
@@ -27,7 +30,9 @@ export const agents = new Hono<AppEnv>()
       .innerJoin(agent, eq(agent.id, agentAccess.agentId))
       .where(eq(agentAccess.userId, c.get("user").id))
       .orderBy(asc(agent.name));
-    return c.json(rows.map((r) => agentDto(r.agent)));
+    // What each one is for (its SOUL.md's role), for the simple interface's assistant menu.
+    const roles = await Promise.all(rows.map((r) => agentRole(r.agent.hermesProfile)));
+    return c.json(rows.map((r, i) => ({ ...agentDto(r.agent), role: roles[i] })));
   })
 
   /** A bot's profile, visible to everyone like a colleague's; `access`: the employee may write to it. */
@@ -99,3 +104,12 @@ export const agents = new Hono<AppEnv>()
     createProfileInBackground(identity.hermesProfile, `Agent « ${name} »`);
     return c.json({ id, conversationId }, 201);
   });
+
+/** The first sentence of the bot's role in its SOUL.md; null when unreadable from here or not written yet. */
+async function agentRole(profile: string) {
+  try {
+    return soulRole(await Bun.file(join(profileHome(profile), "SOUL.md")).text());
+  } catch {
+    return null;
+  }
+}

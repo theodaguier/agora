@@ -1,7 +1,8 @@
-import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import type { ConversationEvent } from "@agora/core";
 import { db, schema } from "./db";
 import { directKey } from "./group";
+import { isRelayKey } from "./person-relay";
 
 const { agent, agentAccess, conversation, conversationAgent, conversationMember, message, task, user } = schema;
 
@@ -49,7 +50,8 @@ export async function loadConversation(userId: string, conversationId: string) {
       .orderBy(conversationAgent.createdAt),
   ]);
   const directBot = row.conversation.kind === "direct" && agents.length === 1 ? agents[0]! : null;
-  if (directBot && !(await accessibleAgentIds(userId)).has(directBot.agent.id)) return null;
+  // A colleague's assistant writing to them (person-relay.ts): theirs to answer, without access to that bot elsewhere.
+  if (directBot && !isRelayKey(row.conversation.directKey) && !(await accessibleAgentIds(userId)).has(directBot.agent.id)) return null;
   return { ...row, members, agents, directBot };
 }
 
@@ -67,6 +69,39 @@ export async function openDirectWithAgent(userId: string, agentId: string) {
   await db.insert(conversationAgent).values({ conversationId: conv!.id, agentId, addedBy: userId }).onConflictDoNothing();
   return conv!.id;
 }
+
+/**
+ * A new chat between an employee and a bot (the simple interface's "New chat"): a direct conversation
+ * without `directKey`, so there can be many. The last one still empty is reused rather than piling up.
+ */
+export async function openChat(userId: string, agentId: string) {
+  const [empty] = await db
+    .select({ id: conversation.id })
+    .from(conversation)
+    .innerJoin(conversationMember, and(eq(conversationMember.conversationId, conversation.id), eq(conversationMember.userId, userId)))
+    .innerJoin(conversationAgent, and(eq(conversationAgent.conversationId, conversation.id), eq(conversationAgent.agentId, agentId)))
+    .where(
+      and(
+        eq(conversation.kind, "direct"),
+        isNull(conversation.directKey),
+        eq(conversation.createdBy, userId),
+        sql`not exists (select 1 from ${message} where ${message.conversationId} = ${conversation.id})`,
+      ),
+    )
+    .orderBy(desc(conversation.createdAt))
+    .limit(1);
+  if (empty) return empty.id;
+  const id = crypto.randomUUID();
+  await db.transaction(async (tx) => {
+    await tx.insert(conversation).values({ id, kind: "direct", createdBy: userId });
+    await tx.insert(conversationMember).values({ conversationId: id, userId });
+    await tx.insert(conversationAgent).values({ conversationId: id, agentId, addedBy: userId });
+  });
+  return id;
+}
+
+/** A chat opened with "New chat" (no `directKey`), as opposed to the one direct conversation per bot. */
+export const isExtraChat = (c: { kind: string; directKey: string | null; title?: string | null }) => c.kind === "direct" && !c.directKey;
 
 /** Opens (or creates) the direct conversation between two employees. */
 export async function openDirectWithUser(userId: string, otherId: string) {
@@ -172,9 +207,11 @@ export async function listConversations(userId: string) {
     const people = members.filter((m) => m.conversationId === c.id).map(({ id, name, image }) => ({ id, name, image }));
     const bots = agents.filter((a) => a.conversationId === c.id).map((a) => a.agent);
     const isDirectBot = c.kind === "direct" && bots.length === 1;
-    if (isDirectBot && !access.has(bots[0]!.id)) return [];
+    if (isDirectBot && !isRelayKey(c.directKey) && !access.has(bots[0]!.id)) return [];
     // A direct conversation between employees only shows up for the other person after the first message.
     if (c.kind === "direct" && !bots.length && !l?.at && c.createdBy !== userId) return [];
+    // A "New chat" nobody wrote in yet: not in the history.
+    if (isExtraChat(c) && !l?.at) return [];
     const fromMe = l?.authorUserId === userId;
     const author = people.find((p) => p.id === l?.authorUserId)?.name ?? bots.find((b) => b.id === l?.authorAgentId)?.name ?? null;
     return [

@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { Stack } from "expo-router";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
+import { useSimple } from "@/lib/simple";
 import { useCSSVariable } from "uniwind";
 import { useMe } from "@/components/server-scope";
 import { haptic } from "@/lib/haptics";
@@ -15,8 +17,21 @@ const t = defineMessages({
   fr: { chats: "Discussions", inbox: "Réception", tasks: "Tâches", sessions: "Sessions", profile: "Profil" },
 });
 
-/** The app's sections, in a native tab bar (liquid glass on iOS 26), with the house icons (assets/tab-icons, drawn from @/components/icons). */
+/** The app's sections, in a native tab bar (liquid glass on iOS 26); the simple interface has none. */
 export default function TabsLayout() {
+  // One chat and its history (components/simple): the chats tab's stack is the whole app, settings pushed over it.
+  if (useSimple())
+    return (
+      <Stack screenOptions={{ headerShown: false }} initialRouteName="(chats)">
+        <Stack.Screen name="(chats)" />
+        <Stack.Screen name="profile" />
+      </Stack>
+    );
+  return <Tabs />;
+}
+
+/** The full interface's tabs, with the house icons (assets/tab-icons, drawn from @/components/icons). */
+function Tabs() {
   const me = useMe();
   const unread = useQuery({ ...conversationsQuery, select: (list) => list.filter((c) => c.unread).length }).data ?? 0;
   // Badge: what you have to do yourself, not what you gave to others.

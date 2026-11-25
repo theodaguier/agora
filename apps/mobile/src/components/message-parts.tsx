@@ -15,7 +15,8 @@ import { confirmAction } from "@/components/confirm-action";
 import { LongPressMenu } from "@/components/menus";
 import { ClockIcon, PackageIcon, PlugIcon, ReplyIcon } from "@/components/icons";
 import { MessageText } from "@/components/message-text";
-import { defineMessages } from "@/lib/i18n";
+import { defineMessages, tr } from "@/lib/i18n";
+import { simple } from "@agora/core/i18n";
 import type { Mentionable } from "@/lib/mentions";
 import { deleteMessage } from "@/lib/api";
 import { messagesQuery } from "@/lib/queries";
@@ -257,6 +258,8 @@ export function MessageRow(props: {
   onTogglePin?: () => void;
   /** Deletes it for everyone: offered on your own messages and on the bots'. */
   onDelete?: () => void;
+  /** "Save to the second brain": the message and its files go to the shared wiki's sources. */
+  onRemember?: () => Promise<unknown>;
   children: ReactNode;
 }) {
   const t = messages;
@@ -316,6 +319,18 @@ export function MessageRow(props: {
                   }),
               },
               files.length > 0 && { label: t.download(files.length), icon: "square.and.arrow.down", onPress: () => downloadAll(files) },
+              !!props.onRemember && {
+                label: tr(simple).remember,
+                icon: "brain",
+                onPress: () =>
+                  props.onRemember!().then(
+                    () => {
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      toast.show({ variant: "success", label: tr(simple).remembered });
+                    },
+                    () => toast.show({ variant: "danger", label: tr(simple).rememberFailed }),
+                  ),
+              },
               !!props.onDelete && "divider",
               props.onDelete && { label: t.delete, icon: "trash", destructive: true, onPress: props.onDelete },
             ]}

@@ -1,3 +1,4 @@
+import type { UiMode } from "@agora/core";
 import { getOrg } from "./org";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { auth } from "./auth";
@@ -31,7 +32,7 @@ const { invitation, user } = schema;
 const TTL_MS = 7 * 24 * 3600 * 1000;
 
 /** The admin only provides the address and access level: the invitee fills in the profile. */
-export type InvitationInput = { email: string; role: "admin" | "user" };
+export type InvitationInput = { email: string; role: "admin" | "user"; uiMode?: UiMode };
 
 const hash = (token: string) => new Bun.CryptoHasher("sha256").update(token).digest("hex");
 
@@ -151,6 +152,7 @@ export async function acceptInvitation(token: string, profile: Profile, password
         name: fullName(profile),
         emailVerified: true,
         role: claimed.role,
+        uiMode: claimed.uiMode,
         firstName: profile.firstName,
         lastName: profile.lastName,
         title: profile.title,

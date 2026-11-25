@@ -2,7 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import * as Application from "expo-application";
 import { Link, router, Stack, useFocusEffect, type Href } from "expo-router";
 import { Chip, ListGroup } from "heroui-native";
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
+import { auth, common, simple } from "@agora/core/i18n";
+import { useLanguageChoice } from "@/components/profile/language";
+import { useSignOut } from "@/components/profile/organizations";
+import { headerIcon } from "@/components/header-button";
+import { defineMessages, tr } from "@/lib/i18n";
+import { useSimple } from "@/lib/simple";
 import { Linking } from "react-native";
 import { PersonAvatar } from "@/components/conversation-avatar";
 import {
@@ -26,6 +32,8 @@ import {
   SparklesIcon,
   MonitorIcon,
   UsersIcon,
+  GlobeIcon,
+  LogOutIcon,
   type IconComponent,
 } from "@/components/icons";
 import { LinkRow, PressableRow, Section, SettingsRow, SettingsScroll } from "@/components/admin/ui";
@@ -37,7 +45,6 @@ import { useTheme } from "@/components/profile/theme";
 import { useServer } from "@/components/server-scope";
 import { digestQuery } from "@/lib/digest";
 import { serverVersionQuery } from "@/lib/queries";
-import { defineMessages } from "@/lib/i18n";
 import { latestRelease } from "@/lib/whats-new";
 import { notificationStatus, syncPushToken } from "@/lib/notifications";
 import { TapMenu } from "@/components/menus";
@@ -139,6 +146,8 @@ export default function Profile() {
   const { data: versions } = useQuery(serverVersionQuery);
   const appVersion = [Application.nativeApplicationVersion, Application.nativeBuildVersion && `(${Application.nativeBuildVersion})`].filter(Boolean).join(" ");
   const admin = me.role === "admin";
+  // Figma « Mode simple », 11 · Réglages: their own settings only, pushed over the chat (a button closes them).
+  const simpleMode = useSimple();
   const notifications = useNotificationStatus();
   const subtitle = [me.title, admin ? t.admin : null].filter(Boolean).join(", ");
   const unread = (show: boolean) =>
@@ -176,7 +185,12 @@ export default function Profile() {
 
   return (
     <>
-      <Stack.Screen.Title>{t.title}</Stack.Screen.Title>
+      <Stack.Screen.Title>{simpleMode ? tr(simple).settings : t.title}</Stack.Screen.Title>
+      {simpleMode && (
+        <Stack.Toolbar placement="left">
+          <Stack.Toolbar.Button icon={headerIcon.chevronLeft} iconRenderingMode="template" accessibilityLabel={tr(common).back} onPress={() => router.back()} />
+        </Stack.Toolbar>
+      )}
       <SettingsScroll>
         {/* You: the General tab (profile and account). */}
         <Section>
@@ -194,12 +208,77 @@ export default function Profile() {
 
         {/* The user menu's status, and this phone's notifications. */}
         <Section>
-          <TapMenu actions={dnd.actions} accessibilityLabel={`${t.dnd}, ${dnd.on ? dnd.label : t.off}`}>
-            <LinkRow icon={MoonIcon} tone={dnd.on ? "danger" : undefined} title={t.dnd} value={dnd.on ? dnd.label : t.off} isDisabled={dnd.pending} pointerEvents="none" />
-          </TapMenu>
+          {!simpleMode && (
+            <TapMenu actions={dnd.actions} accessibilityLabel={`${t.dnd}, ${dnd.on ? dnd.label : t.off}`}>
+              <LinkRow icon={MoonIcon} tone={dnd.on ? "danger" : undefined} title={t.dnd} value={dnd.on ? dnd.label : t.off} isDisabled={dnd.pending} pointerEvents="none" />
+            </TapMenu>
+          )}
           <LinkRow icon={BellIcon} title={t.notifications} value={notifications.granted ? t.on : t.off} onPress={notifications.open} />
         </Section>
 
+        {simpleMode ? (
+          <SimpleSettings theme={t.themes[theme]} appearance={t.tabs.appearance} />
+        ) : (
+          <FullSettings t={t} me={me} theme={theme} digest={digest} unread={unread} admin={admin} adminGroups={adminGroups} server={server} versions={versions} appVersion={appVersion} />
+        )}
+      </SettingsScroll>
+    </>
+  );
+}
+
+/** Figma « Mode simple », 11 · Réglages, after the profile and notifications: appearance, language, sign out. */
+function SimpleSettings({ theme, appearance }: { theme: string; appearance: string }) {
+  const t = tr(simple);
+  const server = useServer();
+  const signOut = useSignOut();
+  // The organization's language reads as its name: a simple user picks a language, not a policy.
+  const language = useLanguageChoice((l) => l ?? "");
+  return (
+    <>
+      <Section>
+        <LinkRow icon={PaletteIcon} title={appearance} value={theme} onPress={() => router.push("/profile/appearance")} />
+        <TapMenu
+          accessibilityLabel={t.language}
+          actions={language.languages
+            .filter((l) => l.value !== "org")
+            .map((l) => ({ label: l.label, checked: l.value === language.current, onPress: () => language.choose(l.value) }))}
+        >
+          <LinkRow icon={GlobeIcon} title={t.language} value={language.label} pointerEvents="none" />
+        </TapMenu>
+      </Section>
+      <Section>
+        <LinkRow icon={LogOutIcon} title={tr(auth).signOut} destructive chevron={false} onPress={() => signOut(server)} />
+      </Section>
+    </>
+  );
+}
+
+/** The full interface's rows after the status: account, workspace, administration, phones, about. */
+function FullSettings({
+  t,
+  me,
+  theme,
+  digest,
+  unread,
+  admin,
+  adminGroups,
+  server,
+  versions,
+  appVersion,
+}: {
+  t: typeof messages & { orgs: typeof organizationsMessages };
+  me: ReturnType<typeof useMeProfile>;
+  theme: ReturnType<typeof useTheme>;
+  digest: { seen: boolean } | null | undefined;
+  unread: (show: boolean) => ReactNode;
+  admin: boolean;
+  adminGroups: { title: string; tabs: Tab[] }[];
+  server: ReturnType<typeof useServer>;
+  versions: { app: string; hermes: string } | undefined;
+  appVersion: string;
+}) {
+  return (
+    <>
         <Section title={t.groups.account}>
           <LinkRow icon={CalendarClockIcon} title={t.tabs.availability} onPress={() => router.push("/profile/availability")} />
           <LinkRow
@@ -244,7 +323,6 @@ export default function Profile() {
           <SettingsRow label={t.serverVersion} value={versions?.app ?? "—"} />
           <SettingsRow label={t.engineVersion} value={versions?.hermes ?? "—"} />
         </Section>
-      </SettingsScroll>
     </>
   );
 }
