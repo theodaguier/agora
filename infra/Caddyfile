@@ -61,8 +61,9 @@
 	# Images and videos: https allowed, agents' replies show pictures from the web;
 	# data:/blob: for the agent screen frames and upload previews.
 	# Styles: inline allowed (UI libraries inject <style> and style attributes).
+	# Forms: github.com too, where the GitHub App manifest is posted (github-app.ts).
 	handle {
-		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://github.com; frame-ancestors 'none'; upgrade-insecure-requests"
 		root * /srv
 		try_files {path} /index.html
 		file_server

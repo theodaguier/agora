@@ -188,15 +188,16 @@ async function installationToken(app: App, id: number) {
 }
 
 /**
- * A token of the app for `repo` (owner/name): the installation on its owner, else the first one.
- * Null without the app or any installation.
+ * A token of the app for `repo` (owner/name): the installation on its owner only, since another
+ * owner's installation can't reach the repository (and would hide the pasted token, code-git.ts).
+ * Without `repo`, the first installation. Null without the app or a matching installation.
  */
 export async function githubAppToken(repo?: string | null): Promise<string | null> {
   const app = await githubApp();
   if (!app) return null;
   const list = await installations().catch((err) => (console.error("github app: installations", err), []));
   const owner = repo?.split("/")[0]?.toLowerCase();
-  const inst = (owner && list.find((i) => i.account.toLowerCase() === owner)) || list[0];
+  const inst = owner ? list.find((i) => i.account.toLowerCase() === owner) : list[0];
   if (!inst) return null;
   return installationToken(app, inst.id).catch((err) => (console.error("github app: token", err), null));
 }
