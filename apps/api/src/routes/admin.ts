@@ -31,6 +31,7 @@ const messages = defineMessages({
     ownAccount: "You can't delete your own account.",
     reservedProfile: "This profile name is reserved.",
     profileInUse: "An agent already uses this profile.",
+    ownInterface: "Admins choose their own interface, in their settings.",
   },
   fr: {
     invalidEmail: "Adresse email invalide.",
@@ -39,6 +40,7 @@ const messages = defineMessages({
     ownAccount: "Tu ne peux pas supprimer ton propre compte.",
     reservedProfile: "Ce nom de profil est réservé.",
     profileInUse: "Un agent utilise déjà ce profil.",
+    ownInterface: "Les admins choisissent leur interface eux-mêmes, dans leurs réglages.",
   },
 });
 
@@ -136,7 +138,12 @@ export const admin = new Hono<AppEnv>()
     if (body.data.role && id === c.get("user").id && body.data.role !== "admin") {
       return c.json({ error: tr(messages).ownAdminRights }, 400);
     }
-    const [row] = await db.update(user).set(body.data).where(eq(user.id, id)).returning({ id: user.id });
+    const [target] = await db.select({ role: user.role }).from(user).where(eq(user.id, id));
+    if (!target) return c.json({ error: "not_found" }, 404);
+    // An admin's interface is theirs to choose (PUT /me/ui-mode); one just made admin starts on the full one.
+    if (body.data.uiMode && (target.role === "admin" || body.data.role === "admin")) return c.json({ error: tr(messages).ownInterface }, 400);
+    const patch = body.data.role === "admin" && target.role !== "admin" ? { ...body.data, uiMode: "full" as const } : body.data;
+    const [row] = await db.update(user).set(patch).where(eq(user.id, id)).returning({ id: user.id });
     if (!row) return c.json({ error: "not_found" }, 404);
     // Their open apps switch interface (and role) without signing in again.
     if (body.data.uiMode || body.data.role) publishToUser(id, { type: "session.changed" });

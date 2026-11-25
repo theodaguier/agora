@@ -1,9 +1,15 @@
 import { Stack } from "expo-router";
-import { Intro, Section, SettingsRow, SettingsScroll } from "@/components/admin/ui";
+import { Intro, Section, SettingsRow, SettingsScroll, SwitchRow, useAdminToast } from "@/components/admin/ui";
+import { isSimple, type UiMode } from "@agora/core";
+import { simple } from "@agora/core/i18n";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMe } from "@/components/server-scope";
+import { api } from "@/lib/api";
+import { sessionQuery } from "@/lib/queries";
 import { useLanguageChoice } from "@/components/profile/language";
 import { OptionPicker } from "@/components/menus";
 import { setTheme, THEMES, useTheme, type Theme } from "@/components/profile/theme";
-import { defineMessages } from "@/lib/i18n";
+import { defineMessages, tr } from "@/lib/i18n";
 
 /* apps/web/src/components/Appearance.tsx: one « Interface » group, language and theme each a row with its select. */
 
@@ -36,6 +42,16 @@ export default function Appearance() {
   const t = messages;
   const theme = useTheme();
   const language = useLanguageChoice(t.org);
+  const me = useMe();
+  const simpleMode = isSimple(me);
+  const qc = useQueryClient();
+  const toast = useAdminToast();
+  // The session carries the interface: read it again, and the tabs give way to the chat (or back).
+  const setUiMode = useMutation({
+    mutationFn: (uiMode: UiMode) => api("/me/ui-mode", { method: "PUT", body: JSON.stringify({ uiMode }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: sessionQuery.queryKey }),
+    onError: (e) => toast.failed(e),
+  });
 
   return (
     <>
@@ -50,6 +66,12 @@ export default function Appearance() {
             <OptionPicker label={t.theme} value={theme} options={THEMES.map((value) => ({ value, label: t.themes[value] }))} onChange={setTheme} />
           </SettingsRow>
         </Section>
+        {/* An admin's own interface: members get the one an admin set for them. */}
+        {me.role === "admin" && (
+          <Section footer={tr(simple).selfSimpleHint}>
+            <SwitchRow title={tr(simple).selfSimple} value={simpleMode} onChange={(on) => !setUiMode.isPending && setUiMode.mutate(on ? "simple" : "full")} />
+          </Section>
+        )}
       </SettingsScroll>
     </>
   );

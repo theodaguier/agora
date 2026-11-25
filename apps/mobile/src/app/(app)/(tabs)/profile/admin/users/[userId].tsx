@@ -135,7 +135,7 @@ function UserDetail({ user: u }: { user: AdminUser }) {
         <Card>
           <Card.Body>
             <UiModeChoice
-              value={u.role === "admin" ? "full" : u.uiMode}
+              value={u.uiMode}
               disabled={u.role === "admin" || update.isPending}
               onChange={(uiMode) => update.mutate({ uiMode })}
             />
