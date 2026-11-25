@@ -7,6 +7,8 @@ import { avatarUrl, fullName, profileInput, readAvatar } from "../profile";
 import { errors } from "../errors.messages";
 import { defineMessages, tr } from "../i18n";
 import { version } from "../version";
+import { UI_MODES } from "@agora/core";
+import { publishToUser } from "../events";
 
 const messages = defineMessages({
   en: {
@@ -60,6 +62,18 @@ export const me = new Hono<AppEnv>()
     const body = z.object({ locale: z.enum(["fr", "en"]).nullable() }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: tr(messages).unknownLanguage }, 400);
     await db.update(user).set({ locale: body.data.locale }).where(eq(user.id, c.get("user").id));
+    return c.body(null, 204);
+  })
+
+  /** An admin's own interface (members get the one an admin set: PATCH /admin/users/:id). */
+  .put("/ui-mode", async (c) => {
+    const me = c.get("user");
+    if (me.role !== "admin") return c.json({ error: "forbidden" }, 403);
+    const body = z.object({ uiMode: z.enum(UI_MODES) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid_body" }, 400);
+    await db.update(user).set({ uiMode: body.data.uiMode }).where(eq(user.id, me.id));
+    // Their other open apps switch too.
+    publishToUser(me.id, { type: "session.changed" });
     return c.body(null, 204);
   })
 

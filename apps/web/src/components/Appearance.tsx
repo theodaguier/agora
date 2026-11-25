@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
+import { isSimple, type UiMode } from "@agora/core";
+import { simple } from "@agora/core/i18n";
+import { authClient } from "@/lib/auth";
 import { defineMessages, isLocale, setLocale, useT, type Locale } from "@/i18n";
 import { api } from "@/lib/api";
 import { LANGUAGES } from "@/lib/languages";
@@ -82,6 +85,7 @@ export function Appearance() {
           <FieldGroup>
             <AccountLanguage />
             <ThemePicker />
+            <SimpleInterface />
           </FieldGroup>
         </CardContent>
       </Card>
@@ -125,6 +129,35 @@ function AccountLanguage() {
         value={current}
         onValueChange={(v) => save.mutate(isLocale(v) ? v : null)}
       />
+    </Field>
+  );
+}
+
+/**
+ * An admin's own interface (Figma « Mode simple »): the simple one, like ChatGPT, or the full one. Members get
+ * the one an admin set for them, so only admins see this.
+ */
+function SimpleInterface() {
+  const t = useT(simple);
+  const { user } = useRouteContext({ from: "/app" });
+  const router = useRouter();
+  const on = isSimple(user);
+  const save = useMutation({
+    mutationFn: (uiMode: UiMode) => api("/me/ui-mode", { method: "PUT", body: JSON.stringify({ uiMode }) }),
+    // The session carries the interface: read it again, and the shell follows.
+    onSuccess: () => {
+      authClient.$store.notify("$sessionSignal");
+      void router.invalidate();
+    },
+  });
+  if (user.role !== "admin") return null;
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor="simple-interface">{t.selfSimple}</FieldLabel>
+        <FieldDescription>{t.selfSimpleHint}</FieldDescription>
+      </FieldContent>
+      <Switch id="simple-interface" checked={on} disabled={save.isPending} onCheckedChange={(next) => save.mutate(next ? "simple" : "full")} />
     </Field>
   );
 }

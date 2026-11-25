@@ -24,7 +24,7 @@ export const user = pgTable("user", {
   image: text("image"),
   /** Access level (admin plugin): "admin" or "user". */
   role: text("role").default("user"),
-  /** Interface the admin chose for them: "simple" (one chat and its history, @agora/core isSimple) or "full". Admins always get the full one. */
+  /** Their interface: "simple" (one chat and its history, @agora/core isSimple) or "full"; set by an admin for members, by admins themselves (PUT /me/ui-mode). */
   uiMode: text("ui_mode").$type<UiMode>().default("full").notNull(),
   /** Model their conversations start on (`provider::model`), set by an admin; null = each bot's own default. */
   defaultModel: text("default_model"),

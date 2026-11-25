@@ -4,10 +4,12 @@ import { isRelayKey, relayKey, relayParties } from "./person-relay";
 import { runResponse } from "./routine-delivery";
 
 describe("simple interface", () => {
-  test("only members get it; admins always get the full one", () => {
-    expect(isSimple({ role: "user", uiMode: "simple" })).toBe(true);
-    expect(isSimple({ role: "admin", uiMode: "simple" })).toBe(false);
-    expect(isSimple({ role: "user", uiMode: "full" })).toBe(false);
+  test("whoever has it set, admins included (they choose their own)", () => {
+    const member = { role: "user", uiMode: "simple" };
+    const admin = { role: "admin", uiMode: "simple" };
+    expect(isSimple(member)).toBe(true);
+    expect(isSimple(admin)).toBe(true);
+    expect(isSimple({ uiMode: "full" })).toBe(false);
     expect(isSimple(null)).toBe(false);
   });
   test("the history by day, in local time", () => {

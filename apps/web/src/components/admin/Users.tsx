@@ -375,7 +375,7 @@ function UserRow({ user: u }: { user: AdminUser }) {
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuLabel>{access === "admin" ? ts.adminsFull : ts.interface}</DropdownMenuLabel>
-                <DropdownMenuRadioGroup value={access === "admin" ? "full" : u.uiMode} onValueChange={(mode) => mode !== u.uiMode && update.mutate({ uiMode: mode as UiMode })}>
+                <DropdownMenuRadioGroup value={u.uiMode} onValueChange={(mode) => mode !== u.uiMode && update.mutate({ uiMode: mode as UiMode })}>
                   {UI_MODES.map((mode) => (
                     <DropdownMenuRadioItem key={mode} value={mode} disabled={access === "admin"}>
                       {modeIcon[mode]}

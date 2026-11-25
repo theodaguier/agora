@@ -1,13 +1,14 @@
 /**
- * The interface an admin gives each person: "full" (every section) or "simple" (one chat with their
- * assistant and its history, like ChatGPT: same features, asked for in words). Admins always get the full one.
+ * The interface each person gets: "full" (every section) or "simple" (one chat with their assistant and its
+ * history, like ChatGPT: same features, asked for in words). An admin sets it for members; admins choose
+ * their own, in their settings (PUT /me/ui-mode).
  */
 export type UiMode = "simple" | "full";
 
 export const UI_MODES: readonly UiMode[] = ["simple", "full"];
 
 /** Does this account get the simple interface? */
-export const isSimple = (user: { role?: string | null; uiMode?: string | null } | null | undefined) => user?.uiMode === "simple" && user.role !== "admin";
+export const isSimple = (user: { uiMode?: string | null } | null | undefined) => user?.uiMode === "simple";
 
 /** Day buckets of the simple interface's history, newest first, like ChatGPT's. */
 export type HistoryBucket = "today" | "yesterday" | "week" | "month" | "older";
