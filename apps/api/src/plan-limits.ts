@@ -4,7 +4,8 @@
  *
  * - Claude Code: Anthropic's OAuth usage endpoint, with the active account's token. It throttles
  *   hard (Retry-After of half an hour), so it is read at most every 5 minutes and the last answer
- *   is served in between and while throttled.
+ *   is served in between and while throttled. A setup-token (the server's usual login) has no
+ *   access to it: its limits come from the headers of a one-token request instead.
  * - Codex: `account/rateLimits/read` of its app server, for the active account.
  */
 import { claudeAccessToken, listClaudeAccounts } from "./claude-accounts";
@@ -13,11 +14,9 @@ import { canUseCodex } from "./codex";
 import { codexRateLimits, listCodexAccounts } from "./codex-accounts";
 import type { SubscriptionAccountsState } from "./subscription-accounts";
 import { env } from "./env";
+import { claudeHeaderLimits, Throttled, type PlanLimits, type PlanWindow } from "./plan-windows";
 
-/** `model`: a window that only counts one model family (Claude's weekly Opus or Sonnet limit). */
-export type PlanWindow = { usedPercent: number; resetsAt: string | null; windowMins: number; model: string | null };
-/** `account`: the email of the subscription in use, `at`: when the figures were read. */
-export type PlanLimits = { id: "claude-code" | "codex"; plan: string | null; account: string | null; windows: PlanWindow[]; at: string };
+export type { PlanLimits, PlanWindow };
 
 const FIVE_HOURS = 300;
 const WEEK = 7 * 24 * 60;
@@ -31,13 +30,10 @@ type Engine = {
   read: () => Promise<Pick<PlanLimits, "plan" | "windows"> | null>;
 };
 
-class Throttled extends Error {
-  constructor(public until: number) {
-    super("throttled");
-  }
-}
-
 type ClaudeWindow = { utilization?: number | null; resets_at?: string | null } | null;
+
+/** Tokens the usage endpoint refused (no `user:profile` scope): their limits come from the headers. */
+const inferenceOnly = new Set<string>();
 
 const ENGINES: Engine[] = [
   {
@@ -49,11 +45,17 @@ const ENGINES: Engine[] = [
     read: async () => {
       const token = await claudeAccessToken();
       if (!token) return null;
+      // A setup-token (`claude setup-token`, the server's usual login) can't read the usage endpoint.
+      if (inferenceOnly.has(token)) return claudeHeaderLimits(token);
       const res = await fetch("https://api.anthropic.com/api/oauth/usage", {
         headers: { authorization: `Bearer ${token}`, "anthropic-beta": "oauth-2025-04-20" },
         signal: AbortSignal.timeout(10_000),
       });
       if (res.status === 429) throw new Throttled(Date.now() + Math.max(60, Number(res.headers.get("retry-after")) || 900) * 1000);
+      if (res.status === 403) {
+        inferenceOnly.add(token);
+        return claudeHeaderLimits(token);
+      }
       if (!res.ok) throw new Error(`claude usage: HTTP ${res.status}`);
       const body = (await res.json()) as Record<"five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet", ClaudeWindow | undefined>;
       const win = (w: ClaudeWindow | undefined, windowMins: number, model: string | null = null): PlanWindow[] =>
