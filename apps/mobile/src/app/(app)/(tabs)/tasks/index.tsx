@@ -5,7 +5,6 @@ import { useRouter } from "expo-router";
 import { Skeleton } from "heroui-native";
 import { useMemo, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
-import { TaskStatusIcon } from "@/components/code-session-marks";
 import { EmptyState } from "@/components/empty-state";
 import { PlusIcon, WarningIcon } from "@/components/icons";
 import { ListBand } from "@/components/list-band";
@@ -91,7 +90,7 @@ export default function TasksScreen() {
         ) : (
           groups.map((g) => (
             <View key={g.status} accessibilityLabel={messages.group[g.status]}>
-              <ListBand mark={<TaskStatusIcon status={g.status} />} label={messages.group[g.status]} count={g.items.length} />
+              <ListBand label={messages.group[g.status]} count={g.items.length} />
               {g.items.map((task) => (
                 <TaskTableRow key={task.id} task={task} me={me.id} mentionables={mentionables} />
               ))}

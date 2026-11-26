@@ -7,7 +7,7 @@ import { PriorityMark, TaskStatusIcon } from "@/components/code-session-marks";
 import { confirmAction } from "@/components/confirm-action";
 import { MentionText } from "@/components/mention";
 import { LongPressMenu, TapMenu, type MenuEntry } from "@/components/menus";
-import { rowMessages } from "@/components/tasks/task-meta";
+import { rowMessages, taskFrom } from "@/components/tasks/task-meta";
 import { dueLabel } from "@/lib/dates";
 import { withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
@@ -21,7 +21,7 @@ import { PRIORITY_SYMBOL, priorityMessages, TASK_PRIORITIES } from "@/lib/task-s
  * reopens it), its title, when it is due. At phone width the web drops the agent and the faces too.
  * A tap on the line opens the task; a long press, the web's right-click menu.
  */
-export function TaskTableRow({ task, me, mentionables }: { task: Task; me: string; mentionables: Mentionable[] }) {
+export function TaskTableRow({ task, me, mentionables, divided }: { task: Task; me: string; mentionables: Mentionable[]; /** In a card in the thread: a hairline under each row, as the web's ListCard. */ divided?: boolean }) {
   const router = useRouter();
   const patch = useTaskPatch(task.id);
   const remove = useDeleteTask(task.id);
@@ -33,6 +33,7 @@ export function TaskTableRow({ task, me, mentionables }: { task: Task; me: strin
   const done = task.status === "done";
   const late = !done && isOverdue(task.dueOn);
   const mine = task.assignees.find((a) => a.id === me);
+  const from = taskFrom(task);
   const failed = () => toast.show({ variant: "danger", label: t.failed });
   const setStatus = (status: TaskStatus) => {
     if (status === "done") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -61,7 +62,8 @@ export function TaskTableRow({ task, me, mentionables }: { task: Task; me: strin
   return (
     <>
       <LongPressMenu actions={actions}>
-        <ListGroup.Item onPress={withTap(() => router.push(taskHref(task.id)))} className="h-10 gap-3 px-4 py-0">
+        {/* Figma « Mobile — ChatGPT 1:1 », « Mes tâches »: the priority and the state, the title over who gave it, the due date on the right. */}
+        <ListGroup.Item onPress={withTap(() => router.push(taskHref(task.id)))} className="items-center gap-3 px-[22px] py-3">
           <ListGroup.ItemPrefix className="flex-row items-center gap-1">
             <TapMenu actions={priorities} accessibilityLabel={`${p.priority} : ${p.label[task.priority]}`}>
               <View className="size-7 items-center justify-center">
@@ -76,26 +78,29 @@ export function TaskTableRow({ task, me, mentionables }: { task: Task; me: strin
               accessibilityLabel={done ? t.reopen : t.complete}
               className="size-7 items-center justify-center"
             >
-              <TaskStatusIcon status={task.status} />
+              <TaskStatusIcon status={task.status} size={20} />
             </PressableFeedback>
           </ListGroup.ItemPrefix>
-          <ListGroup.ItemContent>
-            <Typography type="body-sm" color={done ? "muted" : "default"} numberOfLines={1}>
+          <ListGroup.ItemContent className="gap-0.5">
+            <Typography color={done ? "muted" : "default"} numberOfLines={2} className="text-body">
               <MentionText text={task.title} mentionables={mentionables} flat />
             </Typography>
+            {!!from && (
+              <Typography numberOfLines={1} className="text-subheadline text-muted">
+                {from}
+              </Typography>
+            )}
           </ListGroup.ItemContent>
           <ListGroup.ItemSuffix>
             {task.dueOn ? (
-              <Typography type="body-xs" color={late || done ? "default" : "muted"} className={late ? "text-danger" : done ? "text-subtle" : undefined}>
-                {dueLabel(task.dueOn)}
-              </Typography>
+              <Typography className={late ? "text-subheadline text-danger" : done ? "text-subheadline text-subtle" : "text-subheadline text-muted"}>{dueLabel(task.dueOn)}</Typography>
             ) : (
               false
             )}
           </ListGroup.ItemSuffix>
         </ListGroup.Item>
       </LongPressMenu>
-      <Separator />
+      {divided && <Separator />}
     </>
   );
 }

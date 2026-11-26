@@ -70,14 +70,15 @@ export function SendButton({
 }) {
   if (stop && !canSend) {
     return (
-      <Button isIconOnly size="sm" variant="primary" accessibilityLabel={stop.label} isDisabled={stop.pending} onPress={withTap(stop.onPress)}>
+      <Button isIconOnly size="sm" variant="primary" accessibilityLabel={stop.label} isDisabled={stop.pending} onPress={withTap(stop.onPress)} className="rounded-full">
         {stop.pending ? <Spinner size="sm" /> : <StopIcon className="size-4 text-accent-foreground" />}
       </Button>
     );
   }
   return (
-    <Button isIconOnly size="sm" variant={canSend ? "primary" : "secondary"} accessibilityLabel={label} accessibilityState={{ disabled: !canSend }} onPress={onSend}>
-      <ArrowUpIcon className={canSend ? "size-[18px] text-accent-foreground" : "size-[18px] text-subtle"} strokeWidth={2.25} />
+    // Figma « Mobile — ChatGPT 1:1 »: always the black round button, faded until there is something to send.
+    <Button isIconOnly size="sm" variant="primary" accessibilityLabel={label} accessibilityState={{ disabled: !canSend }} onPress={onSend} className={canSend ? "rounded-full" : "rounded-full opacity-25"}>
+      <ArrowUpIcon className="size-[18px] text-accent-foreground" strokeWidth={2.25} />
     </Button>
   );
 }

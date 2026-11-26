@@ -423,12 +423,13 @@ export function Conversation({ conversationId, focus, simple: simpleHome, home }
                 // Figma « État vide », conversation neuve: the bot's figurine; a colleague or a group, their avatar.
                 // The simple interface: the question alone, as ChatGPT asks it (Figma « Mode simple », 1 · Accueil).
                 <View className="flex-1 justify-center">
-                  {simpleHome ? (
+                  {/* Figma « Mobile — ChatGPT 1:1 », « Nouvelle discussion »: ChatGPT's question alone, for the home's chat with a bot too. */}
+                  {simpleHome || (home && directBot) ? (
                     <View className="items-center">
                       <Typography.Heading type="h3" align="center" className="px-8">
                         {tr(simpleMessages).empty}
                       </Typography.Heading>
-                      <UnreadCard current={conversationId} />
+                      {simpleHome && <UnreadCard current={conversationId} />}
                     </View>
                   ) : directBot ? (
                     <EmptyState mascot={agentMascot(directBot.avatar.color)} title={title} description={t.emptyHint} />
@@ -543,7 +544,7 @@ export function Conversation({ conversationId, focus, simple: simpleHome, home }
             </View>
           )}
           {/* overflow-visible: the composer's "/" and "@" menu floats above the bar, over the thread. */}
-          <Surface variant="transparent" className="gap-2 overflow-visible bg-background px-7 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
+          <Surface variant="transparent" className="gap-2 overflow-visible bg-background px-8 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
             {conv && (
               <Composer
                 key={conversationId}

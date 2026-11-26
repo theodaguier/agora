@@ -1,24 +1,20 @@
-import { Separator, Surface, Typography } from "heroui-native";
+import { Typography } from "heroui-native";
 import type { ReactNode } from "react";
+import { View } from "react-native";
 
 /*
- * apps/web/src/screens/Sessions.tsx `GroupHeader` and the groups of TaskList's table (Figma
- * « Mes tâches » / « Sessions de code »): a group's band, full width, its mark, its name, its count in
- * grey; a hairline under it, as under each of its rows.
+ * Figma « Mobile — ChatGPT 1:1 », « Mes tâches » and « Sessions de code »: a group's heading in a flat
+ * list, small grey words and the group's count, no band; its rows carry their own state and priority.
+ * `mark`: only what the rows don't say (a project's repository logo).
  */
 export function ListBand({ mark, label, count }: { mark?: ReactNode; label: string; count: number }) {
   return (
-    <>
-      <Surface variant="secondary" accessibilityRole="header" className="h-9 flex-row items-center gap-2 rounded-none px-4 py-0 shadow-none">
-        {mark}
-        <Typography type="body-sm" weight="medium" numberOfLines={1} className="shrink">
-          {label}
-        </Typography>
-        <Typography type="body-sm" className="text-subtle">
-          {count}
-        </Typography>
-      </Surface>
-      <Separator />
-    </>
+    <View accessibilityRole="header" className="flex-row items-center gap-1.5 px-[22px] pb-1.5 pt-5">
+      {mark}
+      <Typography numberOfLines={1} className="shrink text-footnote font-semibold text-muted">
+        {label}
+      </Typography>
+      <Typography className="text-footnote text-subtle">{count}</Typography>
+    </View>
   );
 }

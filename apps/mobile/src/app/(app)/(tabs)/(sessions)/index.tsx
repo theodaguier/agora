@@ -14,7 +14,7 @@ import { AppHeader, HeaderCapsule, HeaderTitle, useAppHeaderHeight } from "@/com
 import { codeSessions, common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { ListGroup, Separator, Skeleton, Typography } from "heroui-native";
+import { ListGroup, Skeleton, Typography } from "heroui-native";
 import { useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
 import { useAdminToast } from "@/components/admin/ui";
@@ -90,7 +90,7 @@ export default function SessionsScreen() {
     all.filter((s) => !toDecide.includes(s)),
     display,
   );
-  const row = (s: CodeSession, grouping: CodeSessionGrouping) => <SessionRow key={s.id} session={s} owner={s.requestedBy === me.id} showState={grouping !== "state"} />;
+  const row = (s: CodeSession) => <SessionRow key={s.id} session={s} owner={s.requestedBy === me.id} />;
 
   return (
     <>
@@ -111,20 +111,19 @@ export default function SessionsScreen() {
           <>
             {toDecide.length > 0 && (
               <View accessibilityLabel={t.stateGroups.waiting}>
-                <ListBand mark={<CodeStateIcon state="waiting" size={14} />} label={t.stateGroups.waiting} count={toDecide.length} />
+                <ListBand label={t.stateGroups.waiting} count={toDecide.length} />
                 {/* What waits for an answer stays a card you decide in, without opening it. */}
-                <View className="gap-3 px-4 py-3">
+                <View className="gap-3 px-5 py-2">
                   {toDecide.map((s) => (
                     <LiveSessionCard key={s.id} session={s} onOpen={() => router.push(codeSessionHref(s.conversationId, s.id))} />
                   ))}
                 </View>
-                <Separator />
               </View>
             )}
             {groups.map((g) => (
               <View key={g.key || "none"}>
                 <GroupBand grouping={display.group} groupKey={g.key} count={g.sessions.length} />
-                {g.sessions.map((s) => row(s, display.group))}
+                {g.sessions.map((s) => row(s))}
               </View>
             ))}
           </>
@@ -152,8 +151,8 @@ export default function SessionsScreen() {
 /** A group's band: the state's or the priority's mark, or the repository's name for a project. */
 function GroupBand({ grouping, groupKey, count }: { grouping: CodeSessionGrouping; groupKey: string; count: number }) {
   const t = tr(codeSessions);
-  if (grouping === "state") return <ListBand mark={<CodeStateIcon state={groupKey as CodeSessionState} size={14} />} label={t.stateGroups[groupKey as CodeSessionState]} count={count} />;
-  if (grouping === "priority") return <ListBand mark={<PriorityMark priority={groupKey as CodePriority} />} label={t.priorities[groupKey as CodePriority]} count={count} />;
+  if (grouping === "state") return <ListBand label={t.stateGroups[groupKey as CodeSessionState]} count={count} />;
+  if (grouping === "priority") return <ListBand label={t.priorities[groupKey as CodePriority]} count={count} />;
   return <ListBand mark={<BrandLogo domain="github.com" fallback={<BranchIcon size={14} className="text-muted" />} className="size-3.5" />} label={(groupKey.split("/").pop() ?? groupKey) || t.board.noProject} count={count} />;
 }
 
@@ -178,7 +177,7 @@ function useSetCodeParked() {
  * the group says it, its title, the engine's logo, when, then its owner's « … » (priority, set aside or
  * bring back, stop while it works, delete), also on a long press.
  */
-function SessionRow({ session: s, owner, showState }: { session: CodeSession; owner: boolean; showState: boolean }) {
+function SessionRow({ session: s, owner }: { session: CodeSession; owner: boolean }) {
   const t = tr(codeSessions);
   const setPriority = useSetCodePriority();
   const park = useSetCodeParked();
@@ -211,8 +210,9 @@ function SessionRow({ session: s, owner, showState }: { session: CodeSession; ow
   return (
     <>
       <LongPressMenu actions={actions}>
-        <ListGroup.Item onPress={withTap(() => router.push(codeSessionHref(s.conversationId, s.id)))} accessibilityLabel={`${s.title}, ${codeStatusText(t, s)}`} className="gap-2 py-1.5 pr-2 pl-3">
-          <ListGroup.ItemPrefix className="flex-row items-center">
+        {/* Figma « Mobile — ChatGPT 1:1 », « Sessions de code »: priority and state, the title over its engine and repository, the time on the right. */}
+        <ListGroup.Item onPress={withTap(() => router.push(codeSessionHref(s.conversationId, s.id)))} accessibilityLabel={`${s.title}, ${codeStatusText(t, s)}`} className="items-center gap-3 px-[22px] py-3">
+          <ListGroup.ItemPrefix className="flex-row items-center gap-1">
             {owner ? (
               <TapMenu actions={[...priorities, parkEntry && "divider", parkEntry]} accessibilityLabel={`${t.priority} ${t.priorities[s.priority]}`}>
                 {mark}
@@ -220,29 +220,28 @@ function SessionRow({ session: s, owner, showState }: { session: CodeSession; ow
             ) : (
               <View accessibilityLabel={t.priorities[s.priority]}>{mark}</View>
             )}
-            {showState && (
-              <View className="size-7 items-center justify-center">
-                <CodeStateIcon state={state} />
-              </View>
-            )}
+            <View className="size-7 items-center justify-center">
+              <CodeStateIcon state={state} size={18} />
+            </View>
           </ListGroup.ItemPrefix>
-          <ListGroup.ItemContent>
-            <Typography type="body-sm" numberOfLines={1}>
+          <ListGroup.ItemContent className="gap-1">
+            <Typography numberOfLines={2} className="text-body">
               {s.title}
             </Typography>
-          </ListGroup.ItemContent>
-          <ListGroup.ItemSuffix className="flex-row items-center gap-3">
-            <View accessibilityLabel={CODE_ENGINE_NAMES[s.engine]}>
-              <ModelLogo provider={ENGINE_PROVIDER[s.engine]} model={s.engine === "cursor" ? undefined : s.engine} size={14} />
+            <View className="flex-row items-center gap-1.5" accessibilityLabel={CODE_ENGINE_NAMES[s.engine]}>
+              <ModelLogo provider={ENGINE_PROVIDER[s.engine]} model={s.engine === "cursor" ? undefined : s.engine} size={13} />
+              {!!s.repo && (
+                <Typography numberOfLines={1} className="shrink font-mono text-footnote text-muted">
+                  {s.repo.split("/").pop()}
+                </Typography>
+              )}
             </View>
-            <Typography type="body-xs" className="w-12 text-right text-subtle">
-              {listTime(new Date(s.updatedAt))}
-            </Typography>
-            {owner && <MenuButton icon="ellipsis" label={t.actions} actions={actions} />}
+          </ListGroup.ItemContent>
+          <ListGroup.ItemSuffix>
+            <Typography className="text-subheadline text-muted">{listTime(new Date(s.updatedAt))}</Typography>
           </ListGroup.ItemSuffix>
         </ListGroup.Item>
       </LongPressMenu>
-      <Separator />
     </>
   );
 }

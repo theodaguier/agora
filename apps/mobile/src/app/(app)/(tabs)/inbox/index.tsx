@@ -109,7 +109,8 @@ function InboxRow({ item }: { item: InboxItem }) {
   };
   return (
     <LongPressMenu actions={[{ label: item.read ? t.markUnread : t.markRead, icon: item.read ? "envelope.badge" : "envelope.open", onPress: toggleRead }]}>
-      <PressableItem onPress={open} itemClassName="gap-3 py-2.5">
+      {/* Figma « Mobile — ChatGPT 1:1 », « Boîte de réception »: the face, the title (bold while unread) over what happened on two lines, the state and the age on the right. */}
+      <PressableItem onPress={open} itemClassName="items-start gap-3 px-[18px] py-3">
         <ListGroup.ItemPrefix>
           <ActorAvatar item={item} size={36} />
         </ListGroup.ItemPrefix>
@@ -120,17 +121,17 @@ function InboxRow({ item }: { item: InboxItem }) {
                 <ColorDot size={6} color="text-brand" />
               </View>
             )}
-            <ListGroup.ItemTitle numberOfLines={1} className={cn("flex-1", item.read && "font-normal text-muted")}>
+            <ListGroup.ItemTitle numberOfLines={1} className={cn("flex-1 text-body", item.read ? "font-normal text-muted" : "font-semibold")}>
               {title}
             </ListGroup.ItemTitle>
           </View>
-          <ListGroup.ItemDescription numberOfLines={1} className={item.read ? "text-subtle" : undefined}>
+          <ListGroup.ItemDescription numberOfLines={2} className={cn("text-subheadline", item.read ? "text-subtle" : "text-muted")}>
             {action}
           </ListGroup.ItemDescription>
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix className="items-end justify-between gap-1.5 self-stretch py-0.5">
           {item.task ? <TaskStatusIcon status={item.task.status} /> : <View style={{ width: 14, height: 14 }} />}
-          <Typography type="body-xs" className="text-subtle" style={{ fontVariant: ["tabular-nums"] }}>
+          <Typography className="text-subheadline text-muted" style={{ fontVariant: ["tabular-nums"] }}>
             {ageLabel(new Date(item.createdAt))}
           </Typography>
         </ListGroup.ItemSuffix>
