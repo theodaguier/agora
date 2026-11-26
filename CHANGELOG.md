@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.84.0 — 2026-11-26
+
+### Features
+- **mobile**: ChatGPT-style app — drawer, thread, reply blocks and artifacts as on the web
+
 ## v0.83.3 — 2026-11-26
 
 ### Fixes

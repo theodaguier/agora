@@ -1,6 +1,6 @@
 {
   "name": "agora",
-  "version": "0.83.3",
+  "version": "0.84.0",
   "private": true,
   "packageManager": "pnpm@11.9.0",
   "scripts": {
