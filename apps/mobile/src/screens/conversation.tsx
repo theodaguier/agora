@@ -16,7 +16,7 @@ import { DayDivider, FlatText, Post, ThreadEvent, ToolLine, TypingBubble, Typing
 import { ChoiceCard } from "@/components/choice-card";
 import { CodeSessionCard, ReplyWithSessions, useCanStartCodeSession, useCodeSessions } from "@/components/code-session";
 import { Composer, type ComposerHandle } from "@/components/composer";
-import { HeaderTitle } from "@/components/conversation/header";
+import { HeaderTitle, HomeTitle } from "@/components/conversation/header";
 import { infoHref } from "@/components/conversation/info-href";
 import { ConversationAvatar, PersonAvatar } from "@/components/conversation-avatar";
 import { headerIcon } from "@/components/header-button";
@@ -49,7 +49,8 @@ import { EmptyState } from "@/components/empty-state";
 import { SimpleChatHeader } from "@/components/simple/header";
 import { ArtifactCard } from "@/components/artifact-card";
 import { RunCommandContext } from "@/components/message-text";
-import { DrawerButton } from "@/components/drawer";
+import { AppHeader, HeaderCapsule, useAppHeaderHeight } from "@/components/app-header";
+import { ComposeIcon } from "@/components/icons";
 import { remember } from "@/lib/simple";
 import { RelayCard } from "@/components/simple/relay-card";
 import { RoutineCard, RoutineLine, TaskCard } from "@/components/simple/cards";
@@ -155,7 +156,10 @@ export function Conversation({ conversationId, focus, simple: simpleHome, home }
   const insets = useSafeAreaInsets();
   /** The home-indicator margin the composer bar no longer needs above the keyboard. */
   const keyboardOffset = Math.max(0, insets.bottom - 8);
-  const headerHeight = useHeaderHeight();
+  // The home (and the simple interface) draw their own header (components/app-header.tsx), not the native bar.
+  const nativeHeaderHeight = useHeaderHeight();
+  const appHeaderHeight = useAppHeaderHeight();
+  const headerHeight = home || simpleHome ? appHeaderHeight : nativeHeaderHeight;
   const detail = useQuery(conversationQuery(conversationId));
   const { data: messages = [], isPending } = useQuery(messagesQuery(conversationId));
   // Answers to the bots' drafts, by "<message id>:<view index>".
@@ -615,6 +619,7 @@ function ConversationHeader({
       <Stack.Screen
         options={{
           title,
+          headerShown: !home,
           headerTransparent: true,
           // The thread scrolls under the header: a material keeps it readable.
           headerBlurEffect: "systemChromeMaterial",
@@ -624,20 +629,42 @@ function ConversationHeader({
           headerTitle: () => <HeaderTitle conversation={conv} me={me} title={title} label={infoLabel || undefined} waiting={waiting} />,
         }}
       />
-      {home && <DrawerButton current={conv?.id} />}
-      {conv && (
+      {home && (
+        // Figma « Mobile — ChatGPT 1:1 »: no bar; the menu, the title and a capsule of actions over a fade.
+        <AppHeader
+          current={conv?.id}
+          title={<HomeTitle conversation={conv} me={me} title={title} waiting={waiting} />}
+          right={
+            conv && (
+              <HeaderCapsule
+                actions={[
+                  { icon: ComposeIcon, label: tr(conversationStrings).newConversation, onPress: () => router.push("/new") },
+                  <MenuButton
+                    key="more"
+                    icon="ellipsis"
+                    label={t.more}
+                    actions={[
+                      { label: panelLabels.search, icon: "magnifyingglass", onPress: () => onPanel("search") },
+                      { label: panelLabels.files, icon: "folder", onPress: () => onPanel("files") },
+                      { label: panelLabels.pins, icon: "pin", onPress: () => onPanel("pins") },
+                      startCode && { label: panelLabels.code, icon: "chevron.left.forwardslash.chevron.right", onPress: () => onPanel("code") },
+                      !!info && !!infoLabel && { label: infoLabel, icon: group ? "person.2" : "info.circle", onPress: () => router.push(info) },
+                    ]}
+                  />,
+                ]}
+              />
+            )
+          }
+        />
+      )}
+      {conv && !home && (
         <Stack.Toolbar placement="right">
-          {home ? (
-            <Stack.Toolbar.Button icon={headerIcon.compose} iconRenderingMode="template" accessibilityLabel={tr(conversationStrings).newConversation} onPress={withTap(() => router.push("/new"))} />
-          ) : (
-            <Stack.Toolbar.Button icon={headerIcon.search} iconRenderingMode="template" accessibilityLabel={panelLabels.search} onPress={withTap(() => onPanel("search"))} />
-          )}
+          <Stack.Toolbar.Button icon={headerIcon.search} iconRenderingMode="template" accessibilityLabel={panelLabels.search} onPress={withTap(() => onPanel("search"))} />
           <Stack.Toolbar.View>
             <MenuButton
               icon="ellipsis"
               label={t.more}
               actions={[
-                home && { label: panelLabels.search, icon: "magnifyingglass", onPress: () => onPanel("search") },
                 { label: panelLabels.files, icon: "folder", onPress: () => onPanel("files") },
                 { label: panelLabels.pins, icon: "pin", onPress: () => onPanel("pins") },
                 startCode && { label: panelLabels.code, icon: "chevron.left.forwardslash.chevron.right", onPress: () => onPanel("code") },

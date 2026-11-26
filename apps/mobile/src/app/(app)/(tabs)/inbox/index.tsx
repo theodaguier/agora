@@ -1,8 +1,8 @@
 import { common } from "@agora/core/i18n";
-import { DrawerButton } from "@/components/drawer";
+import { AppHeader, HeaderCircle, HeaderTitle, useAppHeaderHeight } from "@/components/app-header";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { router, Stack } from "expo-router";
+import { router } from "expo-router";
 import { ListGroup, SkeletonGroup, Typography, useToast } from "heroui-native";
 import { useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
@@ -10,13 +10,12 @@ import { TaskStatusIcon } from "@/components/code-session-marks";
 import { ColorDot } from "@/components/conversation-avatar";
 import { EmptyState } from "@/components/empty-state";
 import { FilterTags } from "@/components/filter-tags";
-import { headerIcon } from "@/components/header-button";
-import { InboxIcon, WarningIcon } from "@/components/icons";
+import { CheckIcon, InboxIcon, WarningIcon } from "@/components/icons";
 import { ActorAvatar, inboxItemHref, inboxMessages, tabOf, useInboxItem, type InboxTab } from "@/components/inbox-item";
 import { LongPressMenu } from "@/components/menus";
 import { PressableItem } from "@/components/people/section";
 import { ageLabel } from "@/lib/dates";
-import { usePullToRefresh, withTap } from "@/lib/haptics";
+import { usePullToRefresh } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
 import { inboxQuery, useMarkInbox, type InboxItem } from "@/lib/inbox";
 import { cn } from "@/lib/utils";
@@ -31,6 +30,7 @@ const t = inboxMessages;
 
 export default function InboxScreen() {
   const c = tr(common);
+  const headerHeight = useAppHeaderHeight();
   const [tab, setTab] = useState<InboxTab>("priority");
   const { data, isPending, isError, refetch } = useQuery(inboxQuery());
   const pull = usePullToRefresh(refetch);
@@ -50,12 +50,7 @@ export default function InboxScreen() {
 
   return (
     <>
-      <Stack.Screen.Title>{t.title}</Stack.Screen.Title>
-      <DrawerButton />
-      <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={t.markAllRead} disabled={!data?.unread || mark.isPending} onPress={withTap(markAll)} />
-      </Stack.Toolbar>
-      <ScrollView contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="pb-10 pt-2" refreshControl={<RefreshControl {...pull} />}>
+      <ScrollView contentInsetAdjustmentBehavior="never" className="bg-background" contentContainerClassName="pb-10" contentContainerStyle={{ paddingTop: headerHeight + 4 }} scrollIndicatorInsets={{ top: headerHeight }} refreshControl={<RefreshControl {...pull} progressViewOffset={headerHeight} />}>
         <FilterTags
           accessibilityLabel={t.title}
           value={tab}
@@ -90,6 +85,8 @@ export default function InboxScreen() {
           </ListGroup>
         )}
       </ScrollView>
+      {/* Figma « Mobile — ChatGPT 1:1 », « Boîte de réception »: the menu, the title, mark all as read. */}
+      <AppHeader title={<HeaderTitle title={t.title} />} right={<HeaderCircle icon={CheckIcon} label={t.markAllRead} disabled={!data?.unread || mark.isPending} onPress={markAll} />} />
     </>
   );
 }

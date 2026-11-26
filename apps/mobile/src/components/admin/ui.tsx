@@ -56,12 +56,14 @@ export function AdminGate({ children }: { children: ReactNode }) {
 }
 
 /** Grouped background under a large title; pull to refresh when `onRefresh` is given. */
-export function SettingsScroll({ children, onRefresh }: { children: ReactNode; onRefresh?: () => Promise<unknown> }) {
+export function SettingsScroll({ children, onRefresh, topInset }: { children: ReactNode; onRefresh?: () => Promise<unknown>; /** Under a header of the screen's own (components/app-header.tsx), not the native bar. */ topInset?: number }) {
   const [refreshing, setRefreshing] = useState(false);
   return (
     <KeyboardAwareScrollView
       bottomOffset={24}
-      contentInsetAdjustmentBehavior="automatic"
+      contentInsetAdjustmentBehavior={topInset == null ? "automatic" : "never"}
+      contentContainerStyle={topInset == null ? undefined : { paddingTop: topInset + 8 }}
+      scrollIndicatorInsets={topInset == null ? undefined : { top: topInset }}
       keyboardDismissMode="interactive"
       keyboardShouldPersistTaps="handled"
       className="bg-background"

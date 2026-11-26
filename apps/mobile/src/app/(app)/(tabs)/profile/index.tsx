@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { DrawerButton } from "@/components/drawer";
+import { AppHeader, HeaderTitle as AppHeaderTitle, useAppHeaderHeight } from "@/components/app-header";
 import * as Application from "expo-application";
-import { Link, router, Stack, useFocusEffect, type Href } from "expo-router";
+import { Link, router, useFocusEffect, type Href } from "expo-router";
 import { Chip, ListGroup } from "heroui-native";
 import { useCallback, useState, type ReactNode } from "react";
 import { auth, simple } from "@agora/core/i18n";
@@ -148,6 +148,7 @@ export default function Profile() {
   const admin = me.role === "admin";
   // Figma « Mode simple », 11 · Réglages: their own settings only, pushed over the chat (a button closes them).
   const simpleMode = useSimple();
+  const headerHeight = useAppHeaderHeight();
   const notifications = useNotificationStatus();
   const subtitle = [me.title, admin ? t.admin : null].filter(Boolean).join(", ");
   const unread = (show: boolean) =>
@@ -185,9 +186,9 @@ export default function Profile() {
 
   return (
     <>
-      <Stack.Screen.Title>{simpleMode ? tr(simple).settings : t.title}</Stack.Screen.Title>
-      <DrawerButton />
-      <SettingsScroll>
+      {/* Figma « Mobile — ChatGPT 1:1 », « Réglages »: the menu and the title over the grouped list. */}
+      <AppHeader title={<AppHeaderTitle title={simpleMode ? tr(simple).settings : t.title} />} />
+      <SettingsScroll topInset={headerHeight}>
         {/* You: the General tab (profile and account). */}
         <Section>
           <PressableRow onPress={() => router.push("/profile/edit")} accessibilityLabel={[me.name, subtitle, me.email].filter(Boolean).join(", ")}>

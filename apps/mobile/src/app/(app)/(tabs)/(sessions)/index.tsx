@@ -10,10 +10,10 @@ import {
   type CodeSessionState,
   type CodeSessionView,
 } from "@agora/core";
-import { DrawerButton } from "@/components/drawer";
+import { AppHeader, HeaderCapsule, HeaderTitle, useAppHeaderHeight } from "@/components/app-header";
 import { codeSessions, common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { router, Stack } from "expo-router";
+import { router } from "expo-router";
 import { ListGroup, Separator, Skeleton, Typography } from "heroui-native";
 import { useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
@@ -81,6 +81,7 @@ export default function SessionsScreen() {
   useRefreshCodeSessionsGit(sessions);
 
   const all = sessions ?? [];
+  const headerHeight = useAppHeaderHeight();
   // What each view would show, stopped sessions counted only when they are shown.
   const count = (view: CodeSessionView) => groupCodeSessions(all, { ...display, view }).reduce((n, g) => n + g.sessions.length, 0);
   // What waits for an answer comes first; not repeated below.
@@ -93,28 +94,7 @@ export default function SessionsScreen() {
 
   return (
     <>
-      <Stack.Screen.Title>{t.sessions}</Stack.Screen.Title>
-      <DrawerButton />
-      {all.length > 0 && (
-        <Stack.Toolbar placement="right">
-          <Stack.Toolbar.View>
-            <MenuButton
-              icon="slider.horizontal.3"
-              label={b.display}
-              actions={[
-                { title: b.view, actions: VIEWS.map((v) => ({ label: `${b.views[v]} (${count(v)})`, checked: display.view === v, onPress: () => update({ view: v }) })) },
-                "divider",
-                { title: b.groupBy, actions: GROUPINGS.map((g) => ({ label: b.groupings[g], icon: DISPLAY_ICONS[g], checked: display.group === g, onPress: () => update({ group: g }) })) },
-                "divider",
-                { title: b.orderBy, actions: ORDERINGS.map((o) => ({ label: b.orderings[o], icon: DISPLAY_ICONS[o], checked: display.order === o, onPress: () => update({ order: o }) })) },
-                "divider",
-                { label: b.showStopped, checked: display.showStopped, onPress: () => update({ showStopped: !display.showStopped }) },
-              ]}
-            />
-          </Stack.Toolbar.View>
-        </Stack.Toolbar>
-      )}
-      <ScrollView contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="pb-10" refreshControl={<RefreshControl {...pull} />}>
+      <ScrollView contentInsetAdjustmentBehavior="never" className="bg-background" contentContainerClassName="pb-10" contentContainerStyle={{ paddingTop: headerHeight }} scrollIndicatorInsets={{ top: headerHeight }} refreshControl={<RefreshControl {...pull} progressViewOffset={headerHeight} />}>
         {isPending ? (
           <View className="gap-2 p-4">
             {[0, 1, 2].map((i) => (
@@ -150,6 +130,21 @@ export default function SessionsScreen() {
           </>
         )}
       </ScrollView>
+      {/* Figma « Mobile — ChatGPT 1:1 », « Sessions de code »: the menu, the title, the display menu. */}
+      <AppHeader title={<HeaderTitle title={t.sessions} />} right={all.length > 0 && <HeaderCapsule actions={[<MenuButton
+              key="display"
+              icon="slider.horizontal.3"
+              label={b.display}
+              actions={[
+                { title: b.view, actions: VIEWS.map((v) => ({ label: `${b.views[v]} (${count(v)})`, checked: display.view === v, onPress: () => update({ view: v }) })) },
+                "divider",
+                { title: b.groupBy, actions: GROUPINGS.map((g) => ({ label: b.groupings[g], icon: DISPLAY_ICONS[g], checked: display.group === g, onPress: () => update({ group: g }) })) },
+                "divider",
+                { title: b.orderBy, actions: ORDERINGS.map((o) => ({ label: b.orderings[o], icon: DISPLAY_ICONS[o], checked: display.order === o, onPress: () => update({ order: o }) })) },
+                "divider",
+                { label: b.showStopped, checked: display.showStopped, onPress: () => update({ showStopped: !display.showStopped }) },
+              ]}
+            />]} />} />
     </>
   );
 }
