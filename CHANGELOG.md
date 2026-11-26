@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.83.1 — 2026-11-26
+
+### Fixes
+- subscription limits show on a setup-token and in the simple sidebar
+
 ## v0.83.0 — 2026-11-25
 
 ### Features
