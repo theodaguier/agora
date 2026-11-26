@@ -86,6 +86,9 @@ import { cn } from "@/lib/utils";
  */
 
 /** What a session says when it can't be reached (web CodeSession's stateMessages). */
+/** What a phone says shorter than the web, to fit on one line. */
+const phoneMessages = defineMessages({ en: { placeholderIdle: "New instruction" }, fr: { placeholderIdle: "Nouvelle instruction" } });
+
 const messages = defineMessages({
   en: { unreachableTitle: "Session unreachable", unreachable: "This session couldn't be loaded for now. Try again in a moment." },
   fr: { unreachableTitle: "Session injoignable", unreachable: "Cette session n'a pas pu être chargée pour le moment. Réessaie dans un instant." },
@@ -1123,9 +1126,8 @@ function SessionComposer({ conversationId, session, onSent }: { conversationId: 
       : t.placeholderAnswer
     : isActive(session.status)
       ? t.placeholderRunning
-      : commands.length
-        ? t.placeholderIdleCommands
-        : t.placeholderIdle;
+      : // One line in the pill: the web's placeholders wrapped on a phone.
+        phoneMessages.placeholderIdle;
   return (
     <View className="gap-2">
       <QueueList

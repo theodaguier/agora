@@ -96,9 +96,9 @@ export function HeaderTitle({ title, subtitle, subtitleClassName, chevron, onPre
  * The header itself, over the screen (the native bar hidden): the fade, then left, title and right.
  * `title` may be any node (a menu around the title); `left` defaults to the menu button.
  */
-export function AppHeader({ left, title, right, current }: { left?: ReactNode; title?: ReactNode; right?: ReactNode; current?: string }) {
+export function AppHeader({ left, title, right, current, ground = "--color-background" }: { left?: ReactNode; title?: ReactNode; right?: ReactNode; current?: string; /** The page's colour, for its fade: the grouped ground of a settings page. */ ground?: string }) {
   const insets = useSafeAreaInsets();
-  const background = useCSSVariable("--color-background") as string;
+  const background = useCSSVariable(ground) as string;
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />

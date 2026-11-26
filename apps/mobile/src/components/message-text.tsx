@@ -435,9 +435,6 @@ const ALIGN = { left: "start", center: "center", right: "end" } as const;
 /** A figure: digits with their separators and units (7,1:1, 12 %, -3.5, 1 200 €), as the web's rehypeNumericColumns. */
 const NUMERIC = /^[-+−]?[\d\s.,:/]*\d[\d\s.,:/]*\s?(%|€|\$|ms|s|px|k|M|Go|Mo|x|×)?$/;
 
-/** Inside a column of figures: the figure the author set in bold stands out in the waiting colour, not in weight. */
-const NumericContext = createContext(false);
-
 /**
  * A table as the web draws it (shadcn's Table, Figma « Atelier · Théo »): read, not a tool (no frame,
  * no buttons), a quiet header in small grey words, rows divided by a hairline, columns of figures
@@ -456,28 +453,39 @@ function MarkdownTable({ node, className }: { node: Table; className?: string })
     <ScrollView horizontal showsHorizontalScrollIndicator={false} className={className} contentContainerClassName="min-w-full">
       <View className="min-w-full flex-row">
         {columns.map((c) => (
-          <View key={c} className={cx("grow", c > 0 && "pl-4")}>
+          // The labels take the room left; a column of figures hugs them, 40 pt from the one before.
+          <View key={c} className={cx(c === 0 && "grow")}>
             {node.children.map((row, r) => {
               const align = numeric[c] ? "end" : ALIGN[node.align?.[c] ?? "left"];
-              const cells = row.children[c]?.children ?? [];
-              // The header in small grey words over its hairline; the rows below divided by one.
+              let cells = row.children[c]?.children ?? [];
+              // A figure set in bold stands out in the waiting colour, not in weight (the web's numeric cells).
+              let tone: string | undefined;
+              if (numeric[c] && cells.length === 1 && cells[0]!.type === "strong") {
+                tone = "text-warning";
+                cells = cells[0]!.children;
+              }
+              const pad = c > 0 && "pl-10";
+              // The header in small grey words; every row the same height under a hairline, so the columns
+              // (laid out side by side) stay level and their hairlines join.
               return r ? (
                 <View key={r}>
                   <Separator />
-                  <NumericContext.Provider value={!!numeric[c]}>
-                    <TextStyle className={cx("text-subheadline", numeric[c] && "font-mono")}>
-                      <Text numberOfLines={1} align={align} className="py-2">
+                  <View className={cx("h-[39px] justify-center", pad)}>
+                    <TextStyle className={cx("text-subheadline", numeric[c] ? "font-mono" : c === 0 && "font-medium", tone)}>
+                      <Text numberOfLines={1} align={align}>
                         <Inlines nodes={cells} />
                       </Text>
                     </TextStyle>
-                  </NumericContext.Provider>
+                  </View>
                 </View>
               ) : (
-                <TextStyle key={r} className={cx("text-footnote text-muted", !numeric[c] && c === 0 && "font-medium")}>
-                  <Text numberOfLines={1} align={align} className="pt-1 pb-2">
-                    <Inlines nodes={cells} />
-                  </Text>
-                </TextStyle>
+                <View key={r} className={cx("h-7 justify-start", pad)}>
+                  <TextStyle className="text-footnote text-muted">
+                    <Text numberOfLines={1} align={align}>
+                      <Inlines nodes={cells} />
+                    </Text>
+                  </TextStyle>
+                </View>
               );
             })}
           </View>
@@ -499,14 +507,13 @@ const collapse = (text: string) => text.replace(/[ \t]*\n[ \t]*/g, " ").replace(
 
 function Inline({ node, link }: { node: PhrasingContent; link?: boolean }): ReactNode {
   const { mentionables, definitions } = useContext(MarkdownContext);
-  const numeric = useContext(NumericContext);
   switch (node.type) {
     case "text":
       // Links, paths, colors, tasks and mentions in the text (the web's rehypeLinks, rehypeTaskRefs, rehypeMentions).
       return link ? collapse(node.value) : <MentionText text={collapse(node.value)} mentionables={mentionables} />;
     case "strong":
       return (
-        <Span className={numeric ? "text-warning" : "font-semibold"}>
+        <Span className="font-semibold">
           <Inlines nodes={node.children} link={link} />
         </Span>
       );

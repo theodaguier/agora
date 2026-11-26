@@ -1,6 +1,6 @@
 {
   "name": "@agora/mobile",
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "version": "1.0.0",
   "dependencies": {
     "@agora/core": "workspace:*",

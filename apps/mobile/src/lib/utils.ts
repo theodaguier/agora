@@ -6,10 +6,12 @@ import { extendTailwindMerge } from "tailwind-merge";
  * The iOS text styles of global.css (`text-body`, `text-headline`…) are font sizes: without this,
  * tailwind-merge reads them as colors and `cn("text-body text-muted")` would drop the size.
  */
+export const IOS_TEXT_SIZES = ["large-title", "title1", "title2", "title3", "headline", "body", "callout", "subheadline", "footnote", "caption1", "caption2"];
+
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
-      "font-size": [{ text: ["large-title", "title1", "title2", "title3", "headline", "body", "callout", "subheadline", "footnote", "caption1", "caption2"] }],
+      "font-size": [{ text: IOS_TEXT_SIZES }],
     },
   },
 });
