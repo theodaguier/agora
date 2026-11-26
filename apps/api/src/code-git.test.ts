@@ -208,7 +208,11 @@ describe("a project an earlier session cloned the repository into", () => {
 
 describe("githubAccess: the token of a session's process, renewed on disk", () => {
   test("git's helper and Claude Code's commands read it from its file, gone with the process", async () => {
-    writeFileSync(join(process.env.HERMES_HOME!, ".env"), "GH_TOKEN=tok_vault\n");
+    // The vault of the API's env: another test file may have set HERMES_HOME first, in the same run.
+    const { env } = await import("./env");
+    const vault = join(env.HERMES_HOME, ".env");
+    const before = existsSync(vault) ? readFileSync(vault, "utf8") : null;
+    writeFileSync(vault, "GH_TOKEN=tok_vault\n");
     const dir = join(root, "github", "session-1");
     const access = await githubAccess(dir, "acme/app");
     try {
@@ -221,7 +225,8 @@ describe("githubAccess: the token of a session's process, renewed on disk", () =
       expect(run.stdout.toString().trim()).toBe("tok_renewed tok_renewed");
     } finally {
       await access.dispose();
-      writeFileSync(join(process.env.HERMES_HOME!, ".env"), "");
+      if (before === null) Bun.spawnSync(["rm", "-f", vault]);
+      else writeFileSync(vault, before);
     }
     expect(existsSync(dir)).toBe(false);
   });
