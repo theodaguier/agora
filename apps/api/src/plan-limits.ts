@@ -32,8 +32,12 @@ type Engine = {
 
 type ClaudeWindow = { utilization?: number | null; resets_at?: string | null } | null;
 
-/** Tokens the usage endpoint refused (no `user:profile` scope): their limits come from the headers. */
-const inferenceOnly = new Set<string>();
+/**
+ * Until when the usage endpoint is not asked again for a token: forever once it refused it (403, no
+ * `user:profile` scope), until its Retry-After when it throttles. Meanwhile the limits come from the
+ * headers of a one-token request, which never stop.
+ */
+const usageEndpointOff = new Map<string, number>();
 
 const ENGINES: Engine[] = [
   {
@@ -45,15 +49,16 @@ const ENGINES: Engine[] = [
     read: async () => {
       const token = await claudeAccessToken();
       if (!token) return null;
-      // A setup-token (`claude setup-token`, the server's usual login) can't read the usage endpoint.
-      if (inferenceOnly.has(token)) return claudeHeaderLimits(token);
+      // A setup-token (`claude setup-token`, the server's usual login) can't read the usage endpoint,
+      // and the endpoint throttles hard (an hour): either way, the headers answer.
+      if ((usageEndpointOff.get(token) ?? 0) > Date.now()) return claudeHeaderLimits(token);
       const res = await fetch("https://api.anthropic.com/api/oauth/usage", {
         headers: { authorization: `Bearer ${token}`, "anthropic-beta": "oauth-2025-04-20" },
         signal: AbortSignal.timeout(10_000),
       });
-      if (res.status === 429) throw new Throttled(Date.now() + Math.max(60, Number(res.headers.get("retry-after")) || 900) * 1000);
-      if (res.status === 403) {
-        inferenceOnly.add(token);
+      if (res.status === 403 || res.status === 429) {
+        await res.body?.cancel();
+        usageEndpointOff.set(token, res.status === 403 ? Infinity : Date.now() + Math.max(60, Number(res.headers.get("retry-after")) || 900) * 1000);
         return claudeHeaderLimits(token);
       }
       if (!res.ok) throw new Error(`claude usage: HTTP ${res.status}`);
