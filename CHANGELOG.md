@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.83.2 — 2026-11-26
+
+### Fixes
+- **api**: Claude limits fall back to headers when the usage endpoint throttles
+
 ## v0.83.1 — 2026-11-26
 
 ### Fixes
