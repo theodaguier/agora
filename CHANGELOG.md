@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.83.3 — 2026-11-26
+
+### Fixes
+- **web**: subscriptions pinned in the sidebar's footer
+
 ## v0.83.2 — 2026-11-26
 
 ### Fixes
