@@ -56,6 +56,8 @@ function SignedIn() {
         <Stack.Screen name="code/[conversationId]/[sessionId]/credentials" options={sheetOptions([0.75, 1])} />
         <Stack.Screen name="whats-new" options={sheetOptions()} />
         <Stack.Screen name="digest" options={sheetOptions()} />
+        {/* A page a bot wrote (components/artifact-card.tsx), full screen over the thread. */}
+        <Stack.Screen name="artifact" options={{ presentation: "fullScreenModal", headerTransparent: true, headerBlurEffect: "systemChromeMaterial" }} />
       </Stack>
       <ConfirmHost />
     </>

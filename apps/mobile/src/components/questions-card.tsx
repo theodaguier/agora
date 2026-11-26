@@ -156,9 +156,9 @@ export function QuestionsCard(props: { questions: Questions; onAnswer: (text: st
         })}
       </Card.Body>
 
-      <Card.Footer className="gap-1">
+      <Card.Footer className="gap-2">
         <Button onPress={withTap(submit)}>{t.submit}</Button>
-        <Button variant="ghost" onPress={withTap(onDismiss)}>
+        <Button variant="secondary" onPress={withTap(onDismiss)}>
           {t.ignore}
         </Button>
       </Card.Footer>

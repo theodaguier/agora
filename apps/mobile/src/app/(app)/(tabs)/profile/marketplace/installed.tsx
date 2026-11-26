@@ -2,7 +2,8 @@ import { connectorName, type IntegrationType } from "@agora/core";
 import { common, connectors, integrations } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Stack, useRouter } from "expo-router";
-import { Button, LinkButton, ListGroup, Switch, Typography } from "heroui-native";
+import { Button, LinkButton, ListGroup, Typography } from "heroui-native";
+import { NativeSwitch } from "@/components/native-switch";
 import { useState } from "react";
 import { View } from "react-native";
 import { confirmAction } from "@/components/confirm-action";
@@ -271,7 +272,7 @@ function Installed() {
                   <ListGroup.ItemDescription numberOfLines={1}>{types[s.type]}</ListGroup.ItemDescription>
                 </ListGroup.ItemContent>
                 <ListGroup.ItemSuffix>
-                  <Switch isSelected={s.enabled !== false} onSelectedChange={(enabled) => (haptic.select(), toggleMcp.mutate({ name: s.name, enabled }))} />
+                  <NativeSwitch isSelected={s.enabled !== false} onSelectedChange={(enabled) => (haptic.select(), toggleMcp.mutate({ name: s.name, enabled }))} />
                 </ListGroup.ItemSuffix>
               </ListGroup.Item>
             </RowMenu>

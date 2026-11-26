@@ -19,6 +19,10 @@ export const headerIcon = {
   chevronLeft: require("../../assets/header-icons/chevron-left.png"),
   search: require("../../assets/header-icons/search.png"),
   panelLeft: require("../../assets/header-icons/panel-left.png"),
+  /** Opens the drawer (components/drawer.tsx). */
+  menu: require("../../assets/header-icons/menu.png"),
+  /** A new conversation. */
+  compose: require("../../assets/header-icons/compose.png"),
 };
 
 /**

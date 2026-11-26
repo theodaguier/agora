@@ -98,8 +98,8 @@ export function BotRequestCard({ id }: { id: string }) {
                 <Button isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(true))}>
                   {decide.isPending && decide.variables ? c.inProgress : req.error ? c.retry : t.approve}
                 </Button>
-                <Button variant="ghost" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(false))}>
-                  <Button.Label className="text-danger">{t.reject}</Button.Label>
+                <Button variant="danger-soft" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(false))}>
+                  {t.reject}
                 </Button>
               </>
             ) : (

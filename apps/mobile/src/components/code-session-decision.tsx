@@ -99,10 +99,10 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer, inline }:
     onSuccess: (s) => applyCodeSession(qc, s),
     onError: (e) => toast.failed(e),
   });
-  // Refuse on the left; the other answers on the right, the main one (its first choice) last.
+  // The main answer (its first choice) first; the others, then Refuser, under it.
   const [first, ...others] = approval.choices.filter((ch) => ch !== "deny");
-  const button = (choice: CodeApproval["choices"][number], variant: "primary" | "outline" | "danger-soft") => (
-    <Button key={choice} size="sm" variant={variant} isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(choice))}>
+  const button = (choice: CodeApproval["choices"][number], variant: "primary" | "outline" | "danger-soft", grow?: boolean) => (
+    <Button key={choice} variant={variant} className={grow ? "flex-1" : undefined} isDisabled={answer.isPending} onPress={withTap(() => answer.mutate(choice))}>
       {answer.isPending && answer.variables === choice ? c.inProgress : t.choices[choice]}
     </Button>
   );
@@ -118,13 +118,14 @@ function ApprovalBlock({ conversationId, session, approval, canAnswer, inline }:
       description={approval.title}
       footer={
         canAnswer ? (
-          <>
-            {approval.choices.includes("deny") && button("deny", "danger-soft")}
-            <View className="flex-1 flex-row flex-wrap justify-end gap-2">
-              {others.map((ch) => button(ch, "outline"))}
-              {first && button(first, "primary")}
+          // Figma « Blocs de réponse », mobile: the main answer across the card, the others side by side under it, Refuser last.
+          <View className="w-full gap-2">
+            {first && button(first, "primary")}
+            <View className="flex-row gap-2">
+              {others.map((ch) => button(ch, "outline", true))}
+              {approval.choices.includes("deny") && button("deny", "danger-soft", true)}
             </View>
-          </>
+          </View>
         ) : (
           <Typography type="body-sm" color="muted">
             {t.waitingOwner}

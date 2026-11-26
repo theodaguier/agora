@@ -118,8 +118,8 @@ export function SkillRequestCard({ id }: { id: string }) {
               </Typography.Paragraph>
             ))}
           {req.status === "pending" && req.canDecide && (
-            <Button variant="ghost" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(false))}>
-              <Button.Label className="text-danger">{t.reject}</Button.Label>
+            <Button variant="danger-soft" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(false))}>
+              {t.reject}
             </Button>
           )}
           {!!req.error && (

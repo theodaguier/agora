@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { Segmented } from "@/components/profile/native-pickers";
 import { Link, Stack } from "expo-router";
-import { ListGroup, Tabs } from "heroui-native";
+import { ListGroup } from "heroui-native";
 import { useState } from "react";
 import { AgentStack } from "@/components/admin/access";
 import { accessMessages, accessSummary, agentSpec } from "@/components/admin/access-summary";
@@ -36,17 +37,7 @@ function AccessLists() {
   return (
     <SettingsScroll onRefresh={() => Promise.all([users.refetch(), agents.refetch()])}>
       <Intro>{t.text}</Intro>
-      <Tabs value={view} onValueChange={(v) => (haptic.select(), setView(v))}>
-        <Tabs.List className="w-full">
-          <Tabs.Indicator />
-          <Tabs.Trigger value="people" className="flex-1">
-            <Tabs.Label>{t.people}</Tabs.Label>
-          </Tabs.Trigger>
-          <Tabs.Trigger value="agents" className="flex-1">
-            <Tabs.Label>{t.agents}</Tabs.Label>
-          </Tabs.Trigger>
-        </Tabs.List>
-      </Tabs>
+      <Segmented value={view} label={t.title} onChange={(v) => (haptic.select(), setView(v))} options={[{ value: "people", label: t.people }, { value: "agents", label: t.agents }]} />
 
       {!ready ? (
         error ? (

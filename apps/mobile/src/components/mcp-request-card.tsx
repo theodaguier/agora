@@ -236,14 +236,14 @@ export function McpRequestCard({ id }: { id: string }) {
               <Button isDisabled={busy} onPress={withTap(() => decide.mutate(true))}>
                 {decide.isPending && decide.variables ? c.inProgress : t.approve}
               </Button>
-              <View className="flex-row justify-between gap-2">
+              <View className="flex-row gap-2">
                 {!!req.docsUrl && (
-                  <Button variant="ghost" accessibilityRole="link" onPress={withTap(() => Linking.openURL(req.docsUrl!))}>
+                  <Button variant="secondary" className="flex-1" accessibilityRole="link" onPress={withTap(() => Linking.openURL(req.docsUrl!))}>
                     {t.docs}
                   </Button>
                 )}
-                <Button variant="ghost" className={req.docsUrl ? undefined : "flex-1"} isDisabled={busy} onPress={withTap(() => decide.mutate(false))}>
-                  <Button.Label className="text-danger">{t.reject}</Button.Label>
+                <Button variant="danger-soft" className="flex-1" isDisabled={busy} onPress={withTap(() => decide.mutate(false))}>
+                  {t.reject}
                 </Button>
               </View>
             </>

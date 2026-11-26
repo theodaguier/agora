@@ -62,7 +62,7 @@ export function priorityEntries(session: Pick<CodeSession, "priority">, set: (p:
 }
 
 /** The session card's frame (web: Card size sm): white, a hairline, its parts edge to edge. */
-const sessionCard = "w-full gap-0 overflow-hidden rounded-xl border border-border bg-background p-0";
+const sessionCard = "w-full gap-0 overflow-hidden rounded-[18px] border border-border bg-background p-0";
 
 /** Card of a code session, where it was started in the conversation: it fetches the session, then shows it live. */
 export function CodeSessionCard({ conversationId, sessionId, title }: { conversationId: string; sessionId: string; title: string }) {
@@ -103,26 +103,27 @@ export function LiveSessionCard({ session, onOpen }: { session: CodeSession; onO
       <PressableFeedback onPress={withTap(onOpen)} accessibilityRole="button" accessibilityLabel={session.title} className="flex-row items-center gap-3 px-3.5 py-3">
         <PressableFeedback.Highlight />
         {/* Who codes: Claude Code or Codex, by its logo; its name for VoiceOver. */}
-        <Surface variant="secondary" accessibilityLabel={CODE_ENGINE_NAMES[session.engine]} className="size-7 items-center justify-center rounded-md p-0 shadow-none">
-          <ModelLogo provider={ENGINE_PROVIDER[session.engine]} model={session.engine === "cursor" ? undefined : session.engine} size={16} />
+        <Surface variant="secondary" accessibilityLabel={CODE_ENGINE_NAMES[session.engine]} className="size-8.5 items-center justify-center rounded-[9px] p-0 shadow-none">
+          <ModelLogo provider={ENGINE_PROVIDER[session.engine]} model={session.engine === "cursor" ? undefined : session.engine} size={18} />
         </Surface>
+        {/* Figma « Blocs de réponse », mobile: the title on its own line, the state and the repository under it. */}
         <View className="min-w-0 flex-1 gap-0.5">
-          <Typography type="body-sm" weight="medium" numberOfLines={1}>
+          <Typography type="body-sm" weight="medium" numberOfLines={1} className="text-subheadline">
             {session.title}
           </Typography>
-          {!!session.repo && (
-            <Typography type="body-xs" numberOfLines={1} className="font-mono text-subtle">
-              {session.repo}
+          <View className="min-w-0 flex-row items-center gap-1.5">
+            <CodeStateIcon state={state} size={13} />
+            <Typography type="body-xs" color="muted" numberOfLines={1} className={cn("shrink-0 text-footnote", tone)}>
+              {codeStatusText(t, session)}
             </Typography>
-          )}
+            {!!session.repo && (
+              <Typography type="body-xs" numberOfLines={1} className="ms-1 shrink font-mono text-footnote text-subtle">
+                {session.repo}
+              </Typography>
+            )}
+          </View>
         </View>
-        <View className="max-w-[40%] shrink-0 flex-row items-center gap-1.5">
-          <CodeStateIcon state={state} size={12} />
-          <Typography type="body-xs" color="muted" numberOfLines={1} className={cn("shrink", tone)}>
-            {codeStatusText(t, session)}
-          </Typography>
-          <ChevronRightIcon size={12} className="text-subtle" />
-        </View>
+        <ChevronRightIcon size={12} className="text-subtle" />
       </PressableFeedback>
       {waiting ? (
         <SessionSection>

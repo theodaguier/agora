@@ -146,12 +146,12 @@ export function GitHubMergeCard({ id, bot, repo, number }: { id: string; bot: st
         )}
       </Card.Body>
       {pending && mine && (
-        <Card.Footer className="flex-row justify-end gap-2">
-          <Button size="sm" variant="secondary" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(false))}>
-            {decide.isPending && decide.variables === false ? c.inProgress : t.deny}
-          </Button>
-          <Button size="sm" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(true))}>
+        <Card.Footer className="gap-2">
+          <Button isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(true))}>
             {decide.isPending && decide.variables ? c.inProgress : t.approve}
+          </Button>
+          <Button variant="danger-soft" isDisabled={decide.isPending} onPress={withTap(() => decide.mutate(false))}>
+            {decide.isPending && decide.variables === false ? c.inProgress : t.deny}
           </Button>
         </Card.Footer>
       )}

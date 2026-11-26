@@ -19,6 +19,7 @@ import {
   FileTableIcon,
   FileTextIcon,
   FileVideoIcon,
+  DownloadIcon,
   type IconComponent,
 } from "@/components/icons";
 import { fileKind, type FileKind } from "@/lib/files";
@@ -53,6 +54,21 @@ const FILE_ICONS: Record<FileKind, IconComponent> = {
   code: FileCodeIcon,
   design: FileImageIcon,
   file: FileIcon,
+};
+
+/** The colour of a file's kind, as the web's FileTile: PDF red, document blue, sheet green, slides orange, design violet, image pink. */
+const FILE_TONES: Record<FileKind, string> = {
+  pdf: "text-danger",
+  document: "text-brand",
+  spreadsheet: "text-success",
+  presentation: "text-warning",
+  design: "text-state-merged",
+  image: "text-state-you",
+  video: "text-state-you",
+  audio: "text-state-merged",
+  archive: "text-muted",
+  code: "text-muted",
+  file: "text-muted",
 };
 
 /** The icon of a file, from its name. */
@@ -239,7 +255,10 @@ function sortShown(items: Shown[]) {
 /** "PDF" for "recap.pdf": the type shown beside a file's size. */
 const extension = (name: string) => (/\.([a-z0-9]{1,8})$/i.exec(name)?.[1] ?? "").toUpperCase();
 
-/** File row: its icon, name, type and size; a tap downloads it. */
+/**
+ * File row (web: FileTile; Figma « Blocs de réponse », mobile): its kind on a grey badge in the kind's
+ * colour, its name, type and size, the download on the right; a tap downloads it.
+ */
 export function FileCard({ a, className }: { a: Shown; className?: string }) {
   const t = shownMessages;
   return (
@@ -250,20 +269,21 @@ export function FileCard({ a, className }: { a: Shown; className?: string }) {
       }}
       accessibilityRole="button"
       accessibilityLabel={t.download(a.name)}
-      className={cn("w-64 max-w-full", className)}
+      className={cn("w-full", className)}
     >
-      <Card className="rounded-[14px] border border-border bg-background p-3">
+      <Card className="rounded-[18px] border border-border bg-background p-2.5">
         <PressableFeedback.Highlight />
         <Card.Body className="flex-row items-center gap-3">
-          <Surface variant="secondary" className="size-9 items-center justify-center rounded-[10px] p-0 shadow-none">
-            <FileKindIcon name={a.name} className="size-[18px] text-foreground" />
+          <Surface variant="secondary" className="size-10 items-center justify-center rounded-[11px] p-0 shadow-none">
+            <FileKindIcon name={a.name} className={cn("size-5", FILE_TONES[fileKind(a.name)])} />
           </Surface>
           <View className="min-w-0 flex-1">
-            <Card.Title numberOfLines={1} className="text-sm">
+            <Card.Title numberOfLines={1} className="text-subheadline font-medium">
               {a.name}
             </Card.Title>
-            <Card.Description className="text-footnote">{[extension(a.name), formatSize(a.size)].filter(Boolean).join(", ")}</Card.Description>
+            <Card.Description className="text-footnote text-subtle">{[extension(a.name), formatSize(a.size)].filter(Boolean).join(", ")}</Card.Description>
           </View>
+          <DownloadIcon size={18} className="me-1 text-muted" />
         </Card.Body>
       </Card>
     </PressableFeedback>
@@ -297,7 +317,8 @@ export function SentAttachments({
         <VideoTile key={a.id} a={a} className="w-72 max-w-full" />
       ))}
       {files.map((a) => (
-        <FileCard key={a.id} a={a} />
+        // A bot's files take its column, as its other blocks; yours stay a tile on your side.
+        <FileCard key={a.id} a={a} className={align === "end" ? "w-64 max-w-full" : undefined} />
       ))}
     </View>
   );

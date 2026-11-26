@@ -1,7 +1,8 @@
 import { common, connectors } from "@agora/core/i18n";
+import { Segmented } from "@/components/profile/native-pickers";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Button, Description, Label, Tabs, Typography } from "heroui-native";
+import { Button, Description, Label, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { AdminGate, ErrorAlert, FormField, FormInput, LoadingRows, SettingsScroll, useAdminToast } from "@/components/admin/ui";
@@ -97,16 +98,7 @@ function Form({ req }: { req: McpRequest }) {
         <>
           <View className="gap-2">
             <Label isRequired>{t.auth}</Label>
-            <Tabs value={auth} onValueChange={(v) => (haptic.select(), setAuth(v as Auth))}>
-              <Tabs.List>
-                <Tabs.Indicator />
-                {(["none", "header", "oauth"] as const).map((a) => (
-                  <Tabs.Trigger key={a} value={a}>
-                    <Tabs.Label>{t.auths[a]}</Tabs.Label>
-                  </Tabs.Trigger>
-                ))}
-              </Tabs.List>
-            </Tabs>
+            <Segmented value={auth} label={t.auth} onChange={(v) => (haptic.select(), setAuth(v))} options={(["none", "header", "oauth"] as const).map((a) => ({ value: a, label: t.auths[a] }))} />
             <Description>{t.remoteNoFiles}</Description>
           </View>
           {auth === "header" && (

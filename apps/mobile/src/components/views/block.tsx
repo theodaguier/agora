@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
  * around and between its parts), a header on one line over a hairline, one grouped zone, the actions.
  */
 
-/** The block's Card (web: Card size sm): white, a 1 pt border, 12 pt inside. */
-export const blockCard = "w-full gap-3 rounded-xl border border-border bg-background px-3 py-3";
+/** The block's Card (web: Card size sm; Figma « Blocs de réponse », mobile): white, a 1 pt border, 18 pt corners, 14 pt on the sides. */
+export const blockCard = "w-full gap-3 rounded-[18px] border border-border bg-background px-3.5 py-3";
 
 /** A status tone as the color of its dot and its words (`info`: in progress, the brand blue). */
 const DOT: Record<StatusTone, string> = {
@@ -62,7 +62,7 @@ export function BlockHeader(props: {
         {!!props.status && <View className="shrink-0">{props.status}</View>}
         {!!props.onClose && <CloseButton accessibilityLabel={props.closeLabel} onPress={withTap(props.onClose)} className="-my-1 -mr-1" />}
       </View>
-      <Separator className="-mx-3" />
+      <Separator className="-mx-3.5" />
     </Card.Header>
   );
 }

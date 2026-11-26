@@ -1,27 +1,7 @@
 import { common } from "@agora/core/i18n";
 import { Redirect, Stack } from "expo-router";
-import {
-  Alert,
-  Button,
-  Description,
-  FieldError,
-  Input,
-  InputGroup,
-  Label,
-  ListGroup,
-  Popover,
-  PressableFeedback,
-  Separator,
-  SkeletonGroup,
-  Spinner,
-  Surface,
-  Switch,
-  TextArea,
-  TextField,
-  Typography,
-  useToast,
-  type InputRef,
-} from "heroui-native";
+import { Alert, Button, Description, FieldError, Input, InputGroup, Label, ListGroup, Popover, PressableFeedback, Separator, SkeletonGroup, Spinner, Surface, TextArea, TextField, Typography, useToast, type InputRef } from "heroui-native";
+import { NativeSwitch } from "@/components/native-switch";
 import { Children, createContext, forwardRef, useContext, Fragment, useEffect, useMemo, useState, type ComponentProps, type ElementRef, type ReactElement, type ReactNode } from "react";
 import { RefreshControl, View, type AccessibilityActionEvent, type AccessibilityActionInfo } from "react-native";
 import { Circle, Path } from "react-native-svg";
@@ -354,7 +334,7 @@ export function SwitchRow(
         {!!props.description && <ListGroup.ItemDescription numberOfLines={2}>{props.description}</ListGroup.ItemDescription>}
       </ListGroup.ItemContent>
       <ListGroup.ItemSuffix>
-        <Switch isSelected={props.value} isDisabled={props.disabled} onSelectedChange={props.onChange} />
+        <NativeSwitch isSelected={props.value} isDisabled={props.disabled} onSelectedChange={props.onChange} />
       </ListGroup.ItemSuffix>
     </ListGroup.Item>
   );

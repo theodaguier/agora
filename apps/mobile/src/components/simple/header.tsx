@@ -1,5 +1,5 @@
 import { simple } from "@agora/core/i18n";
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import { Typography } from "heroui-native";
 import { View } from "react-native";
 import { headerIcon, useHeaderTitleWidth } from "@/components/header-button";
@@ -8,7 +8,7 @@ import { TapMenu } from "@/components/menus";
 import { withTap } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
 import { useAssistants, useNewChat } from "@/lib/simple";
-import { useUnreadChats } from "@/components/simple/unread";
+import { DrawerButton } from "@/components/drawer";
 
 /*
  * Figma « Mode simple », the chat's header: the menu (history) on the left, the assistant's name in the
@@ -35,8 +35,6 @@ export function SimpleChatHeader({
   const current = agents.find((a) => a.id === agentId);
   const next = current?.id ?? agents[0]?.id ?? null;
   const width = useHeaderTitleWidth(1);
-  // What came in the other chats: counted on the menu button (Figma « Ouverture normale »).
-  const unread = useUnreadChats(conversationId).length;
   const name = onBehalfOf ? (
     <View style={{ maxWidth: width }} className="items-center">
       <Typography weight="semibold" numberOfLines={1}>
@@ -82,14 +80,10 @@ export function SimpleChatHeader({
             ),
         }}
       />
-      <Stack.Toolbar placement="left">
-        <Stack.Toolbar.Button icon={headerIcon.panelLeft} iconRenderingMode="template" accessibilityLabel={unread ? `${t.menu}, ${t.newMessages(unread)}` : t.menu} onPress={withTap(() => router.push("/history"))}>
-          {unread > 0 && <Stack.Toolbar.Badge>{String(unread)}</Stack.Toolbar.Badge>}
-        </Stack.Toolbar.Button>
-      </Stack.Toolbar>
+      <DrawerButton current={conversationId} />
       {!!next && (
         <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button icon={headerIcon.plus} iconRenderingMode="template" accessibilityLabel={t.newChat} onPress={withTap(() => newChat.mutate(next))} />
+          <Stack.Toolbar.Button icon={headerIcon.compose} iconRenderingMode="template" accessibilityLabel={t.newChat} onPress={withTap(() => newChat.mutate(next))} />
         </Stack.Toolbar>
       )}
     </>

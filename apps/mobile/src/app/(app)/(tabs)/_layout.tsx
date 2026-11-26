@@ -1,74 +1,35 @@
-import { useQuery } from "@tanstack/react-query";
-import { Stack } from "expo-router";
-import { NativeTabs } from "expo-router/unstable-native-tabs";
-import { useSimple } from "@/lib/simple";
+import { Drawer } from "expo-router/drawer";
+import { useWindowDimensions } from "react-native";
 import { useCSSVariable } from "uniwind";
-import { useMe } from "@/components/server-scope";
-import { haptic } from "@/lib/haptics";
-import { useInboxUnread } from "@/lib/inbox";
-import { defineMessages } from "@/lib/i18n";
-import { codeSessionState } from "@agora/core";
-import { allCodeSessionsQuery } from "@/lib/code-sessions";
-import { conversationsQuery, tasksQuery } from "@/lib/queries";
+import { Sidebar } from "@/components/drawer";
 
-const t = defineMessages({
-  // Short labels: the tab bar gives each one about a fifth of the width.
-  en: { chats: "Chats", inbox: "Inbox", tasks: "Tasks", sessions: "Sessions", profile: "Profile" },
-  fr: { chats: "Discussions", inbox: "Réception", tasks: "Tâches", sessions: "Sessions", profile: "Profil" },
-});
-
-/** The app's sections, in a native tab bar (liquid glass on iOS 26); the simple interface has none. */
-export default function TabsLayout() {
-  // One chat and its history (components/simple): the chats tab's stack is the whole app, settings pushed over it.
-  if (useSimple())
-    return (
-      <Stack screenOptions={{ headerShown: false }} initialRouteName="(chats)">
-        <Stack.Screen name="(chats)" />
-        <Stack.Screen name="profile" />
-      </Stack>
-    );
-  return <Tabs />;
-}
-
-/** The full interface's tabs, with the house icons (assets/tab-icons, drawn from @/components/icons). */
-function Tabs() {
-  const me = useMe();
-  const unread = useQuery({ ...conversationsQuery, select: (list) => list.filter((c) => c.unread).length }).data ?? 0;
-  // Badge: what you have to do yourself, not what you gave to others.
-  const openTasks =
-    useQuery({ ...tasksQuery(me.id), select: (list) => list.filter((x) => x.status !== "done" && x.assignees.some((a) => a.id === me.id)).length }).data ?? 0;
-  const unreadInbox = useInboxUnread();
-  // Your sessions waiting for your answer.
-  const waiting = useQuery({ ...allCodeSessionsQuery, select: (list) => list.filter((s) => s.requestedBy === me.id && codeSessionState(s) === "waiting").length }).data ?? 0;
-  // Selected tab in the text color: the web's palette is monochrome.
-  const tint = useCSSVariable("--color-foreground") as string;
+/*
+ * Figma « Mobile — ChatGPT 1:1 (26 nov.) »: the app's sections without a tab bar. A drawer, as ChatGPT's,
+ * slides in from the left and pushes the screen aside (components/drawer.tsx holds its content). Its
+ * screens are the home (the open conversation), the inbox, the tasks, the code sessions and the
+ * settings; each keeps its own stack, whose first screen carries the menu button (MenuButton).
+ * The folder keeps its name, (tabs): route groups are not part of the URLs.
+ */
+export default function DrawerLayout() {
+  const { width } = useWindowDimensions();
+  const background = useCSSVariable("--color-background") as string;
   return (
-    <NativeTabs minimizeBehavior="onScrollDown" tintColor={tint} screenListeners={{ tabPress: () => haptic.select() }}>
-      <NativeTabs.Trigger name="(chats)">
-        <NativeTabs.Trigger.Icon src={require("../../../../assets/tab-icons/chats.png")} renderingMode="template" />
-        <NativeTabs.Trigger.Label>{t.chats}</NativeTabs.Trigger.Label>
-        {unread > 0 && <NativeTabs.Trigger.Badge>{String(unread)}</NativeTabs.Trigger.Badge>}
-      </NativeTabs.Trigger>
-      {/* The web sidebar's Inbox, next to the tasks, with its unread count. */}
-      <NativeTabs.Trigger name="inbox">
-        <NativeTabs.Trigger.Icon src={require("../../../../assets/tab-icons/inbox.png")} renderingMode="template" />
-        <NativeTabs.Trigger.Label>{t.inbox}</NativeTabs.Trigger.Label>
-        {unreadInbox > 0 && <NativeTabs.Trigger.Badge>{String(unreadInbox)}</NativeTabs.Trigger.Badge>}
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="tasks">
-        <NativeTabs.Trigger.Icon src={require("../../../../assets/tab-icons/tasks.png")} renderingMode="template" />
-        <NativeTabs.Trigger.Label>{t.tasks}</NativeTabs.Trigger.Label>
-        {openTasks > 0 && <NativeTabs.Trigger.Badge>{String(openTasks)}</NativeTabs.Trigger.Badge>}
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="(sessions)">
-        <NativeTabs.Trigger.Icon src={require("../../../../assets/tab-icons/sessions.png")} renderingMode="template" />
-        <NativeTabs.Trigger.Label>{t.sessions}</NativeTabs.Trigger.Label>
-        {waiting > 0 && <NativeTabs.Trigger.Badge>{String(waiting)}</NativeTabs.Trigger.Badge>}
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profile">
-        <NativeTabs.Trigger.Icon src={require("../../../../assets/tab-icons/profile.png")} renderingMode="template" />
-        <NativeTabs.Trigger.Label>{t.profile}</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Drawer
+      drawerContent={(props) => <Sidebar {...props} />}
+      screenOptions={{
+        headerShown: false,
+        drawerType: "slide",
+        drawerStyle: { width: Math.min(330, Math.round(width * 0.84)), backgroundColor: background },
+        overlayColor: "rgba(0, 0, 0, 0.08)",
+        // From the left edge only: a swipe on a message (to reply) or back in a pushed screen stays theirs.
+        swipeEdgeWidth: 28,
+      }}
+    >
+      <Drawer.Screen name="(chats)" />
+      <Drawer.Screen name="inbox" />
+      <Drawer.Screen name="tasks" />
+      <Drawer.Screen name="(sessions)" />
+      <Drawer.Screen name="profile" />
+    </Drawer>
   );
 }

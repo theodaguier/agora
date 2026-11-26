@@ -91,10 +91,10 @@ export function Bubble({ className, children }: { className?: string; children: 
   );
 }
 
-/** Your message: a grey bubble on the right, the conversation's colours aside. */
+/** Your message: a grey pill on the right (ChatGPT's, Figma « Mobile — ChatGPT 1:1 »), the conversation's colours aside. */
 export function UserBubble({ text, mentionables, className }: { text: string; mentionables?: Mentionable[]; className?: string }) {
   return (
-    <Bubble className={cn("px-3.5 py-2", className)}>
+    <Bubble className={cn("rounded-3xl px-4 py-3", className)}>
       <MessageText plain text={text} mentionables={mentionables} className="min-w-0" />
     </Bubble>
   );

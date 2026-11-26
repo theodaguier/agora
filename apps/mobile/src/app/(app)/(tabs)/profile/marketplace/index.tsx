@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Segmented } from "@/components/profile/native-pickers";
 import { Stack, useRouter } from "expo-router";
-import { Button, LinkButton, ListGroup, Spinner, Tabs, Typography } from "heroui-native";
+import { Button, LinkButton, ListGroup, Spinner, Typography } from "heroui-native";
 import { useState } from "react";
 import { View } from "react-native";
 import { AgentAvatar } from "@/components/agent-avatar";
@@ -140,16 +141,7 @@ function Marketplace() {
       <SearchBox value={query} onChange={setQuery} placeholder={t.searchPlaceholder} />
       <SettingsScroll onRefresh={market.refetch}>
         <View className="gap-4">
-          <Tabs value={segment} onValueChange={(v) => (haptic.select(), setSegment(v as Segment))}>
-            <Tabs.List>
-              <Tabs.Indicator />
-              {SEGMENTS.map((s) => (
-                <Tabs.Trigger key={s} value={s}>
-                  <Tabs.Label numberOfLines={1}>{t.segments[s]}</Tabs.Label>
-                </Tabs.Trigger>
-              ))}
-            </Tabs.List>
-          </Tabs>
+          <Segmented value={segment} label={t.title} onChange={(v) => (haptic.select(), setSegment(v))} options={SEGMENTS.map((s) => ({ value: s, label: t.segments[s] }))} />
         </View>
         {searching && market.searching && <Spinner size="sm" className="self-center" />}
         <RestartBanner />

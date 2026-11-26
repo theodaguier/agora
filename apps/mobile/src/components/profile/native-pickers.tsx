@@ -1,13 +1,15 @@
+import { Host, Picker, Text } from "@expo/ui/swift-ui";
+import { accessibilityLabel, pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { Tabs } from "heroui-native";
+import { useUniwind } from "uniwind";
 import { OptionPicker } from "@/components/menus";
 import { useMemo } from "react";
 import { fromDay, toDay } from "@/lib/availability";
 import { locale } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 
 /*
- * The pickers of the Profile screens: a HeroUI Select for a value among several and for
- * a day, HeroUI Tabs for a few exclusive choices.
+ * The pickers of the Profile screens: the native menu for a value among several and for a day, iOS's
+ * segmented control for a few exclusive choices.
  */
 
 type Option<T extends string> = { value: T; label: string };
@@ -50,11 +52,32 @@ function OptionSelect<T extends string>({ value, options, onChange, label }: { v
   return <OptionPicker value={value} options={options} onChange={onChange} label={label} />;
 }
 
-/** A few exclusive choices side by side: HeroUI Tabs (scrollable when there are many). */
+/**
+ * A few exclusive choices side by side: iOS's own segmented control (SwiftUI's Picker, segmented), as
+ * in Réglages; more than five do not fit it, and scroll in HeroUI Tabs instead.
+ */
 export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: Option<T>[]; onChange: (value: T) => void; label: string }) {
-  const scroll = options.length > 4;
+  const { theme } = useUniwind();
+  if (options.length <= 5)
+    return (
+      <Host matchContents={{ vertical: true }} colorScheme={theme === "dark" ? "dark" : "light"} style={{ alignSelf: "stretch" }}>
+        <Picker<string>
+          selection={value}
+          onSelectionChange={(v) => {
+            if (v !== value) onChange(v as T);
+          }}
+          modifiers={[pickerStyle("segmented"), accessibilityLabel(label)]}
+        >
+          {options.map((o) => (
+            <Text key={o.value} modifiers={[tag(o.value)]}>
+              {o.label}
+            </Text>
+          ))}
+        </Picker>
+      </Host>
+    );
   const triggers = options.map((o) => (
-    <Tabs.Trigger key={o.value} value={o.value} className={cn(!scroll && "flex-1")}>
+    <Tabs.Trigger key={o.value} value={o.value}>
       <Tabs.Label numberOfLines={1}>{o.label}</Tabs.Label>
     </Tabs.Trigger>
   ));
@@ -66,17 +89,10 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
       }}
     >
       <Tabs.List accessibilityLabel={label} className="self-stretch">
-        {scroll ? (
-          <Tabs.ScrollView scrollAlign="center">
-            <Tabs.Indicator />
-            {triggers}
-          </Tabs.ScrollView>
-        ) : (
-          <>
-            <Tabs.Indicator />
-            {triggers}
-          </>
-        )}
+        <Tabs.ScrollView scrollAlign="center">
+          <Tabs.Indicator />
+          {triggers}
+        </Tabs.ScrollView>
       </Tabs.List>
     </Tabs>
   );

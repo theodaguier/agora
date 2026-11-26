@@ -38,14 +38,10 @@
   --text-caption2--line-height: 13px;
 
   /*
-   * Geist and Geist Mono, as on the web (apps/web/src/index.css). Each weight is its own face,
-   * loaded under these names by app/_layout.tsx (HeroUI Native's « Custom Fonts »).
+   * The text is iOS's own font, SF Pro (Figma « Mobile — ChatGPT 1:1 », 26 nov.): no font variable, so
+   * HeroUI's `font-normal`… `font-bold` stay weights of the system font. Code keeps Geist Mono, as on the
+   * web, loaded under this name by app/_layout.tsx.
    */
-  --font-normal: 'Geist_400Regular';
-  --font-medium: 'Geist_500Medium';
-  --font-semibold: 'Geist_600SemiBold';
-  --font-bold: 'Geist_700Bold';
-  --font-sans: 'Geist_400Regular';
   --font-mono: 'GeistMono_400Regular';
 
   --spacing-hairline: hairlineWidth();

@@ -12,19 +12,19 @@ const messages = defineMessages({
 
 /*
  * The one composer of the app: a conversation's (components/composer.tsx) and a code session's
- * (screens/code-session.tsx) are the same card, so the two screens read as the same chat. A card with
- * a hairline, what goes with the message on top, the field across its width, then one toolbar: the
- * paperclip and the caller's own tools on the left, dictation and send (or stop) on the right.
+ * (screens/code-session.tsx) are the same, so the two screens read as the same chat. Figma « Mobile —
+ * ChatGPT 1:1 »: ChatGPT's floating pill, white with a soft shadow and no border. What goes with the
+ * message (a reply, files) sits on top inside it; then one row: the caller's tools (the "+") on the
+ * left, the field, dictation and send (or stop) on the right. It grows with the text, buttons at the bottom.
  */
 
 export function ComposerCard({ header, children, tools, trailing }: { header?: ReactNode; children: ReactNode; tools?: ReactNode; trailing?: ReactNode }) {
   return (
-    <Surface variant="transparent" className="rounded-xl border border-field-border bg-field p-0" style={{ borderCurve: "continuous" }}>
-      {!!header && <View className="gap-1 px-1.5 pt-1.5">{header}</View>}
-      {children}
-      <View className="flex-row items-center gap-1 px-1.5 pb-1.5">
+    <Surface variant="transparent" className="rounded-[26px] bg-field p-0" style={{ borderCurve: "continuous", boxShadow: "0 6px 28px rgba(0, 0, 0, 0.10)" }}>
+      {!!header && <View className="gap-1 px-2 pt-2">{header}</View>}
+      <View className="flex-row items-end px-1.5 py-1.5">
         {tools}
-        <View className="flex-1" />
+        <View className="min-w-0 flex-1">{children}</View>
         {trailing}
       </View>
     </Surface>
@@ -32,8 +32,8 @@ export function ComposerCard({ header, children, tools, trailing }: { header?: R
 }
 
 /**
- * The card's field: part of the card rather than a field inside it (no fill, no border, no shadow, no
- * focus outline: it is always the one being typed in). At the messages' size, six lines, then it scrolls.
+ * The pill's field: part of it rather than a field inside it (no fill, no border, no shadow, no focus
+ * outline: it is always the one being typed in). At the messages' size (17 pt), six lines, then it scrolls.
  */
 export const ComposerInput = forwardRef<InputRef, ComponentProps<typeof Input>>(function ComposerInput(props, ref) {
   return (
@@ -41,7 +41,7 @@ export const ComposerInput = forwardRef<InputRef, ComponentProps<typeof Input>>(
       ref={ref}
       multiline
       background={null}
-      className="max-h-[152px] min-h-11 border-transparent bg-transparent px-3.5 pt-3 pb-1 text-subheadline shadow-none ios:focus:outline-transparent android:focus:border-transparent"
+      className="max-h-[152px] min-h-9 border-transparent bg-transparent px-1.5 pt-2 pb-2 text-body shadow-none ios:focus:outline-transparent android:focus:border-transparent"
       {...props}
     />
   );

@@ -1,6 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { common } from "@agora/core/i18n";
-import { Button, ListGroup, Select, Separator, Switch } from "heroui-native";
+import { Button, ListGroup, Select, Separator } from "heroui-native";
+import { NativeSwitch } from "@/components/native-switch";
 import { useState, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import { PriorityMark, TaskStatusIcon } from "@/components/code-session-marks";
@@ -126,7 +127,7 @@ export function DueRow({ value, onChange, disabled }: { value: string | null; on
           <ListGroup.ItemDescription>{value ? formatDueDate(value) : messages.noDue}</ListGroup.ItemDescription>
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix>
-          <Switch isSelected={!!value} isDisabled={disabled} onSelectedChange={(on) => onChange(on ? toDay(new Date()) : null)} />
+          <NativeSwitch isSelected={!!value} isDisabled={disabled} onSelectedChange={(on) => onChange(on ? toDay(new Date()) : null)} />
         </ListGroup.ItemSuffix>
       </ListGroup.Item>
       {value && !disabled && (

@@ -88,7 +88,7 @@ export function ApprovalCard(props: { conversationId: string; turnId: string; bo
       {canAnswer && (
         <Card.Footer className="flex-row items-center justify-between gap-2">
           {choices.includes("deny") ? (
-            <Button size="sm" variant="secondary" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate("deny"))}>
+            <Button variant="secondary" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate("deny"))}>
               {label("deny")}
             </Button>
           ) : (
@@ -96,12 +96,12 @@ export function ApprovalCard(props: { conversationId: string; turnId: string; bo
           )}
           {choices.includes("once") ? (
             <View className="flex-row items-center gap-1">
-              <Button size="sm" isDisabled={answer.isPending} onPress={withTap(() => answer.mutate("once"))}>
+              <Button isDisabled={answer.isPending} onPress={withTap(() => answer.mutate("once"))}>
                 {label("once")}
               </Button>
               {broader.length > 0 && (
                 <TapMenu accessibilityLabel={t.more} actions={broader.map((c) => ({ label: t.choices[c], icon: CHOICE_ICON[c], onPress: () => answer.mutate(c) }))}>
-                  <Button isIconOnly size="sm" isDisabled={answer.isPending} accessibilityLabel={t.more}>
+                  <Button isIconOnly isDisabled={answer.isPending} accessibilityLabel={t.more}>
                     <ChevronDownIcon size={16} className="text-accent-foreground" />
                   </Button>
                 </TapMenu>

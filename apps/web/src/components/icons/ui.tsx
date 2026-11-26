@@ -570,6 +570,16 @@ export const GridIcon = createIcon("grid", {
   ),
 });
 
+/** Two lines, the top one longer: opens the mobile app's drawer (ChatGPT's menu button). */
+export const MenuIcon = createIcon("menu", {
+  line: (
+    <>
+      <path d="M4 9h16" />
+      <path d="M4 15h10" />
+    </>
+  ),
+});
+
 export const PanelLeftIcon = createIcon("panel-left", {
   fill: <rect x="2" y="3" width="20" height="18" rx="4.5" />,
   cut: <path d="M9 3v18" />,
