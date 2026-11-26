@@ -431,8 +431,8 @@ function SidebarBody() {
 /**
  * Desktop (Figma « Barre latérale sombre »): the organisation at the top (its recap on click), then the
  * inbox, the tasks and the sessions as icons with a dot when something waits, and new conversation
- * (searching is the command palette's, ⌘K). The bots, the projects (groups), then one-on-one messages with colleagues. At the bottom, today's usage per
- * provider and the subscriptions, the apps (Marketplace) and your account.
+ * (searching is the command palette's, ⌘K). The bots, the projects (groups), then one-on-one messages with colleagues. Pinned at the bottom,
+ * the coding subscriptions and their limits, the apps (Marketplace) and your account.
  */
 function DesktopSidebar() {
   const { conversationId } = useParams({ strict: false }) as { conversationId?: string };
@@ -526,8 +526,6 @@ function DesktopSidebar() {
           { key: "agents", label: t.agents, rows: list.filter((c) => c.kind === "direct" && c.agents.length > 0) },
           { key: "projects", label: t.projects, rows: topProjects },
           { key: "messages", label: t.directMessages, rows: list.filter((c) => c.kind === "direct" && c.agents.length === 0) },
-          // The coding subscriptions installed here, with how much of their limits is used (owner only).
-          { key: "plans", label: t.subscriptions, rows: plans },
         ].map(
           (g) =>
             (g.rows.length > 0 || g.key === "projects") && (
@@ -553,9 +551,7 @@ function DesktopSidebar() {
                 <CollapsibleContent>
                   <SidebarGroupContent>
                     <SidebarMenu className="gap-px">
-                      {g.key === "plans" ? (
-                        <PlanRows plans={plans} />
-                      ) : g.key === "projects"
+                      {g.key === "projects"
                         ? topProjects.map((p) => {
                             const discussions = activeDiscussions(list, p.id);
                             const inside = conversationId === p.id || discussions.some((d) => d.id === conversationId);
@@ -583,6 +579,23 @@ function DesktopSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="px-3 pb-1.5">
+        {/* The coding subscriptions installed here and how much of their limits is used (owner only): pinned, never scrolled away. */}
+        {plans.length > 0 && (
+          <Collapsible open={!folded.has("plans")} onOpenChange={() => toggleFold("plans")} render={<SidebarGroup className="group/fold p-0 pb-1" />}>
+            <SidebarGroupLabel
+              render={<CollapsibleTrigger />}
+              className="h-auto w-fit cursor-pointer gap-1 pb-1 leading-4.25 font-normal text-muted-foreground hover:text-foreground"
+            >
+              {t.subscriptions}
+              <ChevronDownIcon className={cn("size-3! transition-[rotate] duration-150", folded.has("plans") && "-rotate-90")} />
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <SidebarMenu className="gap-px">
+                <PlanRows plans={plans} />
+              </SidebarMenu>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
         <SidebarMenu className="gap-px">
           {user.role === "admin" && (
             <SidebarMenuItem>
