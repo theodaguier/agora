@@ -66,7 +66,8 @@ export function SettingsScroll({ children, onRefresh, topInset }: { children: Re
       scrollIndicatorInsets={topInset == null ? undefined : { top: topInset }}
       keyboardDismissMode="interactive"
       keyboardShouldPersistTaps="handled"
-      className="bg-background"
+      // Figma « Mobile — iOS natif » / « ChatGPT 1:1 », Réglages: iOS's grouped ground, the groups white on it.
+      className="bg-surface-secondary"
       contentContainerClassName="gap-7 px-4 pb-16 pt-2"
       refreshControl={
         onRefresh && (
@@ -169,7 +170,7 @@ export function Section({
       )}
       {bare && children}
       {!bare && rows.length > 0 && (
-        <ListGroup>
+        <ListGroup className="bg-background shadow-none">
           {rows.map((row, i) => (
             <Fragment key={rowKey(row, i)}>
               {i > 0 && <Separator className="mx-4" />}
@@ -221,11 +222,12 @@ const tones = { success: "text-success", warning: "text-warning", danger: "text-
  * media says more (an avatar, a logo) keep it. `tone`: a state the icon shows (do not disturb on…).
  */
 export function SettingTile({ icon: Icon, tone }: { icon: IconComponent; tone?: "success" | "warning" | "danger" }) {
+  // Figma « Réglages »: the glyph alone in the text colour, no tile (colour only for a state).
   return (
     <ListGroup.ItemPrefix>
-      <Surface variant="secondary" className="size-8 items-center justify-center rounded-lg p-0 shadow-none">
-        <Icon size={16} className={tone ? tones[tone] : "text-muted"} />
-      </Surface>
+      <View className="size-7 items-center justify-center">
+        <Icon size={20} className={tone ? tones[tone] : "text-foreground"} />
+      </View>
     </ListGroup.ItemPrefix>
   );
 }

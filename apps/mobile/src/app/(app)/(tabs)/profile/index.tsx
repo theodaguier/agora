@@ -187,7 +187,7 @@ export default function Profile() {
   return (
     <>
       {/* Figma « Mobile — ChatGPT 1:1 », « Réglages »: the menu and the title over the grouped list. */}
-      <AppHeader title={<AppHeaderTitle title={simpleMode ? tr(simple).settings : t.title} />} />
+      <AppHeader ground="--color-surface-secondary" title={<AppHeaderTitle title={simpleMode ? tr(simple).settings : t.title} />} />
       <SettingsScroll topInset={headerHeight}>
         {/* You: the General tab (profile and account). */}
         <Section>

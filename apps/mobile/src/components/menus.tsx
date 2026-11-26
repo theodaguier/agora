@@ -1,7 +1,7 @@
 import { common } from "@agora/core/i18n";
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { Button as NativeButton, type ButtonProps as NativeButtonProps, Divider, Host, Image as NativeImage, Menu as NativeMenu, Rectangle, Section, Text, Toggle } from "@expo/ui/swift-ui";
-import { accessibilityLabel as a11yLabel, buttonStyle, disabled as nativeDisabled, foregroundStyle, frame, menuIndicator, menuStyle } from "@expo/ui/swift-ui/modifiers";
+import { accessibilityLabel as a11yLabel, buttonStyle, contentShape, disabled as nativeDisabled, foregroundStyle, frame, menuIndicator, menuStyle, shapes } from "@expo/ui/swift-ui/modifiers";
 import * as Haptics from "expo-haptics";
 // The native view behind expo-router's Link.Menu: a UIContextMenuInteraction on one RN view. Without a
 // next screen it is a plain iOS context menu (what Link.Menu does on iPad).
@@ -275,8 +275,9 @@ function PullDown({ actions, label, children }: { actions: MenuEntry[]; label?: 
       <Host style={StyleSheet.absoluteFill} colorScheme={theme === "dark" ? "dark" : "light"} ignoreSafeArea="all">
         <NativeMenu
           label={
-            // Almost transparent: a fully clear shape takes no touches.
-            <Rectangle modifiers={[foregroundStyle("#00000002"), frame({ maxWidth: Number.MAX_VALUE, maxHeight: Number.MAX_VALUE })]} />
+            // Clear, and still the trigger's whole area through its content shape (a clear shape alone takes no
+            // touches; a barely tinted one showed as a grey square on white).
+            <Rectangle modifiers={[foregroundStyle("#00000000"), contentShape(shapes.rectangle()), frame({ maxWidth: Number.MAX_VALUE, maxHeight: Number.MAX_VALUE })]} />
           }
           // menuStyle("button") + plain + no indicator: the label alone is the trigger. Without the menu style,
           // iOS drew its own grey chrome behind every trigger (the composer's paperclip, the header's state).

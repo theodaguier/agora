@@ -6,7 +6,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Linking from "expo-linking";
 import { BottomSheet, Chip, ListGroup, ScrollShadow, Separator, Surface, Typography, useThemeColor, useToast } from "heroui-native";
 import { Fragment, useDeferredValue, useMemo, useState, type ReactElement, type ReactNode } from "react";
-import { ScrollView, View } from "react-native";
+import { Keyboard, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { codeSessions } from "@agora/core/i18n";
 import { router } from "expo-router";
@@ -159,16 +159,25 @@ export function ConversationPanel({
 }) {
   const labels = usePanelLabels();
   const insets = useSafeAreaInsets();
-  // Keeps the panel while the sheet slides out.
-  const [last, setLast] = useState<PanelKind>(kind ?? "search");
+  // Keeps the panel while the sheet slides out. Nothing before the first opening: the sheet's content is
+  // mounted closed, and the search field's autofocus would open the keyboard over the conversation.
+  const [last, setLast] = useState<PanelKind | null>(kind);
   if (kind && kind !== last) setLast(kind);
   const shown = kind ?? last;
   const jump = (messageId: string) => {
+    Keyboard.dismiss();
     onClose();
     onJump(messageId);
   };
   return (
-    <BottomSheet isOpen={!!kind} onOpenChange={(open) => !open && onClose()}>
+    <BottomSheet
+      isOpen={!!kind}
+      onOpenChange={(open) => {
+        if (open) return;
+        Keyboard.dismiss();
+        onClose();
+      }}
+    >
       {/* Not in a window of its own: the share sheet, the image viewer and the menus open above it. */}
       <BottomSheet.Portal disableFullWindowOverlay>
         <BottomSheet.Overlay />
@@ -181,7 +190,7 @@ export function ConversationPanel({
           contentContainerClassName="h-full"
         >
           <View className="flex-row items-center justify-between pb-3">
-            <BottomSheet.Title>{labels[shown]}</BottomSheet.Title>
+            <BottomSheet.Title>{shown ? labels[shown] : null}</BottomSheet.Title>
             <BottomSheet.Close />
           </View>
           <View className="min-h-0 flex-1" style={{ paddingBottom: insets.bottom }}>
