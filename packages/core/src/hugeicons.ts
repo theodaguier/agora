@@ -96,6 +96,7 @@ import Mail01Icon from "@hugeicons/core-free-icons/Mail01Icon";
 import Maximize01Icon from "@hugeicons/core-free-icons/Maximize01Icon";
 import Message01Icon from "@hugeicons/core-free-icons/Message01Icon";
 import Mic01Icon from "@hugeicons/core-free-icons/Mic01Icon";
+import MenuTwoLineIcon from "@hugeicons/core-free-icons/MenuTwoLineIcon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import Moon02Icon from "@hugeicons/core-free-icons/Moon02Icon";
 import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
@@ -310,6 +311,8 @@ export const HUGEICONS: Record<string, IconSvgElement> = {
   server: DatabaseIcon,
   grid: DashboardSquare01Icon,
   "panel-left": SidebarLeftIcon,
+  // The two lines of the drawer button (ChatGPT's): the mobile app's menu.
+  menu: MenuTwoLineIcon,
   "panel-right": SidebarRightIcon,
   "square-pen": PencilEdit02Icon,
   maximize: Maximize01Icon,

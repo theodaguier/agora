@@ -12,8 +12,9 @@ import { BubbleAttachments, SentAttachments } from "@/components/attachments";
 import { attachmentSource, Image, isImage, saveAttachment } from "@/components/attachment-files";
 import { Bubble, FlatText, UserBubble } from "@/components/bubbles";
 import { confirmAction } from "@/components/confirm-action";
-import { LongPressMenu } from "@/components/menus";
-import { ClockIcon, PackageIcon, PlugIcon, ReplyIcon } from "@/components/icons";
+import { LongPressMenu, TapMenu } from "@/components/menus";
+import { BrainIcon, ClockIcon, CopyIcon, MoreIcon, PackageIcon, PinIcon, PlugIcon, ReplyIcon, type IconComponent } from "@/components/icons";
+import { withTap } from "@/lib/haptics";
 import { MessageText } from "@/components/message-text";
 import { defineMessages, tr } from "@/lib/i18n";
 import { simple } from "@agora/core/i18n";
@@ -240,6 +241,75 @@ export function useDeleteMessage(conversationId: string) {
   };
 }
 
+type MessageActionProps = {
+  text?: string;
+  attachments?: Attachment[];
+  onReply: () => void;
+  onForward: () => void;
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  onDelete?: () => void;
+  onRemember?: () => Promise<unknown>;
+};
+
+/** What a message offers beyond reply, forward, pin and delete: copy its text, download its files, save it to the second brain. */
+function useMessageActions(props: MessageActionProps) {
+  const t = messages;
+  const { toast } = useToast();
+  const files = props.attachments ?? [];
+  const success = (label: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    toast.show({ variant: "success", label });
+  };
+  return {
+    copy: props.text ? () => void Clipboard.setStringAsync(props.text!).then(() => success(t.copied)) : undefined,
+    download: files.length ? () => void downloadAll(files) : undefined,
+    remember: props.onRemember
+      ? () =>
+          void props.onRemember!().then(
+            () => success(tr(simple).remembered),
+            () => toast.show({ variant: "danger", label: tr(simple).rememberFailed }),
+          )
+      : undefined,
+  };
+}
+
+/**
+ * Figma « Mobile — ChatGPT 1:1 »: the row of actions under a bot's reply, as ChatGPT's (copy, reply,
+ * pin, second brain); « … » holds the rest (forward, download, delete). The long press keeps them all.
+ */
+export function ReplyActions(props: MessageActionProps) {
+  const t = messages;
+  const act = useMessageActions(props);
+  const files = props.attachments ?? [];
+  const icon = (Icon: IconComponent, label: string, onPress: () => void, on?: boolean) => (
+    <PressableFeedback key={label} onPress={withTap(onPress)} accessibilityRole="button" accessibilityLabel={label} className="size-9 items-center justify-center rounded-full">
+      <Icon size={18} className={on ? "text-foreground" : "text-icon"} />
+    </PressableFeedback>
+  );
+  return (
+    <View className="-ms-2 mt-1.5 flex-row items-center">
+      {act.copy && icon(CopyIcon, t.copy, act.copy)}
+      {icon(ReplyIcon, t.reply, props.onReply)}
+      {props.onTogglePin && icon(PinIcon, props.pinned ? t.unpin : t.pin, props.onTogglePin, props.pinned)}
+      {act.remember && icon(BrainIcon, tr(simple).remember, act.remember)}
+      <TapMenu
+        accessibilityLabel={t.actions}
+        actions={[
+          { label: t.forward, icon: "arrowshape.turn.up.right", onPress: props.onForward },
+          act.download && { label: t.download(files.length), icon: "square.and.arrow.down", onPress: act.download },
+          !!props.onDelete && "divider",
+          props.onDelete && { label: t.delete, icon: "trash", destructive: true, onPress: props.onDelete },
+        ]}
+      >
+        <View accessibilityLabel={t.actions} className="size-9 items-center justify-center">
+          <MoreIcon size={18} className="text-icon" />
+        </View>
+      </TapMenu>
+    </View>
+  );
+}
+
 /**
  * A message line: its bubble, with its actions in the iOS context menu (long press: reply, forward,
  * pin, copy, download, delete) and a swipe to the right to reply, as in Messages.
@@ -263,7 +333,7 @@ export function MessageRow(props: {
   children: ReactNode;
 }) {
   const t = messages;
-  const { toast } = useToast();
+  const act = useMessageActions(props);
   const files = props.attachments ?? [];
   const { width } = useWindowDimensions();
   // Yours: 80% of the screen, less the thread's margins. Someone else's (`wide`): their whole column.
@@ -308,29 +378,10 @@ export function MessageRow(props: {
               { label: t.reply, icon: "arrowshape.turn.up.left", onPress: props.onReply },
               { label: t.forward, icon: "arrowshape.turn.up.right", onPress: props.onForward },
               props.onTogglePin && { label: props.pinned ? t.unpin : t.pin, icon: props.pinned ? "pin.slash" : "pin", onPress: props.onTogglePin },
-              (!!props.text || files.length > 0) && "divider",
-              !!props.text && {
-                label: t.copy,
-                icon: "doc.on.doc",
-                onPress: () =>
-                  Clipboard.setStringAsync(props.text!).then(() => {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    toast.show({ variant: "success", label: t.copied });
-                  }),
-              },
-              files.length > 0 && { label: t.download(files.length), icon: "square.and.arrow.down", onPress: () => downloadAll(files) },
-              !!props.onRemember && {
-                label: tr(simple).remember,
-                icon: "brain",
-                onPress: () =>
-                  props.onRemember!().then(
-                    () => {
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                      toast.show({ variant: "success", label: tr(simple).remembered });
-                    },
-                    () => toast.show({ variant: "danger", label: tr(simple).rememberFailed }),
-                  ),
-              },
+              (!!act.copy || !!act.download) && "divider",
+              act.copy && { label: t.copy, icon: "doc.on.doc", onPress: act.copy },
+              act.download && { label: t.download(files.length), icon: "square.and.arrow.down", onPress: act.download },
+              act.remember && { label: tr(simple).remember, icon: "brain", onPress: act.remember },
               !!props.onDelete && "divider",
               props.onDelete && { label: t.delete, icon: "trash", destructive: true, onPress: props.onDelete },
             ]}

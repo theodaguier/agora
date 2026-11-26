@@ -10,6 +10,7 @@ import {
   type CodeSessionState,
   type CodeSessionView,
 } from "@agora/core";
+import { DrawerButton } from "@/components/drawer";
 import { codeSessions, common } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, Stack } from "expo-router";
@@ -93,6 +94,7 @@ export default function SessionsScreen() {
   return (
     <>
       <Stack.Screen.Title>{t.sessions}</Stack.Screen.Title>
+      <DrawerButton />
       {all.length > 0 && (
         <Stack.Toolbar placement="right">
           <Stack.Toolbar.View>

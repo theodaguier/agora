@@ -28,7 +28,7 @@ export function TaskCard({ ids }: { ids: string[] }) {
     .filter((t) => !!t);
   if (!tasks.length) return null;
   return (
-    <ListGroup className="mt-2 w-full overflow-hidden">
+    <ListGroup className="mt-2 w-full overflow-hidden rounded-[18px] border border-border bg-background shadow-none">
       {tasks.map((t) => (
         <TaskTableRow key={t.id} task={t} me={me.id} mentionables={mentionables} />
       ))}
@@ -42,7 +42,7 @@ export function RoutineCard({ conversationId, agentId, ids }: { conversationId: 
   const shown = ids.map((id) => data.find((r) => r.id === id)).filter((r) => !!r);
   if (!shown.length) return null;
   return (
-    <ListGroup className="mt-2 w-full">
+    <ListGroup className="mt-2 w-full overflow-hidden rounded-[18px] border border-border bg-background shadow-none">
       {shown.map((r) => (
         <RoutineRow key={r.id} agentId={agentId} conversationId={conversationId} routine={r} />
       ))}

@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button, Chip, Popover } from "heroui-native";
-import { useContext, useState, type ReactNode } from "react";
+import { Button, Popover } from "heroui-native";
+import { useState, type ReactNode } from "react";
 import { Text as NativeText, View } from "react-native";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { PersonAvatar } from "@/components/conversation-avatar";
 import { TaskRef } from "@/components/task-ref";
 import { EntityText, InlineBox, ResetTextStyle, useEm } from "@/components/text-entities";
-import { boxText, OnAccentContext } from "@/components/text-style";
+import { boxText } from "@/components/text-style";
 import { withTap } from "@/lib/haptics";
 import { defineMessages } from "@/lib/i18n";
 import { splitMentions, type Mentionable, type MentionTarget } from "@/lib/mentions";
@@ -18,7 +18,7 @@ import { splitTaskRefs } from "@/lib/task-refs";
 import { usePopoverInsets } from "@/lib/popover-insets";
 import { contentKeys } from "@/lib/utils";
 import { useAdminToast } from "@/components/admin/ui";
-import { safeColor, mentionStyle } from "@/components/mention-style";
+import { safeColor } from "@/components/mention-style";
 
 /*
  * apps/web/src/components/Mention.tsx and the components of apps/web/src/lib/mentions.tsx.
@@ -30,35 +30,25 @@ const messages = defineMessages({
   fr: { bot: "Bot", viewProfile: "Voir le profil", message: "Envoyer un message" },
 });
 
-/** A colored "@Name" with the avatar of whoever it designates; a tap shows their card. */
-export function Mention({ text, color, target }: { text: string; color: string; target?: MentionTarget }) {
+/**
+ * A "@Name" as the web's Mention: medium weight in the brand blue, bots and colleagues alike (the
+ * bot's own colour is never used), no pill, no face; a tap shows their card.
+ */
+export function Mention({ text, target }: { text: string; color?: string; target?: MentionTarget }) {
   const insets = usePopoverInsets();
   const em = useEm();
   const [open, setOpen] = useState(false);
-  const tone = mentionStyle(color, useContext(OnAccentContext));
   const label = (
-    <Chip.Label className="shrink" style={[boxText(em, 1), tone.textStyle]}>
+    <NativeText style={boxText(em, 1)} className="font-medium text-brand">
       {text}
-    </Chip.Label>
+    </NativeText>
   );
-  if (!target) {
-    return (
-      <InlineBox>
-        <Chip size="sm" variant="soft" color={tone.chip} style={tone.pillStyle}>
-          {label}
-        </Chip>
-      </InlineBox>
-    );
-  }
-  const avatar = em(1.05);
+  if (!target) return <InlineBox>{label}</InlineBox>;
   return (
     <InlineBox>
       <Popover isOpen={open} onOpenChange={setOpen}>
-        <Popover.Trigger asChild>
-          <Chip size="sm" variant="soft" color={tone.chip} accessibilityRole="button" accessibilityLabel={text} style={tone.pillStyle}>
-            {target.kind === "agent" ? <AgentAvatar agent={target.agent} size={avatar} /> : <PersonAvatar person={target.person} size={avatar} />}
-            {label}
-          </Chip>
+        <Popover.Trigger accessibilityRole="button" accessibilityLabel={text}>
+          {label}
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Overlay />
@@ -169,11 +159,9 @@ export function MentionText({ text, mentionables, flat }: { text: string; mentio
     if (typeof s === "string") return flat ? s : <EntityText key={keys[i]} text={s} />;
     const color = safeColor(s.color);
     if (flat) {
-      // Highlighted as on the web: the mention's color on a light tint of it.
-      // Colleagues in the brand blue, bots in their own color.
-      const tone = color ? mentionStyle(color) : undefined;
+      // Highlighted as on the web: medium weight in the brand blue, bots and colleagues alike.
       return (
-        <NativeText key={keys[i]} className={color === "brand" ? "bg-brand-soft text-brand" : undefined} style={[tone?.textStyle, tone?.pillStyle]}>
+        <NativeText key={keys[i]} className={color ? "font-medium text-brand" : undefined}>
           {s.text}
         </NativeText>
       );

@@ -2,7 +2,8 @@ import type { BotWebhook } from "@agora/core";
 import { agentTriggers } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { ListGroup, Switch } from "heroui-native";
+import { ListGroup } from "heroui-native";
+import { NativeSwitch } from "@/components/native-switch";
 import { AdminGate, ErrorAlert, Intro, LoadingRows, RowMenu, Section, SettingTile, SettingsRow, SettingsScroll, useAdminToast } from "@/components/admin/ui";
 import { confirmAction } from "@/components/confirm-action";
 import { headerIcon } from "@/components/header-button";
@@ -88,7 +89,7 @@ function Triggers({ agentId }: { agentId: string }) {
                   <ListGroup.ItemDescription numberOfLines={1}>{t.runsAs(hook.owner)}</ListGroup.ItemDescription>
                 </ListGroup.ItemContent>
                 <ListGroup.ItemSuffix>
-                  <Switch
+                  <NativeSwitch
                     isSelected={hook.enabled}
                     accessibilityLabel={hook.name}
                     onSelectedChange={(enabled) => (haptic.select(), toggle.mutate({ id: hook.id, enabled }))}

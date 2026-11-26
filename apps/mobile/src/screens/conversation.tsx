@@ -11,7 +11,7 @@ import { ScopedVariables } from "uniwind";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { ApprovalCard } from "@/components/approval-card";
-import { FileCard, SentAttachments } from "@/components/attachments";
+import { SentAttachments } from "@/components/attachments";
 import { DayDivider, FlatText, Post, ThreadEvent, ToolLine, TypingBubble, TypingLine, type PostHead } from "@/components/bubbles";
 import { ChoiceCard } from "@/components/choice-card";
 import { CodeSessionCard, ReplyWithSessions, useCanStartCodeSession, useCodeSessions } from "@/components/code-session";
@@ -26,7 +26,7 @@ import { ForwardDialog } from "@/components/forward-dialog";
 import { McpRequestCard } from "@/components/mcp-request-card";
 import { GitHubMergeCard, PullRequestLinks } from "@/components/github-merge-card";
 import { VaultRequestCard } from "@/components/vault-request-card";
-import { ChatMessage, MessageRow, PendingRow, useDeleteMessage } from "@/components/message-parts";
+import { ChatMessage, MessageRow, PendingRow, ReplyActions, useDeleteMessage } from "@/components/message-parts";
 import { QuestionsCard } from "@/components/questions-card";
 import { useMe } from "@/components/server-scope";
 import { SkillRequestCard } from "@/components/skill-request-card";
@@ -37,7 +37,7 @@ import { ConversationFilesProvider } from "@/lib/conversation-files";
 import { clockTime, dayLabel } from "@/lib/dates";
 import { haptic, withTap } from "@/lib/haptics";
 import { defineMessages, locale, tr } from "@/lib/i18n";
-import { integrations, simple as simpleMessages } from "@agora/core/i18n";
+import { conversations as conversationStrings, integrations, simple as simpleMessages } from "@agora/core/i18n";
 import type { Mentionable } from "@/lib/mentions";
 import { useMentionables } from "@/lib/people";
 import { conversationQuery, conversationsQuery, messagesQuery } from "@/lib/queries";
@@ -47,6 +47,9 @@ import type { ActiveTurn, AgentSummary, Attachment, Author, ConversationDetail, 
 import { MenuButton } from "@/components/menus";
 import { EmptyState } from "@/components/empty-state";
 import { SimpleChatHeader } from "@/components/simple/header";
+import { ArtifactCard } from "@/components/artifact-card";
+import { RunCommandContext } from "@/components/message-text";
+import { DrawerButton } from "@/components/drawer";
 import { remember } from "@/lib/simple";
 import { RelayCard } from "@/components/simple/relay-card";
 import { RoutineCard, RoutineLine, TaskCard } from "@/components/simple/cards";
@@ -94,6 +97,7 @@ const strings = defineMessages({
     gone: "This conversation no longer exists or you're no longer part of it.",
     unavailable: "Conversation unavailable.",
     messageTo: (name: string) => `Message ${name}`,
+    runCommand: "Run this command and look at what it returns:",
     writeGroup: "Message the project",
     back: "Back",
     emptyHint: "Send a first message to get started.",
@@ -112,6 +116,7 @@ const strings = defineMessages({
     gone: "Cette conversation n'existe plus ou tu n'en fais plus partie.",
     unavailable: "Conversation indisponible.",
     messageTo: (name: string) => `Message à ${name}`,
+    runCommand: "Exécute cette commande et analyse ce qu'elle renvoie :",
     writeGroup: "Écrire dans le projet",
     back: "Retour",
     emptyHint: "Envoie un premier message pour commencer.",
@@ -142,7 +147,7 @@ const SCROLLED_UP = 400;
  * `focus`: a message to open the thread on (a notification, the inbox), like the web's `?m=`.
  * `simple`: the simple interface's home chat (components/simple): its own header and empty state.
  */
-export function Conversation({ conversationId, focus, simple: simpleHome }: { conversationId: string; focus?: string; simple?: boolean }) {
+export function Conversation({ conversationId, focus, simple: simpleHome, home }: { conversationId: string; focus?: string; simple?: boolean; home?: boolean }) {
   const user = useMe();
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -317,6 +322,8 @@ export function Conversation({ conversationId, focus, simple: simpleHome }: { co
 
   const toEnd = () => scroller.current?.scrollTo({ y: 0, animated: true });
 
+  const runCommand = (command: string, language: string) => void send(`${t.runCommand}\n\n\`\`\`${language}\n${command.trim()}\n\`\`\``, [], [], []);
+
   // Its sessions, or the way to start one for the owner of the subscription.
   const canStartCode = useCanStartCodeSession(conversationId);
   const codeSessions = useCodeSessions(conversationId);
@@ -332,6 +339,7 @@ export function Conversation({ conversationId, focus, simple: simpleHome }: { co
       // The menu opens the sessions started here, or offers the first one (the title has no room for their count).
       startCode={canStartCode || !!codeSessions?.length}
       onPanel={setPanel}
+      home={home}
     />
   );
 
@@ -371,6 +379,8 @@ export function Conversation({ conversationId, focus, simple: simpleHome }: { co
       {/* Figma « Conversation » (mobile): the thread and the composer on the white page. */}
       <Surface variant="transparent" className="flex-1 bg-background p-0">
         <ConversationFilesProvider messages={messages}>
+          {/* « Exécuter » on a shell block: the command goes to the bot, which runs it and reads the result (as on the web). */}
+          <RunCommandContext.Provider value={runCommand}>
           {/* The thread follows the keyboard frame by frame, and only lifts when at its end (reading back stays put).
               It is flipped, as an inverted FlatList: its end is offset 0, so it opens there without scrolling, and what
               grows above (an image loading, older messages laid out) doesn't move what's on screen. Its content is
@@ -399,7 +409,7 @@ export function Conversation({ conversationId, focus, simple: simpleHome }: { co
             }}
             onLayout={(e) => (viewportHeight.current = e.nativeEvent.layout.height)}
  >
-            <View className="grow gap-1 px-4" style={FLIPPED} onLayout={(e) => (threadHeight.current = e.nativeEvent.layout.height)}>
+            <View className="grow gap-1 px-5" style={FLIPPED} onLayout={(e) => (threadHeight.current = e.nativeEvent.layout.height)}>
               {(isPending || !conv) && (
                 <View className="flex-1 items-center justify-center">
                   <Spinner />
@@ -443,6 +453,7 @@ export function Conversation({ conversationId, focus, simple: simpleHome }: { co
                     mentions={mentions}
                     viewAnswers={viewAnswers}
                     actions={rowActions}
+                    solo={!!directBot}
                   />
                 );
               })}
@@ -494,6 +505,7 @@ export function Conversation({ conversationId, focus, simple: simpleHome }: { co
               <TypingLine entries={typing.map((p) => ({ key: p.userId, name: p.name.split(" ")[0]! }))} />
             </View>
           </KeyboardChatScrollView>
+          </RunCommandContext.Provider>
         </ConversationFilesProvider>
 
         {/* Pins, floating under the header (their bar is a surface of its own). */}
@@ -527,7 +539,7 @@ export function Conversation({ conversationId, focus, simple: simpleHome }: { co
             </View>
           )}
           {/* overflow-visible: the composer's "/" and "@" menu floats above the bar, over the thread. */}
-          <Surface variant="transparent" className="gap-2 overflow-visible bg-background px-3 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
+          <Surface variant="transparent" className="gap-2 overflow-visible bg-background px-7 pt-2" style={{ paddingBottom: Math.max(8, insets.bottom) }}>
             {conv && (
               <Composer
                 key={conversationId}
@@ -580,6 +592,7 @@ function ConversationHeader({
   waiting,
   startCode,
   onPanel,
+  home,
 }: {
   conv?: ConversationDetail;
   me: string;
@@ -589,6 +602,8 @@ function ConversationHeader({
   /** No session yet, but its owner may start one: the menu offers it (started ones are in the title). */
   startCode: boolean;
   onPanel: (panel: PanelKind) => void;
+  /** The home's conversation (Figma « Mobile — ChatGPT 1:1 »): the drawer button on the left, a new one on the right, search in « … ». */
+  home?: boolean;
 }) {
   const t = strings;
   const panelLabels = usePanelLabels();
@@ -609,14 +624,20 @@ function ConversationHeader({
           headerTitle: () => <HeaderTitle conversation={conv} me={me} title={title} label={infoLabel || undefined} waiting={waiting} />,
         }}
       />
+      {home && <DrawerButton current={conv?.id} />}
       {conv && (
         <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button icon={headerIcon.search} iconRenderingMode="template" accessibilityLabel={panelLabels.search} onPress={withTap(() => onPanel("search"))} />
+          {home ? (
+            <Stack.Toolbar.Button icon={headerIcon.compose} iconRenderingMode="template" accessibilityLabel={tr(conversationStrings).newConversation} onPress={withTap(() => router.push("/new"))} />
+          ) : (
+            <Stack.Toolbar.Button icon={headerIcon.search} iconRenderingMode="template" accessibilityLabel={panelLabels.search} onPress={withTap(() => onPanel("search"))} />
+          )}
           <Stack.Toolbar.View>
             <MenuButton
               icon="ellipsis"
               label={t.more}
               actions={[
+                home && { label: panelLabels.search, icon: "magnifyingglass", onPress: () => onPanel("search") },
                 { label: panelLabels.files, icon: "folder", onPress: () => onPanel("files") },
                 { label: panelLabels.pins, icon: "pin", onPress: () => onPanel("pins") },
                 startCode && { label: panelLabels.code, icon: "chevron.left.forwardslash.chevron.right", onPress: () => onPanel("code") },
@@ -688,6 +709,7 @@ const ThreadMessage = memo(function ThreadMessage({
   mentions,
   viewAnswers,
   actions,
+  solo,
 }: {
   conversationId: string;
   m: Message;
@@ -703,6 +725,8 @@ const ThreadMessage = memo(function ThreadMessage({
   mentions: Mentionable[];
   viewAnswers: ReadonlyMap<string, ViewAction>;
   actions: RowActions;
+  /** A conversation with one bot (Figma « Mobile — ChatGPT 1:1 »): no face, name nor time, as ChatGPT's thread. */
+  solo: boolean;
 }) {
   const vt = tr(integrations);
   const at = entryTime(m);
@@ -711,7 +735,7 @@ const ThreadMessage = memo(function ThreadMessage({
   const sameMinute = !!before && clockTime(before) === clockTime(at);
   const newAuthor = divider || !prev || authorKey(prev.author) !== authorKey(m.author);
   const fromMe = m.kind === "user" && m.author?.kind === "user" && m.author.id === me;
-  const head = !fromMe && m.kind !== "event" && (newAuthor || !sameMinute);
+  const head = !solo && !fromMe && m.kind !== "event" && (newAuthor || !sameMinute);
   const postHead: PostHead | undefined =
     head && m.author
       ? {
@@ -720,9 +744,11 @@ const ThreadMessage = memo(function ThreadMessage({
           time: clockTime(at),
         }
       : undefined;
-  const gap = !!prev && (head || (fromMe && newAuthor)) ? "mt-5.5" : undefined;
-  // Your messages carry their time under the bubble, once per run within the minute.
-  const lastOfMine = fromMe && !(next && authorKey(next.author) === authorKey(m.author) && clockTime(entryTime(next)) === clockTime(at));
+  const gap = !!prev && (head || newAuthor) && m.kind !== "event" ? "mt-5.5" : undefined;
+  // Your messages carry their time under the bubble, once per run within the minute; none in a chat with one bot.
+  const lastOfMine = !solo && fromMe && !(next && authorKey(next.author) === authorKey(m.author) && clockTime(entryTime(next)) === clockTime(at));
+  // The bot's run ends here: its reply's actions under it (Figma « Mobile — ChatGPT 1:1 »).
+  const endOfRun = m.kind === "bot" && !!m.text && !(next?.kind === "bot" && authorKey(next.author) === authorKey(m.author));
   const event = m.kind === "event" ? m.data?.event : undefined;
   const codeStarted = event?.type === "code.started" ? event : null;
   /** A bot asking to use a login of the vault, or to merge a pull request: its card instead of the event line. */
@@ -809,11 +835,10 @@ const ThreadMessage = memo(function ThreadMessage({
               }
             />
           ))}
-          {m.data?.previews?.map((p) => {
-            // Opened from the share sheet, which previews the page.
-            const file = m.data?.attachments?.find((a) => a.id === p.id);
-            return file && <FileCard key={p.key} a={file} className="self-start" />;
-          })}
+          {/* The pages it wrote: their artifact's card, the live page in it (web: PreviewCards). */}
+          {m.data?.previews?.map((p) => (
+            <ArtifactCard key={p.key} preview={p} file={m.data?.attachments?.find((a) => a.id === p.id)} />
+          ))}
           {/* The other files it sent: videos played here, the rest downloaded. */}
           {(() => {
             const files = (m.data?.attachments ?? []).filter((a) => !m.data?.previews?.some((p) => p.id === a.id));
@@ -826,6 +851,18 @@ const ThreadMessage = memo(function ThreadMessage({
           {m.data?.mcpRequest && <McpRequestCard id={m.data.mcpRequest} />}
           {m.data?.skillRequest && <SkillRequestCard id={m.data.skillRequest} />}
           {m.data?.botRequest && <BotRequestCard id={m.data.botRequest} />}
+          {endOfRun && (
+            <ReplyActions
+              text={m.text}
+              attachments={m.data?.attachments}
+              onReply={() => actions.reply(m)}
+              onForward={() => actions.forward(m)}
+              pinned={pinned}
+              onTogglePin={() => actions.togglePin(m.id)}
+              onDelete={() => actions.delete(m.id)}
+              onRemember={() => remember(conversationId, m.id)}
+            />
+          )}
         </Post>
       )}
       {codeStarted && !sessionShown && (

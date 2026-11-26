@@ -13,7 +13,7 @@ import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatIntegrationIcon } from "../src/components/icons/integrations";
 import { TerminalIcon } from "../src/components/icons/tools";
-import { CheckIcon, ChevronLeftIcon, CloseIcon, InboxIcon, PanelLeftIcon, PlusIcon, RefreshIcon, SearchIcon, SlidersIcon, TaskListIcon, UserIcon, UserPlusIcon } from "../src/components/icons/ui";
+import { CheckIcon, ChevronLeftIcon, CloseIcon, ComposeIcon, InboxIcon, MenuIcon, PanelLeftIcon, PlusIcon, RefreshIcon, SearchIcon, SlidersIcon, TaskListIcon, UserIcon, UserPlusIcon } from "../src/components/icons/ui";
 
 type Icon = ComponentType<{ size?: number }>;
 
@@ -29,7 +29,7 @@ const SETS: { dir: string; size: number; icons: Record<string, Icon> }[] = [
     // The header buttons (src/components/header-button.tsx `headerIcon`).
     dir: "header-icons",
     size: 22,
-    icons: { check: CheckIcon, close: CloseIcon, plus: PlusIcon, refresh: RefreshIcon, sliders: SlidersIcon, "user-plus": UserPlusIcon, "chevron-left": ChevronLeftIcon, search: SearchIcon, "panel-left": PanelLeftIcon },
+    icons: { check: CheckIcon, close: CloseIcon, plus: PlusIcon, refresh: RefreshIcon, sliders: SlidersIcon, "user-plus": UserPlusIcon, "chevron-left": ChevronLeftIcon, search: SearchIcon, "panel-left": PanelLeftIcon, menu: MenuIcon, compose: ComposeIcon },
   },
 ];
 

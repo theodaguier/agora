@@ -1,4 +1,5 @@
 import { common } from "@agora/core/i18n";
+import { DrawerButton } from "@/components/drawer";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, Stack } from "expo-router";
@@ -50,6 +51,7 @@ export default function InboxScreen() {
   return (
     <>
       <Stack.Screen.Title>{t.title}</Stack.Screen.Title>
+      <DrawerButton />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={t.markAllRead} disabled={!data?.unread || mark.isPending} onPress={withTap(markAll)} />
       </Stack.Toolbar>

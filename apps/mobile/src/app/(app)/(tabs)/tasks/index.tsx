@@ -1,4 +1,5 @@
 import { common, conversations } from "@agora/core/i18n";
+import { DrawerButton } from "@/components/drawer";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
 import { Skeleton, Typography } from "heroui-native";
@@ -70,6 +71,7 @@ export default function TasksScreen() {
   return (
     <>
       <Stack.Screen options={{ title, headerTitle: () => <HeaderTitle title={title} subtitle={open > 0 ? messages.open(open) : undefined} /> }} />
+      <DrawerButton />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.View>
           <MenuButton icon="slider.horizontal.3" label={messages.display} actions={[{ label: messages.showDone, checked: showDone, onPress: () => setShowDone((v) => !v) }]} />

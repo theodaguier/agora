@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { DrawerButton } from "@/components/drawer";
 import * as Application from "expo-application";
 import { Link, router, Stack, useFocusEffect, type Href } from "expo-router";
 import { Chip, ListGroup } from "heroui-native";
 import { useCallback, useState, type ReactNode } from "react";
-import { auth, common, simple } from "@agora/core/i18n";
+import { auth, simple } from "@agora/core/i18n";
 import { useLanguageChoice } from "@/components/profile/language";
 import { useSignOut } from "@/components/profile/organizations";
-import { headerIcon } from "@/components/header-button";
 import { defineMessages, tr } from "@/lib/i18n";
 import { useSimple } from "@/lib/simple";
 import { Linking } from "react-native";
@@ -186,11 +186,7 @@ export default function Profile() {
   return (
     <>
       <Stack.Screen.Title>{simpleMode ? tr(simple).settings : t.title}</Stack.Screen.Title>
-      {simpleMode && (
-        <Stack.Toolbar placement="left">
-          <Stack.Toolbar.Button icon={headerIcon.chevronLeft} iconRenderingMode="template" accessibilityLabel={tr(common).back} onPress={() => router.back()} />
-        </Stack.Toolbar>
-      )}
+      <DrawerButton />
       <SettingsScroll>
         {/* You: the General tab (profile and account). */}
         <Section>

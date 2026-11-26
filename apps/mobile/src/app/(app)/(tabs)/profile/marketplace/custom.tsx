@@ -1,4 +1,5 @@
 import { guessIntegrationType, withHttps, type IntegrationType } from "@agora/core";
+import { Segmented } from "@/components/profile/native-pickers";
 import { common, integrations } from "@agora/core/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -291,17 +292,7 @@ function CustomConnector() {
 
           <View className="gap-2">
             <Label isRequired>{t.transport}</Label>
-            <Tabs value={transport} onValueChange={(v) => (haptic.select(), setTransport(v as Transport))}>
-              <Tabs.List>
-                <Tabs.Indicator />
-                <Tabs.Trigger value="remote">
-                  <Tabs.Label>{t.remote}</Tabs.Label>
-                </Tabs.Trigger>
-                <Tabs.Trigger value="stdio">
-                  <Tabs.Label>{t.stdio}</Tabs.Label>
-                </Tabs.Trigger>
-              </Tabs.List>
-            </Tabs>
+            <Segmented value={transport} label={t.transport} onChange={(v) => (haptic.select(), setTransport(v))} options={[{ value: "remote", label: t.remote }, { value: "stdio", label: t.stdio }]} />
           </View>
 
           {transport === "remote" ? (

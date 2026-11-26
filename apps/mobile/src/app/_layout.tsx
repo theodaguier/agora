@@ -3,10 +3,6 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts } from "expo-font";
 // One face per path: the packages' index requires all of their 18 TTFs, which would all ship in the bundle.
-import { Geist_400Regular } from "@expo-google-fonts/geist/400Regular";
-import { Geist_500Medium } from "@expo-google-fonts/geist/500Medium";
-import { Geist_600SemiBold } from "@expo-google-fonts/geist/600SemiBold";
-import { Geist_700Bold } from "@expo-google-fonts/geist/700Bold";
 import { GeistMono_400Regular } from "@expo-google-fonts/geist-mono/400Regular";
 import { HeroUINativeProvider } from "heroui-native";
 import { useEffect, type ReactNode } from "react";
@@ -65,8 +61,8 @@ export default function RootLayout() {
  */
 function Organization({ children }: { children: ReactNode }) {
   const { ready: serversReady, current } = useServers();
-  // Geist, as on the web: the names are the ones global.css gives HeroUI's font variables.
-  const [fontsReady, fontError] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold, GeistMono_400Regular });
+  // The text is SF Pro (the system's); code is Geist Mono, as on the web, under the name global.css gives `--font-mono`.
+  const [fontsReady, fontError] = useFonts({ GeistMono_400Regular });
   const ready = serversReady && (fontsReady || !!fontError);
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();

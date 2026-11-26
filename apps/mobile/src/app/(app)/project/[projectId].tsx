@@ -1,7 +1,8 @@
 import { common, conversations } from "@agora/core/i18n";
+import { Segmented } from "@/components/profile/native-pickers";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, router, Stack, useLocalSearchParams } from "expo-router";
-import { ListGroup, Tabs, Typography } from "heroui-native";
+import { ListGroup, Typography } from "heroui-native";
 import { useState } from "react";
 import { Alert, RefreshControl, ScrollView, View } from "react-native";
 import { confirmAction } from "@/components/confirm-action";
@@ -107,17 +108,7 @@ export default function ProjectDiscussions() {
         ) : (
           <View className="gap-3 pb-8 pt-2">
             <View className="mx-4">
-              <Tabs value={tab} onValueChange={(v) => (haptic.select(), setTab(v as "active" | "archived"))}>
-                <Tabs.List>
-                  <Tabs.Indicator />
-                  <Tabs.Trigger value="active">
-                    <Tabs.Label>{messages.active}</Tabs.Label>
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="archived">
-                    <Tabs.Label>{messages.archived}</Tabs.Label>
-                  </Tabs.Trigger>
-                </Tabs.List>
-              </Tabs>
+              <Segmented value={tab} label={messages.discussions} onChange={(v) => (haptic.select(), setTab(v))} options={[{ value: "active" as const, label: messages.active }, { value: "archived" as const, label: messages.archived }]} />
             </View>
             {rows.length ? (
               <ListGroup variant="transparent" className="mx-1">

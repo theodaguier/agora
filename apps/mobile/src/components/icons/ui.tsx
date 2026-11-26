@@ -399,6 +399,26 @@ export const GridIcon = createIcon("grid", {
   ),
 });
 
+/** Write something new (a conversation): a pen over a page, as Mail's and Linear's « new » button. */
+export const ComposeIcon = createIcon("square-pen", {
+  line: (
+    <>
+      <Path d="M12 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V12" />
+      <Path d="M18.4 3.6a2.1 2.1 0 0 1 3 3L12.5 15.5 9 16.5l1-3.5z" />
+    </>
+  ),
+});
+
+/** Two lines, the top one longer: opens the mobile app's drawer (ChatGPT's menu button). */
+export const MenuIcon = createIcon("menu", {
+  line: (
+    <>
+      <Path d="M4 9h16" />
+      <Path d="M4 15h10" />
+    </>
+  ),
+});
+
 export const PanelLeftIcon = createIcon("panel-left", {
   fill: <Rect x="2" y="3" width="20" height="18" rx="4.5" />,
   cut: <Path d="M9 3v18" />,

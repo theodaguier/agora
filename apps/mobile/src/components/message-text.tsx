@@ -7,7 +7,7 @@ import { Button, Separator, Surface, Typography, useToast } from "heroui-native"
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import remend from "remend";
-import { CopyIcon, type IconComponent } from "@/components/icons";
+import { CheckIcon, CopyIcon, type IconComponent } from "@/components/icons";
 import { MentionText } from "@/components/mention";
 import { FileChip, InlineBox, PathChip, PortChip, RepoChip, Swatch, Text, TextLink, TextStyle, useEm } from "@/components/text-entities";
 import { cx, LinkClassContext, OnAccentContext } from "@/components/text-style";
@@ -247,10 +247,12 @@ function Block({ node, className }: { node: RootContent; className?: string }) {
  * under it), `pl-5`, and `pl-6` for a list inside an item. Items are `py-1 my-0.5` (margins collapsed: 2px between them).
  */
 function MarkdownList({ node, nested, className }: { node: List; nested?: boolean; className?: string }) {
+  // A checklist has no markers: its items open on their box (the web's TaskStatusIcon).
+  const checklist = node.children.every((item) => item.checked != null);
   return (
-    <View className={cx("gap-0.5", nested ? "my-0.5 pl-6" : "pl-5", className)}>
+    <View className={cx("gap-0.5", checklist ? (nested ? "my-0.5 pl-6" : "") : nested ? "my-0.5 pl-6" : "pl-5", className)}>
       {node.children.map((item, i) => (
-        <MarkdownListItem key={i} item={item} marker={node.ordered ? `${(node.start ?? 1) + i}. ` : "•\u2003"} />
+        <MarkdownListItem key={i} item={item} marker={item.checked != null ? "" : node.ordered ? `${(node.start ?? 1) + i}. ` : "•\u2003"} />
       ))}
     </View>
   );
@@ -261,13 +263,36 @@ function MarkdownListItem({ item, marker }: { item: ListItem; marker: string }) 
   const lead = item.children.findIndex((c) => c.type !== "paragraph");
   const paragraphs = (lead === -1 ? item.children : item.children.slice(0, lead)) as Extract<RootContent, { type: "paragraph" }>[];
   const rest = lead === -1 ? [] : item.children.slice(lead);
-  // GFM task lists: the web shows a disabled checkbox.
-  const check = item.checked == null ? "" : item.checked ? "☑ " : "☐ ";
+  // GFM task lists, as the web's TaskStatusIcon: done, a filled violet circle with a check and the text greyed;
+  // to do, a grey ring.
+  if (item.checked != null)
+    return (
+      <View className="flex-row gap-2 py-1">
+        <View className="pt-[3px]">
+          {item.checked ? (
+            <View className="size-4 items-center justify-center rounded-full bg-state-merged">
+              <CheckIcon size={11} strokeWidth={2.5} className="text-white" />
+            </View>
+          ) : (
+            <View className="size-4 rounded-full border-2 border-muted" />
+          )}
+        </View>
+        <View className="min-w-0 flex-1">
+          <Text className={item.checked ? "text-muted" : undefined}>
+            {paragraphs.map((p, i) => (
+              <Inlines key={i} nodes={p.children} />
+            ))}
+          </Text>
+          {rest.map((node, i) =>
+            node.type === "list" ? <MarkdownList key={i} node={node} nested /> : <Blocks key={i} nodes={[node]} after={i ? kindOf(rest[i - 1]!) : "p"} />,
+          )}
+        </View>
+      </View>
+    );
   return (
     <View className="py-1">
       <Text>
         {marker}
-        {check}
         {paragraphs.map((p, i) => (
           <Inlines key={i} nodes={p.children} />
         ))}
@@ -325,6 +350,20 @@ function Quote({ node, className }: { node: Blockquote; className?: string }) {
   );
 }
 
+/**
+ * « Exécuter » on a shell block (the web's RunCommandContext): the conversation hands the command to
+ * its bot, which runs it and reads the result. Absent outside a conversation.
+ */
+export const RunCommandContext = createContext<((code: string, language: string) => void) | null>(null);
+
+/** Languages a terminal runs: their blocks get « Exécuter » in a conversation. */
+const SHELLS = ["bash", "sh", "shell", "zsh", "console", "terminal"];
+
+const runMessages = defineMessages({
+  en: { run: "Run", runLabel: "Ask the agent to run this command and read its result" },
+  fr: { run: "Exécuter", runLabel: "Demander à l'agent d'exécuter cette commande et d'en lire le résultat" },
+});
+
 /** Streamdown's labels (English only on the web too: no translations are passed to it). */
 const streamdownLabels = { copyCode: "Copy Code" };
 
@@ -361,13 +400,23 @@ function ActionButton({ icon: Icon, label, copied, onPress }: { icon: IconCompon
 function CodeBlock({ node, className }: { node: Code; className?: string }) {
   const code = node.value.replace(/\n+$/, "");
   const lang = node.lang ?? "";
+  const run = useContext(RunCommandContext);
+  // Not while the reply writes it: the command may still be cut short.
+  const { streaming } = useContext(MarkdownContext);
   return (
     <Surface variant="transparent" className={cx("w-full flex-col overflow-hidden rounded-lg border border-border bg-field p-0", className)}>
       <View className="h-9 flex-row items-center justify-between pl-3 pr-1">
         <Typography type="body-xs" className="font-mono text-subtle">
           {lang.toLowerCase()}
         </Typography>
-        <ActionButton icon={CopyIcon} label={streamdownLabels.copyCode} copied={copiedMessages.code} onPress={() => Clipboard.setStringAsync(code)} />
+        <View className="flex-row items-center">
+          {!!run && !streaming && SHELLS.includes(lang.toLowerCase()) && (
+            <Button size="sm" variant="ghost" accessibilityLabel={runMessages.runLabel} onPress={() => run(code, lang.toLowerCase())}>
+              <Button.Label className="text-footnote font-medium text-muted">{runMessages.run}</Button.Label>
+            </Button>
+          )}
+          <ActionButton icon={CopyIcon} label={streamdownLabels.copyCode} copied={copiedMessages.code} onPress={() => Clipboard.setStringAsync(code)} />
+        </View>
       </View>
       <Separator />
       <View className="max-h-[400px]">
