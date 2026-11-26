@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import type { CodeCheck, CodeChecks, CodeGit, CodeGitFile, CodeIssue, CodeMergeMethod, CodePullRequest, CodeRepo } from "@agora/core";
 import { childEnv } from "./harden";
@@ -142,10 +142,10 @@ function known(token: string, source: TokenSource) {
 }
 
 /**
- * Credential helper of the clones: answers git with the token of its environment.
- * Git runs it through the shell, which expands $GH_TOKEN when it asks.
+ * Credential helper of the clones: answers git with the token of a session's file (githubAccess),
+ * else the one of its environment. Git runs it through the shell, which expands the variables when it asks.
  */
-const HELPER = `!f() { test "$1" = get && test -n "$GH_TOKEN" && printf 'username=x-access-token\\npassword=%s\\n' "$GH_TOKEN"; }; f`;
+const HELPER = `!f() { test "$1" = get || return 0; t=; test -n "$AGORA_GH_TOKEN_FILE" && t=$(cat "$AGORA_GH_TOKEN_FILE" 2>/dev/null); test -n "$t" || t=$GH_TOKEN; test -n "$t" && printf 'username=x-access-token\\npassword=%s\\n' "$t"; }; f`;
 
 /** Environment of git, gh and Claude Code for a session: the token, and never a prompt for credentials. */
 export const githubEnv = (token: string | null): Record<string, string> => ({
@@ -154,6 +154,47 @@ export const githubEnv = (token: string | null): Record<string, string> => ({
   GH_PROMPT_DISABLED: "1",
   ...(token && { GH_TOKEN: token, GITHUB_TOKEN: token }),
 });
+
+/** The token file of a process is renewed this often: an app token is replaced with 45 minutes left (github-app.ts). */
+const RENEW_MS = 5 * 60_000;
+
+const shellQuote = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
+
+/**
+ * GitHub access of a session's process, for as long as it lives. An app token lives an hour, a warm
+ * Claude Code process much longer: a token only put in its environment expired under it, and git and
+ * gh were refused ("Invalid username or token") until the session was restarted. The token is kept
+ * in a file of `dir` that Agora renews instead: the clone's helper reads it (HELPER), and Claude Code
+ * exports it before each of its commands (CLAUDE_ENV_FILE), for gh and the project's scripts.
+ */
+export async function githubAccess(dir: string, repo: string | null) {
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const file = join(dir, "token");
+  const script = join(dir, "env.sh");
+  let stopped = false;
+  const renew = async () => {
+    const token = await githubToken(repo);
+    if (!token || stopped) return token;
+    // Replaced in one go: a command reading it meanwhile never gets half a token.
+    const tmp = `${file}.${process.pid}.tmp`;
+    await writeFile(tmp, token, { mode: 0o600 });
+    await rename(tmp, file);
+    return token;
+  };
+  const token = await renew().catch((err) => (console.error("github access: token", err), null));
+  await writeFile(script, `t=$(cat ${shellQuote(file)} 2>/dev/null); if [ -n "$t" ]; then export GH_TOKEN="$t" GITHUB_TOKEN="$t"; fi; unset t\n`, { mode: 0o600 });
+  const timer = setInterval(() => void renew().catch((err) => console.error("github access: renew", err)), RENEW_MS);
+  timer.unref?.();
+  return {
+    env: { ...githubEnv(token), AGORA_GH_TOKEN_FILE: file, CLAUDE_ENV_FILE: script },
+    /** The process exited: no more renewals, and its token leaves the disk. */
+    dispose: async () => {
+      stopped = true;
+      clearInterval(timer);
+      await rm(dir, { recursive: true, force: true });
+    },
+  };
+}
 
 /** `raw`: stdout untouched (porcelain formats start with a meaningful space). */
 type Run = { ok: boolean; out: string; err: string; raw: string };

@@ -1,6 +1,6 @@
 import { setPriority } from "node:os";
 import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import type { Subprocess } from "bun";
 import { CODE_ENGINE_NAMES, CODE_PRIORITIES, codeEngineModes, codeInstructionText, type CodeApproval, type CodeIssue, type CodePriority, type CodePullRequest, type CodeEngine, type CodeApprovalAnswer, type CodeCommand, type CodeFile, type CodeGitAction, type CodePermissionMode, type CodeQuestion, type CodeSession, type CodeSessionDetail, type CodeSessionStatus, type CodeStep, type CodeUsage } from "@agora/core";
@@ -9,7 +9,7 @@ import { reasoningArgs, resultUsage, sessionExists, workspace, type ClaudeResult
 import type { Reasoning } from "./hermes";
 import { engineBin, headlessEngine, type HeadlessEngine } from "./code-engines";
 import * as gitOps from "./code-git";
-import { GitError, githubEnv, githubToken, parseRepo, prepareWorktree, readGit, removeWorktree, sessionBranch, writeCredentials } from "./code-git";
+import { GitError, githubAccess, parseRepo, prepareWorktree, readGit, removeWorktree, sessionBranch, writeCredentials } from "./code-git";
 import { clip, isMode, planTitle, Transcript } from "./code-steps";
 import { db, schema } from "./db";
 import { env } from "./env";
@@ -1497,7 +1497,20 @@ const portsNote = ({ first, last }: Ports) =>
     "N'arrête jamais un processus par son nom ou par son port (pkill, killall, fuser -k, kill $(lsof -t …)) : tu arrêterais aussi ceux des autres sessions. Arrête seulement les PID de ce que tu as lancé.",
   ].join("\n");
 
+/** This start of the API: the GitHub tokens of the previous ones are left behind (startCodeSessionSweep). */
+const BOOT = Date.now().toString(36);
+
+/** Where a session's process keeps its GitHub token (githubAccess): its own, a cooling process may still be exiting. */
+const githubDir = (root: string, sessionId: string, procId: number) => join(root, "github", BOOT, `${sessionId}-${procId}`);
+
+/** Removes the GitHub tokens previous starts of the API left on disk. */
+async function clearOldGithubDirs() {
+  const dir = join(await workspace(), "github");
+  for (const name of await readdir(dir).catch(() => [])) if (name !== BOOT) await rm(join(dir, name), { recursive: true, force: true });
+}
+
 export function startCodeSessionSweep() {
+  void clearOldGithubDirs().catch((err) => console.error("code sessions: github tokens", err));
   setInterval(() => void sweepLeftovers().catch((err) => console.error("code sessions: leftovers", err)), SWEEP_MS);
 }
 
@@ -1730,11 +1743,12 @@ async function execute(s: Live, id: number): Promise<void> {
     ...(appended ? ["--append-system-prompt", appended] : []),
     ...mcp.args,
   ];
-  // git and gh reach GitHub with the vault's token (the clone's credential helper reads it from there).
+  // git and gh reach GitHub with a token renewed while the process lives (githubAccess).
   // The browsers it launches show on the conversation's screen.
+  const github = await githubAccess(githubDir(await workspace(), r.id, id), r.repo);
   const baseEnv = {
     ...(await claudeCodeEnv()),
-    ...githubEnv(await githubToken(r.repo)),
+    ...github.env,
     ...(await sessionEnv(r, ports)),
     // Its question waits for the bot longer than an MCP call usually does.
     ...(s.bot && { MCP_TOOL_TIMEOUT: String(QUESTION_MS + 60_000) }),
@@ -1752,12 +1766,12 @@ async function execute(s: Live, id: number): Promise<void> {
     proc = Bun.spawn(args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
     yieldToTheServer(proc.pid);
   } catch (err) {
-    await Promise.all([mcp.dispose(), ssh?.dispose()]);
+    await Promise.all([mcp.dispose(), ssh?.dispose(), github.dispose()]);
     throw err;
   }
   void proc.exited.finally(() => {
     if (s.ssh === ssh) s.ssh = null;
-    return Promise.all([mcp.dispose(), ssh?.dispose()]);
+    return Promise.all([mcp.dispose(), ssh?.dispose(), github.dispose()]);
   });
   s.proc = proc;
   // Stopped while it was starting.
@@ -1914,8 +1928,9 @@ async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, syst
   const run = await engine.command({ bin, cwd: r.cwd, prompt, model: r.model, reasoning: { effort: r.effort, fast: r.fast }, mode: modeOf(r), thread, system, mcp });
   r.account = await engine.account().catch(() => null);
   touch(s, [], true);
-  // As Claude Code's: git and gh reach GitHub with the vault's token, its browsers show on the conversation's screen.
-  const cli = cliEnv(bin, { ...run.env, ...githubEnv(await githubToken(r.repo)), ...(await sessionEnv(r, ports)) });
+  // As Claude Code's: git and gh reach GitHub with a renewed token, its browsers show on the conversation's screen.
+  const github = await githubAccess(githubDir(await workspace(), r.id, id), r.repo);
+  const cli = cliEnv(bin, { ...run.env, ...github.env, ...(await sessionEnv(r, ports)) });
   // Its Machines SSH: the wrappers come first in PATH.
   const ssh = await sshRun();
   const spawnEnv = ssh ? ssh.env(cli) : cli;
@@ -1924,10 +1939,10 @@ async function executeHeadless(s: Live, id: number, engine: HeadlessEngine, syst
     proc = Bun.spawn(run.args, { cwd: r.cwd, env: spawnEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
     yieldToTheServer(proc.pid);
   } catch (err) {
-    await Promise.all([run.cleanup?.(), ssh?.dispose()]);
+    await Promise.all([run.cleanup?.(), ssh?.dispose(), github.dispose()]);
     throw err;
   }
-  void proc.exited.finally(() => Promise.all([run.cleanup?.(), ssh?.dispose()]));
+  void proc.exited.finally(() => Promise.all([run.cleanup?.(), ssh?.dispose(), github.dispose()]));
   s.proc = proc;
   // Stopped while it was starting.
   if (s.stopping) proc.kill();

@@ -13,7 +13,7 @@ writeFileSync(join(root, "gitconfig"), `[url "file://${remotes}/"]\n\tinsteadOf 
 process.env.GIT_CONFIG_GLOBAL = join(root, "gitconfig");
 process.env.GIT_CONFIG_NOSYSTEM = "1";
 
-const { cloneOf, commit, commitMaterial, parseRepo, prepareWorktree, pullRequestLinks, push, readGit, removeWorktree, sessionBranch, writeCredentials } = await import("./code-git");
+const { cloneOf, commit, commitMaterial, githubAccess, parseRepo, prepareWorktree, pullRequestLinks, push, readGit, removeWorktree, sessionBranch, writeCredentials } = await import("./code-git");
 
 const sh = (cwd: string, ...args: string[]) => {
   const r = Bun.spawnSync(["git", ...args], { cwd, env: process.env });
@@ -96,6 +96,20 @@ describe("a session's worktree", () => {
     // No token, or another host: no answer (and no prompt).
     expect(fill("github.com").exitCode).not.toBe(0);
     expect(fill("gitlab.com", "tok_123").stdout.toString()).not.toContain("tok_123");
+  });
+
+  test("a session's token file wins over its environment's token, which has expired by then", () => {
+    const file = join(root, "token-file");
+    const fill = (env: Record<string, string>) =>
+      Bun.spawnSync(["git", "credential", "fill"], {
+        cwd: dir,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...env },
+        stdin: new TextEncoder().encode("protocol=https\nhost=github.com\n\n"),
+      }).stdout.toString();
+    writeFileSync(file, "tok_fresh");
+    expect(fill({ GH_TOKEN: "tok_stale", AGORA_GH_TOKEN_FILE: file })).toContain("password=tok_fresh");
+    // The file gone (the process exited): the environment's.
+    expect(fill({ GH_TOKEN: "tok_stale", AGORA_GH_TOKEN_FILE: join(root, "no-such-file") })).toContain("password=tok_stale");
   });
 
   test("the project's credentials, in a file git ignores", async () => {
@@ -189,5 +203,31 @@ describe("a project an earlier session cloned the repository into", () => {
     expect(sh(project, "branch", "--show-current")).toBe("fix/old-session");
     expect(await removeWorktree(project, dir)).toMatchObject({ branch: "claude/new-task" });
     expect(sh(project, "worktree", "list")).not.toContain(dir);
+  });
+});
+
+describe("githubAccess: the token of a session's process, renewed on disk", () => {
+  test("git's helper and Claude Code's commands read it from its file, gone with the process", async () => {
+    // The vault of the API's env: another test file may have set HERMES_HOME first, in the same run.
+    const { env } = await import("./env");
+    const vault = join(env.HERMES_HOME, ".env");
+    const before = existsSync(vault) ? readFileSync(vault, "utf8") : null;
+    writeFileSync(vault, "GH_TOKEN=tok_vault\n");
+    const dir = join(root, "github", "session-1");
+    const access = await githubAccess(dir, "acme/app");
+    try {
+      expect(access.env).toMatchObject({ GH_TOKEN: "tok_vault", AGORA_GH_TOKEN_FILE: join(dir, "token"), CLAUDE_ENV_FILE: join(dir, "env.sh") });
+      expect(readFileSync(join(dir, "token"), "utf8")).toBe("tok_vault");
+      expect(statSync(join(dir, "token")).mode & 0o777).toBe(0o600);
+      // Renewed meanwhile: each command exports the file's token over the one of the process's start.
+      writeFileSync(join(dir, "token"), "tok_renewed");
+      const run = Bun.spawnSync(["bash", "-c", `. "$CLAUDE_ENV_FILE"; echo "$GH_TOKEN $GITHUB_TOKEN"`], { env: { ...process.env, ...access.env } });
+      expect(run.stdout.toString().trim()).toBe("tok_renewed tok_renewed");
+    } finally {
+      await access.dispose();
+      if (before === null) Bun.spawnSync(["rm", "-f", vault]);
+      else writeFileSync(vault, before);
+    }
+    expect(existsSync(dir)).toBe(false);
   });
 });
