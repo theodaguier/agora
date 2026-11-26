@@ -1,8 +1,8 @@
 import { common } from "@agora/core/i18n";
-import { DrawerButton } from "@/components/drawer";
+import { AppHeader, HeaderCircle, HeaderTitle, useAppHeaderHeight } from "@/components/app-header";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { router, Stack } from "expo-router";
+import { router } from "expo-router";
 import { ListGroup, SkeletonGroup, Typography, useToast } from "heroui-native";
 import { useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
@@ -10,13 +10,12 @@ import { TaskStatusIcon } from "@/components/code-session-marks";
 import { ColorDot } from "@/components/conversation-avatar";
 import { EmptyState } from "@/components/empty-state";
 import { FilterTags } from "@/components/filter-tags";
-import { headerIcon } from "@/components/header-button";
-import { InboxIcon, WarningIcon } from "@/components/icons";
+import { CheckIcon, InboxIcon, WarningIcon } from "@/components/icons";
 import { ActorAvatar, inboxItemHref, inboxMessages, tabOf, useInboxItem, type InboxTab } from "@/components/inbox-item";
 import { LongPressMenu } from "@/components/menus";
 import { PressableItem } from "@/components/people/section";
 import { ageLabel } from "@/lib/dates";
-import { usePullToRefresh, withTap } from "@/lib/haptics";
+import { usePullToRefresh } from "@/lib/haptics";
 import { tr } from "@/lib/i18n";
 import { inboxQuery, useMarkInbox, type InboxItem } from "@/lib/inbox";
 import { cn } from "@/lib/utils";
@@ -31,6 +30,7 @@ const t = inboxMessages;
 
 export default function InboxScreen() {
   const c = tr(common);
+  const headerHeight = useAppHeaderHeight();
   const [tab, setTab] = useState<InboxTab>("priority");
   const { data, isPending, isError, refetch } = useQuery(inboxQuery());
   const pull = usePullToRefresh(refetch);
@@ -50,12 +50,7 @@ export default function InboxScreen() {
 
   return (
     <>
-      <Stack.Screen.Title>{t.title}</Stack.Screen.Title>
-      <DrawerButton />
-      <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button icon={headerIcon.check} iconRenderingMode="template" accessibilityLabel={t.markAllRead} disabled={!data?.unread || mark.isPending} onPress={withTap(markAll)} />
-      </Stack.Toolbar>
-      <ScrollView contentInsetAdjustmentBehavior="automatic" className="bg-background" contentContainerClassName="pb-10 pt-2" refreshControl={<RefreshControl {...pull} />}>
+      <ScrollView contentInsetAdjustmentBehavior="never" className="bg-background" contentContainerClassName="pb-10" contentContainerStyle={{ paddingTop: headerHeight + 4 }} scrollIndicatorInsets={{ top: headerHeight }} refreshControl={<RefreshControl {...pull} progressViewOffset={headerHeight} />}>
         <FilterTags
           accessibilityLabel={t.title}
           value={tab}
@@ -90,6 +85,8 @@ export default function InboxScreen() {
           </ListGroup>
         )}
       </ScrollView>
+      {/* Figma « Mobile — ChatGPT 1:1 », « Boîte de réception »: the menu, the title, mark all as read. */}
+      <AppHeader title={<HeaderTitle title={t.title} />} right={<HeaderCircle icon={CheckIcon} label={t.markAllRead} disabled={!data?.unread || mark.isPending} onPress={markAll} />} />
     </>
   );
 }
@@ -112,7 +109,8 @@ function InboxRow({ item }: { item: InboxItem }) {
   };
   return (
     <LongPressMenu actions={[{ label: item.read ? t.markUnread : t.markRead, icon: item.read ? "envelope.badge" : "envelope.open", onPress: toggleRead }]}>
-      <PressableItem onPress={open} itemClassName="gap-3 py-2.5">
+      {/* Figma « Mobile — ChatGPT 1:1 », « Boîte de réception »: the face, the title (bold while unread) over what happened on two lines, the state and the age on the right. */}
+      <PressableItem onPress={open} itemClassName="items-start gap-3 px-[18px] py-3">
         <ListGroup.ItemPrefix>
           <ActorAvatar item={item} size={36} />
         </ListGroup.ItemPrefix>
@@ -123,17 +121,17 @@ function InboxRow({ item }: { item: InboxItem }) {
                 <ColorDot size={6} color="text-brand" />
               </View>
             )}
-            <ListGroup.ItemTitle numberOfLines={1} className={cn("flex-1", item.read && "font-normal text-muted")}>
+            <ListGroup.ItemTitle numberOfLines={1} className={cn("flex-1 text-body", item.read ? "font-normal text-muted" : "font-semibold")}>
               {title}
             </ListGroup.ItemTitle>
           </View>
-          <ListGroup.ItemDescription numberOfLines={1} className={item.read ? "text-subtle" : undefined}>
+          <ListGroup.ItemDescription numberOfLines={2} className={cn("text-subheadline", item.read ? "text-subtle" : "text-muted")}>
             {action}
           </ListGroup.ItemDescription>
         </ListGroup.ItemContent>
         <ListGroup.ItemSuffix className="items-end justify-between gap-1.5 self-stretch py-0.5">
           {item.task ? <TaskStatusIcon status={item.task.status} /> : <View style={{ width: 14, height: 14 }} />}
-          <Typography type="body-xs" className="text-subtle" style={{ fontVariant: ["tabular-nums"] }}>
+          <Typography className="text-subheadline text-muted" style={{ fontVariant: ["tabular-nums"] }}>
             {ageLabel(new Date(item.createdAt))}
           </Typography>
         </ListGroup.ItemSuffix>

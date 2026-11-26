@@ -52,12 +52,12 @@ const sources = () => [
   { label: messages.files, icon: "doc" as const, pick: pickDocuments },
 ];
 
-/** The paperclip of the composer's toolbar: photo library, camera, Files; `open` lets the "/" menu open it too. */
+/** The « + » of the composer: photo library, camera, Files; `open` lets the "/" menu open it too. */
 export function AttachMenu({ open, onOpenChange, onFiles }: { open: boolean; onOpenChange: (open: boolean) => void; onFiles: (files: LocalFile[]) => void }) {
   return (
     <MenuButton
-      icon="paperclip"
-      // As on the web's composer: a plain paperclip, no ring.
+      icon="plus"
+      // Figma « Mobile — ChatGPT 1:1 »: ChatGPT's « + » on the left of the pill, no ring.
       variant="ghost"
       // Above the "+": the composer sits on the keyboard.
       placement="top"

@@ -1,19 +1,17 @@
 import { common, conversations } from "@agora/core/i18n";
-import { DrawerButton } from "@/components/drawer";
+import { AppHeader, HeaderCapsule, HeaderTitle as AppHeaderTitle, useAppHeaderHeight } from "@/components/app-header";
 import { useQuery } from "@tanstack/react-query";
-import { Stack, useRouter } from "expo-router";
-import { Skeleton, Typography } from "heroui-native";
+import { useRouter } from "expo-router";
+import { Skeleton } from "heroui-native";
 import { useMemo, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
-import { TaskStatusIcon } from "@/components/code-session-marks";
 import { EmptyState } from "@/components/empty-state";
-import { headerIcon } from "@/components/header-button";
-import { WarningIcon } from "@/components/icons";
+import { PlusIcon, WarningIcon } from "@/components/icons";
 import { ListBand } from "@/components/list-band";
 import { MenuButton } from "@/components/menus";
 import { useMe } from "@/components/server-scope";
 import { TaskTableRow } from "@/components/tasks/task-table-row";
-import { usePullToRefresh, withTap } from "@/lib/haptics";
+import { usePullToRefresh } from "@/lib/haptics";
 import { defineMessages, tr } from "@/lib/i18n";
 import { personMentionables, usePeople } from "@/lib/people";
 import { newTaskHref, userTasksQuery, type TaskStatus } from "@/lib/tasks";
@@ -66,23 +64,18 @@ export default function TasksScreen() {
   const mine = (tasks ?? []).filter((x) => x.assignees.some((a) => a.id === me.id));
   const open = mine.filter((x) => x.status !== "done").length;
   const title = tr(conversations).tasks;
+  const headerHeight = useAppHeaderHeight();
   const groups = GROUPS.map((status) => ({ status, items: status === "done" && !showDone ? [] : mine.filter((x) => x.status === status) })).filter((g) => g.items.length);
 
   return (
     <>
-      <Stack.Screen options={{ title, headerTitle: () => <HeaderTitle title={title} subtitle={open > 0 ? messages.open(open) : undefined} /> }} />
-      <DrawerButton />
-      <Stack.Toolbar placement="right">
-        <Stack.Toolbar.View>
-          <MenuButton icon="slider.horizontal.3" label={messages.display} actions={[{ label: messages.showDone, checked: showDone, onPress: () => setShowDone((v) => !v) }]} />
-        </Stack.Toolbar.View>
-        <Stack.Toolbar.Button icon={headerIcon.plus} iconRenderingMode="template" accessibilityLabel={messages.newTask} onPress={withTap(() => router.push(newTaskHref))} />
-      </Stack.Toolbar>
       <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior="never"
         className="bg-background"
         contentContainerClassName="pb-10"
-        refreshControl={<RefreshControl {...pull} />}
+        contentContainerStyle={{ paddingTop: headerHeight }}
+        scrollIndicatorInsets={{ top: headerHeight }}
+        refreshControl={<RefreshControl {...pull} progressViewOffset={headerHeight} />}
       >
         {isPending ? (
           <View className="gap-2 p-4">
@@ -97,7 +90,7 @@ export default function TasksScreen() {
         ) : (
           groups.map((g) => (
             <View key={g.status} accessibilityLabel={messages.group[g.status]}>
-              <ListBand mark={<TaskStatusIcon status={g.status} />} label={messages.group[g.status]} count={g.items.length} />
+              <ListBand label={messages.group[g.status]} count={g.items.length} />
               {g.items.map((task) => (
                 <TaskTableRow key={task.id} task={task} me={me.id} mentionables={mentionables} />
               ))}
@@ -105,22 +98,19 @@ export default function TasksScreen() {
           ))
         )}
       </ScrollView>
+      {/* Figma « Mobile — ChatGPT 1:1 », « Mes tâches »: the menu, the title and its count, display and new task. */}
+      <AppHeader
+        title={<AppHeaderTitle title={title} subtitle={open > 0 ? messages.open(open) : null} />}
+        right={
+          <HeaderCapsule
+            actions={[
+              <MenuButton key="display" icon="slider.horizontal.3" label={messages.display} actions={[{ label: messages.showDone, checked: showDone, onPress: () => setShowDone((v) => !v) }]} />,
+              { icon: PlusIcon, label: messages.newTask, onPress: () => router.push(newTaskHref) },
+            ]}
+          />
+        }
+      />
     </>
   );
 }
 
-/** The title, how many are still open in small grey type under it, both centred. */
-function HeaderTitle({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <View className="max-w-60 items-center">
-      <Typography weight="semibold" numberOfLines={1}>
-        {title}
-      </Typography>
-      {!!subtitle && (
-        <Typography type="body-xs" color="muted" numberOfLines={1} style={{ fontVariant: ["tabular-nums"] }}>
-          {subtitle}
-        </Typography>
-      )}
-    </View>
-  );
-}

@@ -30,7 +30,7 @@ export function TaskCard({ ids }: { ids: string[] }) {
   return (
     <ListGroup className="mt-2 w-full overflow-hidden rounded-[18px] border border-border bg-background shadow-none">
       {tasks.map((t) => (
-        <TaskTableRow key={t.id} task={t} me={me.id} mentionables={mentionables} />
+        <TaskTableRow key={t.id} task={t} me={me.id} mentionables={mentionables} divided />
       ))}
     </ListGroup>
   );

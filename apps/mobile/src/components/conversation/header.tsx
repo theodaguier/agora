@@ -11,6 +11,7 @@ import { defineMessages } from "@/lib/i18n";
 import { conversationsQuery } from "@/lib/queries";
 import type { ConversationDetail } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { HeaderTitle as AppHeaderTitle } from "@/components/app-header";
 
 /*
  * The title of the conversation's native header (web: the 46 px header of screens/Conversation.tsx,
@@ -116,5 +117,36 @@ function HeaderStatus({ p }: { p: Participant }) {
     <Typography type="body-xs" numberOfLines={1} className={cn("shrink", { online: "text-success", working: "text-brand", dnd: "text-danger", away: "text-subtle" }[status.tone])}>
       {status.label}
     </Typography>
+  );
+}
+
+/** A participant for the status hook when there is no one else (a project): its status is never shown. */
+const FALLBACK = { kind: "user", person: { id: "", name: "" } } as unknown as Participant;
+
+const homeMessages = defineMessages({
+  en: { members: (n: number) => `${n} member${n > 1 ? "s" : ""}` },
+  fr: { members: (n: number) => `${n} membre${n > 1 ? "s" : ""}` },
+});
+
+/**
+ * Figma « Mobile — ChatGPT 1:1 »: the home conversation's title, in the middle of its header (components/
+ * app-header.tsx). The name with its chevron, then what is going on in small type: the bot waiting for
+ * you in orange, a project's members, a person's status in its colour. A tap opens the info screen.
+ */
+export function HomeTitle({ conversation: conv, me, title, waiting }: { conversation?: ConversationDetail; me: string; title: string; waiting?: boolean }) {
+  const group = conv?.kind === "group";
+  const other = conv && !group ? othersOf(conv, me)[0] : undefined;
+  const href = conv ? infoHref(conv, me) : null;
+  const status = useStatus(other ?? FALLBACK);
+  const subtitle = waiting ? messages.waitingYou : group && conv ? homeMessages.members(othersOf(conv, "").length) : other ? (status?.label ?? null) : null;
+  const tone = waiting ? "text-warning" : group ? "text-muted" : status ? { online: "text-success", working: "text-brand", dnd: "text-danger", away: "text-subtle" }[status.tone] : "text-muted";
+  return (
+    <AppHeaderTitle
+      title={title}
+      subtitle={subtitle}
+      subtitleClassName={cn("text-caption1", tone)}
+      chevron={!!href}
+      onPress={href ? () => router.push(href) : undefined}
+    />
   );
 }
