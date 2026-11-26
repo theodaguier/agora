@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.84.1 — 2026-11-26
+
+### Fixes
+- **api**: code sessions keep their GitHub access past the hour (#190)
+
 ## v0.84.0 — 2026-11-26
 
 ### Features
