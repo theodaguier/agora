@@ -5,6 +5,7 @@ import { Link, Outlet, useParams, useRouteContext } from "@tanstack/react-router
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronDownIcon, PlusIcon, SearchIcon } from "@/components/icons";
 import { OrgLogo } from "@/components/OrgLogo";
+import { PlanRows, usePlans } from "@/components/PlanLimits";
 import { UserMenu } from "@/components/Sidebar";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
@@ -40,8 +41,8 @@ import { defaultAssistant, useAssistants, useNewChat } from "@/lib/simple";
 
 /*
  * Figma « Mode simple », 5 · Simple interface — web: the same shell as the full app, emptied. The sidebar
- * holds the history only (a new chat, search, the chats by day, their name at the bottom), the panel the
- * open chat. Projects stay out of the list: what concerns them there comes to their chat from their assistant.
+ * holds the history (a new chat, search, the chats by day), then at the bottom the coding subscriptions
+ * (their owner only) and the account; the panel, the open chat. Projects stay out of the list: what concerns them there comes to their chat from their assistant.
  */
 
 const ORDER: HistoryBucket[] = ["today", "yesterday", "week", "month", "older"];
@@ -88,6 +89,8 @@ function History() {
   const shown = chats.filter((c) => words.every((w) => `${c.name} ${c.preview?.text ?? ""}`.toLowerCase().includes(w)));
   const buckets = ORDER.map((b) => ({ key: b, rows: shown.filter((c) => historyBucket(new Date(c.lastAt)) === b) })).filter((b) => b.rows.length);
   const next = defaultAssistant(agents, list);
+  // The coding subscriptions and how much of their limits is used: their owner only, like the full sidebar.
+  const plans = usePlans();
 
   return (
     <>
@@ -155,6 +158,14 @@ function History() {
       </SidebarContent>
 
       <SidebarFooter className="px-3 pb-1.5">
+        {plans.length > 0 && (
+          <SidebarGroup className="p-0 pb-1">
+            <SidebarGroupLabel className="h-auto pb-1 leading-4.25 font-normal text-muted-foreground">{t.subscriptions}</SidebarGroupLabel>
+            <SidebarMenu className="gap-px">
+              <PlanRows plans={plans} />
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
         <SidebarMenu className="gap-px">
           <SidebarMenuItem>
             <UserMenu user={user} />

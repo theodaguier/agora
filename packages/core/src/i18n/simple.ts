@@ -5,6 +5,7 @@ export const simple = defineMessages({
   en: {
     newChat: "New chat",
     search: "Search",
+    subscriptions: "Subscriptions",
     noMatch: "No chat matches.",
     empty: "How can I help?",
     noAssistant: "No assistant is open to you yet. Ask an admin.",
@@ -42,6 +43,7 @@ export const simple = defineMessages({
   fr: {
     newChat: "Nouvelle discussion",
     search: "Rechercher",
+    subscriptions: "Abonnements",
     noMatch: "Aucune discussion ne correspond.",
     empty: "Comment je peux t'aider ?",
     noAssistant: "Aucun assistant ne t'est encore ouvert. Demande à un admin.",
