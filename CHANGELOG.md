@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.84.2 — 2026-11-26
+
+### Fixes
+- **mobile**: lists, rows, composer and empty chat as in the Figma frames
+- **mobile**: the drawer screens' header and the thread's text as in the Figma
+
 ## v0.84.1 — 2026-11-26
 
 ### Fixes
